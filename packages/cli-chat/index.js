@@ -594,6 +594,7 @@ const KNOWN_PROVIDER_MODELS = {
   ],
   cursor: [
     'auto',
+    'claude-opus-5-5-high',
     'gpt-5.5-high',
     'claude-opus-4-8-thinking-high',
     'claude-4.6-sonnet-medium-thinking',
@@ -612,7 +613,11 @@ const PROVIDER_MODEL_RANK_HINTS = {
     'gpt-5.5',
   ],
   ghcopilot: ['gpt-4.1', 'gpt-4', 'auto'],
+  // 2026-09-25 scan: claude-opus-5-5 confirmed live on the cursor-agent account
+  // (no gpt-6/"Codex 6" found anywhere — see chat note). Ranked above the
+  // older opus-4-8 thinking tier so auto-pick prefers it.
   cursor: [
+    'opus-5-5',
     'thinking-high',
     'opus-4-8-thinking-high',
     'gpt-5.5-high',
