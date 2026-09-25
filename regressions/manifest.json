@@ -1,0 +1,4404 @@
+{
+  "version": 1,
+  "tests": [
+    {
+      "id": "unit-app-runtime",
+      "name": "Vault-native App runtime, manifests, and focused shell contracts",
+      "description": "Jest: App page APIs/capabilities, App runtime/frame, v2 accept/upsert outbox and merge-never-clobber behavior, protected device package persistence/restore, focused /app metadata, host channels, and App page view contracts through SN-268.",
+      "intent": "Prevents App pages from losing sandbox/runtime boundaries, bounded offline package restore, accepted entries or drafts during late live refresh, explicit source reconciliation, or recovery access.",
+      "whenToRun": "Pre-merge when changing App runtime, /app focused shell, page/app APIs, App manifests, app-frame, or App page view.",
+      "failureMeaning": "App pages may fail to load or restore offline, a late live refresh may clobber pending local data/source, replay may duplicate or reorder writes, recovery may become inaccessible, or sandbox/runtime contracts may regress.",
+      "appType": "node",
+      "command": "npm test -- tests/api-app-capabilities-route.test.ts tests/api-page-app-manifest-route.test.ts tests/api-page-app-route.test.ts tests/app-acceptance-contract.test.ts tests/app-companion-guidance.test.ts tests/app-frame.test.ts tests/app-frame-companion-channel.test.ts tests/app-mutation-outbox.test.ts tests/app-page-entry-point.test.ts tests/app-page-view-contract.test.ts tests/app-runtime.test.ts tests/mini-app-package-cache.test.ts tests/pwa-service-worker.test.ts",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "app",
+        "mini-app",
+        "targeted"
+      ],
+      "feature": "app",
+      "testType": "integration",
+      "suite": "feature-bundle",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-182/SN-187 catalog catch-up",
+      "addedAt": "2026-08-06",
+      "maintenanceNotes": "SN-267 adds bounded device-package persistence and offline restore. SN-268 widens the same bundle to v2 accept/upsert replay, pending overlays, protected package refresh, explicit source choice, and fail-closed recovery.",
+      "sourceFiles": [
+        {
+          "path": "tests/api-app-capabilities-route.test.ts"
+        },
+        {
+          "path": "tests/api-page-app-manifest-route.test.ts"
+        },
+        {
+          "path": "tests/api-page-app-route.test.ts"
+        },
+        {
+          "path": "tests/app-acceptance-contract.test.ts"
+        },
+        {
+          "path": "tests/app-companion-guidance.test.ts"
+        },
+        {
+          "path": "tests/app-frame.test.ts"
+        },
+        {
+          "path": "tests/app-frame-companion-channel.test.ts"
+        },
+        {
+          "path": "tests/app-mutation-outbox.test.ts"
+        },
+        {
+          "path": "tests/app-page-entry-point.test.ts"
+        },
+        {
+          "path": "tests/app-page-view-contract.test.ts"
+        },
+        {
+          "path": "tests/app-runtime.test.ts"
+        },
+        {
+          "path": "tests/mini-app-package-cache.test.ts"
+        },
+        {
+          "path": "tests/pwa-service-worker.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "e2e-sn-205-open-page",
+      "name": "SN-205 mini-app host navigation across notebook and focused surfaces",
+      "description": "Playwright desktop: e2e/sn-205-open-page.spec.ts — a notebook-hosted App opens an existing vault page, then a focused App exits to the notebook and lands on the same target.",
+      "intent": "Protects smartNotesApp.openPage so accepted App navigation uses the notebook host flow and focused App navigation deep-links to the validated target.",
+      "whenToRun": "Pre-merge when changing app-frame host navigation, notebook tree selection/expansion, or the focused App shell.",
+      "failureMeaning": "Mini-app navigation may fail, bypass the notebook leave/save path, leave the target hidden in the tree, or return from focus mode to the wrong page.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-205-open-page.spec.ts --project=desktop --workers=1 --retries=0",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "app",
+        "mini-app",
+        "navigation",
+        "targeted"
+      ],
+      "feature": "app",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-205",
+      "addedAt": "2026-08-10",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-205-open-page.spec.ts"
+        },
+        {
+          "path": "src/components/notebook-shell-reliable.tsx"
+        },
+        {
+          "path": "src/components/focused-app-shell.tsx"
+        }
+      ]
+    },
+    {
+      "id": "unit-workout-nutrition-app",
+      "name": "Workout & Nutrition vault-native mini app domain and migration",
+      "description": "Jest: workout domain logic, durable keyed draft upsert/retirement, offline acceptance, migration tooling, and package source template contracts through SN-268.",
+      "intent": "Protects the Workout App so in-progress drafts and accepted entries survive offline reload and replay without a retired draft resurfacing.",
+      "whenToRun": "Pre-merge when changing packages/workout-nutrition-app, workout migration, draft outbox usage for this app, or workout-log App source.",
+      "failureMeaning": "Workout entries, drafts, migration, or the shipped template source may diverge from the vault App contract.",
+      "appType": "node",
+      "command": "npm test -- tests/workout-nutrition-domain.test.ts tests/workout-nutrition-draft.test.ts tests/workout-nutrition-migration.test.ts tests/workout-nutrition-source.test.ts",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "app",
+        "workout",
+        "targeted"
+      ],
+      "feature": "app",
+      "testType": "integration",
+      "suite": "feature-bundle",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-183 catalog catch-up",
+      "addedAt": "2026-08-06",
+      "sourceFiles": [
+        {
+          "path": "tests/workout-nutrition-domain.test.ts"
+        },
+        {
+          "path": "tests/workout-nutrition-draft.test.ts"
+        },
+        {
+          "path": "tests/workout-nutrition-migration.test.ts"
+        },
+        {
+          "path": "tests/workout-nutrition-source.test.ts"
+        },
+        {
+          "path": "packages/workout-nutrition-app/app/source.html"
+        }
+      ]
+    },
+    {
+      "id": "e2e-sn-183-workout-app",
+      "name": "SN-183 Workout App cutover and durable mobile entry",
+      "description": "Playwright: e2e/sn-183-workout-app.spec.ts — redacted migration/history/nutrition/progress, atomic offline accept plus draft retirement/reload, and focused device-package restore/reconnect.",
+      "intent": "Guards the vault-native Workout replacement, pending local mutation survival, and focused offline reopen end-to-end without leaking private vault values into evidence.",
+      "whenToRun": "Pre-merge when changing workout App UX, migration cutover, or App page rendering for Health/Strength/workout-log.",
+      "failureMeaning": "Workout App cutover, history/nutrition/progress, draft/accept replay, retirement ordering, or offline package reopen may be broken.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-183-workout-app.spec.ts --project=desktop --project=mobile",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "app",
+        "workout",
+        "targeted"
+      ],
+      "feature": "app",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-183 catalog catch-up",
+      "addedAt": "2026-08-06",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-183-workout-app.spec.ts"
+        }
+      ]
+    },
+    {
+      "id": "unit-sn-147-log-analytics",
+      "name": "Log History, form analytics, and contextual suggestions",
+      "description": "Jest: readable default/named History presentations, stable routes and exports, safe form actions, bounded query contract, contextual history matching/copy behavior, and companion tool bridge.",
+      "intent": "Prevents live Log History views from hiding or mutating rows, bypassing result bounds/page scope, accepting executable metadata, or diverging between notebook and focused shells.",
+      "whenToRun": "Pre-merge when changing Log History, log queries, form definitions/actions, contextual suggestions, log APIs, or companion log tools.",
+      "failureMeaning": "Readable History rendering/fallback, stable links/exports, safe internal actions, bounded analytics, contextual suggestions, or the companion query boundary has regressed.",
+      "appType": "node",
+      "command": "npm test -- tests/log-query-contract.test.ts tests/log-form-contract.test.ts tests/log-history-view.test.tsx tests/log-history-suggestion.test.ts tests/log-page-view-focused.test.tsx tests/api-page-log-query-route.test.ts tests/vault-agent-commands.test.ts tests/companion-log-form-bridge.test.ts tests/ai-sidebar.test.ts tests/agent-settings.test.ts",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "log",
+        "targeted"
+      ],
+      "feature": "log",
+      "testType": "integration",
+      "suite": "feature-bundle",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-147",
+      "addedAt": "2026-07-30",
+      "maintenanceNotes": "SN-180 added default/named History presentation, fallback, stable-link/export, and safe linked-form action coverage.",
+      "sourceFiles": [
+        {
+          "path": "tests/log-query-contract.test.ts"
+        },
+        {
+          "path": "tests/log-form-contract.test.ts"
+        },
+        {
+          "path": "tests/log-history-view.test.tsx"
+        },
+        {
+          "path": "tests/log-history-suggestion.test.ts"
+        },
+        {
+          "path": "tests/log-page-view-focused.test.tsx"
+        },
+        {
+          "path": "tests/api-page-log-query-route.test.ts"
+        },
+        {
+          "path": "tests/vault-agent-commands.test.ts"
+        },
+        {
+          "path": "tests/companion-log-form-bridge.test.ts"
+        },
+        {
+          "path": "tests/ai-sidebar.test.ts"
+        },
+        {
+          "path": "tests/agent-settings.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "e2e-sn-178-wide-table-scroll",
+      "name": "SN-178 wide rich-text table local scrolling",
+      "description": "Playwright desktop/mobile: e2e/sn-178-wide-table-scroll.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-178-wide-table-scroll.spec.ts --project=desktop --project=mobile",
+      "timeoutMs": 240000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "editor",
+        "table",
+        "targeted"
+      ],
+      "feature": "editor",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-178",
+      "addedAt": "2026-07-29",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-178-wide-table-scroll.spec.ts"
+        }
+      ],
+      "intent": "Guards table-local horizontal scrolling, expanded collapsible-heading overflow, narrow-table sizing, and unchanged stored HTML for rich-text tables on desktop and mobile.",
+      "whenToRun": "Pre-merge when changing rich-text table rendering, collapsible-heading overflow, or editor scroll containment.",
+      "failureMeaning": "Wide tables may be clipped again, the final column may be unreachable without page-bottom scrolling, collapse/expand may break, or rendering wrappers may leak into stored page HTML."
+    },
+    {
+      "id": "e2e-desktop-all",
+      "name": "All E2E tests (desktop)",
+      "description": "Full Playwright desktop project against .e2e-vault.",
+      "appType": "browser",
+      "command": "npm run test:e2e:desktop",
+      "timeoutMs": 2400000,
+      "enabled": true,
+      "tags": [
+        "smoke",
+        "e2e",
+        "browser",
+        "desktop"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "smoke",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "release",
+      "whenToRun": "Owner-initiated release check via av test run --lifecycle=release."
+    },
+    {
+      "id": "e2e-mobile-all",
+      "name": "All E2E tests (mobile)",
+      "description": "Full Playwright mobile viewport project against .e2e-vault.",
+      "appType": "browser",
+      "command": "npm run test:e2e:mobile",
+      "timeoutMs": 2400000,
+      "enabled": true,
+      "tags": [
+        "smoke",
+        "e2e",
+        "browser",
+        "mobile"
+      ],
+      "feature": "mobile",
+      "testType": "e2e",
+      "suite": "smoke",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "release",
+      "whenToRun": "Owner-initiated release check via av test run --lifecycle=release."
+    },
+    {
+      "id": "e2e-smart-notes",
+      "name": "Smart Notes (desktop)",
+      "description": "Playwright desktop: e2e/smart-notes.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/smart-notes.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/smart-notes.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (smart-notes.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-11-ai-sidebar",
+      "name": "Sn 11 Ai Sidebar (desktop)",
+      "description": "Playwright desktop: e2e/sn-11-ai-sidebar.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-11-ai-sidebar.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "ai",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-11-ai-sidebar.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-11-ai-sidebar.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-13-comments",
+      "name": "Sn 13 Comments (desktop)",
+      "description": "Playwright desktop: e2e/sn-13-comments.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-13-comments.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "comments",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-13-comments.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-13-comments.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-26-ink-note",
+      "name": "Sn 26 Ink Note (desktop)",
+      "description": "Playwright desktop: e2e/sn-26-ink-note.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-26-ink-note.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "ink",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-26-ink-note.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-26-ink-note.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-3-reliability",
+      "name": "Sn 3 Reliability (desktop)",
+      "description": "Playwright desktop: e2e/sn-3-reliability.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-3-reliability.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-3-reliability.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-3-reliability.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-35-system-prompt",
+      "name": "Sn 35 System Prompt (desktop)",
+      "description": "Playwright desktop: e2e/sn-35-system-prompt.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-35-system-prompt.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-35-system-prompt.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-35-system-prompt.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-38-annotations",
+      "name": "Sn 38 Annotations (desktop)",
+      "description": "Playwright desktop: e2e/sn-38-annotations.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-38-annotations.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "annotations",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-38-annotations.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-38-annotations.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-39-companion-reading",
+      "name": "Sn 39 Companion Reading (desktop)",
+      "description": "Playwright desktop: e2e/sn-39-companion-reading.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-39-companion-reading.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-39-companion-reading.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-39-companion-reading.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-4-notebook-workflow",
+      "name": "Sn 4 Notebook Workflow (desktop)",
+      "description": "Playwright desktop: e2e/sn-4-notebook-workflow.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-4-notebook-workflow.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-4-notebook-workflow.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-4-notebook-workflow.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-40-draw-scroll",
+      "name": "Sn 40 Draw Scroll (desktop)",
+      "description": "Playwright desktop: e2e/sn-40-draw-scroll.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-40-draw-scroll.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-40-draw-scroll.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-40-draw-scroll.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-5-wysiwyg-editor",
+      "name": "Sn 5 Wysiwyg Editor (desktop)",
+      "description": "Playwright desktop: e2e/sn-5-wysiwyg-editor.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-5-wysiwyg-editor.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "editor",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-5-wysiwyg-editor.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-5-wysiwyg-editor.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-53-navigation-tree-performance",
+      "name": "Sn 53 Navigation Tree Performance (desktop)",
+      "description": "Playwright desktop: e2e/sn-53-navigation-tree-performance.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-53-navigation-tree-performance.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "navigation",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-53-navigation-tree-performance.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-53-navigation-tree-performance.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-63-startup-performance",
+      "name": "Sn 63 Startup Performance (desktop)",
+      "description": "Playwright desktop: e2e/sn-63-startup-load-time.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-63-startup-load-time.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "performance",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-63-startup-load-time.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-63-startup-load-time.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-135-pdf-reader",
+      "name": "SN-135 immersive PDF reader",
+      "description": "Playwright desktop/mobile: e2e/sn-135-pdf-reader.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-135-pdf-reader.spec.ts",
+      "timeoutMs": 600000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "mobile",
+        "pdf",
+        "attachments",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-135",
+      "addedAt": "2026-07-16",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-135-pdf-reader.spec.ts"
+        }
+      ],
+      "intent": "Guards the immersive PDF attachment reader across desktop and mobile, including full-viewport launch, no horizontal clipping, collapsible mobile chrome, remembered last-read page, the SN-138 navigation bar with direct page-jump input, and SN-136 Annotate mode (ink + highlight tools, annotate-off gesture restore, sidecar persistence without mutating PDF bytes).",
+      "whenToRun": "Pre-merge when touching PDF attachments, the rich-text attachment launch path, EmbedPDF integration, annotation sidecar persistence, the reader navigation bar / page-jump control, or reader state persistence.",
+      "failureMeaning": "PDF attachments may reopen the old cramped preview path, clip document pages, lose mobile reading area, break the page-jump control, fail to restore the reader position, leave Annotate controls flash-disabled, or lose ink/highlight sidecar data."
+    },
+    {
+      "id": "e2e-sn-136-annotation-walkthrough",
+      "name": "SN-136 PDF annotation walkthrough",
+      "description": "Playwright desktop/mobile researcher journey: e2e/sn-136-visual-walkthrough.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-136-visual-walkthrough.spec.ts",
+      "timeoutMs": 600000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "mobile",
+        "pdf",
+        "annotations",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-136",
+      "addedAt": "2026-07-22",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-136-visual-walkthrough.spec.ts"
+        }
+      ],
+      "intent": "Protects the complete researcher annotation journey with real document gestures and visual evidence: quiet highlight creation, comment authoring and read-mode reopen, outside-tap dismissal, ink authoring, and direct eraser scrub on desktop and mobile.",
+      "whenToRun": "Pre-merge when changing the immersive PDF reader annotation toolbar, pointer routing, highlight comments, annotation persistence, or eraser interaction.",
+      "failureMeaning": "The PDF annotation journey may have regained interaction friction, intrusive highlight UI, broken comment access or dismissal, incorrect pointer routing, or nonfunctional ink erasing."
+    },
+    {
+      "id": "e2e-sn-151-large-pdf-paint",
+      "name": "SN-151 large PDF first paint",
+      "description": "Production-bundle Playwright: e2e/sn-151-large-pdf-paint.spec.ts via playwright.sn151.config.ts — Deep Learning book paints real tiles after pager is live; ResizeObserver-miss case covered.",
+      "appType": "browser",
+      "command": "npx playwright test -c playwright.sn151.config.ts",
+      "timeoutMs": 900000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "pdf",
+        "attachments",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-151",
+      "addedAt": "2026-07-23",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-151-large-pdf-paint.spec.ts"
+        },
+        {
+          "path": "playwright.sn151.config.ts"
+        }
+      ],
+      "intent": "Guards in-app first paint for a real 600+ page vault PDF when the viewport ResizeObserver delivery is missed — the gray-frame failure mode that stock EmbedPDF Scroller hits.",
+      "whenToRun": "Pre-merge when touching immersive-pdf-reader scroller/zoom-gate/tiling, PDF vault cache, or EmbedPDF plugin wiring.",
+      "failureMeaning": "Large PDFs may show a live pager with zero painted tiles (permanent gray) or snap zoom incorrectly after open."
+    },
+    {
+      "id": "e2e-sn-151-open-timing",
+      "name": "SN-151 PDF open timing (cold/warm)",
+      "description": "Production-bundle Playwright: e2e/sn-151-open-timing.spec.ts via playwright.sn151timing.config.ts — click→first paint budgets for cold and warm reopen.",
+      "appType": "browser",
+      "command": "npx playwright test -c playwright.sn151timing.config.ts",
+      "timeoutMs": 900000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "pdf",
+        "attachments",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-151",
+      "addedAt": "2026-07-23",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-151-open-timing.spec.ts"
+        },
+        {
+          "path": "playwright.sn151timing.config.ts"
+        }
+      ],
+      "intent": "Protects warm reopen well under 5s (session engine + vault PDF cache) and keeps cold open dominated by network rather than main-thread stalls.",
+      "whenToRun": "Pre-merge when changing PDFium engine lifecycle, pdf-vault-cache, Reload-app cache policy, or reader mount sequencing.",
+      "failureMeaning": "Reopening a large PDF may again cold-start WASM or re-download the full binary, restoring minute-scale open times."
+    },
+    {
+      "id": "e2e-sn-151-responsive-open",
+      "name": "SN-151 PDF responsive open (desktop+mobile)",
+      "description": "Production-bundle Playwright: e2e/sn-151-responsive-open.spec.ts via playwright.sn151resp.config.ts — no long main-thread tasks, scroll stays live, all visible pages paint, toolbar survives, warm reopen under budget. Uses real annotation sidecar.",
+      "appType": "browser",
+      "command": "npx playwright test -c playwright.sn151resp.config.ts",
+      "timeoutMs": 900000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "mobile",
+        "pdf",
+        "annotations",
+        "attachments",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-151",
+      "addedAt": "2026-07-23",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-151-responsive-open.spec.ts"
+        },
+        {
+          "path": "playwright.sn151resp.config.ts"
+        }
+      ],
+      "intent": "Guards the frozen-UI / blank-sibling-pages / vanishing-toolbar failure caused by importing bloated native-LINK sidecars or other long main-thread work during open and scroll.",
+      "whenToRun": "Pre-merge when touching PDF annotation import/export filtering, chunked import, immersive reader open path, or annotation sidecar schema.",
+      "failureMeaning": "Opening or reopening a book with annotations may freeze the UI for tens of seconds, leave pages blank, break scroll, or drop the toolbar after paint settles.",
+      "maintenanceNotes": "Requires the Deep Learning vault PDF plus its annotations sidecar under vault/AI/Learning/. Not part of default playwright.config.ts (testIgnore sn-151-*)."
+    },
+    {
+      "id": "unit-pdf-annotations-sidecar",
+      "name": "PDF annotation sidecar filter",
+      "description": "Jest: tests/pdf-annotations.test.ts — user-authored ink/highlight filter, parse/build, companion summary.",
+      "appType": "node",
+      "command": "npm test -- tests/pdf-annotations.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "pdf",
+        "annotations",
+        "attachments",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-151",
+      "addedAt": "2026-07-23",
+      "sourceFiles": [
+        {
+          "path": "tests/pdf-annotations.test.ts"
+        },
+        {
+          "path": "src/lib/pdf-annotations.ts"
+        }
+      ],
+      "intent": "Ensures native PDF LINK/widget annotations never enter the EmbedPDF sidecar and that ink/highlight round-trips stay intact.",
+      "whenToRun": "Pre-merge when changing pdf-annotations helpers or /api/pdf-annotations sanitization.",
+      "failureMeaning": "Sidecars may again absorb thousands of native links and freeze every large-PDF reopen, or drop real user ink/highlights."
+    },
+    {
+      "id": "unit-pdf-vault-cache",
+      "name": "PDF vault Cache Storage",
+      "description": "Jest: tests/pdf-vault-cache.test.ts and tests/pdf-reader-session.test.ts — v4 validation, session buffer, retained reader, deferred revalidation.",
+      "appType": "node",
+      "command": "npm test -- tests/pdf-vault-cache.test.ts tests/pdf-reader-session.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "pdf",
+        "attachments",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-151",
+      "addedAt": "2026-07-23",
+      "sourceFiles": [
+        {
+          "path": "tests/pdf-vault-cache.test.ts"
+        },
+        {
+          "path": "tests/pdf-reader-session.test.ts"
+        },
+        {
+          "path": "src/lib/pdf-vault-cache.ts"
+        },
+        {
+          "path": "src/lib/pdf-reader-session.ts"
+        }
+      ],
+      "intent": "Protects Local-copy reopen integrity (%PDF + %%EOF), same-tab session buffers, one-PDF retained reader reuse, and deferred background revalidation that must not starve first paint.",
+      "whenToRun": "Pre-merge when changing pdf-vault-cache, retained PDF reader sessions, or Reload-app PDF cache policy.",
+      "failureMeaning": "Large PDF reopens may serve truncated Local copies (gray forever), remount after leaving the reader, or compete with paint via eager revalidation."
+    },
+    {
+      "id": "unit-pwa-reload-pdf-cache",
+      "name": "PWA Reload preserves PDF cache",
+      "description": "Jest: tests/pwa-service-worker.test.ts — FORCE_RELOAD clears app shell only, not vault PDF buckets.",
+      "appType": "node",
+      "command": "npm test -- tests/pwa-service-worker.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "pwa",
+        "pdf",
+        "targeted"
+      ],
+      "feature": "pwa",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-151",
+      "addedAt": "2026-07-23",
+      "sourceFiles": [
+        {
+          "path": "tests/pwa-service-worker.test.ts"
+        },
+        {
+          "path": "scripts/service-worker.template.js"
+        },
+        {
+          "path": "src/lib/sw-update.ts"
+        }
+      ],
+      "intent": "Guarantees Settings → Reload app refreshes the app shell without wiping smart-notes-vault-pdfs-* Cache Storage.",
+      "whenToRun": "Pre-merge when changing service-worker FORCE_RELOAD handling or sw-update triggerForceReload.",
+      "failureMeaning": "Every Reload app would force a full re-download of large PDFs and recreate minute-scale reopen times."
+    },
+    {
+      "id": "e2e-sn-9-wysiwyg-editor",
+      "name": "Sn 9 Wysiwyg Editor (desktop)",
+      "description": "Playwright desktop: e2e/sn-9-wysiwyg-editor.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-9-wysiwyg-editor.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "editor",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-9-wysiwyg-editor.spec.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-9-wysiwyg-editor.spec.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "e2e-sn-154-new-stroke-weight",
+      "name": "SN-154 New Stroke Weight Compatibility (desktop)",
+      "description": "Playwright desktop: e2e/sn-154-new-stroke-weight.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-154-new-stroke-weight.spec.ts --project=desktop",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "annotations",
+        "targeted"
+      ],
+      "feature": "annotations",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-154",
+      "addedAt": "2026-07-26",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-154-new-stroke-weight.spec.ts"
+        },
+        {
+          "path": "src/components/annotation-layer.tsx"
+        }
+      ],
+      "intent": "Protects saved annotation compatibility: historical unmarked strokes retain their original weight while newly authored strokes receive and persist the 0.75 scale marker.",
+      "whenToRun": "Pre-merge when changing annotation draw-shape creation, display values, or sidecar hydration.",
+      "failureMeaning": "Opening or resaving an old page may alter historical stroke weight, or new strokes may no longer receive the thinner weight."
+    },
+    {
+      "id": "unit-sn-216-service-worker-build-guard",
+      "name": "SN-216 production service-worker build parity",
+      "description": "Jest: production startup synchronizes the service-worker BUILD_ID to the exact .next bundle it serves and blocks on unresolved mismatch.",
+      "intent": "Prevents an installed PWA from remaining on an old app shell whose lazy draw-mode chunk no longer exists after a production rebuild.",
+      "whenToRun": "Pre-merge when changing production startup, build output ownership, or service-worker generation.",
+      "failureMeaning": "Production can serve a Next bundle with a stale worker, leaving installed PWAs on missing or incompatible draw-mode JavaScript.",
+      "appType": "node",
+      "command": "npm test -- tests/sn-216-service-worker-build-guard.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "pwa",
+        "draw",
+        "targeted"
+      ],
+      "feature": "pwa",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-216",
+      "addedAt": "2026-08-11",
+      "sourceFiles": [
+        {
+          "path": "tests/sn-216-service-worker-build-guard.test.ts"
+        },
+        {
+          "path": "scripts/service-worker-build-guard.js"
+        },
+        {
+          "path": "serve-prebuilt.js"
+        }
+      ]
+    },
+    {
+      "id": "e2e-sn-216-draw-persistence",
+      "name": "SN-216 draw stroke remains visible and durable",
+      "description": "Playwright desktop/mobile: finger and stylus-with-palm text-page ink strokes retain painted SVG geometry and persisted shapes through autosave, draw-mode exit, and page reopen.",
+      "intent": "Catches the user-visible regression where an in-progress ink stroke appears briefly but its committed SVG is absent, invisible, or not persisted.",
+      "whenToRun": "Pre-merge when changing draw-mode loading, Tldraw integration, annotation reconciliation, autosave, PWA delivery, or production startup.",
+      "failureMeaning": "Desktop or touch/stylus users may draw a stroke that disappears from the canvas or is lost on reopen.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-216-draw-persistence.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "mobile",
+        "annotations",
+        "draw",
+        "targeted"
+      ],
+      "feature": "annotations",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-216",
+      "addedAt": "2026-08-11",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-216-draw-persistence.spec.ts"
+        },
+        {
+          "path": "src/components/annotation-layer.tsx"
+        },
+        {
+          "path": "serve-prebuilt.js"
+        }
+      ]
+    },
+    {
+      "id": "e2e-sn-167-design-pages",
+      "name": "Sn 167 Design Pages (desktop)",
+      "description": "Playwright desktop: e2e/sn-167-design-pages.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-167-design-pages.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": false,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "design",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-167-design-pages.spec.ts"
+        }
+      ],
+      "intent": "Guards note_type=design: raw-HTML render of the SAFE artifact at desktop+mobile via renderUiToPng, and stylus ink persisting/compositing into the capture.",
+      "whenToRun": "Pre-merge when touching design pages, the /render/ui route, renderUiToPng, or the annotation layer."
+    },
+    {
+      "id": "unit-design-page-link",
+      "name": "Design Page Link In Place (SN-168)",
+      "description": "Jest: tests/design-page-link.test.ts — portable-root containment, empty-stub adoption, sidecar metadata, verbatim write-through, missing-source/relink, and ink sidecar isolation.",
+      "appType": "node",
+      "command": "npm test -- tests/design-page-link.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "design",
+        "vault",
+        "targeted"
+      ],
+      "feature": "design-pages",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-168",
+      "addedAt": "2026-07-27",
+      "sourceFiles": [
+        {
+          "path": "tests/design-page-link.test.ts"
+        },
+        {
+          "path": "src/server/vault/design-link.ts"
+        }
+      ],
+      "intent": "Protects linking an ordinary self-contained HTML design inside a portable-notebook root without copying or frontmatter-injecting the file, including replacing the empty Design-page stub so only one tree/file entry remains.",
+      "whenToRun": "Pre-merge when touching linked designs, design-link sidecars, portable-root containment, or design-page save/read paths.",
+      "failureMeaning": "Linking may leave a duplicate placeholder, copy or contaminate the HTML ground truth, accept paths outside portable roots, or write ink into the linked artifact."
+    },
+    {
+      "id": "e2e-sn-168-link-design-desktop",
+      "name": "SN-168 Link Design From Source (desktop)",
+      "description": "Playwright desktop: e2e/sn-168-link-design.spec.ts — in-page source adoption, executable SAFE bundle preview, one tree/file entry, Source, and ui_render.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-168-link-design.spec.ts --project=desktop",
+      "timeoutMs": 360000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "desktop",
+        "design",
+        "vault",
+        "targeted"
+      ],
+      "feature": "design-pages",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-168",
+      "addedAt": "2026-07-27",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-168-link-design.spec.ts"
+        },
+        {
+          "path": "src/components/design-page-view.tsx"
+        },
+        {
+          "path": "src/components/link-design-source-dialog.tsx"
+        }
+      ],
+      "intent": "Guards desktop Link from source: the SAFE JavaScript bundle executes in the isolated preview, the empty stub is removed, no HTML copy is created, Source is exposed, and ui_render succeeds.",
+      "whenToRun": "Pre-merge when changing linked-design UI, portable HTML browser, or design-link APIs.",
+      "failureMeaning": "Owners may see the no-JavaScript fallback, a duplicate placeholder/source entry, clipped Design chrome, or a copied/contaminated artifact."
+    },
+    {
+      "id": "e2e-sn-168-link-design-mobile",
+      "name": "SN-168 Link Design From Source (mobile)",
+      "description": "Playwright mobile: e2e/sn-168-link-design.spec.ts — source adoption and executable SAFE preview at a touch viewport with overflow checks.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-168-link-design.spec.ts --project=mobile",
+      "timeoutMs": 360000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "mobile",
+        "design",
+        "vault",
+        "targeted"
+      ],
+      "feature": "design-pages",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-168",
+      "addedAt": "2026-07-27",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-168-link-design.spec.ts"
+        }
+      ],
+      "intent": "Guards the in-app Link from source flow on mobile Inspect-sized viewports, including executable bundled JavaScript, single-entry adoption, and non-clipping Design chrome.",
+      "whenToRun": "Pre-merge when changing linked-design UI or the portable HTML browser dialog.",
+      "failureMeaning": "Mobile/Inspect owners cannot complete Link from source, the bundled preview does not execute, a duplicate entry remains, or the Design controls overflow."
+    },
+    {
+      "id": "lint",
+      "name": "Next.js lint",
+      "description": "ESLint pass via next lint.",
+      "appType": "node",
+      "command": "npm run lint",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "smoke",
+        "lint",
+        "node",
+        "disabled-pending-eslint-config"
+      ],
+      "feature": "tooling",
+      "testType": "unit",
+      "suite": "smoke",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "quarantined",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-agent-settings",
+      "name": "Agent Settings",
+      "description": "Jest: tests/agent-settings.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/agent-settings.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "ai",
+        "targeted"
+      ],
+      "feature": "companion",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/agent-settings.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (agent-settings.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-ai-sidebar",
+      "name": "Ai Sidebar",
+      "description": "Jest: tests/ai-sidebar.test.ts — companion scope keys, sidecar persistence, provider preferences on kept threads.",
+      "appType": "node",
+      "command": "npm test -- tests/ai-sidebar.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "ai",
+        "targeted"
+      ],
+      "feature": "companion",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/ai-sidebar.test.ts"
+        },
+        {
+          "path": "src/lib/ai-sidebar.ts"
+        }
+      ],
+      "intent": "Guards companion sidecar normalization, kept-thread provider persistence (providerId/model/effort), and scope session helpers.",
+      "whenToRun": "Pre-merge when touching companion persistence, provider selection, or ai-sidebar helpers."
+    },
+    {
+      "id": "unit-ai-sidebar-ui",
+      "name": "Ai Sidebar Ui",
+      "description": "Jest: tests/ai-sidebar-ui.test.ts tests/ai-sidebar-composer-draft.test.tsx — companion UI wiring, kept-thread provider save triggers, and composer behavior.",
+      "appType": "node",
+      "command": "npm test -- tests/ai-sidebar-ui.test.ts tests/ai-sidebar-composer-draft.test.tsx",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "ai",
+        "targeted"
+      ],
+      "feature": "companion",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/ai-sidebar-ui.test.ts"
+        },
+        {
+          "path": "tests/ai-sidebar-composer-draft.test.tsx"
+        }
+      ],
+      "intent": "Guards companion UI wiring, including provider/model/effort changes triggering durable and volatile companion persistence without requiring another message.",
+      "whenToRun": "Pre-merge when touching companion UI, persistence effects, provider selection, or composer behavior."
+    },
+    {
+      "id": "unit-sn-193-pdf-reader-selection",
+      "name": "SN-193 PDF read-mode selection and touch navigation",
+      "description": "Jest: tests/pdf-reader-selection.test.ts — read-mode text selection/copy, touch pan preservation, and annotation interaction layering.",
+      "appType": "node",
+      "command": "npm test -- tests/pdf-reader-selection.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "pdf",
+        "selection",
+        "touch",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-193",
+      "addedAt": "2026-08-07",
+      "sourceFiles": [
+        {
+          "path": "tests/pdf-reader-selection.test.ts"
+        }
+      ],
+      "intent": "Prevents ordinary PDF reading from losing desktop text selection and copy while preserving document-first finger navigation and read-mode annotation taps.",
+      "whenToRun": "Pre-merge when changing immersive PDF pointer providers, selection/copy wiring, touch handoff, or annotation layer ordering.",
+      "failureMeaning": "Desktop readers may be unable to select or copy PDF text, touch users may lose pan and scroll, or annotations and Annotate tools may stop receiving pointer input."
+    },
+    {
+      "id": "unit-sn-197-pdf-companion-shell",
+      "name": "SN-197 immersive PDF companion shell",
+      "description": "Jest component coverage: tests/ai-sidebar-pdf-shell.test.tsx — shared companion mount plus reader, rail, dialog, and dropdown z-token ordering.",
+      "appType": "node",
+      "command": "npm test -- tests/ai-sidebar-pdf-shell.test.tsx",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "ai",
+        "pdf",
+        "targeted"
+      ],
+      "feature": "companion",
+      "testType": "component",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-197",
+      "addedAt": "2026-08-07",
+      "sourceFiles": [
+        {
+          "path": "tests/ai-sidebar-pdf-shell.test.tsx"
+        },
+        {
+          "path": "src/components/notebook-shell-reliable.tsx"
+        },
+        {
+          "path": "src/components/ai-sidebar.tsx"
+        },
+        {
+          "path": "src/styles/tokens.css"
+        }
+      ],
+      "intent": "Prevents the immersive PDF reader from forking the companion mount or covering its provider/model settings and portaled menus.",
+      "whenToRun": "Pre-merge when changing the immersive PDF shell, companion presentation containers, settings surfaces, or companion z-index tokens.",
+      "failureMeaning": "The PDF reader may duplicate companion state or make provider/model settings unreachable on desktop or narrow layouts."
+    },
+    {
+      "id": "unit-sn-199-pdf-companion-page",
+      "name": "SN-199 PDF companion page context and toolkit",
+      "description": "Jest integration coverage: live immersive-reader page wiring plus bounded pdf_read_page, pdf_read_pages, and pdf_page_count behavior, including large-PDF page reads.",
+      "appType": "node",
+      "command": "npm test -- tests/sn-199-pdf-companion-page.test.ts tests/companion-context.test.ts tests/vault-agent-commands.test.ts",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "companion",
+        "pdf",
+        "vault",
+        "targeted"
+      ],
+      "feature": "companion",
+      "testType": "integration",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-199",
+      "addedAt": "2026-08-07",
+      "sourceFiles": [
+        {
+          "path": "tests/sn-199-pdf-companion-page.test.ts"
+        },
+        {
+          "path": "tests/companion-context.test.ts"
+        },
+        {
+          "path": "tests/vault-agent-commands.test.ts"
+        }
+      ],
+      "intent": "Prevents the immersive PDF companion from losing its live page target or bypassing the bounded vault PDF page toolkit.",
+      "whenToRun": "Pre-merge when changing immersive PDF reader context, companion operating context, or vault PDF page tools.",
+      "failureMeaning": "The companion may receive stale PDF page context, load an unbounded document, or fail bounded page and page-count requests."
+    },
+    {
+      "id": "unit-all",
+      "name": "All unit tests (Jest)",
+      "description": "Full Jest suite in tests/ — API, vault, editor, PWA, navigation guards.",
+      "appType": "node",
+      "command": "npm test",
+      "timeoutMs": 600000,
+      "enabled": true,
+      "tags": [
+        "smoke",
+        "unit",
+        "node"
+      ],
+      "feature": "core",
+      "testType": "unit",
+      "suite": "smoke",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "release",
+      "whenToRun": "Owner-initiated release check via av test run --lifecycle=release."
+    },
+    {
+      "id": "unit-annotation-layer",
+      "name": "Annotation Layer",
+      "description": "Jest: tests/annotation-layer.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/annotation-layer.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "annotations",
+        "targeted"
+      ],
+      "feature": "annotations",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/annotation-layer.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (annotation-layer.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-annotations-integration",
+      "name": "Annotations Integration",
+      "description": "Jest: tests/annotations-integration.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/annotations-integration.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "annotations",
+        "targeted"
+      ],
+      "feature": "annotations",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/annotations-integration.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (annotations-integration.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-mobile-draw-runtime-contract",
+      "name": "Mobile Draw Runtime Contract",
+      "description": "Jest: tests/mobile-draw-runtime-contract.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/mobile-draw-runtime-contract.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "annotations",
+        "mobile",
+        "runtime",
+        "targeted"
+      ],
+      "feature": "annotations",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/mobile-draw-runtime-contract.test.ts"
+        },
+        {
+          "path": "src/components/annotation-layer.tsx"
+        },
+        {
+          "path": "src/components/rich-text-editor.tsx"
+        },
+        {
+          "path": "next.config.mjs"
+        }
+      ],
+      "intent": "Guards the mobile/tablet draw-mode runtime contract and production-with-license support discovered during SN-122/SN-128 operator testing.",
+      "whenToRun": "Pre-merge when touching mobile draw mode, annotation surfaces, tldraw runtime setup, or Next production startup."
+    },
+    {
+      "id": "unit-api-comments-route",
+      "name": "Api Comments Route",
+      "description": "Jest: tests/api-comments-route.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/api-comments-route.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "api",
+        "targeted"
+      ],
+      "feature": "vault-api",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/api-comments-route.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (api-comments-route.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-api-ingest-route",
+      "name": "Api Ingest Route",
+      "description": "Jest: /api/ingest auth, SN-166 public-ingress hardening, and the SN-234 destination allowlist + GET /api/ingest/destinations catalog.",
+      "appType": "node",
+      "command": "npm test -- tests/api-ingest-route.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "ingest",
+        "targeted"
+      ],
+      "feature": "ingest",
+      "addedBy": "SN-103",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Enabled by SN-234: the spec now guards a public, token-gated ingress surface, so it runs pre-merge instead of on request. Closeout stewardship: updated (SN-234).",
+      "sourceFiles": [
+        {
+          "path": "tests/api-ingest-route.test.ts"
+        }
+      ],
+      "intent": "Guards the external ingest contract: bearer auth, the same-origin share-target carve-out, and allowlist enforcement that keeps external senders out of unlisted notebooks (SN-103, SN-166, SN-234).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-ingest-destinations-settings",
+      "name": "Ingest destinations settings store",
+      "description": "Jest: settings-store persistence, validation, and the /api/ingest/settings CRUD route for the SN-235 ingest destination allowlist (add/edit/remove/reorder, env-var one-time seed precedence).",
+      "appType": "node",
+      "command": "npm test -- tests/ingest-destinations-settings.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "ingest",
+        "settings",
+        "targeted"
+      ],
+      "feature": "ingest",
+      "addedBy": "SN-235",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-08-25",
+      "sourceFiles": [
+        {
+          "path": "tests/ingest-destinations-settings.test.ts"
+        }
+      ],
+      "intent": "Guards the settings-store persistence layer (src/server/ingest-destinations.ts) that replaced hand-edited env vars for the ingest destination allowlist: validation (duplicate id, missing label/id, unknown notebook, unknown default), full-list add/edit/remove/reorder saves, the one-time env-var seed that stops taking effect once a settings file exists, and that GET /api/ingest/destinations reflects a saved change without a restart.",
+      "whenToRun": "Pre-merge when touching the ingest destination allowlist, its settings store, or /api/ingest/settings.",
+      "failureMeaning": "The settings UI may silently fail to persist, accept a destination pointing at a nonexistent notebook (the SN-234 404 typo failure mode), let a stale env var revert an in-app change, or leave GET /api/ingest/destinations stale after a save."
+    },
+    {
+      "id": "e2e-sn-235-ingest-destinations-settings",
+      "name": "SN-235 ingest destinations settings panel",
+      "description": "Playwright desktop/mobile: e2e/sn-235-ingest-destinations-settings.spec.ts",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-235-ingest-destinations-settings.spec.ts --project=desktop --project=mobile",
+      "timeoutMs": 240000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "ingest",
+        "settings",
+        "targeted"
+      ],
+      "feature": "ingest",
+      "addedBy": "SN-235",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-08-25",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-235-ingest-destinations-settings.spec.ts"
+        }
+      ],
+      "intent": "Guards the Settings → Ingest UI end to end: add/edit/remove/reorder a destination through the notebook picker (never a free-typed path), setting a single default, client-side rejection of an invalid entry before any save request, and that saves persist across the panel on both desktop and mobile widths.",
+      "whenToRun": "Pre-merge when changing the ingest destinations settings panel, its notebook picker, or the settings API it calls.",
+      "failureMeaning": "The settings UI may let an invalid entry through, fail to reorder/persist correctly, or break at mobile widths."
+    },
+    {
+      "id": "unit-api-notebook-workflow-route",
+      "name": "Api Notebook Workflow Route",
+      "description": "Jest: tests/api-notebook-workflow-route.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/api-notebook-workflow-route.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "api",
+        "targeted"
+      ],
+      "feature": "vault-api",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/api-notebook-workflow-route.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (api-notebook-workflow-route.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-api-page-route",
+      "name": "Api Page Route",
+      "description": "Jest: tests/api-page-route.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/api-page-route.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "api",
+        "targeted"
+      ],
+      "feature": "vault-api",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/api-page-route.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (api-page-route.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-api-page-versions-route",
+      "name": "Api Page Versions Route",
+      "description": "Jest: tests/api-page-versions-route.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/api-page-versions-route.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "api",
+        "targeted"
+      ],
+      "feature": "vault-api",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/api-page-versions-route.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (api-page-versions-route.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-api-search-route",
+      "name": "Api Search Route",
+      "description": "Jest: tests/api-search-route.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/api-search-route.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "api",
+        "targeted"
+      ],
+      "feature": "vault-api",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/api-search-route.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (api-search-route.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-api-server-folders-route",
+      "name": "Api Server Folders Route",
+      "description": "Jest: tests/api-server-folders-route.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/api-server-folders-route.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "addedBy": "SN-100",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/api-server-folders-route.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-100 (api-server-folders-route.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-chat-settings",
+      "name": "Chat Settings",
+      "description": "Jest: tests/chat-settings.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/chat-settings.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "ai",
+        "targeted"
+      ],
+      "feature": "companion",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/chat-settings.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (chat-settings.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-cli-chat-providers",
+      "name": "Cli Chat Providers",
+      "description": "Jest: tests/cli-chat-providers.test.ts — Codex resume arg wiring, sandbox flags, provider CLI helpers.",
+      "appType": "node",
+      "command": "npm test -- tests/cli-chat-providers.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "ai",
+        "targeted"
+      ],
+      "feature": "companion",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/cli-chat-providers.test.ts"
+        },
+        {
+          "path": "packages/cli-chat/sandbox.js"
+        },
+        {
+          "path": "packages/cli-chat/index.js"
+        }
+      ],
+      "intent": "Guards Codex exec resume (no --sandbox on follow-up), codex web-search gating, and cli-chat provider spawn helpers.",
+      "whenToRun": "Pre-merge when touching packages/cli-chat provider invocation or sandbox profiles."
+    },
+    {
+      "id": "unit-closed-notebooks",
+      "name": "Closed Notebooks",
+      "description": "Jest: tests/closed-notebooks.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/closed-notebooks.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/closed-notebooks.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (closed-notebooks.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-collapsible-headings",
+      "name": "Collapsible Headings",
+      "description": "Jest: tests/collapsible-headings.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/collapsible-headings.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "addedBy": "SN-78",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/collapsible-headings.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-78 (collapsible-headings.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-companion-context",
+      "name": "Companion Context",
+      "description": "Jest: tests/companion-context.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/companion-context.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "companion",
+        "targeted"
+      ],
+      "feature": "companion",
+      "addedBy": "SN-114",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/companion-context.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-114 (companion-context.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-companion-page-context",
+      "name": "Companion page file and Jupyter context",
+      "description": "SN-114 companion reads PDFs and Jupyter cells; agent command surface.",
+      "intent": "SN-114 companion reads PDFs and Jupyter cells; agent command surface.",
+      "appType": "node",
+      "command": "npm test -- tests/companion-context.test.ts tests/jupyter-notebook-agent-commands.test.ts tests/agent-settings.test.ts tests/ai-sidebar.test.ts",
+      "timeoutMs": 180000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "companion",
+        "targeted",
+        "bundle"
+      ],
+      "feature": "companion",
+      "suite": "feature-bundle",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-114",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "testType": "unit",
+      "risk": "medium",
+      "cost": "fast",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/companion-context.test.ts"
+        },
+        {
+          "path": "tests/jupyter-notebook-agent-commands.test.ts"
+        },
+        {
+          "path": "tests/agent-settings.test.ts"
+        },
+        {
+          "path": "tests/ai-sidebar.test.ts"
+        }
+      ],
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-connection-status",
+      "name": "Connection Status",
+      "description": "Jest: tests/connection-status.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/connection-status.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "pwa",
+        "targeted"
+      ],
+      "feature": "pwa",
+      "addedBy": "SN-85",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/connection-status.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-85 (connection-status.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-docx-interchange",
+      "name": "DOCX interchange",
+      "description": "Jest: tests/docx-interchange.test.ts — import/export round-trip for headings, tables, images",
+      "appType": "node",
+      "command": "npm test -- tests/docx-interchange.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "docx",
+        "targeted"
+      ],
+      "feature": "docx",
+      "testType": "unit",
+      "suite": "feature-bundle",
+      "risk": "medium",
+      "cost": "fast",
+      "addedBy": "SN-81",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/docx-interchange.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-81 (docx-interchange.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area.",
+      "lifecycle": "release"
+    },
+    {
+      "id": "unit-editor-context-menu",
+      "name": "Editor Context Menu",
+      "description": "Jest: tests/editor-context-menu.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/editor-context-menu.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-58",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/editor-context-menu.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-58 (editor-context-menu.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-editor-math-zoom",
+      "name": "Editor math compose and workspace zoom",
+      "description": "SN-111/112/113 batch: inline math, image resize, editor zoom/pan.",
+      "intent": "SN-111/112/113 batch: inline math, image resize, editor zoom/pan.",
+      "appType": "node",
+      "command": "npm test -- tests/inline-math-compose.test.ts tests/inline-math-editor.test.ts tests/katex-fraction-render.test.ts tests/katex-math.test.ts tests/image-resize-handles.test.ts tests/editor-workspace-zoom.test.ts",
+      "timeoutMs": 180000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted",
+        "bundle"
+      ],
+      "feature": "editor",
+      "suite": "feature-bundle",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-111",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "testType": "unit",
+      "risk": "medium",
+      "cost": "fast",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/inline-math-compose.test.ts"
+        },
+        {
+          "path": "tests/inline-math-editor.test.ts"
+        },
+        {
+          "path": "tests/katex-fraction-render.test.ts"
+        },
+        {
+          "path": "tests/katex-math.test.ts"
+        },
+        {
+          "path": "tests/image-resize-handles.test.ts"
+        },
+        {
+          "path": "tests/editor-workspace-zoom.test.ts"
+        }
+      ],
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-editor-swap-helpers",
+      "name": "Editor Swap Helpers",
+      "description": "Jest: tests/editor-swap-helpers.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/editor-swap-helpers.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-55",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/editor-swap-helpers.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-55 (editor-swap-helpers.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-editor-workspace-zoom",
+      "name": "Editor Workspace Zoom",
+      "description": "Jest: tests/editor-workspace-zoom.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/editor-workspace-zoom.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-113",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/editor-workspace-zoom.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-113 (editor-workspace-zoom.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-font-formatting",
+      "name": "Font Formatting",
+      "description": "Jest: tests/font-formatting.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/font-formatting.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/font-formatting.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (font-formatting.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-fs-native-picker",
+      "name": "Fs Native Picker",
+      "description": "Jest: tests/fs-native-picker.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/fs-native-picker.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "addedBy": "SN-77",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/fs-native-picker.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-77 (fs-native-picker.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-fs-reveal",
+      "name": "Fs Reveal",
+      "description": "Jest: tests/fs-reveal.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/fs-reveal.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "addedBy": "SN-77",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/fs-reveal.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-77 (fs-reveal.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-html-vault",
+      "name": "Html Vault",
+      "description": "Jest: tests/html-vault.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/html-vault.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/html-vault.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (html-vault.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-image-layout-extension",
+      "name": "Image Layout Extension",
+      "description": "Jest: tests/image-layout-extension.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/image-layout-extension.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-59",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/image-layout-extension.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-59 (image-layout-extension.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-image-resize-handles",
+      "name": "Image Resize Handles",
+      "description": "Jest: tests/image-resize-handles.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/image-resize-handles.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-112",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/image-resize-handles.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-112 (image-resize-handles.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-ingest-pipeline",
+      "name": "Ingest API pipeline",
+      "description": "SN-103 /api/ingest and reference model.",
+      "intent": "SN-103 /api/ingest and reference model.",
+      "appType": "node",
+      "command": "npm test -- tests/api-ingest-route.test.ts",
+      "timeoutMs": 180000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "ingest",
+        "targeted",
+        "bundle"
+      ],
+      "feature": "ingest",
+      "suite": "feature-bundle",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-103",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "testType": "unit",
+      "risk": "medium",
+      "cost": "fast",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/api-ingest-route.test.ts"
+        }
+      ],
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-ink-background-toggle",
+      "name": "Ink Background Toggle",
+      "description": "Jest: tests/ink-background-toggle.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/ink-background-toggle.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "ink",
+        "targeted"
+      ],
+      "feature": "ink",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/ink-background-toggle.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (ink-background-toggle.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-ink-note-integration",
+      "name": "Ink Note Integration",
+      "description": "Jest: tests/ink-note-integration.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/ink-note-integration.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "ink",
+        "targeted"
+      ],
+      "feature": "ink",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/ink-note-integration.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (ink-note-integration.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-inline-math-compose",
+      "name": "Inline Math Compose",
+      "description": "Jest: tests/inline-math-compose.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/inline-math-compose.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-111",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/inline-math-compose.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-111 (inline-math-compose.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-inline-math-editor",
+      "name": "Inline Math Editor",
+      "description": "Jest: tests/inline-math-editor.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/inline-math-editor.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-111",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/inline-math-editor.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-111 (inline-math-editor.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-jupyter-notebook-agent-commands",
+      "name": "Jupyter Notebook Agent Commands",
+      "description": "Jest: tests/jupyter-notebook-agent-commands.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/jupyter-notebook-agent-commands.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "jupyter",
+        "targeted"
+      ],
+      "feature": "jupyter",
+      "addedBy": "SN-114",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/jupyter-notebook-agent-commands.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-114 (jupyter-notebook-agent-commands.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-jupyter-notebooks",
+      "name": "Jupyter notebooks",
+      "description": "Jest: durable coverage for vault-backed Jupyter notes, runtime launch/error logic, same-origin conflict-aware live-focus/Deep Work command bridge routing, capability-bound provider turns, project companion context and app-state annotations, bounded source list/read/create/edit operations, launch/return links, the slim identity/file-state/annotations/overflow toolbar, curated profile persistence, local/AV workspace root/session handling without a parent allowlist, and the sticky last-opened Deep Work disk root (persist, validated restore, invalid-root clear, vault-selection live exit, and refresh gating that protects an active vault page), and the SN-270 Companion/external refresh boundary that reloads only the focused Deep Work document in place - preserving the root, sticky record, capability, active file, and rooted Jupyter session - while protecting unsaved cells and keeping a transient revalidation failure from clearing the root.",
+      "appType": "node",
+      "command": "npm test -- tests/vault-jupyter.test.ts tests/jupyter-api-client.test.ts tests/jupyter-runtime.test.ts tests/jupyter-proxy.test.ts tests/jupyter-session-route.test.ts tests/jupyter-ui-controls.test.ts tests/jupyter-focus-context.test.tsx tests/jupyter-deep-work-toolbar.test.tsx tests/open-workspace-dialog.test.tsx tests/jupyter-workspace-root.test.ts tests/jupyter-workspace-session-route.test.ts tests/jupyter-workspace-source-state.test.ts tests/workspace-api-client.test.ts tests/deep-work-contract.test.ts tests/deep-work-sticky.test.ts tests/deep-work-companion-binding.test.ts tests/companion-host-api.test.ts tests/companion-log-form-bridge.test.ts tests/deep-work-companion-refresh.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "jupyter",
+        "targeted"
+      ],
+      "feature": "jupyter",
+      "testType": "integration",
+      "suite": "feature-bundle",
+      "risk": "high",
+      "cost": "fast",
+      "addedBy": "SN-101",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: candidate (SN-101 chat - durable coverage exists, E2E gap remains). Updated 2026-09-10 (SN-256): folded in project-backed workspace tests. Updated 2026-09-10 (SN-257): folded in responsive Deep Work toolbar coverage and expanded the existing runtime/client/bridge tests for curated settings and semantic command dispatch. Updated 2026-09-10 (SN-258): folded in conflict-aware source edits, app-state collaboration data, workspace AI context, and validated AV return links; no E2E added. Updated 2026-09-11 (SN-259): added the local folder picker/paste UI, optional AV identity, explicit default-branch unlock cases, and removed the parent-allowlist rejection coverage. Updated 2026-09-11 (SN-257 rework): slimmed Smart Notes chrome to identity, file state, annotations, and one overflow while keeping the curated Lab profile unchanged. Updated 2026-09-12 (SN-261): bound provider sessions and shell-less tools to the active disk capability and added bounded listing plus create-only UTF-8/notebook creation coverage. Updated 2026-09-12 (SN-262): folded in sticky Deep Work disk-root persist/restore/clear coverage and the active-draft gate keeping an explicitly selected vault .jupyter page from being hijacked by a remembered root. Updated 2026-09-13 (SN-266): added vault-selection live-exit and vault-refresh no-hijack coverage while preserving the sticky root. Updated 2026-09-16 (SN-270): folded in the Companion-edit refresh boundary (in-place document reload instead of a view remount, workspace_source_updated emission without the capability, dirty-document protection, and transient-vs-definitive sticky root revalidation).",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-jupyter.test.ts"
+        },
+        {
+          "path": "tests/jupyter-api-client.test.ts"
+        },
+        {
+          "path": "tests/jupyter-runtime.test.ts"
+        },
+        {
+          "path": "tests/jupyter-proxy.test.ts"
+        },
+        {
+          "path": "tests/jupyter-session-route.test.ts"
+        },
+        {
+          "path": "tests/jupyter-ui-controls.test.ts"
+        },
+        {
+          "path": "tests/jupyter-focus-context.test.tsx"
+        },
+        {
+          "path": "tests/jupyter-deep-work-toolbar.test.tsx"
+        },
+        {
+          "path": "tests/open-workspace-dialog.test.tsx"
+        },
+        {
+          "path": "tests/jupyter-workspace-root.test.ts"
+        },
+        {
+          "path": "tests/jupyter-workspace-session-route.test.ts"
+        },
+        {
+          "path": "tests/jupyter-workspace-source-state.test.ts"
+        },
+        {
+          "path": "tests/workspace-api-client.test.ts"
+        },
+        {
+          "path": "tests/deep-work-contract.test.ts"
+        },
+        {
+          "path": "tests/deep-work-sticky.test.ts"
+        },
+        {
+          "path": "tests/deep-work-companion-binding.test.ts"
+        },
+        {
+          "path": "tests/companion-host-api.test.ts"
+        },
+        {
+          "path": "tests/companion-log-form-bridge.test.ts"
+        },
+        {
+          "path": "tests/deep-work-companion-refresh.test.ts"
+        },
+        {
+          "path": "src/lib/jupyter-focus.ts"
+        },
+        {
+          "path": "server/jupyter-focus-bridge.js"
+        },
+        {
+          "path": "src/server/jupyter/workspace-root.ts"
+        },
+        {
+          "path": "src/app/api/jupyter/workspace/session/route.ts"
+        },
+        {
+          "path": "src/server/jupyter/workspace-files.ts"
+        },
+        {
+          "path": "src/server/jupyter/workspace-state.ts"
+        },
+        {
+          "path": "src/components/jupyter-deep-work-toolbar.tsx"
+        },
+        {
+          "path": "src/components/open-workspace-dialog.tsx"
+        },
+        {
+          "path": "src/components/jupyter-notebook-view.tsx"
+        },
+        {
+          "path": "src/lib/deep-work-sticky.ts"
+        },
+        {
+          "path": "src/lib/deep-work-refresh.ts"
+        },
+        {
+          "path": "src/components/notebook-shell-reliable.tsx"
+        },
+        {
+          "path": "src/server/vault/socket-events.ts"
+        }
+      ],
+      "intent": "Durable coverage for vault-backed and project-backed Jupyter sessions, runtime/profile launch, same-origin proxy routing, authenticated live focus and semantic command dispatch, capability-bound Deep Work turns and source operations, the slim responsive Deep Work toolbar/folder-open controls, optional AV identity, and chosen-root containment/access-mode policy without a parent allowlist.",
+      "whenToRun": "Release gate and any Jupyter runtime, proxy, live-focus, companion notebook, or project-backed workspace change.",
+      "lifecycle": "release"
+    },
+    {
+      "id": "unit-katex-fraction-render",
+      "name": "Katex Fraction Render",
+      "description": "Jest: tests/katex-fraction-render.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/katex-fraction-render.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-111",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/katex-fraction-render.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-111 (katex-fraction-render.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-katex-math",
+      "name": "Katex Math",
+      "description": "Jest: tests/katex-math.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/katex-math.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/katex-math.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (katex-math.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-keyboard-shortcuts",
+      "name": "Keyboard Shortcuts",
+      "description": "Jest: tests/keyboard-shortcuts.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/keyboard-shortcuts.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/keyboard-shortcuts.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (keyboard-shortcuts.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-markdown-round-trip",
+      "name": "Markdown Round Trip",
+      "description": "Jest: tests/markdown-round-trip.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/markdown-round-trip.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/markdown-round-trip.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (markdown-round-trip.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-markdown-roundtrip",
+      "name": "Markdown Roundtrip",
+      "description": "Jest: tests/markdown-roundtrip.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/markdown-roundtrip.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "quarantined",
+      "sourceFiles": [
+        {
+          "path": "tests/markdown-roundtrip.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (markdown-roundtrip.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area.",
+      "supersededBy": "unit-markdown-round-trip",
+      "maintenanceNotes": "Duplicate of unit-markdown-round-trip. Retroactive catalog sync 2026-07-07."
+    },
+    {
+      "id": "unit-navigation-performance",
+      "name": "Navigation tree performance",
+      "description": "SN-53/55 instant navigation guards and tree performance wiring.",
+      "intent": "SN-53/55 instant navigation guards and tree performance wiring.",
+      "appType": "node",
+      "command": "npm test -- tests/sn-53-navigation-tree-performance.test.ts tests/page-content-cache.test.ts tests/editor-swap-helpers.test.ts tests/annotation-layer.test.ts",
+      "timeoutMs": 180000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "navigation",
+        "targeted",
+        "bundle"
+      ],
+      "feature": "navigation",
+      "suite": "feature-bundle",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-53",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "testType": "unit",
+      "risk": "medium",
+      "cost": "fast",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/sn-53-navigation-tree-performance.test.ts"
+        },
+        {
+          "path": "tests/page-content-cache.test.ts"
+        },
+        {
+          "path": "tests/editor-swap-helpers.test.ts"
+        },
+        {
+          "path": "tests/annotation-layer.test.ts"
+        }
+      ],
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-notebook-registry",
+      "name": "Notebook Registry",
+      "description": "Jest: tests/notebook-registry.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/notebook-registry.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "addedBy": "SN-77",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/notebook-registry.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-77 (notebook-registry.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-page-content-cache",
+      "name": "Page Content Cache",
+      "description": "Jest: tests/page-content-cache.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/page-content-cache.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "navigation",
+        "targeted"
+      ],
+      "feature": "navigation",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-55",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/page-content-cache.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-55 (page-content-cache.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-pdf-attachment-reader",
+      "name": "PDF attachment reader helpers",
+      "description": "Jest: tests/pdf-attachment.test.ts tests/pdf-reader-prefs.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/pdf-attachment.test.ts tests/pdf-reader-prefs.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "pdf",
+        "attachments",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-135",
+      "addedAt": "2026-07-16",
+      "sourceFiles": [
+        {
+          "path": "tests/pdf-attachment.test.ts"
+        },
+        {
+          "path": "tests/pdf-reader-prefs.test.ts"
+        }
+      ],
+      "intent": "Guards PDF chip launch target resolution and per-attachment reader preference persistence without mounting the full editor or browser reader.",
+      "whenToRun": "Pre-merge when touching PDF attachment chips, attachment click handling, or remembered PDF reader state.",
+      "failureMeaning": "PDF chips may no longer launch the immersive reader with the correct file target, or last-read page and zoom preferences may stop persisting per attachment."
+    },
+    {
+      "id": "unit-page-export",
+      "name": "Page Export",
+      "description": "Jest: tests/page-export.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/page-export.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "print",
+        "targeted"
+      ],
+      "feature": "print",
+      "addedBy": "SN-12",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/page-export.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-12 (page-export.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-page-print-styles",
+      "name": "Page Print Styles",
+      "description": "Jest: tests/page-print-styles.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/page-print-styles.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "print",
+        "targeted"
+      ],
+      "feature": "print",
+      "addedBy": "SN-12",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/page-print-styles.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-12 (page-print-styles.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-page-tree",
+      "name": "Page Tree",
+      "description": "Jest: tests/page-tree.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/page-tree.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "navigation",
+        "targeted"
+      ],
+      "feature": "navigation",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/page-tree.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (page-tree.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-page-versions",
+      "name": "Page Versions",
+      "description": "Jest: tests/page-versions.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/page-versions.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/page-versions.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (page-versions.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-portable-notebooks",
+      "name": "Portable and remote notebooks",
+      "description": "SN-77/100 portable registry, remote folder picker, mobile create flow.",
+      "intent": "SN-77/100 portable registry, remote folder picker, mobile create flow.",
+      "appType": "node",
+      "command": "npm test -- tests/notebook-registry.test.ts tests/closed-notebooks.test.ts tests/api-server-folders-route.test.ts tests/remote-notebook-dialog.test.tsx tests/vault-asset-path.test.ts tests/fs-native-picker.test.ts tests/fs-reveal.test.ts",
+      "timeoutMs": 180000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted",
+        "bundle"
+      ],
+      "feature": "vault",
+      "suite": "feature-bundle",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-77",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "testType": "component",
+      "risk": "medium",
+      "cost": "fast",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/notebook-registry.test.ts"
+        },
+        {
+          "path": "tests/closed-notebooks.test.ts"
+        },
+        {
+          "path": "tests/api-server-folders-route.test.ts"
+        },
+        {
+          "path": "tests/remote-notebook-dialog.test.ts"
+        },
+        {
+          "path": "tests/vault-asset-path.test.ts"
+        },
+        {
+          "path": "tests/fs-native-picker.test.ts"
+        },
+        {
+          "path": "tests/fs-reveal.test.ts"
+        }
+      ],
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-print-bundle",
+      "name": "Print layout and export bundle",
+      "description": "SN-97/96/120 print pipeline: settings, advanced dialog, print styles, export.",
+      "intent": "Release gate for print flow regressions (direct print, advanced settings, layout injection).",
+      "appType": "node",
+      "command": "npm test -- tests/print-settings.test.ts tests/print-settings-dialog.test.tsx tests/page-print-styles.test.ts tests/page-export.test.ts",
+      "timeoutMs": 180000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "print",
+        "targeted",
+        "bundle"
+      ],
+      "feature": "print",
+      "suite": "feature-bundle",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-120",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: updated (from SN-120 chat — added print-settings-dialog tests).",
+      "testType": "unit",
+      "risk": "medium",
+      "cost": "fast",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/print-settings.test.ts"
+        },
+        {
+          "path": "tests/print-settings-dialog.test.ts"
+        },
+        {
+          "path": "tests/page-print-styles.test.ts"
+        },
+        {
+          "path": "tests/page-export.test.ts"
+        }
+      ],
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-print-settings",
+      "name": "Print Settings",
+      "description": "Jest: tests/print-settings.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/print-settings.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "print",
+        "targeted"
+      ],
+      "feature": "print",
+      "addedBy": "SN-97",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/print-settings.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-97 (print-settings.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-print-settings-dialog",
+      "name": "Print Settings Dialog",
+      "description": "Jest: tests/print-settings-dialog.test.tsx",
+      "appType": "node",
+      "command": "npm test -- tests/print-settings-dialog.test.tsx",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "print",
+        "targeted"
+      ],
+      "feature": "print",
+      "addedBy": "SN-120",
+      "testType": "component",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: updated (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/print-settings-dialog.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-120 (print-settings-dialog.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-pwa-install",
+      "name": "Pwa Install",
+      "description": "Jest: tests/pwa-install.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/pwa-install.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "pwa",
+        "targeted"
+      ],
+      "feature": "pwa",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/pwa-install.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (pwa-install.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-pwa-manifest",
+      "name": "Pwa Manifest",
+      "description": "Jest: tests/pwa-manifest.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/pwa-manifest.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "pwa",
+        "targeted"
+      ],
+      "feature": "pwa",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/pwa-manifest.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (pwa-manifest.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-pwa-registrar",
+      "name": "Pwa Registrar",
+      "description": "Jest: tests/pwa-registrar.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/pwa-registrar.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "pwa",
+        "targeted"
+      ],
+      "feature": "pwa",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/pwa-registrar.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (pwa-registrar.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-pwa-service-worker",
+      "name": "Pwa Service Worker",
+      "description": "Jest: tests/pwa-service-worker.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/pwa-service-worker.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "pwa",
+        "targeted"
+      ],
+      "feature": "pwa",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/pwa-service-worker.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (pwa-service-worker.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-pwa-sync-safety",
+      "name": "PWA sync and write safety",
+      "description": "SN-85/91 PWA freshness, connection status, reload guard, shared write client.",
+      "intent": "SN-85/91 PWA freshness, connection status, reload guard, shared write client.",
+      "appType": "node",
+      "command": "npm test -- tests/connection-status.test.ts tests/reload-guard.test.ts tests/vault-freshness-shell.test.ts tests/vault-write-api-client.test.ts tests/pwa-service-worker.test.ts tests/pwa-manifest.test.ts",
+      "timeoutMs": 180000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "pwa",
+        "targeted",
+        "bundle"
+      ],
+      "feature": "pwa",
+      "suite": "feature-bundle",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-85",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "testType": "unit",
+      "risk": "high",
+      "cost": "fast",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/connection-status.test.ts"
+        },
+        {
+          "path": "tests/reload-guard.test.ts"
+        },
+        {
+          "path": "tests/vault-freshness-shell.test.ts"
+        },
+        {
+          "path": "tests/vault-write-api-client.test.ts"
+        },
+        {
+          "path": "tests/pwa-service-worker.test.ts"
+        },
+        {
+          "path": "tests/pwa-manifest.test.ts"
+        }
+      ],
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-reading-density",
+      "name": "Reading Density",
+      "description": "Jest: tests/reading-density.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/reading-density.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/reading-density.test.ts"
+        }
+      ],
+      "intent": "Guards reading-density preference persistence and desktop-only compact sizing so mobile editor readability does not regress.",
+      "whenToRun": "Pre-merge when touching Settings font-size controls, density provider wiring, editor prose scale, desktop shell density, or page tree sizing.",
+      "failureMeaning": "The density preference may stop persisting, desktop Small may no longer be meaningfully compact, or mobile editor sizing may change unintentionally.",
+      "maintenanceNotes": "SN-139 enabled the existing targeted reading-density catalog entry after extending it to cover desktop compact density tokens and mobile preservation."
+    },
+    {
+      "id": "unit-spellcheck-preference",
+      "name": "Spellcheck Preference",
+      "description": "Jest: tests/spellcheck-preference.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/spellcheck-preference.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-130",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-14",
+      "sourceFiles": [
+        {
+          "path": "tests/spellcheck-preference.test.ts"
+        }
+      ],
+      "intent": "Guards SN-130 device-local spellcheck preference persistence and Settings/editor wiring without affecting vault note content.",
+      "whenToRun": "Pre-merge when touching text-editor settings, SpellcheckProvider, or rich-text-editor spellcheck attribute wiring.",
+      "failureMeaning": "Spellcheck preference no longer defaults correctly, fails to persist in localStorage, or is not wired through Settings → General into the TipTap editor DOM attribute."
+    },
+    {
+      "id": "unit-reload-guard",
+      "name": "Reload Guard",
+      "description": "Jest: tests/reload-guard.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/reload-guard.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "pwa",
+        "targeted"
+      ],
+      "feature": "pwa",
+      "addedBy": "SN-85",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/reload-guard.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-85 (reload-guard.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-remote-notebook-dialog",
+      "name": "Remote Notebook Dialog",
+      "description": "Jest: tests/remote-notebook-dialog.test.tsx",
+      "appType": "node",
+      "command": "npm test -- tests/remote-notebook-dialog.test.tsx",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "addedBy": "SN-100",
+      "testType": "component",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/remote-notebook-dialog.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-100 (remote-notebook-dialog.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-rich-content-editor",
+      "name": "Rich Content Editor",
+      "description": "Jest: tests/rich-content-editor.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/rich-content-editor.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/rich-content-editor.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (rich-content-editor.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-rich-text-editor-collapse",
+      "name": "Rich Text Editor Collapse",
+      "description": "Jest: tests/rich-text-editor-collapse.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/rich-text-editor-collapse.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-78",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/rich-text-editor-collapse.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-78 (rich-text-editor-collapse.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-search",
+      "name": "Search",
+      "description": "Jest: tests/search.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/search.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "search",
+        "targeted"
+      ],
+      "feature": "search",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/search.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (search.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-sn-43-ux-polish",
+      "name": "Sn 43 Ux Polish",
+      "description": "Jest: tests/sn-43-ux-polish.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/sn-43-ux-polish.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "core",
+        "targeted"
+      ],
+      "feature": "core",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/sn-43-ux-polish.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (sn-43-ux-polish.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-sn-53-navigation-tree-performance",
+      "name": "Sn 53 Navigation Tree Performance",
+      "description": "Jest: tests/sn-53-navigation-tree-performance.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/sn-53-navigation-tree-performance.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "navigation",
+        "targeted"
+      ],
+      "feature": "navigation",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-53",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/sn-53-navigation-tree-performance.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-53 (sn-53-navigation-tree-performance.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-sn-63-startup-performance",
+      "name": "Sn 63 Startup Performance",
+      "description": "Jest: tests/sn-63-startup-performance.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/sn-63-startup-performance.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "performance",
+        "targeted"
+      ],
+      "feature": "performance",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-63",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/sn-63-startup-performance.test.ts"
+        },
+        {
+          "path": "server.js"
+        }
+      ],
+      "intent": "Guards startup-performance behavior, including preserving the reusable Next development cache during ordinary preview restarts.",
+      "whenToRun": "Pre-merge when touching startup, preview, cache preparation, or vault-loading behavior."
+    },
+    {
+      "id": "unit-vault-agent-commands",
+      "name": "Vault Agent Commands",
+      "description": "Jest: tests/vault-agent-commands.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-agent-commands.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-agent-commands.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (vault-agent-commands.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-asset-path",
+      "name": "Vault Asset Path",
+      "description": "Jest: tests/vault-asset-path.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-asset-path.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "addedBy": "SN-77",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-asset-path.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-77 (vault-asset-path.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-backup",
+      "name": "Vault Backup",
+      "description": "Jest: tests/vault-backup.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-backup.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-backup.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (vault-backup.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-external-update",
+      "name": "Vault external update and reload guard",
+      "description": "SN-115 false external-update banner and autosave race fixes.",
+      "intent": "SN-115 false external-update banner and autosave race fixes.",
+      "appType": "node",
+      "command": "npm test -- tests/reload-guard.test.ts tests/vault-freshness-shell.test.ts tests/api-page-route.test.ts tests/vault-pages.test.ts tests/api-page-versions-route.test.ts",
+      "timeoutMs": 180000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted",
+        "bundle"
+      ],
+      "feature": "vault",
+      "suite": "feature-bundle",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-85",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "testType": "unit",
+      "risk": "medium",
+      "cost": "fast",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/reload-guard.test.ts"
+        },
+        {
+          "path": "tests/vault-freshness-shell.test.ts"
+        },
+        {
+          "path": "tests/api-page-route.test.ts"
+        },
+        {
+          "path": "tests/vault-pages.test.ts"
+        },
+        {
+          "path": "tests/api-page-versions-route.test.ts"
+        }
+      ],
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-freshness-shell",
+      "name": "Vault Freshness Shell",
+      "description": "Jest: tests/vault-freshness-shell.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-freshness-shell.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "pwa",
+        "targeted"
+      ],
+      "feature": "pwa",
+      "addedBy": "SN-91",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-freshness-shell.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-91 (vault-freshness-shell.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-frontmatter",
+      "name": "Vault Frontmatter",
+      "description": "Jest: tests/vault-frontmatter.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-frontmatter.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-frontmatter.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (vault-frontmatter.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-math-normalize",
+      "name": "Vault Math Normalize",
+      "description": "Jest: tests/vault-math-normalize.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-math-normalize.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-71",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-math-normalize.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-71 (vault-math-normalize.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-notebook-section",
+      "name": "Vault Notebook Section",
+      "description": "Jest: tests/vault-notebook-section.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-notebook-section.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-notebook-section.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (vault-notebook-section.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-pages",
+      "name": "Vault Pages",
+      "description": "Jest: tests/vault-pages.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-pages.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-pages.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (vault-pages.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-paths",
+      "name": "Vault Paths",
+      "description": "Jest: tests/vault-paths.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-paths.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-paths.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in historical work (vault-paths.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-ui-state",
+      "name": "Vault Ui State",
+      "description": "Jest: tests/vault-ui-state.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-ui-state.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "addedBy": "SN-64",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-ui-state.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-64 (vault-ui-state.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-ui-state-hydration",
+      "name": "Vault Ui State Hydration",
+      "description": "Jest: tests/vault-ui-state-hydration.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-ui-state-hydration.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "addedBy": "SN-64",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-ui-state-hydration.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-64 (vault-ui-state-hydration.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-vault-write-api-client",
+      "name": "Vault Write Api Client",
+      "description": "Jest: tests/vault-write-api-client.test.ts",
+      "appType": "node",
+      "command": "npm test -- tests/vault-write-api-client.test.ts",
+      "timeoutMs": 120000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "vault",
+        "targeted"
+      ],
+      "feature": "vault",
+      "addedBy": "SN-85",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-07-07",
+      "maintenanceNotes": "Retroactive catalog sync 2026-07-07. Closeout stewardship: covered (from work-item chat).",
+      "sourceFiles": [
+        {
+          "path": "tests/vault-write-api-client.test.ts"
+        }
+      ],
+      "intent": "Guards behavior introduced or fixed in SN-85 (vault-write-api-client.test.ts).",
+      "whenToRun": "Pre-merge when touching the related feature area."
+    },
+    {
+      "id": "unit-sn-142-pdf-outline",
+      "name": "SN-142 PDF outline target resolution and tree normalization",
+      "description": "Jest: tests/pdf-outline.test.ts — bookmarkTargetPageIndex (destination/Goto/RemoteGoto/URI/invalid) and buildPdfOutline nesting, targetless-node pruning, and title fallback.",
+      "intent": "Guards the pure logic that maps a PDF bookmark to a jump page and shapes the reader's outline tree, including the no-navigable-target -> dropped-node contract.",
+      "whenToRun": "Pre-merge when changing PDF outline parsing, bookmark target resolution, or the reader outline data model.",
+      "failureMeaning": "Outline entries may jump to the wrong page, empty/targetless nodes may render as dead chrome, or a document with no outline may no longer resolve to an empty tree.",
+      "appType": "node",
+      "command": "npm test -- tests/pdf-outline.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "attachments",
+        "pdf",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-142",
+      "addedAt": "2026-08-06",
+      "sourceFiles": [
+        {
+          "path": "tests/pdf-outline.test.ts"
+        },
+        {
+          "path": "src/lib/pdf-outline.ts"
+        }
+      ]
+    },
+    {
+      "id": "e2e-sn-142-pdf-outline",
+      "name": "SN-142 PDF reader outline/chapter navigation",
+      "description": "Playwright desktop/mobile: e2e/sn-142-pdf-outline.spec.ts — nested-outline PDF exposes chapter nav and jumps to target pages; no-outline PDF shows no toggle/rail/panel.",
+      "intent": "Guards the immersive PDF reader's outline affordance end-to-end: bookmark tree rendering, jump-via-scroll-path, mobile overlay drawer not shrinking the viewport, and the no-outline suppression contract.",
+      "whenToRun": "Pre-merge when changing the immersive PDF reader chrome, the bookmark plugin wiring, or outline navigation.",
+      "failureMeaning": "Outline navigation may be missing or misrouted, the mobile drawer may permanently shrink the viewport, or documents without an outline may show empty/dead nav chrome.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-142-pdf-outline.spec.ts --project=desktop --project=mobile",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "attachments",
+        "pdf",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-142",
+      "addedAt": "2026-08-06",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-142-pdf-outline.spec.ts"
+        },
+        {
+          "path": "e2e/fixtures/outline-book.pdf"
+        }
+      ]
+    },
+    {
+      "id": "unit-page-toc",
+      "name": "Page TOC toggle, refresh and back-to-top placement",
+      "description": "Jest: tests/page-toc.test.ts — TOC insert/refresh/remove/toggle transforms, stable heading anchors, ink vertical-remap guards, and back-to-top placement clamping.",
+      "appType": "node",
+      "command": "npm test -- tests/page-toc.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "toc",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-230",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-08-20",
+      "sourceFiles": [
+        {
+          "path": "tests/page-toc.test.ts"
+        },
+        {
+          "path": "src/lib/page-toc.ts"
+        }
+      ],
+      "intent": "Locks the pure TOC transforms (toggle vs refresh) and the back-to-top placement math so heading chrome cannot drift back into the gutter or onto the collapse gutter.",
+      "whenToRun": "Pre-merge when touching src/lib/page-toc.ts, TOC toolbar wiring, or heading back-to-top chrome placement."
+    },
+    {
+      "id": "e2e-sn-230-toc-toggle",
+      "name": "SN-230/SN-231 TOC toggle + back-to-top placement",
+      "description": "Playwright desktop/mobile: e2e/sn-230-toc-toggle.spec.ts — format-bar TOC control inserts then removes, Insert-menu refresh keeps a single block, chevron hugs the heading line with a 44px touch target, and toggle-off returns ink to its original Y.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-230-toc-toggle.spec.ts --project=desktop --project=mobile",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "editor",
+        "toc",
+        "ink",
+        "targeted"
+      ],
+      "feature": "editor",
+      "addedBy": "SN-230",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-08-20",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-230-toc-toggle.spec.ts"
+        },
+        {
+          "path": "src/components/rich-text-editor.tsx"
+        },
+        {
+          "path": "src/components/annotation-layer.tsx"
+        }
+      ],
+      "intent": "Guards the toggle contract end-to-end plus the ink vertical remap on TOC insert/remove, which silently no-opped while the edit-mode canvas was readonly.",
+      "whenToRun": "Pre-merge when changing the TOC toolbar controls, heading back-to-top chrome, or AnnotationLayer.applyVerticalRemap."
+    },
+    {
+      "id": "unit-sn-247-jupyter-fast-lane",
+      "name": "Jupyter Inline AI Fast Lane",
+      "description": "Jest: tests/jupyter-fast-lane.test.ts + tests/jupyter-fast-lane-route.test.ts + tests/jupyter-focus-context.test.tsx — SN-247 warm/resumed no-tools Claude session lifecycle, provider argument construction (resume, small model, low effort, empty tool list, isolated cwd), lane-scoped policy isolation from the companion, the companion fast-lane API routes, and (SN-253) opt-in token streaming — --include-partial-messages only when a caller passes onText, stream_event text_delta accumulation, and no answer doubling when the assembled assistant message follows its own deltas.",
+      "appType": "node",
+      "command": "npm test -- tests/jupyter-fast-lane.test.ts tests/jupyter-fast-lane-route.test.ts tests/jupyter-focus-context.test.tsx",
+      "timeoutMs": 90000,
+      "enabled": false,
+      "tags": [
+        "unit",
+        "node",
+        "ai",
+        "jupyter",
+        "companion",
+        "targeted"
+      ],
+      "feature": "jupyter",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/jupyter-fast-lane.test.ts"
+        },
+        {
+          "path": "tests/jupyter-fast-lane-route.test.ts"
+        },
+        {
+          "path": "tests/jupyter-focus-context.test.tsx"
+        },
+        {
+          "path": "packages/cli-chat/fast-lane.js"
+        },
+        {
+          "path": "packages/cli-chat/sandbox.js"
+        },
+        {
+          "path": "src/server/ai/jupyter-fast-lane.ts"
+        },
+        {
+          "path": "src/app/api/companion/fast-lane/route.ts"
+        },
+        {
+          "path": "src/app/api/companion/fast-lane/send/route.ts"
+        },
+        {
+          "path": "src/components/jupyter-notebook-view.tsx"
+        }
+      ],
+      "addedBy": "SN-247",
+      "addedAt": "2026-09-03",
+      "intent": "Guards the warm/resumed Claude fast-lane session used for low-latency Jupyter inline AI: session id capture from the first stream event, --resume instead of re-sending the system prompt, empty --tools= tool list, smallest-model/low-effort lane policy kept independent of the companion provider selection, graceful fallback when warm-up has not landed yet, and no orphaned child process on cancel/timeout/close.",
+      "whenToRun": "Pre-merge when touching packages/cli-chat/fast-lane.js, packages/cli-chat/sandbox.js claudeSandboxArgs, src/server/ai/jupyter-fast-lane.ts, the companion fast-lane API routes, or the Jupyter page open/close lifecycle in jupyter-notebook-view.tsx.",
+      "failureMeaning": "A failure here means resumed fast-lane turns may silently fall back to full cold turns (losing the <=3s TTFT target), the no-tools sandbox guarantee may leak the full tool list to the model, or a cancelled/failed/timed-out turn may leave an orphaned claude.exe process running against a closed Jupyter page.",
+      "maintenanceNotes": "The lifecycle suite spawns a scripted fake claude CLI (tests/fixtures/fake-claude.cmd/.js) instead of the real CLI — no network access or API cost, fully deterministic. The turn-timeout test genuinely waits out TURN_TIMEOUT_MS (20s), which is why this entry is tagged cost=slow."
+    },
+    {
+      "id": "unit-sn-249-jupyter-inline-ai",
+      "name": "SN-249 Jupyter Inline AI Overlay",
+      "description": "Jest: tests/jupyter-inline-ai.test.tsx + tests/ai-sidebar-pdf-shell.test.tsx — selection and explicit Alt+Right-click action-list construction (Explain/Ask/Fix/Rewrite plus comment-to-code/comment-answer), bare-caret silence on natural-language comments and markdown headings, Explain-renders-in-overlay vs write-to-notebook routing, one apply-answer bridge call per write action, protected notebook-routed streaming/apply and sticky Retry states, independent fast-lane provider/model settings, hardened no-chat Fix/Rewrite behavior, Ctrl/Cmd+Alt+Enter comment append, and Answer comment preserving the original comment line while streaming the turn.",
+      "appType": "node",
+      "command": "npm test -- tests/jupyter-inline-ai.test.tsx tests/ai-sidebar-pdf-shell.test.tsx",
+      "timeoutMs": 90000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "ai",
+        "jupyter",
+        "companion",
+        "targeted"
+      ],
+      "feature": "jupyter",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/jupyter-inline-ai.test.tsx"
+        },
+        {
+          "path": "tests/ai-sidebar-pdf-shell.test.tsx"
+        },
+        {
+          "path": "src/lib/jupyter-inline-ai.ts"
+        },
+        {
+          "path": "src/components/jupyter-notebook-view.tsx"
+        },
+        {
+          "path": "src/components/ai-sidebar.tsx"
+        },
+        {
+          "path": "src/lib/jupyter-focus.ts"
+        }
+      ],
+      "addedBy": "SN-249",
+      "addedAt": "2026-09-03",
+      "intent": "Guards the Jupyter inline-AI invocation contract: text selection shows Explain/Ask/Fix/Rewrite; bare caret focus stays quiet even when comment detection matches; explicit Alt+Right-click opens the menu and adds Write code / Answer comment on a matching comment; plain right-click remains JupyterLab-owned; Ctrl/Cmd+Alt+Enter appends generated code below a matching comment; and notebook-routed writes survive passive dismissal until one undo-grouped bridge operation succeeds or a sticky Retry error is explicitly closed.",
+      "whenToRun": "Pre-merge when touching src/lib/jupyter-inline-ai.ts, the inline overlay in src/components/jupyter-notebook-view.tsx, the fast-lane settings section of src/components/ai-sidebar.tsx, or src/lib/jupyter-focus.ts's dismiss/apply-answer/keybinding message contracts.",
+      "failureMeaning": "A failure here means a bare caret click may reopen the overlay, selection or explicit Alt+Right-click actions may be missing, comment-only actions may appear on the wrong trigger, plain right-click may steal JupyterLab's menu, passive selection/scroll events may discard an in-flight cell rewrite, the append chord may replace rather than preserve the comment, or an inline result may route to the wrong surface or undo boundary.",
+      "maintenanceNotes": "SN-264 made bare caret focus quiet and moved comment actions behind explicit Alt+Right-click while retaining selection and append-chord behavior. SN-265 protects notebook-routed streaming/apply and sticky Retry states from passive selection-clear and scroll dismissal."
+    }
+  ]
+}

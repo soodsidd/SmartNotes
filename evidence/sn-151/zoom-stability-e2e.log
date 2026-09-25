@@ -1,0 +1,16 @@
+[WebServer]  ΓÜá Disabling outputFileTracing will not be an option in the next major version. Please report any issues you may be experiencing to https://github.com/vercel/next.js/issues
+
+Running 1 test using 1 worker
+
+(node:3716) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:3716) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:27668) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+[WebServer] (Use `node --trace-deprecation ...` to show where the warning was created)
+pager live: / 622
+viewport-box { x: [33m0[39m, y: [33m118[39m, width: [33m430[39m, height: [33m1082[39m }
+paint-after-pager-ms=124
+  ok 1 [mobile] ΓÇ║ e2e\sn-151-large-pdf-paint.spec.ts:100:5 ΓÇ║ mobile: Deep Learning book paints in-app after pager is live (9.1s)
+
+  1 passed (43.3s)

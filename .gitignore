@@ -1,0 +1,44 @@
+node_modules/
+.next/
+.next-dev/
+.next-e2e/
+.turbo/
+*.tsbuildinfo
+.env.local
+next-env.d.ts.bak
+.runtime-check/
+
+# Optional, owner-installed Jupyter bootstrap profile (dependencies are never bundled).
+profiles/jupyter/.venv/
+
+# Vault content is the user's research data — versioned in its own git repo (Phase 1+),
+# not in the workspace monorepo.
+vault/**
+!vault/.gitkeep
+!vault/welcome.md
+
+# Claude Code worktrees (agent scratch space — not project source)
+.claude/worktrees/
+
+# Dev server logs
+*.out.log
+*.err.log
+.smart-notes-dev-cache.lock
+.smart-notes-companion-log-form-bridge/
+
+# Local recovery/worktree artifacts — never publish.
+/Photos-3-001 (1)/
+/Photos-3-001 (1).zip
+/smart-notes-worktrees/
+/tmp-v3/
+
+# Playwright test artifacts
+test-results/
+
+# E2E vault runtime data
+.e2e-vault/
+.e2e-state/
+.e2e-portable-vault/
+
+# Synced from @embedpdf/fonts-latin at predev/postbuild
+public/pdf-fonts/

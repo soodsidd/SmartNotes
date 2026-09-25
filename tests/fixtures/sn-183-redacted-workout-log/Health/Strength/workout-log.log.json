@@ -1,0 +1,466 @@
+{
+  "version": 1,
+  "schema": {
+    "fields": [
+      {
+        "id": "sessionDate",
+        "name": "Date",
+        "type": "date",
+        "required": true
+      },
+      {
+        "id": "entryType",
+        "name": "Entry type",
+        "type": "select",
+        "options": [
+          "Strength session",
+          "Nutrition",
+          "General activity"
+        ]
+      },
+      {
+        "id": "workoutType",
+        "name": "Workout",
+        "type": "select",
+        "options": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E"
+        ]
+      },
+      {
+        "id": "durationMinutes",
+        "name": "Duration",
+        "type": "number"
+      },
+      {
+        "id": "energy",
+        "name": "Energy",
+        "type": "select",
+        "options": ["Low", "Medium", "High", "Peak"]
+      },
+      {
+        "id": "timeCrunch",
+        "name": "Time crunch",
+        "type": "boolean"
+      },
+      {
+        "id": "stoppedDueToPain",
+        "name": "Stopped due to pain",
+        "type": "boolean"
+      },
+      {
+        "id": "notes",
+        "name": "Notes",
+        "type": "text"
+      },
+      {
+        "id": "workoutA",
+        "name": "Workout A",
+        "type": "text"
+      },
+      {
+        "id": "nutrition",
+        "name": "Nutrition",
+        "type": "text"
+      },
+      {
+        "id": "nutritionMovement",
+        "name": "Nutrition movement",
+        "type": "text"
+      },
+      {
+        "id": "activity",
+        "name": "Activity",
+        "type": "text"
+      }
+    ]
+  },
+  "rows": [
+    {
+      "id": "r_redacted01",
+      "createdAt": "2026-01-01T12:00:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-01",
+        "entryType": "nutrition",
+        "workoutType": "A",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 50,
+            "set1Reps": 8,
+            "set2WeightLb": 55,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted02",
+      "createdAt": "2026-01-02T12:00:00.000Z",
+      "updatedAt": "2026-01-02T12:05:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-02",
+        "entryType": "workout",
+        "workoutType": "B",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 51,
+            "set1Reps": 8,
+            "set2WeightLb": 56,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted03",
+      "createdAt": "2026-01-03T12:00:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-03",
+        "entryType": "workout",
+        "workoutType": "C",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": true,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 52,
+            "set1Reps": 8,
+            "set2WeightLb": 57,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted04",
+      "createdAt": "2026-01-04T12:00:00.000Z",
+      "updatedAt": "2026-01-04T12:05:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-04",
+        "entryType": "workout",
+        "workoutType": "D",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 53,
+            "set1Reps": 8,
+            "set2WeightLb": 58,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted05",
+      "createdAt": "2026-01-05T12:00:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-05",
+        "entryType": "nutrition",
+        "workoutType": "E",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 54,
+            "set1Reps": 8,
+            "set2WeightLb": 59,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted06",
+      "createdAt": "2026-01-06T12:00:00.000Z",
+      "updatedAt": "2026-01-06T12:05:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-06",
+        "entryType": "workout",
+        "workoutType": "A",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 55,
+            "set1Reps": 8,
+            "set2WeightLb": 60,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted07",
+      "createdAt": "2026-01-07T12:00:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-07",
+        "entryType": "workout",
+        "workoutType": "B",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 56,
+            "set1Reps": 8,
+            "set2WeightLb": 61,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted08",
+      "createdAt": "2026-01-08T12:00:00.000Z",
+      "updatedAt": "2026-01-08T12:05:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-08",
+        "entryType": "workout",
+        "workoutType": "C",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 57,
+            "set1Reps": 8,
+            "set2WeightLb": 62,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted09",
+      "createdAt": "2026-01-09T12:00:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-09",
+        "entryType": "nutrition",
+        "workoutType": "D",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 58,
+            "set1Reps": 8,
+            "set2WeightLb": 63,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted10",
+      "createdAt": "2026-01-10T12:00:00.000Z",
+      "updatedAt": "2026-01-10T12:05:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-10",
+        "entryType": "workout",
+        "workoutType": "E",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 59,
+            "set1Reps": 8,
+            "set2WeightLb": 64,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted11",
+      "createdAt": "2026-01-11T12:00:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-11",
+        "entryType": "workout",
+        "workoutType": "A",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 60,
+            "set1Reps": 8,
+            "set2WeightLb": 65,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted12",
+      "createdAt": "2026-01-12T12:00:00.000Z",
+      "updatedAt": "2026-01-12T12:05:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-12",
+        "entryType": "workout",
+        "workoutType": "B",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 61,
+            "set1Reps": 8,
+            "set2WeightLb": 66,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    },
+    {
+      "id": "r_redacted13",
+      "createdAt": "2026-01-13T12:00:00.000Z",
+      "values": {
+        "sessionDate": "2026-01-13",
+        "entryType": "nutrition",
+        "workoutType": "C",
+        "durationMinutes": 35,
+        "energy": 3,
+        "timeCrunch": false,
+        "stoppedDueToPain": false,
+        "notes": "redacted",
+        "workoutA": {
+          "exerciseAlpha": {
+            "set1WeightLb": 62,
+            "set1Reps": 8,
+            "set2WeightLb": 67,
+            "set2Reps": 7,
+            "privateNested": {
+              "preserve": true
+            }
+          }
+        },
+        "nutrition": {
+          "mealLabel": "redacted",
+          "amount": 1
+        }
+      }
+    }
+  ]
+}

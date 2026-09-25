@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "sessionDate": {
+        "type": "string",
+        "title": "Date"
+      },
+      "entryType": {
+        "type": "string",
+        "title": "Entry Type",
+        "enum": ["Strength session", "Nutrition", "General activity"]
+      },
+      "workoutType": {
+        "type": "string",
+        "title": "Workout"
+      },
+      "durationMinutes": {
+        "type": "number",
+        "title": "Duration",
+        "minimum": 1,
+        "maximum": 300
+      },
+      "energy": {
+        "type": "string",
+        "title": "Energy",
+        "enum": ["Low", "Medium", "High", "Peak"]
+      },
+      "stoppedDueToPain": {
+        "type": "boolean",
+        "title": "Stopped due to pain"
+      },
+      "workoutA": {
+        "type": "object",
+        "title": "Workout A",
+        "properties": {
+          "exerciseAlpha": {
+            "type": "object",
+            "title": "Exercise Alpha",
+            "description": "per dumbbell",
+            "properties": {
+              "warmup1WeightLb": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "warmup1Reps": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "set1WeightLb": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "set1Reps": {
+                "type": "number",
+                "minimum": 6,
+                "maximum": 12
+              },
+              "set2WeightLb": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "set2Reps": {
+                "type": "number",
+                "minimum": 6,
+                "maximum": 12
+              },
+              "set3Seconds": {
+                "type": "number",
+                "minimum": 10,
+                "maximum": 300
+              },
+              "privateNested": {
+                "type": "object",
+                "properties": {
+                  "preserve": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "nutritionMovement": {
+        "type": "object",
+        "title": "Nutrition",
+        "required": ["meal"],
+        "properties": {
+          "meal": { "type": "string", "title": "Meal" },
+          "protein": { "type": "number", "title": "Protein", "minimum": 0 }
+        }
+      },
+      "activity": {
+        "type": "object",
+        "title": "Activity, tennis & recovery",
+        "properties": {
+          "tennisMinutes": { "type": "number", "title": "Tennis minutes", "minimum": 0 },
+          "recovery": { "type": "string", "title": "Recovery notes" }
+        }
+      }
+    }
+  },
+  "uischema": {
+    "type": "VerticalLayout",
+    "elements": []
+  }
+}

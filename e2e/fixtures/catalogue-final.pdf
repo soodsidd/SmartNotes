@@ -1,0 +1,77 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 9 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 173 >>
+stream
+0.1 0.2 0.55 rg
+72 72 180 120 re
+f
+BT
+/F1 40 Tf
+1 0 0 1 60 692 Tm (Catalogue \(Final\)) Tj
+1 0 0 1 60 638 Tm (Page 1 of 3) Tj
+1 0 0 1 60 584 Tm (Portrait Letter page.) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1584 612] /Resources << /Font << /F1 9 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 262 >>
+stream
+0.1 0.2 0.55 rg
+72 72 180 120 re
+f
+BT
+/F1 40 Tf
+1 0 0 1 60 512 Tm (Page 2 of 3  --  WIDE LANDSCAPE SPREAD) Tj
+1 0 0 1 60 458 Tm (This page is 1584pt wide to exercise SN-131 no-clip.) Tj
+1 0 0 1 60 404 Tm (Right edge marker >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 9 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 138 >>
+stream
+0.1 0.2 0.55 rg
+72 72 180 120 re
+f
+BT
+/F1 40 Tf
+1 0 0 1 60 692 Tm (Page 3 of 3) Tj
+1 0 0 1 60 638 Tm (Remembered-place target page.) Tj
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000127 00000 n 
+0000000253 00000 n 
+0000000477 00000 n 
+0000000604 00000 n 
+0000000917 00000 n 
+0000001043 00000 n 
+0000001232 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+1302
+%%EOF

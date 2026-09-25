@@ -1,0 +1,2616 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@syncfusion/ej2-base/styles/material3.css";
+@import "@syncfusion/ej2-inputs/styles/material3.css";
+@import "@syncfusion/ej2-buttons/styles/material3.css";
+@import "@syncfusion/ej2-splitbuttons/styles/material3.css";
+@import "@syncfusion/ej2-lists/styles/material3.css";
+@import "@syncfusion/ej2-navigations/styles/material3.css";
+@import "@syncfusion/ej2-popups/styles/material3.css";
+@import "@syncfusion/ej2-dropdowns/styles/material3.css";
+@import "@syncfusion/ej2-grids/styles/material3.css";
+@import "@syncfusion/ej2-react-spreadsheet/styles/material3.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  overscroll-behavior: none;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overscroll-behavior: none;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+/* Ink canvas host: disable browser touch gestures so Tldraw owns all pointer
+   input. Applied via class (not inline) so it wins the cascade reliably in
+   Android Chrome PWA standalone mode, where ancestor touch-action: auto can
+   otherwise claim the gesture before Tldraw's canvas sees it.
+   IMPORTANT: scope touch-action to the canvas surface only — applying it to
+   every descendant (`.ink-canvas-host *`) breaks tap/click on Tldraw's UI
+   controls (color swatches, style panel, toolbar buttons). */
+.ink-canvas-host {
+  overscroll-behavior: none;
+}
+.ink-canvas-host .tl-container,
+.ink-canvas-host .tl-canvas,
+.ink-canvas-host .tl-svg-container,
+.ink-canvas-host .tl-background {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+/* Text-page annotation layer: same PWA touch fix as ink notes, but never on
+   tl-html-layer (Tldraw may host interactive UI there on ink-note pages). */
+.annotation-layer-host .tl-container,
+.annotation-layer-host .tl-canvas,
+.annotation-layer-host .tl-svg-container,
+.annotation-layer-host .tl-background {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* ── Text-page annotation layer (transparent Tldraw over editor) ─ */
+.annotation-layer-host,
+.annotation-layer-host .tl-container,
+.annotation-layer-host .tl-container.tl-theme__light,
+.annotation-layer-host .tl-container.tl-theme__dark {
+  --tl-color-background: transparent;
+}
+
+.annotation-layer-host .tl-background,
+.annotation-layer-host .tl-background__wrapper {
+  background: transparent !important;
+}
+
+.annotation-layer-host .tl-container__focused {
+  outline: none;
+}
+
+.annotation-layer-host .tl-grid {
+  display: none;
+}
+
+.annotation-layer-passive,
+.annotation-layer-passive * {
+  pointer-events: none !important;
+}
+
+.annotation-layer-hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.annotation-layer-host .tlui-layout__top,
+.annotation-layer-host .tlui-toolbar,
+.annotation-layer-host .tlui-style-panel,
+.annotation-layer-host .tlui-navigation-panel,
+.annotation-layer-host .tlui-menu-zone,
+.annotation-layer-host .tlui-help-menu,
+.annotation-layer-host .tlui-debug-panel {
+  display: none !important;
+}
+
+.annotation-glass-readonly .ProseMirror {
+  caret-color: transparent;
+  user-select: none;
+}
+
+.annotation-glass-readonly .ProseMirror * {
+  user-select: none;
+}
+
+/* ── Format bar ───────────────────────────────────────────────── */
+.format-bar {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.format-bar--clarity {
+  gap: 2px;
+}
+
+.minimal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent) transparent;
+}
+
+.minimal-scrollbar::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.minimal-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.minimal-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground) 16%, transparent);
+  background-clip: padding-box;
+}
+
+.minimal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground) 24%, transparent);
+  background-clip: padding-box;
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 120ms, color 120ms;
+}
+.toolbar-btn--wide {
+  width: auto;
+  padding: 0 8px;
+  gap: 2px;
+}
+.toolbar-btn:hover,
+.toolbar-btn[data-popup-open] {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.toolbar-btn--active,
+.toolbar-btn[data-popup-open].toolbar-btn--active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+.toolbar-btn--exit {
+  color: var(--destructive);
+  flex-shrink: 0;
+}
+.toolbar-btn--exit:hover {
+  background: transparent;
+  color: color-mix(in srgb, var(--destructive) 82%, var(--foreground));
+}
+.toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* ── Bubble menu ─────────────────────────────────────────────── */
+.bubble-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  max-width: calc(100vw - 16px);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0 0 0 / 0.12);
+}
+.bubble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 100ms;
+}
+.bubble-btn:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.bubble-btn--active {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+.bubble-btn--disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.bubble-btn--disabled:hover {
+  background: transparent;
+}
+.bubble-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  margin: 0 2px;
+}
+
+/* ── Link dialog ──────────────────────────────────────────────── */
+.link-dialog {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+.link-dialog-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  outline: none;
+}
+.link-dialog-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.link-dialog-apply,
+.link-dialog-cancel {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 3px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: background 120ms;
+}
+.link-dialog-apply {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: var(--accent);
+}
+.link-dialog-apply:hover {
+  opacity: 0.88;
+}
+.link-dialog-cancel {
+  background: transparent;
+  color: var(--foreground);
+}
+.link-dialog-cancel:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+/* ── ProseMirror editor prose styles ────────────────────────── */
+.editor-content {
+  font-family: var(--font-serif);
+  font-size: var(--editor-density-normal);
+  line-height: var(--editor-density-leading);
+  color: var(--foreground);
+  width: 100%;
+}
+
+/* Reading density overrides — applied via data-density on <html> */
+[data-density="compact"] .editor-content {
+  font-size: var(--editor-density-compact);
+}
+[data-density="comfortable"] .editor-content {
+  font-size: var(--editor-density-comfortable);
+}
+
+.editor-content > :first-child {
+  margin-top: 0;
+}
+
+.editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+.editor-content h1 {
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0;
+  margin: 1.5em 0 0.4em;
+}
+[data-density="compact"] .editor-content h1 { font-size: 1.625rem; }
+[data-density="comfortable"] .editor-content h1 { font-size: 2.5rem; }
+
+.editor-content h2 {
+  font-family: var(--font-serif);
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+  margin: 1.25em 0 0.35em;
+}
+[data-density="compact"] .editor-content h2 { font-size: 1.14rem; }
+[data-density="comfortable"] .editor-content h2 { font-size: 1.75rem; }
+
+/* Collapsible heading chevrons (SN-78) — gutter placement, touch visibility */
+[data-heading-collapse-control] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 160ms ease, color 160ms ease;
+}
+
+/* Touch / coarse pointer: keep a small chevron visible in the left gutter */
+@media (pointer: coarse), (hover: none) {
+  [data-heading-collapse-control] {
+    opacity: 0.52;
+  }
+
+  [data-heading-collapse-control][data-collapsed="true"] {
+    opacity: 0.78;
+  }
+
+  [data-heading-collapse-control]:active {
+    opacity: 0.95;
+  }
+
+  [data-heading-collapse-control][data-disabled="true"] {
+    opacity: 0.28;
+  }
+}
+
+/* Desktop fine pointer: reveal on heading hover; stay visible when collapsed */
+@media (hover: hover) and (pointer: fine) {
+  [data-heading-collapse-control] {
+    opacity: 0;
+  }
+
+  [data-heading-collapse-control][data-visible="true"],
+  [data-heading-collapse-control][data-collapsed="true"] {
+    opacity: 0.6;
+  }
+
+  [data-heading-collapse-control][data-visible="true"]:hover,
+  [data-heading-collapse-control][data-collapsed="true"]:hover {
+    opacity: 1;
+  }
+
+  [data-heading-collapse-control][data-disabled="true"] {
+    opacity: 0.28;
+  }
+}
+
+.editor-content h3 {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1em 0 0.3em;
+}
+[data-density="compact"] .editor-content h3 { font-size: 0.93rem; }
+[data-density="comfortable"] .editor-content h3 { font-size: 1.44rem; }
+
+@media (min-width: 1280px) {
+  .format-bar {
+    padding: 4px 10px;
+  }
+
+  .toolbar-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+  }
+
+  .toolbar-btn--wide {
+    width: auto;
+    padding: 0 6px;
+  }
+
+  .toolbar-sep {
+    height: 14px;
+    margin: 0 3px;
+  }
+
+  .editor-content {
+    font-size: var(--desktop-editor-density-normal);
+    line-height: var(--desktop-editor-density-leading);
+  }
+
+  [data-density="compact"] .editor-content {
+    font-size: var(--desktop-editor-density-compact);
+  }
+
+  [data-density="comfortable"] .editor-content {
+    font-size: var(--desktop-editor-density-comfortable);
+  }
+
+  .editor-content h1 {
+    font-size: 1.75rem;
+    margin: 1.25em 0 0.35em;
+  }
+
+  [data-density="compact"] .editor-content h1 {
+    font-size: 1.35rem;
+  }
+
+  [data-density="comfortable"] .editor-content h1 {
+    font-size: 2.05rem;
+  }
+
+  .editor-content h2 {
+    font-size: 1.22rem;
+    margin: 1.1em 0 0.3em;
+  }
+
+  [data-density="compact"] .editor-content h2 {
+    font-size: 1rem;
+  }
+
+  [data-density="comfortable"] .editor-content h2 {
+    font-size: 1.42rem;
+  }
+
+  .editor-content h3 {
+    font-size: 1rem;
+    margin: 0.9em 0 0.25em;
+  }
+
+  [data-density="compact"] .editor-content h3 {
+    font-size: 0.86rem;
+  }
+
+  [data-density="comfortable"] .editor-content h3 {
+    font-size: 1.18rem;
+  }
+
+}
+.editor-content p {
+  margin: 0 0 0.75em;
+}
+.editor-content strong { font-weight: 700; }
+.editor-content em { font-style: italic; }
+.editor-content s { text-decoration: line-through; }
+
+.editor-content code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+.editor-content pre {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1em 1.25em;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+.editor-content pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 1em;
+}
+
+.editor-content blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 1em 0;
+  padding-left: 1.1em;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.editor-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+
+.editor-content ul,
+.editor-content ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0 0.75em;
+}
+.editor-content li { margin: 0.2em 0; }
+.editor-content li > p { margin: 0; }
+
+@media (min-width: 1280px) {
+  .editor-content p {
+    margin-bottom: 0.62em;
+  }
+
+  .editor-content ul,
+  .editor-content ol {
+    margin: 0.42em 0 0.62em;
+  }
+}
+
+/* Task list */
+.editor-content ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.25em;
+}
+.editor-content ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+.editor-content ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  margin-top: 0.2em;
+  cursor: pointer;
+}
+.editor-content ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+.editor-content ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}
+
+/* Table */
+.editor-content .tableWrapper {
+  max-width: 100%;
+  margin: 1em 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.editor-content .tableWrapper:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.editor-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.9em;
+}
+.editor-content .tableWrapper table {
+  margin: 0;
+}
+.editor-content th,
+.editor-content td {
+  border: 1px solid var(--border);
+  padding: 0.4em 0.75em;
+  text-align: left;
+}
+.editor-content th {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  font-weight: 600;
+  font-family: var(--font-sans);
+  font-size: 0.8em;
+  letter-spacing: 0.03em;
+}
+.editor-content .selectedCell:after {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  content: "";
+  left: 0; right: 0; top: 0; bottom: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+/* Link */
+.editor-link {
+  color: oklch(0.55 0.10 235);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dark .editor-link {
+  color: oklch(0.74 0.08 235);
+}
+
+/* Page table of contents (SN-220) — uses existing Clarity tokens only */
+.editor-content .page-toc {
+  margin: 0 0 1.25rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+.editor-content .page-toc-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.editor-content .page-toc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.editor-content .page-toc-item {
+  margin: 0.15rem 0;
+}
+.editor-content .page-toc-item--h2 {
+  padding-left: 0.75rem;
+}
+.editor-content .page-toc-item--h3 {
+  padding-left: 1.5rem;
+}
+.editor-content .page-toc-link {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.925rem;
+  line-height: 1.4;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.editor-content .page-toc-link:hover,
+.editor-content .page-toc-link:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.editor-content .page-toc-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+/* SN-233: on coarse pointers the 0.15rem row margin sits inside normal finger
+   slop, so adjacent entries can't be tapped independently. Give each row a
+   full-width 44px block target (design system: touch targets >= 44x44px);
+   desktop keeps the compact inline text link untouched. */
+@media (pointer: coarse), (hover: none) {
+  .editor-content .page-toc-item {
+    margin: 0;
+  }
+  .editor-content .page-toc-link {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.5rem 0;
+  }
+}
+
+/* Discreet back-to-top next to headings while a page TOC is present (SN-220).
+   SN-231: the box is anchored at the end of the heading text and the chevron is
+   pinned to the leading edge of that box, so growing the touch target on coarse
+   pointers never pushes the visible glyph away from the heading. */
+[data-heading-back-to-top-control] {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  justify-content: flex-start;
+  padding: 0 0 0 3px;
+  opacity: 0.7;
+}
+/* No room after the last line: pin the chevron to the column edge so the wider
+   touch box slides over the text tail without the glyph landing on words. */
+[data-heading-back-to-top-control][data-back-to-top-align="trailing"] {
+  justify-content: flex-end;
+  padding: 0 3px 0 0;
+}
+[data-heading-back-to-top-control]:hover,
+[data-heading-back-to-top-control]:focus-visible {
+  opacity: 1;
+}
+@media (pointer: fine) {
+  [data-heading-back-to-top-control] {
+    opacity: 0.55;
+  }
+  [data-heading-back-to-top-control]:hover,
+  [data-heading-back-to-top-control]:focus-visible {
+    opacity: 1;
+  }
+}
+@media (hover: none), (pointer: coarse) {
+  [data-heading-back-to-top-control] {
+    /* 44px touch target (design system: touch targets >= 44x44px); the chevron
+       stays small and sits ~6px after the last glyph of the heading. */
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 0 0 6px;
+    opacity: 0.8;
+  }
+  [data-heading-back-to-top-control][data-back-to-top-align="trailing"] {
+    padding: 0 6px 0 0;
+  }
+}
+
+/* ── Inline commenting layer ─────────────────────────────────── */
+
+/* Decoration applied by ProseMirror plugin to commented text ranges */
+.comment-mark {
+  border-bottom: 1.5px solid oklch(0.58 0.09 195 / 0.55);
+  background: oklch(0.96 0.025 195 / 0.45);
+  border-radius: 1px;
+  cursor: default;
+  transition: background 120ms;
+}
+.comment-mark:hover {
+  background: oklch(0.96 0.025 195 / 0.65);
+}
+.dark .comment-mark {
+  border-bottom-color: oklch(0.74 0.10 192 / 0.55);
+  background: oklch(0.30 0.045 195 / 0.45);
+}
+.dark .comment-mark:hover {
+  background: oklch(0.30 0.045 195 / 0.65);
+}
+
+.editor-image {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.5rem 0;
+  border-radius: 4px;
+}
+
+.editor-image[data-align="center"] {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.editor-image[data-align="right"] {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.editor-image[data-align="left"] {
+  margin-right: auto;
+  margin-left: 0;
+}
+
+.editor-image.is-selected,
+.ProseMirror-selectednode.editor-image {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+[data-resize-container][data-node="image"] [data-resize-wrapper] {
+  display: inline-block;
+  max-width: 100%;
+}
+
+[data-resize-container][data-node="image"] [data-resize-handle] {
+  position: absolute;
+  z-index: 2;
+  border: 2px solid var(--background);
+  border-radius: 2px;
+  background: var(--accent);
+  touch-action: none;
+}
+
+[data-resize-container][data-node="image"] [data-resize-handle="right"] {
+  top: 50%;
+  right: -5px;
+  width: 10px;
+  height: 10px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+[data-resize-container][data-node="image"] [data-resize-handle="bottom-right"] {
+  right: -5px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  cursor: nwse-resize;
+}
+
+.editor-scroll-area--pannable {
+  cursor: default;
+}
+
+.editor-scroll-area--pan-ready {
+  cursor: grab;
+}
+
+.editor-scroll-area--panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.inline-math-compose {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+.inline-math-compose__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.inline-math-preview {
+  min-height: 1.25rem;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.inline-math-preview--error {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.editor-content .tiptap-mathematics-render--editable {
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.editor-content .tiptap-mathematics-render--editable:hover {
+  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.inline-math-compose__delimiter {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.inline-math-compose__input {
+  min-width: 120px;
+  height: 24px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 13px;
+  outline: none;
+}
+
+.inline-math-compose__input:focus {
+  outline: none;
+}
+
+.file-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  margin: 0 0.15rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  font-size: 0.85rem;
+  vertical-align: baseline;
+}
+
+.file-attachment-chip a,
+.file-attachment-chip .file-attachment-name {
+  color: inherit;
+  text-decoration: none;
+}
+
+.file-attachment-chip--pdf {
+  background: oklch(0.96 0.01 25);
+  border-color: oklch(0.85 0.06 25);
+  cursor: pointer;
+}
+
+.file-attachment-chip--pdf .file-attachment-name {
+  cursor: pointer;
+}
+
+.dark .file-attachment-chip--pdf {
+  background: oklch(0.28 0.04 25);
+  border-color: oklch(0.42 0.08 25);
+}
+
+.file-attachment-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  background: oklch(0.55 0.18 25);
+  color: #fff;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+/* ── Immersive PDF attachment reader (SN-135) ─────────────────────────────
+   Full-viewport reading surface. Chrome is a single collapsible bar; the
+   document area is maximized with safe-area handling for mobile devices. */
+.pdf-reader {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-pdf-reader);
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  color: var(--foreground);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* iOS and other fullscreen-limited browsers still receive the immersive
+   chrome-hide half of performance mode. The reader is portaled beside main. */
+html[data-pdf-performance-mode="true"] [data-testid="app-shell"] {
+  visibility: hidden;
+}
+
+.pdf-reader__performance-toggle[aria-pressed="true"] {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.pdf-reader__spread-toggle[aria-pressed="true"] {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.pdf-reader__spread-offset select {
+  height: 2rem;
+  max-width: 7rem;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  padding-inline: 0.375rem;
+}
+
+.pdf-reader__spread-offset select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pdf-reader__bar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.pdf-reader__bar[data-hidden="true"] {
+  /* Leave the flex flow so the page can use the full viewport — opacity/
+     translate alone left a blank toolbar-sized frame (SN-246). */
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 2;
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pdf-reader__bar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.pdf-reader__bar-group--start {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pdf-reader__bar-group--center {
+  flex: 0 0 auto;
+}
+
+.pdf-reader__bar-group--end {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.pdf-reader__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.pdf-reader__control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0.375rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: background 100ms, color 100ms;
+}
+
+/* SN-211: closed-panel companion affordance on the reader's Sparkles control.
+   Ready is a solid accent dot; working is a quiet slower pulse that yields to
+   reduced-motion. Mirrors the shell top-bar ai-toggle badge. */
+.pdf-reader__control-badge {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  pointer-events: none;
+}
+
+.pdf-reader__control-badge--ready {
+  background: var(--accent);
+}
+
+.pdf-reader__control-badge--working {
+  background: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  animation: pdf-reader-companion-pulse 2s ease-in-out infinite;
+}
+
+@keyframes pdf-reader-companion-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdf-reader__control-badge--working {
+    animation: none;
+  }
+}
+
+.pdf-reader__control:hover:not(:disabled) {
+  background: var(--secondary);
+}
+
+.pdf-reader__control:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pdf-reader__control:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pdf-reader__close-icon--mobile {
+  display: none;
+}
+
+.pdf-reader__annotate-toggle {
+  flex: 0 0 auto;
+}
+
+.pdf-reader__annotate-toggle[aria-pressed="true"] {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.pdf-reader__control[data-testid="pdf-reader-companion-toggle"][aria-pressed="true"] {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.pdf-reader__highlight-note {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 0;
+  width: min(16rem, 72vw);
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--foreground) 12%, transparent);
+  pointer-events: auto;
+}
+
+.pdf-reader__highlight-note-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+.pdf-reader__highlight-note-input {
+  display: block;
+  width: 100%;
+  min-height: 4.5rem;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  padding: 0.4rem 0.5rem;
+}
+
+.pdf-reader__highlight-note-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Editable zoom percent (SN-198) — same affordance class as the page input. */
+.pdf-reader__zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  min-width: 3.5rem;
+}
+
+.pdf-reader__zoom-input {
+  width: 3.25rem;
+  height: 2rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  color: var(--foreground);
+  /* 1rem keeps mobile browsers from auto-zooming when the field is focused. */
+  font-size: 1rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-reader__zoom-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.pdf-reader__zoom-suffix {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+/* Editable current-page control with direct page jump. The pager reads as a
+   grouped pill so document position and the jump affordance are obvious. */
+.pdf-reader__pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.125rem 0 0.25rem;
+}
+
+.pdf-reader__page-input {
+  width: 3rem;
+  height: 2rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  color: var(--foreground);
+  /* 1rem keeps mobile browsers from auto-zooming when the field is focused. */
+  font-size: 1rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-reader__page-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.pdf-reader__page-input:disabled {
+  opacity: 0.5;
+}
+
+.pdf-reader__page-total {
+  min-width: 2rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+/* Zoom stepper controls fold away on narrow (mobile) widths — pinch-to-zoom
+   and fit-width remain available so the bar never becomes a toolbar stack.
+   Phone-width overflow (SN-246): secondary/new controls move into the More
+   menu so Annotate/search/outline stay fully visible. Wide layouts keep the
+   inline row. */
+.pdf-reader__more-menu {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .pdf-reader__control--hide-narrow,
+  .pdf-reader__control--menu-phone {
+    display: none;
+  }
+
+  .pdf-reader__more-menu {
+    display: inline-flex;
+  }
+
+  .pdf-reader__bar {
+    gap: 0.125rem;
+    padding: 0.25rem 0.25rem;
+  }
+
+  .pdf-reader__bar-group {
+    gap: 0;
+  }
+
+  .pdf-reader__bar .pdf-reader__control {
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    padding: 0.2rem;
+  }
+}
+
+.pdf-reader__back {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 0.5rem);
+  left: calc(env(safe-area-inset-left) + 0.5rem);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--foreground);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+}
+
+.pdf-reader__zoomwrap {
+  min-width: 100%;
+}
+
+/* Body hosts the document viewport at full width. Outline is always an
+   overlay drawer inside this container (SN-198) so opening TOC never reflows
+   or shrinks the reading surface on any breakpoint. */
+.pdf-reader__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.pdf-reader__viewport {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  background: var(--rail);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Outline / chapter navigation (SN-142, overlay-all SN-198) ─────────────
+   Always an overlay drawer over the document. Never in-flow: an in-flow rail
+   shrinks the viewport and makes zoom/place jump when the TOC opens. */
+.pdf-reader__outline {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 14;
+  width: min(18rem, 85vw);
+  max-width: 85vw;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-inline-end: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--foreground) 22%, transparent);
+}
+
+.pdf-reader__outline-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.pdf-reader__outline-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pdf-reader__outline-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.375rem 0.375rem 0.75rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pdf-reader__outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pdf-reader__outline-row {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.pdf-reader__outline-twisty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.pdf-reader__outline-twisty:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.pdf-reader__outline-twisty:focus-visible,
+.pdf-reader__outline-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pdf-reader__outline-twisty-icon {
+  transition: transform 120ms ease;
+}
+
+.pdf-reader__outline-twisty-icon[data-collapsed="true"] {
+  transform: rotate(-90deg);
+}
+
+.pdf-reader__outline-twisty-spacer {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.pdf-reader__outline-link {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  padding: 0.375rem 0.5rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  text-align: start;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-reader__outline-link:hover {
+  background: var(--secondary);
+}
+
+.pdf-reader__outline-link[data-jumpable="false"] {
+  color: var(--muted-foreground);
+  font-weight: 500;
+  cursor: default;
+}
+
+.pdf-reader__outline-link[data-jumpable="false"]:hover {
+  background: transparent;
+}
+
+.pdf-reader__outline-backdrop {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 13;
+  background: color-mix(in srgb, var(--foreground) 32%, transparent);
+}
+
+.pdf-reader__outline-toggle[aria-pressed="true"] {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+@media (max-width: 640px) {
+  .pdf-reader__outline {
+    width: min(20rem, 85vw);
+  }
+}
+
+.pdf-reader__page-frame {
+  position: relative;
+  margin: 0 auto;
+  /* PDF paper, not chrome — inverted to black while night mode is on. */
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+}
+
+/* SN-225: invert RenderLayer / TilingLayer bitmaps only. Search, selection,
+   and annotation overlays sit outside this wrapper so ink/highlights are not
+   double-inverted. */
+.pdf-reader__page-bitmap {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pdf-reader__viewport[data-night-mode="on"] .pdf-reader__page-bitmap {
+  filter: invert(1);
+}
+
+.pdf-reader__viewport[data-night-mode="on"] .pdf-reader__page-frame {
+  background: #000000;
+}
+
+.pdf-reader__night-toggle[aria-pressed="true"] {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+/* Annotate mode tool strip (SN-136). Sits under the nav bar; ink/highlight
+   only. Leaving Annotate restores pan/zoom because the annotation layer uses
+   pointer-events: none while data-annotate="off". */
+.pdf-reader__annotate-bar {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2.75rem;
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.pdf-reader__annotate-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 2.25rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.pdf-reader__annotate-tool[data-active="true"] {
+  border-color: var(--accent);
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.pdf-reader__annotate-tool:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pdf-reader__annotate-tool--icon {
+  min-width: 2.25rem;
+  padding-inline: 0.5rem;
+}
+
+.pdf-reader__annotate-divider {
+  align-self: stretch;
+  width: 1px;
+  margin-block: 0.25rem;
+  background: var(--border);
+}
+
+.pdf-reader__annotate-tool:focus-visible,
+.pdf-reader__annotate-done:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pdf-reader__annotate-done {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  margin-left: auto;
+  padding: 0.375rem 0.875rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-foreground, #fff);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pdf-reader__annotate-hint {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.pdf-reader__annotate-error {
+  font-size: 0.75rem;
+  color: var(--destructive);
+}
+
+/* Comment/delete dish for an intentionally re-tapped highlight. Never shown
+   on create (`selectAfterCreate: false`). Ink uses the Eraser tool instead.
+   The CounterRotate anchor is origin-only; this panel sizes itself. */
+.pdf-reader__anno-menu-anchor {
+  overflow: visible;
+}
+
+.pdf-reader__anno-menu {
+  z-index: 12;
+  box-sizing: border-box;
+  width: min(18rem, calc(100vw - 2rem));
+  min-width: 12rem;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--foreground);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--foreground) 14%, transparent);
+  pointer-events: auto;
+  white-space: normal;
+}
+
+.pdf-reader__anno-menu-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.375rem;
+}
+
+.pdf-reader__anno-menu-header,
+.pdf-reader__anno-menu-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pdf-reader__anno-menu-header {
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.pdf-reader__anno-menu-footer {
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.pdf-reader__anno-action,
+.pdf-reader__anno-icon-action {
+  display: inline-flex;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.pdf-reader__anno-action {
+  padding: 0.375rem 0.625rem;
+}
+
+.pdf-reader__anno-icon-action {
+  width: 2.25rem;
+  padding: 0.375rem;
+}
+
+.pdf-reader__anno-action--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.pdf-reader__anno-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pdf-reader__anno-icon-action--danger {
+  color: var(--destructive);
+}
+
+.pdf-reader__anno-comment-text {
+  max-height: 10rem;
+  margin: 0.5rem 0 0;
+  overflow-y: auto;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.pdf-reader__anno-delete {
+  display: inline-flex;
+  flex-shrink: 0;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--background);
+  color: var(--destructive);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pdf-reader__anno-note-label {
+  display: block;
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.pdf-reader__anno-note-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 4.5rem;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  padding: 0.5rem;
+  white-space: pre-wrap;
+}
+
+.pdf-reader__anno-delete:focus-visible,
+.pdf-reader__anno-action:focus-visible,
+.pdf-reader__anno-icon-action:focus-visible,
+.pdf-reader__anno-note-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pdf-reader__viewport[data-annotation-tool="pan"],
+.pdf-reader__viewport[data-annotation-tool="ink"],
+.pdf-reader__viewport[data-annotation-tool="highlight"],
+.pdf-reader__viewport[data-annotation-tool="eraser"] {
+  touch-action: pan-y pinch-zoom;
+}
+
+@media (pointer: coarse), (hover: none) {
+  .pdf-reader__control,
+  .pdf-reader__annotate-tool,
+  .pdf-reader__annotate-done,
+  .pdf-reader__anno-delete,
+  .pdf-reader__anno-action,
+  .pdf-reader__anno-icon-action {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  /* Phone reader bar: keep targets usable but denser so outline + annotate fit
+     beside the More menu (SN-246). Annotate-bar tools keep the larger size. */
+  @media (max-width: 640px) {
+    .pdf-reader__bar .pdf-reader__control {
+      min-width: 2.25rem;
+      min-height: 2.25rem;
+    }
+  }
+
+  .pdf-reader__annotate-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .pdf-reader__annotate-spacer {
+    flex: 1 0 0.25rem;
+  }
+
+  .pdf-reader__annotate-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .pdf-reader__title,
+  .pdf-reader__annotate-tool-label {
+    display: none;
+  }
+
+  .pdf-reader__annotate-tool {
+    min-width: 2.75rem;
+    padding-inline: 0.5rem;
+  }
+
+  .pdf-reader__annotate-bar {
+    gap: 0.25rem;
+    padding-inline: 0.375rem;
+  }
+
+  .pdf-reader__close-icon--desktop {
+    display: none;
+  }
+
+  .pdf-reader__close-icon--mobile {
+    display: block;
+  }
+}
+
+@media (max-width: 420px) {
+  .pdf-reader__control--hide-phone {
+    display: none;
+  }
+}
+
+.pdf-reader__search {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.pdf-reader__search-icon {
+  color: var(--muted-foreground);
+}
+
+.pdf-reader__search-input {
+  flex: 1;
+  min-width: 0;
+  height: 2.25rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.875rem;
+}
+
+.pdf-reader__search-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pdf-reader__search-count {
+  min-width: 2.5rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.pdf-reader__status {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.pdf-reader__status-title {
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.pdf-reader__status-detail {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.pdf-reader__external-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--link);
+}
+
+.pdf-reader__spinner {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--muted-foreground);
+  animation: pdf-reader-spin 900ms linear infinite;
+}
+
+@keyframes pdf-reader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Phased loading UX (SN-148) ──────────────────────────────────────────── */
+
+/* Ordered list of loading phases (engine + download). Reset list defaults. */
+.pdf-reader__phase-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 15rem;
+  max-width: 22rem;
+  width: 100%;
+  align-self: center;
+}
+
+.pdf-reader__phase {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+/* Fixed-width icon slot so labels stay aligned between phases. */
+.pdf-reader__phase-icon {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Spinning indicator inside a phase row. Smaller than the top-level spinner. */
+.pdf-reader__phase-spinner {
+  width: 1rem;
+  height: 1rem;
+  color: var(--accent);
+  animation: pdf-reader-spin 900ms linear infinite;
+}
+
+/* Check mark shown once a phase completes. */
+.pdf-reader__phase-check {
+  width: 1rem;
+  height: 1rem;
+  color: var(--accent);
+}
+
+/* Neutral dot for a phase that hasn't started yet. */
+.pdf-reader__phase-dot {
+  display: block;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: var(--border);
+  margin: auto;
+}
+
+.pdf-reader__phase-label {
+  flex: 1;
+  color: var(--foreground);
+}
+
+/* Tabular detail column (bytes, %, "Ready"). */
+.pdf-reader__phase-detail {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Byte download progress bar — shown when Content-Length is known. */
+.pdf-reader__progress {
+  align-self: center;
+  width: 100%;
+  max-width: 22rem;
+  height: 0.25rem;
+  border-radius: var(--radius-xs);
+  background: var(--secondary);
+  overflow: hidden;
+  margin-top: 0.75rem;
+}
+
+.pdf-reader__progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-xs);
+  transition: width 120ms linear;
+  min-width: 0;
+}
+
+mark {
+  background-color: oklch(0.90 0.18 95);
+  border-radius: 2px;
+  padding: 0 0.1em;
+}
+
+/* ── Vault-native Spreadsheet pages (SN-208) ───────────────────────────── */
+.spreadsheet-page {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+.spreadsheet-page__utility {
+  display: flex;
+  min-width: 0;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.375rem 0.5rem;
+  background: var(--surface);
+}
+
+.spreadsheet-page__title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spreadsheet-page__status,
+.spreadsheet-page__xlsx-note {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.spreadsheet-page__actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.375rem;
+  margin-left: auto;
+}
+
+.spreadsheet-page__warning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  background: color-mix(in srgb, var(--destructive) 8%, var(--surface));
+  color: var(--destructive);
+  font-size: 0.8125rem;
+}
+
+.spreadsheet-page__canvas {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background: var(--background);
+}
+
+.spreadsheet-page__canvas > .e-spreadsheet {
+  height: 100% !important;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .spreadsheet-page__utility {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .spreadsheet-page__title,
+  .spreadsheet-page__xlsx-note {
+    display: none;
+  }
+
+  .spreadsheet-page__status {
+    min-width: max-content;
+  }
+
+  .spreadsheet-page__actions {
+    min-width: max-content;
+  }
+
+  .spreadsheet-page__canvas .e-ribbon .e-tab-header .e-toolbar-item .e-tab-text {
+    max-width: 4.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (pointer: coarse), (hover: none) {
+  .spreadsheet-page__utility button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+}
+
+/* Right-click context menu */
+.comment-context-menu {
+  position: fixed;
+  z-index: 200;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0 0 0 / 0.14);
+}
+.comment-context-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 100ms;
+}
+.comment-context-item:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.comment-context-item--disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.comment-context-item--disabled:hover {
+  background: transparent;
+}
+.comment-context-item--active {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  font-weight: 600;
+}
+.comment-context-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+.editor-context-menu {
+  min-width: 188px;
+}
+.comment-context-hint {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-left: 8px;
+}
+
+/* Comment composer — floating dialog anchored near selection */
+.comment-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--background);
+}
+.comment-composer--floating {
+  position: fixed;
+  z-index: 320;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover, 0 12px 30px -10px rgba(0 0 0 / 0.25));
+}
+.comment-composer-textarea {
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.comment-composer-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.comment-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Hover popover */
+.comment-popover {
+  position: fixed;
+  z-index: 300;
+  max-width: 288px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0 0 0 / 0.14);
+}
+.comment-popover-text {
+  margin: 0 0 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.comment-popover-actions {
+  display: flex;
+  gap: 6px;
+}
+.comment-popover-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 100ms;
+}
+.comment-popover-btn:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.comment-popover-btn--destructive {
+  color: var(--destructive);
+  border-color: color-mix(in srgb, var(--destructive) 40%, transparent);
+}
+.comment-popover-btn--destructive:hover {
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+}
+
+/* ── Companion reading surface (SN-39) ───────────────────────── */
+.companion-surface {
+  --chat-prose-size: 16.875px;
+  --chat-prose-leading: 1.9125;
+  --chat-prose-code-size: 13.5px;
+  --chat-message-gap: 1.125rem;
+}
+
+.companion-density-compact {
+  --chat-prose-size: 15.75px;
+  --chat-prose-leading: 1.8;
+  --chat-prose-code-size: 12.375px;
+  --chat-message-gap: 0.84375rem;
+}
+
+.companion-density-comfortable {
+  --chat-prose-size: 18px;
+  --chat-prose-leading: 1.96875;
+  --chat-prose-code-size: 14.625px;
+  --chat-message-gap: 1.40625rem;
+}
+
+/* ── Chat markdown prose ─────────────────────────────────────── */
+.chat-prose {
+  font-size: var(--chat-prose-size, 15px);
+  line-height: var(--chat-prose-leading, 1.7);
+  color: var(--foreground);
+}
+.chat-prose > *:first-child { margin-top: 0; }
+.chat-prose > *:last-child { margin-bottom: 0; }
+.chat-prose p { margin: 0 0 0.75em; }
+.chat-prose ul,
+.chat-prose ol { margin: 0 0 0.75em; padding-left: 1.35em; }
+.chat-prose li { margin-bottom: 0.3em; }
+.chat-prose li:last-child { margin-bottom: 0; }
+.chat-prose h1,
+.chat-prose h2,
+.chat-prose h3,
+.chat-prose h4 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1.1em 0 0.45em;
+}
+.chat-prose h1 { font-size: 1.2em; }
+.chat-prose h2 { font-size: 1.1em; }
+.chat-prose h3,
+.chat-prose h4 { font-size: 1.02em; }
+.chat-prose strong { font-weight: 600; }
+.chat-prose em { font-style: italic; }
+.chat-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  padding: 0.12em 0.38em;
+  border-radius: var(--radius-sm);
+}
+.chat-prose pre {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--surface));
+  border: 1px solid var(--border);
+  padding: 0.75em 0.9em;
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  margin: 0 0 0.85em;
+}
+.chat-prose pre code {
+  background: none;
+  padding: 0;
+  font-size: var(--chat-prose-code-size, 12px);
+  line-height: 1.55;
+}
+.chat-prose blockquote {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  padding: 0.55em 0 0.55em 0.9em;
+  margin: 0 0 0.85em;
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-style: normal;
+}
+.chat-prose .chat-prose-table-wrap {
+  overflow-x: auto;
+  margin: 0 0 0.85em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  -webkit-overflow-scrolling: touch;
+}
+.chat-prose table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  font-size: calc(var(--chat-prose-size, 15px) * 0.88);
+  line-height: 1.5;
+  margin: 0;
+}
+.chat-prose thead tr {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.chat-prose th {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: calc(var(--chat-prose-size, 15px) * 0.72);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.chat-prose td {
+  padding: 7px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  vertical-align: top;
+}
+.chat-prose tbody tr:last-child td {
+  border-bottom: none;
+}
+.chat-prose tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--foreground) 2.5%, transparent);
+}
+.chat-prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.65em 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.chat-prose a {
+  color: oklch(0.55 0.10 235);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dark .chat-prose a {
+  color: oklch(0.74 0.08 235);
+}
+.chat-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.9em 0;
+}
+
+/* ── Print header (hidden on screen, shown in print) ─────────── */
+.print-page-header {
+  display: none;
+}
+
+/* ── Page export / print rendering (SN-12) ───────────────────── */
+@media print {
+  /* @page margin is overridden at runtime by SN-97 print settings via an
+     injected <style> element. This fallback matches the default "Normal" preset. */
+  @page {
+    margin: 0.75in;
+  }
+
+  /* Always print as light ink on white — dark-mode UI tokens wash out on paper. */
+  :root,
+  .dark {
+    color-scheme: light;
+    --background: #ffffff;
+    --foreground: #0d0d0d;
+    --surface: #ffffff;
+    --surface-foreground: #0d0d0d;
+    --secondary: #f1f1f4;
+    --secondary-foreground: #4d4d57;
+    --muted: #f7f7f8;
+    --muted-foreground: #4d4d57;
+    --border: #e6e6eb;
+    --input: #e6e6eb;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #0d0d0d !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  [data-testid="app-shell"],
+  [data-print-region="page-content"],
+  .print-page-header,
+  .editor-content {
+    color: #0d0d0d !important;
+  }
+
+  [data-testid="app-shell"] {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  [data-testid="tree-sidebar-rail"],
+  [data-testid="ai-sidebar-rail"],
+  [data-testid="mobile-ai-sheet"],
+  [data-testid="open-sidebar-btn"],
+  [data-testid="open-search-btn"],
+  [data-testid="capture-btn"],
+  [data-testid="add-menu-trigger"],
+  [data-testid="reload-btn"],
+  [data-testid="ai-toggle-btn"],
+  [data-testid="save-status"],
+  [data-testid="export-page-btn"],
+  [data-testid="print-page-btn"],
+  [data-testid="version-preview-banner"],
+  [data-print-chrome="true"],
+  .format-bar,
+  .bubble-menu,
+  .comment-context-menu,
+  .comment-composer,
+  .comment-popover,
+  .link-dialog,
+  .comment-mark,
+  [data-heading-collapse-ui="true"] {
+    display: none !important;
+  }
+
+  [data-testid="page-main"] > header {
+    display: none !important;
+  }
+
+  [data-testid="annotated-editor-panel"] {
+    padding: 0 !important;
+  }
+
+  .print-page-header {
+    display: block !important;
+    margin: 0 0 1rem;
+  }
+
+  .print-page-header h1 {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  body.page-print-active .editor-content > h1:first-child,
+  body.page-print-active [data-print-leading-h1] {
+    display: none !important;
+  }
+
+  body.page-print-active [data-print-region="page-content"] {
+    min-height: auto !important;
+  }
+
+  /* SN-97: honour the --print-body-line-height CSS var set by print settings */
+  body.page-print-active .editor-content {
+    line-height: var(--print-body-line-height, 1.72) !important;
+  }
+
+  body.page-print-active .editor-scroll-area {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  body.page-print-active [data-print-ink-overlay] {
+    position: absolute !important;
+    inset: 0 !important;
+  }
+
+  body.page-print-active [data-print-ink-clip] {
+    position: static !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+  }
+
+  body.page-print-active .annotation-layer-host,
+  body.page-print-active .annotation-layer-hidden {
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  body.page-print-active .annotation-layer-host {
+    display: none !important;
+  }
+
+  .print-ink-snapshot {
+    display: none;
+  }
+
+  body.page-print-active .print-ink-snapshot {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  body.page-print-active .print-ink-snapshot svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .editor-content,
+  .editor-content img,
+  .editor-image {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  .editor-content h1,
+  .editor-content h2,
+  .editor-content h3 {
+    break-after: avoid-page;
+    page-break-after: avoid;
+  }
+
+  .editor-content h1,
+  .editor-content h2,
+  .editor-content h3,
+  .editor-content h4 {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  .editor-content pre,
+  .editor-content pre code,
+  .editor-content blockquote,
+  .editor-content table,
+  .editor-content figure {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  .editor-content img,
+  .editor-image,
+  .editor-content figure img {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+}

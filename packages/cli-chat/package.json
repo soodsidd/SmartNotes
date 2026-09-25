@@ -1,0 +1,13 @@
+{
+  "name": "@repo/cli-chat",
+  "version": "0.2.0",
+  "private": true,
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "sandbox.js",
+    "bridge.js",
+    "trace-log.js",
+    "static"
+  ]
+}

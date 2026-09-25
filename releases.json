@@ -1,0 +1,653 @@
+{
+  "schema": "av-releases/v1",
+  "releases": [
+    {
+      "version": "v0.7.0",
+      "taggedAt": "2026-09-03T16:41:00.427Z",
+      "tagSha": "98f16a2f7e91d702bc845421ddf8a71e0d00b28c",
+      "briefs": [
+        {
+          "id": "SN-252",
+          "title": "Jupyter inline AI: comment caret chips + append keybinding"
+        },
+        {
+          "id": "SN-251",
+          "title": "Jupyter inline AI: Fix action must edit or no-op, not chat"
+        },
+        {
+          "id": "SN-250",
+          "title": "Jupyter inline AI: include cell execution outputs in fast-lane context"
+        },
+        {
+          "id": "SN-249",
+          "title": "Jupyter inline AI: selection overlay, action chips, and answer placement"
+        },
+        {
+          "id": "SN-248",
+          "title": "Jupyter inline AI: cell content and selection bridge round trip"
+        },
+        {
+          "id": "SN-247",
+          "title": "Jupyter inline AI: warm low-latency provider session"
+        },
+        {
+          "id": "SN-246",
+          "title": "PDF reader: mobile toolbar overflow into ellipsis menu"
+        },
+        {
+          "id": "SN-243",
+          "title": "PDF reader: landscape two-page spread view"
+        },
+        {
+          "id": "SN-242",
+          "title": "PDF reader: large tap-zone page turning"
+        },
+        {
+          "id": "SN-241",
+          "title": "PDF reader: performance mode (full-screen + keep-awake)"
+        },
+        {
+          "id": "SN-239",
+          "title": "Jupyter bootstrap profile: pinned LSP deps + auto-configured autocomplete defaults"
+        },
+        {
+          "id": "SN-235",
+          "title": "Settings UI for ingest destination allowlist (notebook picker, no env editing)"
+        },
+        {
+          "id": "SN-234",
+          "title": "Ingest destination allowlist + catalog GET"
+        },
+        {
+          "id": "SN-233",
+          "title": "Mobile: page TOC links fire on touch-down, so scrolling over the contents block navigates"
+        },
+        {
+          "id": "SN-232",
+          "title": "Notebook picker organization: filter, key-notes lens, pins, groups, archive"
+        },
+        {
+          "id": "SN-231",
+          "title": "Back-to-top chevron still too far from headings; mobile hit target hard to tap"
+        },
+        {
+          "id": "SN-230",
+          "title": "Toggle page TOC from the format-bar control"
+        },
+        {
+          "id": "SN-229",
+          "title": "Mark key notes with a gem icon in the notebook tree"
+        },
+        {
+          "id": "SN-225",
+          "title": "PDF reader night mode (invert page pixels, keep annotations)"
+        },
+        {
+          "id": "SN-223",
+          "title": "Companion spreadsheet tools INTERNAL_ERROR on image-heavy workbooks"
+        },
+        {
+          "id": "SN-222",
+          "title": "Companion sandbox bridge can create pages (page_create)"
+        },
+        {
+          "id": "SN-221",
+          "title": "Exit text editing via Escape and format-toolbar tap"
+        },
+        {
+          "id": "SN-220",
+          "title": "Page TOC button with section jump, back-to-top, and ink remap"
+        },
+        {
+          "id": "SN-218",
+          "title": "Companion sees PDF highlight text plus comments"
+        },
+        {
+          "id": "SN-217",
+          "title": "Companion sees live JupyterLab file, active cell, and caret"
+        },
+        {
+          "id": "SN-216",
+          "title": "Draw-mode ink strokes disappear during or after drawing"
+        },
+        {
+          "id": "SN-215",
+          "title": "Guided setup: Cloudflare email ingress for Smart Notes"
+        },
+        {
+          "id": "SN-214",
+          "title": "Spreadsheet reopen shows blank grid despite vault sidecar having cells"
+        },
+        {
+          "id": "SN-212",
+          "title": "Implement Cloudflare email-to-Inbox ingestion"
+        },
+        {
+          "id": "SN-209",
+          "title": "Companion can view and edit spreadsheet cells"
+        },
+        {
+          "id": "SN-208",
+          "title": "Spreadsheet pages MVP (vault-native Syncfusion workbooks)"
+        },
+        {
+          "id": "SN-207",
+          "title": "Syncfusion Community Spreadsheet setup on owner PC"
+        },
+        {
+          "id": "SN-205",
+          "title": "Mini-app links can open Smart Notes pages"
+        },
+        {
+          "id": "SN-203",
+          "title": "Companion <-> mini-app message channel (bidirectional, cross-page, auto-run)"
+        },
+        {
+          "id": "SN-202",
+          "title": "Companion chat reliability upgrades (scope-shared threads, transcript binding, keep, background durability)"
+        },
+        {
+          "id": "SN-200",
+          "title": "Companion vault inventory of App pages for reuse"
+        },
+        {
+          "id": "SN-199",
+          "title": "Companion can see current PDF page and read just that page"
+        },
+        {
+          "id": "SN-198",
+          "title": "PDF outline overlays content; support manual zoom entry"
+        },
+        {
+          "id": "SN-197",
+          "title": "PDF reader companion settings unreachable under immersive shell fork"
+        },
+        {
+          "id": "SN-194",
+          "title": "PDF reader: PWA re-download and slow reopen after leaving the reader"
+        },
+        {
+          "id": "SN-193",
+          "title": "PDF reader: text is not selectable outside highlight mode"
+        },
+        {
+          "id": "SN-172",
+          "title": "Remote PWA origin is incorrectly supplied to host-side companion vault tools"
+        },
+        {
+          "id": "SN-166",
+          "title": "Expose Smart Notes /api/ingest via public path-scoped ingress (Tailscale Funnel or Cloudflare tunnel)"
+        },
+        {
+          "id": "SN-161",
+          "title": "Companion/sidebar resize: smooth drag + over-PDF width control"
+        },
+        {
+          "id": "SN-151",
+          "title": "PDF reader: reliable in-app first paint for large mobile PDFs"
+        },
+        {
+          "id": "SN-148",
+          "title": "Large PDFs take too long to open; loading state has no progress"
+        },
+        {
+          "id": "SN-142",
+          "title": "PDF reader outline/chapter navigation tree"
+        },
+        {
+          "id": "SN-140",
+          "title": "Add camera capture option to image insert"
+        },
+        {
+          "id": "SN-138",
+          "title": "PDF reader needs document navigation bar and direct page jump"
+        },
+        {
+          "id": "SN-136",
+          "title": "PDF annotation and stylus sidecar layer"
+        },
+        {
+          "id": "SN-135",
+          "title": "Immersive EmbedPDF attachment reader with remembered place"
+        },
+        {
+          "id": "SN-114",
+          "title": "Companion reads page PDFs and Jupyter notebook cells"
+        },
+        {
+          "id": "SN-66",
+          "title": "New notebook should not auto-create an Inbox section"
+        },
+        {
+          "id": "SN-65",
+          "title": "AI system prompt should include current page content as context; Cursor loses vault tool instructions via prompt truncation"
+        },
+        {
+          "id": "SN-64",
+          "title": "Persist notebook open/closed state across sessions and platforms"
+        },
+        {
+          "id": "SN-62",
+          "title": "Default AI model and effort tier not set to highest-quality option per provider"
+        },
+        {
+          "id": "SN-61",
+          "title": "Codex errors on first turn (web search config) and model picker list is incomplete"
+        },
+        {
+          "id": "SN-60",
+          "title": "Print preview renders page heading twice"
+        },
+        {
+          "id": "SN-59",
+          "title": "Inline images lack resize and alignment controls in rich text"
+        },
+        {
+          "id": "SN-58",
+          "title": "Editor context menu shows redundant Add comment entry"
+        },
+        {
+          "id": "SN-57",
+          "title": "PDF chip click opens preview and new tab simultaneously"
+        },
+        {
+          "id": "SN-47",
+          "title": "AI companion blocks web search requests"
+        },
+        {
+          "id": "SN-46",
+          "title": "AI companion sidebar resize capped too low — allow up to 80% viewport"
+        },
+        {
+          "id": "SN-45",
+          "title": "AI provider model list incomplete — query providers instead of hardcoding"
+        },
+        {
+          "id": "SN-44",
+          "title": "Notebook tree expands fully when adding new items"
+        },
+        {
+          "id": "SN-20",
+          "title": "PDF attachment support — upload, drag-drop, chip, and preview pane"
+        }
+      ],
+      "deployments": []
+    },
+    {
+      "version": "v0.6.0",
+      "taggedAt": "2026-08-06T06:51:21.793Z",
+      "tagSha": "ed5a2ac4f7387d3d5f5b5d2d101b269c74b8a5ea",
+      "briefs": [
+        {
+          "id": "SN-187",
+          "title": "Generalized focused App shortcut & per-page install (focus mode) for App pages"
+        },
+        {
+          "id": "SN-183",
+          "title": "Replace Workout & Nutrition Log with a vault-native mini app"
+        },
+        {
+          "id": "SN-182",
+          "title": "Vault-native mini-app runtime and shared companion templates"
+        },
+        {
+          "id": "SN-181",
+          "title": "Companion prompt teaches History, historySuggestion, and open-history actions"
+        },
+        {
+          "id": "SN-180",
+          "title": "Human-readable Log History tab with live, linkable views"
+        },
+        {
+          "id": "SN-174",
+          "title": "Conditional form tabs render the wrong panel after hidden categories shift indexes"
+        },
+        {
+          "id": "SN-170",
+          "title": "Log forms ignore JSON Schema defaults and can show uncommitted select values"
+        },
+        {
+          "id": "SN-168",
+          "title": "Link and iterate a standalone bundled HTML design file in place"
+        },
+        {
+          "id": "SN-167",
+          "title": "Design pages: render + iterate UI artifacts in the vault (note_type=design)"
+        },
+        {
+          "id": "SN-163",
+          "title": "Log forms show contextual history suggestions with one-tap copy"
+        },
+        {
+          "id": "SN-158",
+          "title": "Block equation editing opens top-of-page dialog instead of in-context editor"
+        },
+        {
+          "id": "SN-157",
+          "title": "Child page creation fails silently — INVALID_PARENT rejects section-nested parents"
+        },
+        {
+          "id": "SN-156",
+          "title": "Draw mode tablet: finger cannot scroll or zoom page"
+        },
+        {
+          "id": "SN-154",
+          "title": "Scale ink annotation stroke weights down 25% across all size presets"
+        },
+        {
+          "id": "SN-153",
+          "title": "Draw mode undo regression — toolbar button disabled and keyboard Ctrl+Z unreliable"
+        },
+        {
+          "id": "SN-149",
+          "title": "Focused log shortcut: offline-tolerant submit outbox (no wipe on reconnect)"
+        },
+        {
+          "id": "SN-147",
+          "title": "Companion queries bounded log data and authors saved history views"
+        },
+        {
+          "id": "SN-46",
+          "title": "AI companion sidebar resize capped too low — allow up to 80% viewport"
+        }
+      ],
+      "deployments": []
+    },
+    {
+      "version": "v0.5.0",
+      "taggedAt": "2026-07-23T20:30:08.133Z",
+      "tagSha": "b3c875f65f82d15cc9fb5bf1d84bae5c8622eeb2",
+      "briefs": [
+        {
+          "id": "SN-151",
+          "title": "PDF reader: reliable in-app first paint for large mobile PDFs"
+        },
+        {
+          "id": "SN-148",
+          "title": "Large PDFs take too long to open; loading state has no progress"
+        },
+        {
+          "id": "SN-145",
+          "title": "Companion get/put log form script, Form render, multi-image fields"
+        },
+        {
+          "id": "SN-144",
+          "title": "Vault-native log page: schema, rows, Form|Table tabs"
+        },
+        {
+          "id": "SN-139",
+          "title": "Desktop compact density and font scale pass"
+        },
+        {
+          "id": "SN-138",
+          "title": "PDF reader needs document navigation bar and direct page jump"
+        },
+        {
+          "id": "SN-136",
+          "title": "PDF annotation and stylus sidecar layer"
+        },
+        {
+          "id": "SN-135",
+          "title": "Immersive EmbedPDF attachment reader with remembered place"
+        },
+        {
+          "id": "SN-134",
+          "title": "Companion composer input lags after live-turn chat upgrade"
+        },
+        {
+          "id": "SN-132",
+          "title": "Live companion turn is interrupted when switching pages"
+        },
+        {
+          "id": "SN-130",
+          "title": "Add spellcheck toggle for text editor"
+        },
+        {
+          "id": "SN-129",
+          "title": "Run embedded Jupyter notebooks from mobile/tablet PWA"
+        }
+      ],
+      "deployments": []
+    },
+    {
+      "version": "v0.4.0",
+      "taggedAt": "2026-07-14T00:19:45.359Z",
+      "tagSha": null,
+      "briefs": [
+        {
+          "id": "SN-122",
+          "title": "Page render command (rr) — full-res screenshot for companion vision"
+        },
+        {
+          "id": "SN-123",
+          "title": "Extend ink canvas below text (OneNote-style page margin)"
+        },
+        {
+          "id": "SN-128",
+          "title": "Draw mode touch input broken on mobile PWA (touch-action missing)"
+        }
+      ],
+      "deployments": []
+    },
+    {
+      "version": "v0.3.1",
+      "taggedAt": "2026-07-09T22:14:12.328Z",
+      "tagSha": "25975369e41277b62e2cd7417013b5336b8c5cae",
+      "briefs": [
+        {
+          "id": "SN-127",
+          "title": "DOCX export fails for pages with Unicode titles (em-dash)"
+        },
+        {
+          "id": "SN-126",
+          "title": "Notebook-root page tree rows missing reorder handles and indent/outdent"
+        },
+        {
+          "id": "SN-125",
+          "title": "Markdown paste renders garbled — convert AI Markdown to rich text on paste"
+        }
+      ],
+      "deployments": []
+    },
+    {
+      "version": "v0.3.0",
+      "taggedAt": "2026-07-07T05:44:59.026Z",
+      "tagSha": "e1899dc3b35980c00c469117ba3f816535ffa144",
+      "briefs": [
+        {
+          "id": "SN-120",
+          "title": "Print flow regression — restore direct print; move layout settings to Advanced modal"
+        },
+        {
+          "id": "SN-115",
+          "title": "False note-updated-externally warning mid-typing causes content loss on reload"
+        },
+        {
+          "id": "SN-114",
+          "title": "Companion reads page PDFs and Jupyter notebook cells"
+        },
+        {
+          "id": "SN-113",
+          "title": "Zoom editor workspace with Ctrl/Cmd + scroll"
+        },
+        {
+          "id": "SN-112",
+          "title": "Image resize handles no longer appear in page editor"
+        },
+        {
+          "id": "SN-111",
+          "title": "Inline equation compose mode should start at caret (Word-style Alt+=)"
+        },
+        {
+          "id": "SN-103",
+          "title": "Ingest pipeline foundation: /api/ingest + Reference (.ref.json) model + Inbox"
+        },
+        {
+          "id": "SN-102",
+          "title": "Create and manage pages from any tree level"
+        },
+        {
+          "id": "SN-101",
+          "title": "Embedded JupyterLab notebook type"
+        },
+        {
+          "id": "SN-100",
+          "title": "Make remote notebook creation work from mobile PWA"
+        },
+        {
+          "id": "SN-97",
+          "title": "Print layout settings (margins and spacing)"
+        },
+        {
+          "id": "SN-96",
+          "title": "Print/PDF shows page title twice"
+        },
+        {
+          "id": "SN-95",
+          "title": "Mobile editor left gutter feels absent"
+        },
+        {
+          "id": "SN-94",
+          "title": "Editor context menu should bridge native edit actions and comments"
+        },
+        {
+          "id": "SN-93",
+          "title": "Mobile editor needs subtle undo and redo controls"
+        },
+        {
+          "id": "SN-91",
+          "title": "Vault freshness and sync safety across installed app sessions"
+        },
+        {
+          "id": "SN-90",
+          "title": "Right-click context menu on sidebar page: Create new page"
+        },
+        {
+          "id": "SN-89",
+          "title": "Sidebar page list does not support drag-to-reorder"
+        },
+        {
+          "id": "SN-88",
+          "title": "Polish post-merge reload and collapse regressions"
+        },
+        {
+          "id": "SN-87",
+          "title": "Editor left gutter dead zone on mobile — tap misses text content area"
+        },
+        {
+          "id": "SN-86",
+          "title": "AI companion: document attachments (text, Markdown, PDF)"
+        },
+        {
+          "id": "SN-85",
+          "title": "PWA data-loss: stale app shell, silent write failures, and no manual refresh path"
+        },
+        {
+          "id": "SN-84",
+          "title": "Vault API: path canonicalization, structured edit tools, navigation/search, and companion context clarity"
+        },
+        {
+          "id": "SN-83",
+          "title": "Create notebook fails silently on duplicate name"
+        },
+        {
+          "id": "SN-82",
+          "title": "\"Page + parent context\" scope omits parent page content and fails silently on remote vault pages"
+        },
+        {
+          "id": "SN-81",
+          "title": "Document interchange: DOCX import and export for Google Docs workflow"
+        },
+        {
+          "id": "SN-80",
+          "title": "Companion session persistence (opt-in, scope-linked)"
+        },
+        {
+          "id": "SN-78",
+          "title": "Collapsible headings with chevron toggle (ink-safe guard)"
+        },
+        {
+          "id": "SN-77",
+          "title": "Portable multi-notebook support: open any directory as a Smart Notes notebook"
+        },
+        {
+          "id": "SN-75",
+          "title": "Companion mobile fixes, broader scope controls, and insert-today action"
+        },
+        {
+          "id": "SN-71",
+          "title": "Vault writes and companion chat do not render KaTeX from $ syntax"
+        },
+        {
+          "id": "SN-70",
+          "title": "AI companion misreports vault write success until user reloads"
+        },
+        {
+          "id": "SN-69",
+          "title": "AI companion: copy button, larger composer targets, auto-expanding input"
+        },
+        {
+          "id": "SN-66",
+          "title": "New notebook should not auto-create an Inbox section"
+        },
+        {
+          "id": "SN-65",
+          "title": "AI system prompt should include current page content as context; Cursor loses vault tool instructions via prompt truncation"
+        },
+        {
+          "id": "SN-64",
+          "title": "Persist notebook open/closed state across sessions and platforms"
+        },
+        {
+          "id": "SN-63",
+          "title": "App cold start is slow — stuck on loading screen; PWA must match ChatGPT launch speed"
+        },
+        {
+          "id": "SN-62",
+          "title": "Default AI model and effort tier not set to highest-quality option per provider"
+        },
+        {
+          "id": "SN-61",
+          "title": "Codex errors on first turn (web search config) and model picker list is incomplete"
+        },
+        {
+          "id": "SN-60",
+          "title": "Print preview renders page heading twice"
+        },
+        {
+          "id": "SN-59",
+          "title": "Inline images lack resize and alignment controls in rich text"
+        },
+        {
+          "id": "SN-58",
+          "title": "Editor context menu shows redundant Add comment entry"
+        },
+        {
+          "id": "SN-57",
+          "title": "PDF chip click opens preview and new tab simultaneously"
+        },
+        {
+          "id": "SN-50",
+          "title": "PWA installability: icons, service worker shell, Android install"
+        },
+        {
+          "id": "SN-49",
+          "title": "Vault backup: scheduled ZIP snapshots with settings UI and restore"
+        },
+        {
+          "id": "SN-47",
+          "title": "AI companion blocks web search requests"
+        },
+        {
+          "id": "SN-20",
+          "title": "PDF attachment support — upload, drag-drop, chip, and preview pane"
+        },
+        {
+          "id": "SN-12",
+          "title": "Page export: HTML bundle and print rendering"
+        }
+      ],
+      "deployments": []
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "services": [
+    {
+      "name": "Smart Notes",
+      "kind": "app",
+      "command": "cmd /c \"set SMART_NOTES_VAULT=C:\\Projects\\smart-notes\\vault&& npm run start:stable\"",
+      "workingDirectory": ".",
+      "port": 3002,
+      "url": "http://localhost:3002",
+      "healthCheckUrl": "http://localhost:3002",
+      "dependsOn": [],
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "desktop": {
+    "viewport": "1440x900",
+    "selectionVisible": true,
+    "copiedText": "Catalogue (Final)"
+  },
+  "mobile": {
+    "viewport": "430x932",
+    "touchAction": "auto",
+    "touchmoveDefaultPrevented": false
+  }
+}

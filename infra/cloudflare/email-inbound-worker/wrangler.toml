@@ -1,0 +1,8 @@
+# Smart Notes — Cloudflare Email Routing → POST /api/email/inbound (SN-212)
+name = "smart-notes-email-inbound"
+main = "src/index.js"
+compatibility_date = "2026-08-11"
+
+# Production values are secrets, never [vars]:
+#   npx wrangler secret put INBOUND_URL
+#   npx wrangler secret put SMART_NOTES_EMAIL_INBOUND_TOKEN

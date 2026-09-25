@@ -1,0 +1,6 @@
+# Smart Notes Jupyter bootstrap profile (SN-239).
+# Keep these exact versions together; install into profiles/jupyter/.venv.
+jupyterlab==4.4.7
+jupyterlab-lsp==5.2.0
+python-lsp-server[all]==1.13.1
+ipykernel==6.30.1

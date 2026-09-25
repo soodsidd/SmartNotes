@@ -1,0 +1,36 @@
+{
+  "title": "Smart Notes",
+  "location": "https://localhost:3006/",
+  "manifestHref": "/manifest.json",
+  "registrationScope": "https://localhost:3006/",
+  "serviceWorkerActive": true,
+  "controllerActive": true,
+  "cacheKeys": [
+    "smart-notes-app-shell-v1",
+    "smart-notes-runtime-v1"
+  ],
+  "rootCached": true,
+  "apiStatus": 200,
+  "apiCached": false,
+  "display": "standalone",
+  "startUrl": "/",
+  "themeColor": "#0b0d10",
+  "backgroundColor": "#0b0d10",
+  "iconSizes": [
+    "192x192",
+    "512x512"
+  ],
+  "standaloneMediaQuery": false,
+  "failedUrls": [
+    "404 https://localhost:3006/api/chat/providers",
+    "404 https://localhost:3006/api/chat/settings",
+    "404 https://localhost:3006/api/chat/reset-session",
+    "404 https://localhost:3006/api/agent-settings",
+    "404 https://localhost:3006/api/chat/reset-session",
+    "404 https://localhost:3006/api/chat/settings",
+    "404 https://localhost:3006/api/chat/providers",
+    "404 https://localhost:3006/api/agent-settings",
+    "404 https://localhost:3006/api/chat/reset-session",
+    "404 https://localhost:3006/api/chat/reset-session"
+  ]
+}

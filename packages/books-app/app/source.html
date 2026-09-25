@@ -1,0 +1,540 @@
+<style>
+:root{color-scheme:light;--background:#f6f6f4;--foreground:#0d0d0d;--surface:#fbfbf9;--accent:oklch(0.58 0.09 195);--accent-foreground:#ffffff;--secondary:#ececf0;--secondary-foreground:#4d4d57;--muted:#f2f2f4;--muted-foreground:#8e8ea0;--border:#dedee4;--input:#dedee4;--ring:oklch(0.58 0.09 195);--destructive:oklch(0.55 0.18 25);--radius-sm:6px;--radius-md:8px;--shadow-card:0 1px 0 rgba(0,0,0,.04),0 10px 30px -20px rgba(0,0,0,.18);--font-sans:'Hanken Grotesk',system-ui,sans-serif;--font-mono:'JetBrains Mono',ui-monospace,monospace}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--background:#1e1e1e;--foreground:#ececec;--surface:#1e1e1e;--accent:oklch(0.74 0.10 192);--accent-foreground:#1e1e1e;--secondary:#2a2a2a;--secondary-foreground:#b4b4b4;--muted:#171717;--muted-foreground:#8a8a90;--border:#333333;--input:#333333;--ring:oklch(0.74 0.10 192);--destructive:oklch(0.65 0.16 25);--shadow-card:0 1px 0 rgba(255,255,255,.04),0 10px 30px -20px rgba(0,0,0,.45)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--background);color:var(--foreground);font-family:var(--font-sans);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit;min-height:44px;border:1px solid var(--input);border-radius:var(--radius-sm);background:var(--surface);padding:8px 12px}
+button{cursor:pointer;font-weight:600}button.primary{border-color:var(--accent);background:var(--accent);color:var(--accent-foreground)}button.quiet{background:transparent;border-color:transparent;color:var(--muted-foreground)}button.small{min-height:36px;padding:6px 10px;font-size:12px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:4px solid var(--ring);outline-offset:4px}
+main{max-width:960px;margin:auto;padding:12px}
+.app-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.app-head h1{font-size:16px;margin:0;flex:1;font-weight:700;letter-spacing:-0.01em}
+.status{color:var(--muted-foreground);font-size:12px;flex:1 1 100%;order:3}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:12px 0;border-bottom:1px solid var(--border)}
+.tabs button{border:0;border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:transparent;font-size:12px;padding:8px 4px;min-height:40px}
+.tabs button[aria-selected=true]{background:var(--secondary);color:var(--foreground)}
+.panel{display:none}.panel.active{display:block}
+.card{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);box-shadow:var(--shadow-card);padding:12px;margin-bottom:12px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}.grow{flex:1;min-width:120px}
+.eyebrow{font-size:12px;font-weight:600;color:var(--muted-foreground)}
+.row{display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)}
+.row .main{flex:1;min-width:0}.row .t{font-weight:600}.row .a,.row .m{color:var(--muted-foreground);font-size:12px}
+.row select{min-height:36px;padding:4px 6px;font-size:12px}
+.stars{color:var(--accent);font-size:12px;letter-spacing:1px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--border);border-radius:999px;background:var(--surface);min-height:36px;padding:6px 12px;font-size:12px;font-weight:600}
+.chip[aria-pressed=true]{background:var(--accent);color:var(--accent-foreground);border-color:var(--accent)}
+.empty{padding:24px;text-align:center;color:var(--muted-foreground)}
+.pick h3{margin:0 0 2px;font-size:15px}.pick .byline{color:var(--muted-foreground);font-size:12px;margin-bottom:8px}
+.pick .hook{font-weight:600;margin:0 0 8px}
+.pick dl{margin:0 0 8px;display:grid;gap:6px}.pick dt{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-foreground)}.pick dd{margin:0}
+.quote{border-left:2px solid var(--border);padding:0 0 0 10px;margin:6px 0;color:var(--secondary-foreground)}
+.quote cite{display:block;font-size:11px;color:var(--muted-foreground);font-style:normal;margin-top:2px}
+.detail{white-space:pre-wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.meta{font-family:var(--font-mono);font-size:11px;color:var(--muted-foreground)}
+.working{border-left:3px solid var(--accent)}
+@media(max-width:640px){main{padding:8px}.tabs{position:sticky;top:0;z-index:3;background:var(--background);padding-top:4px;margin:8px 0}.row{flex-wrap:wrap}.row select{flex:1}}
+</style>
+<main>
+  <header class="app-head">
+    <h1>Reading</h1>
+    <span id="status" class="status" role="status">Loading…</span>
+  </header>
+  <nav class="tabs" role="tablist" aria-label="Reading views">
+    <button role="tab" aria-selected="true" data-tab="now" type="button">Now</button>
+    <button role="tab" aria-selected="false" data-tab="next" type="button">Next up</button>
+    <button role="tab" aria-selected="false" data-tab="read" type="button">Read</button>
+    <button role="tab" aria-selected="false" data-tab="picks" type="button">Picks</button>
+  </nav>
+  <section id="now" class="panel active" role="tabpanel"></section>
+  <section id="next" class="panel" role="tabpanel"></section>
+  <section id="read" class="panel" role="tabpanel"></section>
+  <section id="picks" class="panel" role="tabpanel"></section>
+</main>
+<script>
+(() => {
+  'use strict';
+
+  const APP_PATH = '/*__APP_PATH__*/';
+  const CATALOG = /*__BOOKS_CATALOG__*/;
+
+  const SHELF = 'shelf';
+  const PICKS = 'picks';
+  const STATUSES = ['reading', 'want', 'read', 'paused', 'dropped'];
+  const LABEL = { reading: 'Reading', want: 'Next up', read: 'Read', paused: 'Paused', dropped: 'Gave up' };
+  const GENRES = ['Fiction', 'Non-fiction', 'Sci-fi', 'Thriller', 'History', 'Biography', 'Business', 'Science', 'Philosophy', 'Fantasy'];
+
+  const statusEl = document.querySelector('#status');
+  const panels = { now: document.querySelector('#now'), next: document.querySelector('#next'), read: document.querySelector('#read'), picks: document.querySelector('#picks') };
+
+  let shelfRows = [];
+  let pickRows = [];
+  let search = '';
+  let readLimit = 40;
+  let pending = null;
+  const request = { mood: '', genres: [], length: 'any', count: 3 };
+
+  const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined && text !== null && text !== '') node.textContent = String(text); return node; };
+  const say = (text) => { statusEl.textContent = text; };
+  const stars = (n) => (Number(n) > 0 ? '★'.repeat(Number(n)) + '☆'.repeat(Math.max(0, 5 - Number(n))) : '');
+  const slug = (title, author) => (String(title || '') + '-' + String(author || '')).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'book';
+  const year = (iso) => (typeof iso === 'string' && iso.length >= 4 ? iso.slice(0, 4) : '');
+
+  // Effective library: static Goodreads catalog overlaid with app-owned rows.
+  function library() {
+    const byKey = new Map();
+    for (const book of CATALOG) {
+      byKey.set(book.i, {
+        key: book.i, title: book.t, author: book.a, rating: book.r || 0, pages: book.p || 0,
+        published: book.y || 0, dateRead: book.d || '', review: book.v || '',
+        status: book.s === 'currently-reading' ? 'reading' : book.s === 'to-read' ? 'want' : 'read',
+        note: '', rowId: null, source: 'goodreads',
+      });
+    }
+    for (const row of shelfRows) {
+      const values = row.values || {};
+      const existing = byKey.get(values.key);
+      if (existing) {
+        existing.status = values.status || existing.status;
+        existing.rowId = row.id;
+        if (Number(values.rating) > 0) existing.rating = Number(values.rating);
+        if (values.note) existing.note = values.note;
+      } else {
+        byKey.set(values.key, {
+          key: values.key, title: values.title || '(untitled)', author: values.author || '',
+          rating: Number(values.rating) || 0, pages: 0, published: 0, dateRead: values.changed || '',
+          review: '', status: values.status || 'want', note: values.note || '', rowId: row.id, source: 'manual',
+        });
+      }
+    }
+    return [...byKey.values()];
+  }
+
+  const byStatus = (books, status) => books.filter((book) => book.status === status);
+  const matches = (book) => { if (!search) return true; const needle = search.toLowerCase(); return book.title.toLowerCase().includes(needle) || book.author.toLowerCase().includes(needle); };
+
+  async function setStatus(book, status) {
+    say('Saving…');
+    try {
+      const values = { key: book.key, title: book.title, author: book.author, status, rating: book.rating || 0, note: book.note || '', changed: new Date().toISOString().slice(0, 10) };
+      if (book.rowId) await smartNotesApp.update(SHELF, book.rowId, values);
+      else await smartNotesApp.add(SHELF, values);
+      await load();
+      say(book.title + ' → ' + LABEL[status]);
+    } catch (error) { say(error.message); }
+  }
+
+  async function setRating(book, rating) {
+    say('Saving…');
+    try {
+      const values = { key: book.key, title: book.title, author: book.author, status: book.status, rating: Number(rating) || 0, note: book.note || '', changed: new Date().toISOString().slice(0, 10) };
+      if (book.rowId) await smartNotesApp.update(SHELF, book.rowId, values);
+      else await smartNotesApp.add(SHELF, values);
+      await load();
+      say('Rated ' + book.title);
+    } catch (error) { say(error.message); }
+  }
+
+  function statusSelect(book) {
+    const select = el('select');
+    select.setAttribute('aria-label', 'Status for ' + book.title);
+    for (const status of STATUSES) {
+      const option = el('option', null, LABEL[status]);
+      option.value = status;
+      if (status === book.status) option.selected = true;
+      select.append(option);
+    }
+    select.onchange = () => setStatus(book, select.value);
+    return select;
+  }
+
+  function ratingSelect(book) {
+    const select = el('select');
+    select.setAttribute('aria-label', 'My rating for ' + book.title);
+    for (const value of [0, 1, 2, 3, 4, 5]) {
+      const option = el('option', null, value === 0 ? 'Unrated' : stars(value));
+      option.value = String(value);
+      if (value === (book.rating || 0)) option.selected = true;
+      select.append(option);
+    }
+    select.onchange = () => setRating(book, select.value);
+    return select;
+  }
+
+  function bookRow(book, options) {
+    const row = el('div', 'row');
+    const main = el('div', 'main');
+    main.append(el('div', 't', book.title));
+    if (book.author) main.append(el('div', 'a', book.author));
+    const bits = [];
+    if (book.published) bits.push(book.published);
+    if (book.pages) bits.push(book.pages + 'p');
+    if (book.dateRead) bits.push(year(book.dateRead));
+    if (book.rating) bits.push(stars(book.rating));
+    if (bits.length) main.append(el('div', 'm', bits.join(' · ')));
+    if (book.note) main.append(el('div', 'm', book.note));
+    row.append(main);
+    if (options && options.rating) row.append(ratingSelect(book));
+    row.append(statusSelect(book));
+    return row;
+  }
+
+  function renderNow(books) {
+    const host = panels.now;
+    host.replaceChildren();
+    const reading = byStatus(books, 'reading').concat(byStatus(books, 'paused'));
+    const card = el('div', 'card');
+    card.append(el('div', 'eyebrow', 'Currently reading'));
+    if (!reading.length) card.append(el('div', 'empty', 'Nothing in progress. Add a book below or check Next up.'));
+    else for (const book of reading) card.append(bookRow(book, { rating: true }));
+    host.append(card);
+
+    const add = el('div', 'card');
+    add.append(el('div', 'eyebrow', 'Start a book'));
+    const form = el('form', 'toolbar');
+    const title = el('input', 'grow'); title.placeholder = 'Title'; title.required = true; title.setAttribute('aria-label', 'Title');
+    const author = el('input', 'grow'); author.placeholder = 'Author'; author.setAttribute('aria-label', 'Author');
+    const submit = el('button', 'primary', 'Add as reading'); submit.type = 'submit';
+    form.append(title, author, submit);
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const name = title.value.trim();
+      if (!name) return;
+      await setStatus({ key: slug(name, author.value), title: name, author: author.value.trim(), rating: 0, note: '', rowId: null, status: 'reading' }, 'reading');
+      title.value = ''; author.value = '';
+    };
+    add.append(form);
+    host.append(add);
+
+    const done = byStatus(books, 'read');
+    const rated = done.filter((book) => book.rating > 0);
+    const summary = el('div', 'card');
+    summary.append(el('div', 'eyebrow', 'Library'));
+    summary.append(el('div', 'meta', done.length + ' read · ' + byStatus(books, 'want').length + ' next up · ' + reading.length + ' in progress'));
+    if (rated.length) summary.append(el('div', 'meta', 'average rating ' + (rated.reduce((total, book) => total + book.rating, 0) / rated.length).toFixed(2)));
+    host.append(summary);
+  }
+
+  function renderNext(books) {
+    const host = panels.next;
+    host.replaceChildren();
+    const card = el('div', 'card');
+    card.append(el('div', 'eyebrow', 'Next up'));
+    const want = byStatus(books, 'want').filter(matches);
+    if (!want.length) card.append(el('div', 'empty', 'Nothing queued. Ask for picks.'));
+    else for (const book of want) card.append(bookRow(book, {}));
+    host.append(card);
+  }
+
+  function renderRead(books) {
+    const host = panels.read;
+    host.replaceChildren();
+    const card = el('div', 'card');
+    const bar = el('div', 'toolbar');
+    const input = el('input', 'grow');
+    input.type = 'search'; input.placeholder = 'Search title or author'; input.value = search;
+    input.setAttribute('aria-label', 'Search read books');
+    const list = el('div');
+    // The input node is kept alive across filter redraws so the caret survives typing.
+    const draw = () => {
+      const done = byStatus(books, 'read').concat(byStatus(books, 'dropped')).filter(matches)
+        .sort((a, b) => String(b.dateRead).localeCompare(String(a.dateRead)));
+      list.replaceChildren(el('div', 'meta', done.length + ' books'));
+      for (const book of done.slice(0, readLimit)) list.append(bookRow(book, { rating: true }));
+      if (done.length > readLimit) {
+        const more = el('button', 'small', 'Show more');
+        more.type = 'button';
+        more.onclick = () => { readLimit += 60; draw(); };
+        list.append(more);
+      }
+    };
+    input.oninput = () => { search = input.value; readLimit = 40; draw(); };
+    bar.append(input);
+    card.append(bar, list);
+    host.append(card);
+    draw();
+  }
+
+  // ---- Companion round trip -------------------------------------------------
+
+  function tasteProfile(books) {
+    const compact = (book) => ({ title: book.title, author: book.author, rating: book.rating || undefined, read: year(book.dateRead) || undefined });
+    // My own Goodreads review text is the strongest taste signal, so opinionated
+    // books carry it; the trimming pass below keeps the turn inside the host budget.
+    const opinion = (book) => (book.review ? { ...compact(book), myReview: book.review } : compact(book));
+    const done = byStatus(books, 'read');
+    const loved = done.filter((book) => book.rating >= 4).sort((a, b) => b.rating - a.rating || String(b.dateRead).localeCompare(String(a.dateRead)));
+    const meh = done.filter((book) => book.rating > 0 && book.rating <= 2);
+    const recent = done.slice().sort((a, b) => String(b.dateRead).localeCompare(String(a.dateRead)));
+    const payload = {
+      totals: { read: done.length, wantToRead: byStatus(books, 'want').length, inProgress: byStatus(books, 'reading').length },
+      reading: byStatus(books, 'reading').map(compact),
+      wantToRead: byStatus(books, 'want').map(compact),
+      lovedFourPlus: loved.map(opinion),
+      didNotLike: meh.map(opinion),
+      recentlyRead: recent.map(compact),
+      gaveUpOn: byStatus(books, 'dropped').map(compact),
+      alreadyRecommended: pickRows.map((row) => (row.values || {}).title).filter(Boolean),
+      dismissed: pickRows.filter((row) => (row.values || {}).verdict === 'dismissed').map((row) => (row.values || {}).title).filter(Boolean),
+    };
+    // Keep the injected turn inside the host payload budget by trimming the long tails first.
+    const caps = [['recentlyRead', 25], ['lovedFourPlus', 30], ['alreadyRecommended', 40], ['recentlyRead', 12], ['lovedFourPlus', 15], ['alreadyRecommended', 20], ['recentlyRead', 6], ['lovedFourPlus', 8]];
+    let index = 0;
+    while (JSON.stringify(payload).length > 7000 && index < caps.length) {
+      payload[caps[index][0]] = payload[caps[index][0]].slice(0, caps[index][1]);
+      index += 1;
+    }
+    return payload;
+  }
+
+  function requestText(id) {
+    const lengthNote = { any: '', short: 'Keep it under 300 pages.', medium: 'Around 300-450 pages is fine.', long: 'I do not mind a long book if it earns it.' }[request.length];
+    return [
+      'Recommend ' + request.count + ' books for me to read next, using maximum effort.',
+      request.mood ? 'What I feel like right now: ' + request.mood : '',
+      request.genres.length ? 'Lean toward: ' + request.genres.join(', ') + '.' : '',
+      lengthNote,
+      '',
+      'I read only a few books a year, so each pick has to earn its place. Search the web for current critical reception, review excerpts and community ratings before you answer — do not guess from memory, and do not pad with blurbs.',
+      'Skip anything already in the context below (read, reading, next up, previously recommended or dismissed).',
+      '',
+      'Then deliver the result into this app by calling the app_send vault tool with path "' + APP_PATH + '" and a message of exactly this shape:',
+      '{"type":"recommendations","requestId":"' + id + '","items":[{"title":"","author":"","year":2024,"pages":320,"rating":4.2,"hook":"one sentence","why":"2-3 sentences tied to specific books and ratings in my context","reviews":[{"source":"publication or critic","quote":"short excerpt"}],"similarTo":"a book of mine it resembles, and how it differs","readIf":"","skipIf":"","contentNotes":"pacing, difficulty, translation quality","detail":"3-4 paragraph spoiler-free description"}]}',
+      'Send that app_send call as soon as the picks are ready, then summarise them briefly in chat.',
+    ].filter(Boolean).join('\n');
+  }
+
+  async function askForPicks() {
+    const id = 'r' + Date.now().toString(36);
+    pending = { id, at: Date.now() };
+    renderPicks(library());
+    say('Asking the companion…');
+    try {
+      await smartNotesApp.companion.send({ text: requestText(id), payload: tasteProfile(library()) });
+      say('Companion is working. Picks will appear here.');
+    } catch (error) {
+      pending = null;
+      renderPicks(library());
+      say(error.message);
+    }
+  }
+
+  async function askForDetail(row) {
+    const values = row.values || {};
+    say('Asking for more on ' + values.title + '…');
+    try {
+      await smartNotesApp.companion.send({
+        text: [
+          'Tell me much more about "' + values.title + '" by ' + values.author + ' before I commit to reading it.',
+          'Search the web for reviews and reader reactions. Cover: what it actually is, how it reads page to page, who it rewards, the strongest criticism against it, and whether it is worth my limited reading time.',
+          '',
+          'Deliver it by calling app_send with path "' + APP_PATH + '" and message:',
+          '{"type":"detail","key":"' + values.key + '","detail":"several paragraphs, spoiler-free"}',
+        ].join('\n'),
+        payload: { book: { title: values.title, author: values.author }, myTaste: tasteProfile(library()).lovedFourPlus },
+      });
+      say('Asked for detail on ' + values.title);
+    } catch (error) { say(error.message); }
+  }
+
+  async function savePick(item, requestId) {
+    const key = slug(item.title, item.author);
+    const values = {
+      key,
+      title: String(item.title || 'Untitled').slice(0, 300),
+      author: String(item.author || '').slice(0, 200),
+      published: Number(item.year) || 0,
+      pages: Number(item.pages) || 0,
+      rating: Number(item.rating) || 0,
+      hook: String(item.hook || '').slice(0, 500),
+      data: JSON.stringify({
+        why: item.why || '', reviews: Array.isArray(item.reviews) ? item.reviews.slice(0, 5) : [],
+        similarTo: item.similarTo || '', readIf: item.readIf || '', skipIf: item.skipIf || '',
+        contentNotes: item.contentNotes || '',
+      }).slice(0, 20000),
+      detail: String(item.detail || '').slice(0, 20000),
+      verdict: 'new',
+      asked: String(requestId || '').slice(0, 40),
+      added: new Date().toISOString().slice(0, 10),
+    };
+    const existing = pickRows.find((row) => (row.values || {}).key === key);
+    if (existing) await smartNotesApp.update(PICKS, existing.id, values);
+    else await smartNotesApp.add(PICKS, values);
+  }
+
+  async function setVerdict(row, verdict) {
+    say('Saving…');
+    try {
+      await smartNotesApp.update(PICKS, row.id, { ...row.values, verdict });
+      if (verdict === 'want') {
+        const values = row.values || {};
+        await smartNotesApp.add(SHELF, {
+          key: values.key, title: values.title, author: values.author, status: 'want',
+          rating: 0, note: 'Companion pick', changed: new Date().toISOString().slice(0, 10),
+        });
+      }
+      await load();
+      say(verdict === 'want' ? 'Added to Next up' : 'Dismissed');
+    } catch (error) { say(error.message); }
+  }
+
+  function pickCard(row) {
+    const values = row.values || {};
+    let extra = {};
+    try { extra = JSON.parse(values.data || '{}'); } catch { extra = {}; }
+    const card = el('div', 'card pick');
+    card.append(el('h3', null, values.title));
+    const bits = [values.author, values.published || '', values.pages ? values.pages + ' pages' : '', values.rating ? values.rating + '★ avg' : ''].filter(Boolean);
+    card.append(el('div', 'byline', bits.join(' · ')));
+    if (values.hook) card.append(el('p', 'hook', values.hook));
+    const list = el('dl');
+    const add = (label, text) => { if (!text) return; list.append(el('dt', null, label)); list.append(el('dd', null, text)); };
+    add('Why you', extra.why);
+    add('Close to', extra.similarTo);
+    add('Read it if', extra.readIf);
+    add('Skip it if', extra.skipIf);
+    add('Notes', extra.contentNotes);
+    if (list.childNodes.length) card.append(list);
+    if (Array.isArray(extra.reviews) && extra.reviews.length) {
+      card.append(el('div', 'eyebrow', 'Reviews'));
+      for (const review of extra.reviews) {
+        const quote = el('blockquote', 'quote', review && review.quote ? review.quote : '');
+        if (review && review.source) quote.append(el('cite', null, review.source));
+        card.append(quote);
+      }
+    }
+    const actions = el('div', 'actions');
+    const want = el('button', 'primary small', 'Add to Next up'); want.type = 'button'; want.onclick = () => setVerdict(row, 'want');
+    const no = el('button', 'small', 'Not for me'); no.type = 'button'; no.onclick = () => setVerdict(row, 'dismissed');
+    actions.append(want, no);
+    if (values.detail) {
+      const toggle = el('button', 'quiet small', 'Full description'); toggle.type = 'button';
+      const detail = el('div', 'detail', values.detail); detail.hidden = true;
+      toggle.onclick = () => { detail.hidden = !detail.hidden; toggle.textContent = detail.hidden ? 'Full description' : 'Hide description'; };
+      actions.append(toggle);
+      card.append(actions, detail);
+    } else {
+      const more = el('button', 'quiet small', 'Tell me more'); more.type = 'button'; more.onclick = () => askForDetail(row);
+      actions.append(more);
+      card.append(actions);
+    }
+    if (values.verdict && values.verdict !== 'new') card.append(el('div', 'meta', values.verdict === 'want' ? 'queued' : 'dismissed'));
+    return card;
+  }
+
+  function renderPicks() {
+    const host = panels.picks;
+    host.replaceChildren();
+
+    const ask = el('div', 'card');
+    ask.append(el('div', 'eyebrow', 'Ask for a recommendation'));
+    const mood = el('input', 'grow');
+    mood.placeholder = 'What do you feel like? (optional)';
+    mood.value = request.mood;
+    mood.setAttribute('aria-label', 'What do you feel like reading');
+    mood.oninput = () => { request.mood = mood.value; };
+    const moodBar = el('div', 'toolbar'); moodBar.append(mood); ask.append(moodBar);
+
+    const chips = el('div', 'chips');
+    for (const genre of GENRES) {
+      const chip = el('button', 'chip', genre);
+      chip.type = 'button';
+      chip.setAttribute('aria-pressed', request.genres.includes(genre) ? 'true' : 'false');
+      chip.onclick = () => {
+        const at = request.genres.indexOf(genre);
+        if (at >= 0) request.genres.splice(at, 1); else request.genres.push(genre);
+        chip.setAttribute('aria-pressed', request.genres.includes(genre) ? 'true' : 'false');
+      };
+      chips.append(chip);
+    }
+    ask.append(chips);
+
+    const controls = el('div', 'toolbar');
+    const length = el('select'); length.setAttribute('aria-label', 'Length');
+    for (const [value, label] of [['any', 'Any length'], ['short', 'Short (<300p)'], ['medium', 'Medium'], ['long', 'Long is fine']]) {
+      const option = el('option', null, label); option.value = value; if (request.length === value) option.selected = true; length.append(option);
+    }
+    length.onchange = () => { request.length = length.value; };
+    const count = el('select'); count.setAttribute('aria-label', 'How many');
+    for (const value of [3, 5]) { const option = el('option', null, value + ' picks'); option.value = String(value); if (request.count === value) option.selected = true; count.append(option); }
+    count.onchange = () => { request.count = Number(count.value); };
+    const go = el('button', 'primary', 'Show recommendations'); go.type = 'button'; go.onclick = askForPicks;
+    controls.append(length, count, go);
+    ask.append(controls);
+    host.append(ask);
+
+    if (pending) {
+      const waiting = el('div', 'card working');
+      waiting.append(el('div', 'eyebrow', 'Working'));
+      waiting.append(el('div', null, 'The companion is researching. Picks land here when it answers — you can switch tabs or close the sidebar.'));
+      const cancel = el('button', 'quiet small', 'Stop waiting'); cancel.type = 'button';
+      cancel.onclick = () => { pending = null; renderPicks(); };
+      waiting.append(cancel);
+      host.append(waiting);
+    }
+
+    const fresh = pickRows.filter((row) => (row.values || {}).verdict === 'new');
+    const resolved = pickRows.filter((row) => (row.values || {}).verdict !== 'new');
+    if (!fresh.length && !pending) host.append(el('div', 'empty', 'No open picks. Ask for recommendations above.'));
+    for (const row of fresh.slice().reverse()) host.append(pickCard(row));
+    if (resolved.length) {
+      const details = el('details', 'card');
+      details.append(el('summary', 'eyebrow', 'Earlier picks (' + resolved.length + ')'));
+      for (const row of resolved.slice().reverse()) details.append(pickCard(row));
+      host.append(details);
+    }
+  }
+
+  function renderAll() {
+    const books = library();
+    renderNow(books);
+    renderNext(books);
+    renderRead(books);
+    renderPicks();
+  }
+
+  async function load() {
+    try {
+      const [shelf, picks] = await Promise.all([
+        smartNotesApp.query(SHELF, { limit: 200 }),
+        smartNotesApp.query(PICKS, { limit: 200 }),
+      ]);
+      shelfRows = shelf.rows || [];
+      pickRows = picks.rows || [];
+      renderAll();
+      say(CATALOG.length + ' books imported · ready');
+    } catch (error) {
+      say(error.message);
+    }
+  }
+
+  smartNotesApp.companion.onMessage(async (message) => {
+    if (!message || typeof message !== 'object') return;
+    try {
+      if (message.type === 'recommendations' && Array.isArray(message.items)) {
+        for (const item of message.items.slice(0, 8)) await savePick(item, message.requestId);
+        pending = null;
+        await load();
+        say(message.items.length + ' new picks arrived');
+      } else if (message.type === 'detail' && message.key) {
+        const row = pickRows.find((candidate) => (candidate.values || {}).key === message.key);
+        if (!row) { say('No pick matches that book.'); return; }
+        await smartNotesApp.update(PICKS, row.id, { ...row.values, detail: String(message.detail || '').slice(0, 20000) });
+        await load();
+        say('Added full description');
+      } else if (message.type === 'status') {
+        say(String(message.message || '').slice(0, 200));
+      }
+    } catch (error) { say(error.message); }
+  });
+
+  for (const tab of document.querySelectorAll('.tabs button')) {
+    tab.onclick = () => {
+      for (const other of document.querySelectorAll('.tabs button')) other.setAttribute('aria-selected', other === tab ? 'true' : 'false');
+      for (const [name, panel] of Object.entries(panels)) panel.classList.toggle('active', name === tab.dataset.tab);
+    };
+  }
+
+  load();
+})();
+</script>
