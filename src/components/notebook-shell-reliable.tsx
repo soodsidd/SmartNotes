@@ -286,6 +286,7 @@ import {
   buildReloadDraftSnapshot,
   hasUnsavedLocalDraftChanges,
   getReloadStatusLabel,
+  rebaseDraftAfterSave,
   shouldBlockPendingPageReload,
 } from "@/lib/page-reload";
 import { buildEffectiveEditorHtml, planPageSwap } from "@/lib/editor-swap-helpers";
@@ -3253,10 +3254,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         hydrateDraft(savedDraft);
       } else {
         if (draftRef.current?.path === currentDraft.path) {
-          const rebasedDraft = {
-            ...draftRef.current,
-            ...savedPage,
-          };
+          const rebasedDraft = rebaseDraftAfterSave(draftRef.current, savedPage);
 
           draftRef.current = rebasedDraft;
           setDraft(rebasedDraft);

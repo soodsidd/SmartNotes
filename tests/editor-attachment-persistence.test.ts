@@ -7,6 +7,12 @@ import {
   createEditorExtensions,
   insertUploadedEditorAsset,
 } from "@/lib/rich-text-editor-config";
+import {
+  buildReloadDraftSnapshot,
+  hasUnsavedLocalDraftChanges,
+  rebaseDraftAfterSave,
+} from "@/lib/page-reload";
+import type { ApiPageDocument } from "@/lib/vault-contract";
 import { uploadPageAsset } from "@/server/vault/assets";
 import { createPage, readPage, savePage } from "@/server/vault/pages";
 
@@ -143,5 +149,48 @@ describe("editor attachment persistence (SN-272)", () => {
       )
     ).toThrow(/still available for recovery/i);
     expect(publishHtml).not.toHaveBeenCalled();
+  });
+
+  it("preserves a later attachment when an older save response returns", () => {
+    const firstAttachment =
+      '<p><span data-file-attachment="" data-href="/vault/page.assets/first.pdf">first.pdf</span></p>';
+    const secondAttachment =
+      '<p><span data-file-attachment="" data-href="/vault/page.assets/first.pdf">first.pdf</span>' +
+      '<span data-file-attachment="" data-href="/vault/page.assets/second.pdf">second.pdf</span></p>';
+    const base = {
+      id: "page",
+      path: "Notebook/Section/page",
+      title: "Page",
+      slug: "page",
+      createdAt: "2026-09-26T00:00:00.000Z",
+      updatedAt: "2026-09-26T00:00:00.000Z",
+      preview: "",
+      content: firstAttachment,
+      body: firstAttachment,
+      parentId: null,
+      noteType: "text",
+      metadata: {},
+      notebookPath: "Notebook",
+      notebookName: "Notebook",
+      sectionPath: "Notebook/Section",
+      sectionName: "Section",
+    } satisfies ApiPageDocument;
+    const latestDraft = {
+      ...base,
+      content: secondAttachment,
+    };
+    const olderSaveResponse = {
+      ...base,
+      updatedAt: "2026-09-26T00:00:01.000Z",
+    };
+
+    const rebased = rebaseDraftAfterSave(latestDraft, olderSaveResponse);
+
+    expect(rebased.content).toContain("first.pdf");
+    expect(rebased.content).toContain("second.pdf");
+    expect(rebased.updatedAt).toBe(olderSaveResponse.updatedAt);
+    expect(
+      hasUnsavedLocalDraftChanges(rebased, buildReloadDraftSnapshot(olderSaveResponse))
+    ).toBe(true);
   });
 });

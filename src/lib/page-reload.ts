@@ -4,6 +4,24 @@ export interface ReloadableDraftSnapshot {
   content: string;
 }
 
+/**
+ * Apply server-owned save metadata without letting an older in-flight response
+ * overwrite edits made after that save began. The queued save path will persist
+ * the preserved local title/content next (SN-272).
+ */
+export function rebaseDraftAfterSave<T extends ReloadableDraftSnapshot>(
+  latestDraft: T,
+  savedPage: T
+): T {
+  return {
+    ...latestDraft,
+    ...savedPage,
+    path: latestDraft.path,
+    title: latestDraft.title,
+    content: latestDraft.content,
+  };
+}
+
 export function buildReloadDraftSnapshot(page: ReloadableDraftSnapshot) {
   return JSON.stringify({
     path: page.path,
