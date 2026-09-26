@@ -216,3 +216,39 @@ export async function uploadEditorAsset(pagePath: string, file: File) {
     asset: { url: string; path: string; fileName: string; isImage: boolean };
   };
 }
+
+export interface UploadedEditorAsset {
+  url: string;
+  path: string;
+  fileName: string;
+  isImage: boolean;
+}
+
+/**
+ * Insert an uploaded asset and verify that the editor document actually owns
+ * the returned vault URL before the UI reports success (SN-272).
+ */
+export function insertUploadedEditorAsset(
+  editor: Editor,
+  asset: UploadedEditorAsset,
+  originalFileName: string,
+  publishHtml: (html: string) => void
+): string {
+  const inserted = asset.isImage
+    ? editor.chain().focus().setImage({ src: asset.url, alt: originalFileName }).run()
+    : editor
+        .chain()
+        .focus()
+        .insertFileAttachment({ href: asset.url, fileName: asset.fileName })
+        .run();
+
+  const html = editor.getHTML();
+  if (!inserted || !html.includes(asset.url)) {
+    throw new Error(
+      `The file was uploaded to ${asset.path}, but the attachment could not be added to this note. The uploaded copy is still available for recovery.`
+    );
+  }
+
+  publishHtml(html);
+  return html;
+}

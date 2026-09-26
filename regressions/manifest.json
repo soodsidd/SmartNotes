@@ -3030,6 +3030,46 @@
       "failureMeaning": "PDF chips may no longer launch the immersive reader with the correct file target, or last-read page and zoom preferences may stop persisting per attachment."
     },
     {
+      "id": "unit-sn-272-editor-attachment-persistence",
+      "name": "SN-272 editor attachment persistence",
+      "description": "Jest: tests/editor-attachment-persistence.test.ts — uploaded PDF insertion, current-draft publication, vault save, and reload.",
+      "intent": "Prevents toolbar and drag/drop PDF uploads from reporting success while leaving only an orphan asset and no durable attachment chip in the page HTML.",
+      "whenToRun": "Pre-merge when changing editor asset upload, TipTap attachment insertion, rich-text draft publication, or attachment autosave wiring.",
+      "failureMeaning": "A PDF may upload into the page assets directory but disappear from the note because the chip was rejected or never published into the saved page draft.",
+      "appType": "node",
+      "command": "npm test -- tests/editor-attachment-persistence.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "integration",
+        "node",
+        "pdf",
+        "attachments",
+        "editor",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "integration",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-272",
+      "addedAt": "2026-09-25",
+      "sourceFiles": [
+        {
+          "path": "tests/editor-attachment-persistence.test.ts"
+        },
+        {
+          "path": "src/components/rich-text-editor.tsx"
+        },
+        {
+          "path": "src/lib/rich-text-editor-config.ts"
+        }
+      ]
+    },
+    {
       "id": "unit-page-export",
       "name": "Page Export",
       "description": "Jest: tests/page-export.test.ts",

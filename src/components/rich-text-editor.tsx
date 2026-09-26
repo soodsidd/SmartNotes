@@ -51,7 +51,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { createEditorExtensions, looksLikeMarkdown, parseMarkdownToTiptapJson, TEXT_COLOR_PALETTE, FONT_FAMILIES, FONT_SIZES, uploadEditorAsset } from "@/lib/rich-text-editor-config";
+import {
+  createEditorExtensions,
+  FONT_FAMILIES,
+  FONT_SIZES,
+  insertUploadedEditorAsset,
+  looksLikeMarkdown,
+  parseMarkdownToTiptapJson,
+  TEXT_COLOR_PALETTE,
+  uploadEditorAsset,
+} from "@/lib/rich-text-editor-config";
 import { handleFormatBarChromePointerDown } from "@/lib/format-bar-focus";
 import { describeAssetUploadFailure } from "@/lib/editor-asset-upload";
 import { formatLocalDate } from "@/lib/ai-sidebar";
@@ -464,11 +473,12 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     async function insertUploadedAsset(file: File) {
       if (!editor || !pagePath) return;
       const { asset } = await uploadEditorAsset(pagePath, file);
-      if (asset.isImage) {
-        editor.chain().focus().setImage({ src: asset.url, alt: file.name }).run();
-      } else {
-        editor.chain().focus().insertFileAttachment({ href: asset.url, fileName: asset.fileName }).run();
-      }
+      const html = insertUploadedEditorAsset(editor, asset, file.name, onChange);
+
+      // The helper publishes through the current page callback explicitly
+      // instead of relying solely on TipTap's onUpdate callback. A duplicate
+      // identical update is harmless and React batches it (SN-272).
+      lastEmittedRef.current = html;
     }
 
     async function handleAssetFiles(files: FileList | File[] | null) {
