@@ -3100,6 +3100,59 @@
       "whenToRun": "Pre-merge when touching the related feature area."
     },
     {
+      "id": "unit-page-package",
+      "name": "Native text page package export and import",
+      "description": "Jest: versioned text-page package round-trip, validation, path safety, additive collision handling, asset URL rewriting, ink restoration, atomic rollback, UI entry points, and existing HTML export behavior.",
+      "intent": "Prevents native page packages from losing rich HTML, referenced sibling assets, metadata, or text-page ink; importing over existing content; accepting unsafe or unsupported archives; leaving partial vault files after failure; or regressing existing HTML export.",
+      "whenToRun": "Pre-merge when changing native page package export/import, vault package validation or materialization, page tree package actions, or existing page export behavior.",
+      "failureMeaning": "A text page may not survive a package round trip, unsafe or malformed archives may mutate the vault, import may overwrite or partially materialize files, package actions may disappear, or HTML export may regress.",
+      "appType": "node",
+      "command": "npm test -- tests/page-package.test.ts tests/api-page-package-route.test.ts tests/page-package-ui-contract.test.ts tests/page-export.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "integration",
+        "node",
+        "page-package",
+        "export",
+        "import",
+        "targeted"
+      ],
+      "feature": "page-export-import",
+      "testType": "integration",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-275",
+      "addedAt": "2026-09-30",
+      "maintenanceNotes": "Keep this scope text-page-only and deterministic; broad browser E2E is intentionally excluded.",
+      "sourceFiles": [
+        {
+          "path": "tests/page-package.test.ts"
+        },
+        {
+          "path": "tests/api-page-package-route.test.ts"
+        },
+        {
+          "path": "tests/page-package-ui-contract.test.ts"
+        },
+        {
+          "path": "tests/page-export.test.ts"
+        },
+        {
+          "path": "src/server/vault/page-package.ts"
+        },
+        {
+          "path": "src/app/api/page/package/route.ts"
+        },
+        {
+          "path": "src/components/notebook-shell-reliable.tsx"
+        }
+      ]
+    },
+    {
       "id": "unit-page-print-styles",
       "name": "Page Print Styles",
       "description": "Jest: tests/page-print-styles.test.ts",

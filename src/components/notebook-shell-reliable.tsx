@@ -728,6 +728,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [isDialogSubmitting, setIsDialogSubmitting] = React.useState(false);
   const [createNotebookError, setCreateNotebookError] = React.useState<string | null>(null);
   const [docxImportTargetSectionPath, setDocxImportTargetSectionPath] = React.useState<string | null>(null);
+  const [pagePackageImportTargetSectionPath, setPagePackageImportTargetSectionPath] = React.useState<string | null>(null);
   const [saveState, setSaveState] = React.useState<SaveState>("idle");
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [reloadSafetyMessage, setReloadSafetyMessage] = React.useState<string | null>(null);
@@ -845,6 +846,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const flushSaveRef = React.useRef<() => Promise<boolean>>(async () => true);
   const editorRef = React.useRef<RichTextEditorHandle | null>(null);
   const docxImportInputRef = React.useRef<HTMLInputElement | null>(null);
+  const pagePackageImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const socketRef = React.useRef<Socket | null>(null);
   const syncOriginIdRef = React.useRef<string | null>(null);
   const activeTurnIdRef = React.useRef<string | null>(null);
@@ -4204,6 +4206,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     docxImportInputRef.current?.click();
   }, []);
 
+  const openPagePackageImportPicker = React.useCallback((sectionPath: string) => {
+    setPagePackageImportTargetSectionPath(sectionPath);
+    pagePackageImportInputRef.current?.click();
+  }, []);
+
   const handleRenameSectionDialog = React.useCallback((path: string, name: string, notebookPath: string) => {
     setDialogValue(name);
     setDialogState({ kind: "renameSection", path, name, notebookPath });
@@ -5146,6 +5153,28 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     }
   }, [activeVersionPreview, draft]);
 
+  const handleExportCurrentPagePackage = React.useCallback(async () => {
+    if (!draft || draft.noteType !== "text" || activeVersionPreview) {
+      return;
+    }
+
+    setSaveError(null);
+    try {
+      const saved = await flushSaveRef.current();
+      if (!saved) {
+        throw new Error("Save the page before exporting its package.");
+      }
+      await annotationLayerRef.current?.flush();
+      const blob = await exportVaultPagePackage(draft.path);
+      triggerBlobDownload(`${sanitizeDownloadFilename(draft.title)}.snpkg`, blob);
+      toast.success("Page package exported.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Page package export failed.";
+      setSaveError(message);
+      toast.error(message);
+    }
+  }, [activeVersionPreview, draft]);
+
   const handleDocxImportFileChange = React.useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0] ?? null;
@@ -5175,6 +5204,39 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       }
     },
     [docxImportTargetSectionPath, loadTree]
+  );
+
+  const handlePagePackageImportFileChange = React.useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null;
+      const sectionPath = pagePackageImportTargetSectionPath;
+      event.target.value = "";
+      setPagePackageImportTargetSectionPath(null);
+      if (!file || !sectionPath) {
+        return;
+      }
+
+      setIsReloading(true);
+      setSaveError(null);
+      try {
+        const page = await importVaultPagePackage(sectionPath, file);
+        pageContentCache.set(page.path, { html: page.content });
+        await loadTree({ pagePath: page.path });
+        setExpandedNotebooks((current) => new Set([...current, page.notebookPath]));
+        if (page.sectionPath) {
+          setExpandedSections((current) => new Set([...current, page.sectionPath!]));
+        }
+        setSidebarOpen(false);
+        toast.success(`Imported “${page.title}” as a new page.`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Page package import failed.";
+        setSaveError(message);
+        toast.error(message);
+      } finally {
+        setIsReloading(false);
+      }
+    },
+    [loadTree, pagePackageImportTargetSectionPath]
   );
 
   const handlePrintCurrentPage = React.useCallback(
@@ -5483,6 +5545,15 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         aria-hidden="true"
         tabIndex={-1}
       />
+      <input
+        ref={pagePackageImportInputRef}
+        type="file"
+        accept=".snpkg,application/vnd.smart-notes.page+zip"
+        className="hidden"
+        onChange={handlePagePackageImportFileChange}
+        aria-hidden="true"
+        tabIndex={-1}
+      />
       <div className={cn("flex h-full min-h-0 flex-col", isMobileCompanionOpen && "hidden")}>
         <AppSettingsDialog
           open={settingsOpen}
@@ -5599,6 +5670,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                     }}
                     onDirectCreatePage={handleDirectCreatePage}
                     onImportDocx={openDocxImportPicker}
+                    onImportPagePackage={openPagePackageImportPicker}
                     onRenameSection={handleRenameSectionDialog}
                     onDeleteSection={handleDeleteSectionDialog}
                     onRenamePage={handleRenamePageDialog}
@@ -5612,6 +5684,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                     onCollapseTree={collapseTreeSidebar}
                     onExportPage={() => void handleExportCurrentPage()}
                     onExportDocxPage={() => void handleExportCurrentPageDocx()}
+                    onExportPagePackage={() => void handleExportCurrentPagePackage()}
                   />
                 </div>
               </>
@@ -6009,6 +6082,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             }}
             onDirectCreatePage={handleDirectCreatePage}
             onImportDocx={openDocxImportPicker}
+            onImportPagePackage={openPagePackageImportPicker}
             onRenameSection={handleRenameSectionDialog}
             onDeleteSection={handleDeleteSectionDialog}
             onRenamePage={handleRenamePageDialog}
@@ -6022,6 +6096,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             onDismissGhostVersions={dismissGhostVersions}
             onExportPage={() => void handleExportCurrentPage()}
             onExportDocxPage={() => void handleExportCurrentPageDocx()}
+            onExportPagePackage={() => void handleExportCurrentPagePackage()}
           />
         </SheetContent>
       </Sheet>
@@ -6664,6 +6739,7 @@ export const Sidebar = React.memo(function Sidebar({
   onLinkDesign,
   onDirectCreatePage,
   onImportDocx,
+  onImportPagePackage,
   onRenameSection,
   onDeleteSection,
   onRenamePage,
@@ -6678,6 +6754,7 @@ export const Sidebar = React.memo(function Sidebar({
   onCollapseTree,
   onExportPage,
   onExportDocxPage,
+  onExportPagePackage,
 }: {
   variant?: "desktop" | "mobile";
   tree: VaultNotebook[];
@@ -6735,6 +6812,7 @@ export const Sidebar = React.memo(function Sidebar({
   onLinkDesign: (initialPath?: string) => void;
   onDirectCreatePage: (target: CreatePageTarget) => Promise<void>;
   onImportDocx: (sectionPath: string) => void;
+  onImportPagePackage: (sectionPath: string) => void;
   onRenameSection: (path: string, name: string, notebookPath: string) => void;
   onDeleteSection: (path: string, name: string) => void;
   onRenamePage: (pagePath: string, title: string) => void;
@@ -6749,6 +6827,7 @@ export const Sidebar = React.memo(function Sidebar({
   onCollapseTree?: () => void;
   onExportPage: () => void;
   onExportDocxPage: () => void;
+  onExportPagePackage: () => void;
 }) {
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [draggedPagePath, setDraggedPagePath] = React.useState<string | null>(null);
@@ -7371,6 +7450,14 @@ export const Sidebar = React.memo(function Sidebar({
                                 {node.page.noteType !== "text" ? "Export DOCX (text only)" : "Export DOCX"}
                               </DropdownMenuItem>
                               <DropdownMenuItem
+                                data-testid={`page-export-package-${node.page.path}`}
+                                disabled={activePagePath !== node.page.path || node.page.noteType !== "text"}
+                                onClick={onExportPagePackage}
+                              >
+                                <FileDown className="mr-2 size-3.5" />
+                                Export page package
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                 data-testid={`page-view-versions-${node.page.path}`}
                                 disabled={node.page.noteType === "jupyter"}
                                 onClick={() => onTogglePageVersions(node.page.path)}
@@ -7524,6 +7611,13 @@ export const Sidebar = React.memo(function Sidebar({
                               >
                                 <FileUp className="mr-2 size-3.5" />
                                 Import DOCX
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => onImportPagePackage(section.path)}
+                                data-testid={`section-import-package-${section.path}`}
+                              >
+                                <FileUp className="mr-2 size-3.5" />
+                                Import page package
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => onRenameSection(section.path, section.name, notebook.path)}>
                                 Rename section
@@ -7864,6 +7958,17 @@ export const Sidebar = React.memo(function Sidebar({
                                         >
                                           <FileDown className="mr-2 size-3.5" />
                                           {node.page.noteType !== "text" ? "Export DOCX (text only)" : "Export DOCX"}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          data-testid={`page-export-package-${node.page.path}`}
+                                          disabled={
+                                            activePagePath !== node.page.path ||
+                                            node.page.noteType !== "text"
+                                          }
+                                          onClick={onExportPagePackage}
+                                        >
+                                          <FileDown className="mr-2 size-3.5" />
+                                          Export page package
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
                                           data-testid={`page-view-versions-${node.page.path}`}
@@ -9064,6 +9169,24 @@ async function importVaultPageDocx(sectionPath: string, file: File) {
   return body.page;
 }
 
+async function importVaultPagePackage(sectionPath: string, file: File) {
+  const formData = new FormData();
+  formData.set("sectionPath", sectionPath);
+  formData.set("file", file);
+
+  const response = await vaultWriteFetch("/api/page/package", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Failed to import page package."));
+  }
+
+  const body = (await response.json()) as { page: ApiPageDocument };
+  return body.page;
+}
+
 async function exportVaultPageDocx(payload: { path: string; title: string; bodyHtml: string }) {
   const response = await vaultWriteFetch("/api/page/docx", {
     method: "PUT",
@@ -9075,6 +9198,16 @@ async function exportVaultPageDocx(payload: { path: string; title: string; bodyH
     throw new Error(await readErrorMessage(response, "Failed to export DOCX."));
   }
 
+  return response.blob();
+}
+
+async function exportVaultPagePackage(path: string) {
+  const response = await fetch(`/api/page/package?path=${encodeURIComponent(path)}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Failed to export page package."));
+  }
   return response.blob();
 }
 
