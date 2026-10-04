@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { BIBLIOGRAPHY_PATH, isBibliographyPath, paperPath, paperReferenceIds } from "@/lib/papers";
 import { getVaultRoot } from "./config";
 import { VaultError } from "./errors";
 import { parseFrontmatterDocument, serializeFrontmatterDocument } from "./frontmatter";
@@ -697,7 +699,16 @@ export async function readVaultTree(options: ReadVaultTreeOptions = {}) {
 
   const notebooks = [...primaryNotebooks, ...portableNotebooks];
 
-  notebooks.sort((left, right) => left.name.localeCompare(right.name));
+  // Always expose the library, even before its first paper exists. Hidden on
+  // disk so it cannot accidentally become an ordinary, closable notebook.
+  const paperPages = await readSectionPages(path.join(vaultRoot, BIBLIOGRAPHY_PATH), BIBLIOGRAPHY_PATH, sequential);
+  if (paperPages.length) notebooks.push({
+    id: BIBLIOGRAPHY_PATH, path: BIBLIOGRAPHY_PATH, name: "Bibliography",
+    color: "var(--accent)", sections: [],
+    pages: paperPages,
+  });
+
+  notebooks.sort((left, right) => left.path === BIBLIOGRAPHY_PATH ? 1 : right.path === BIBLIOGRAPHY_PATH ? -1 : left.name.localeCompare(right.name));
   notebooks.forEach((notebook, index) => {
     notebook.color = NOTEBOOK_COLORS[index % NOTEBOOK_COLORS.length];
   });
@@ -710,6 +721,25 @@ export async function readVaultTree(options: ReadVaultTreeOptions = {}) {
 
 export async function readPage(pagePath: string) {
   return readPageDocument(pagePath);
+}
+
+export async function createPaper(title: string) {
+  if (typeof title !== "string" || !title.trim()) throw new VaultError("INVALID_TITLE", "A paper title is required.");
+  const id = randomUUID();
+  const { absolutePath, relativePath } = resolveVaultPath(paperPath(id), "page");
+  const now = new Date().toISOString();
+  const source = serializeFrontmatterDocument({ title: title.trim(), paper_id: id, note_type: "text", created: now, updated: now }, "<p></p>");
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await fs.writeFile(absolutePath, source, { encoding: "utf8", flag: "wx" });
+  invalidateVaultCache();
+  return buildPageDocument(relativePath, source);
+}
+
+function requireOrdinaryLocation(location: string) {
+  const normalized = toVaultRelativePath(location).replace(/\/$/, "");
+  if (isBibliographyPath(normalized)) {
+    throw new VaultError("BIBLIOGRAPHY_OWNERSHIP", "Papers belong to Bibliography. Reference a paper from a page instead of moving or duplicating it.", 409);
+  }
 }
 
 export interface SavePageInput {
@@ -1587,6 +1617,7 @@ async function uniqueImportedAssetFileName(directory: string, fileName: string) 
 }
 
 export async function createPage(input: CreatePageInput) {
+  requireOrdinaryLocation(input.sectionPath ?? input.notebookPath ?? "");
   const title = input.title.trim() || "Untitled page";
   const parentId = input.parentId ?? null;
 
@@ -1902,6 +1933,10 @@ export async function renamePage(pagePath: string, title: string) {
   }
 
   const { absolutePath, relativePath } = resolveVaultPath(pagePath, "page");
+  if (isBibliographyPath(relativePath)) {
+    const page = await readPage(relativePath);
+    return savePage({ path: relativePath, title: nextTitle, body: page.body });
+  }
   const existingLink = await readDesignLinkSidecar(absolutePath);
   if (existingLink) {
     // Linked designs keep the ordinary HTML filename as ground truth; only the
@@ -2056,6 +2091,14 @@ export async function renamePage(pagePath: string, title: string) {
 }
 
 export async function deletePage(pagePath: string) {
+  const normalizedPath = resolveVaultPath(pagePath, "page").relativePath;
+  if (isBibliographyPath(normalizedPath)) {
+    const paper = await readPage(normalizedPath);
+    const { tree } = await readVaultTree({ skipCache: true });
+    const referenced = tree.some((notebook) => [...notebook.pages, ...notebook.sections.flatMap((section) => section.pages)]
+      .some((page) => page.path !== normalizedPath && paperReferenceIds(page.content).includes(String(paper.metadata.paper_id))));
+    if (referenced) throw new VaultError("PAPER_REFERENCED", "Remove this paper's references before deleting its canonical notes.", 409);
+  }
   const page = await readPageDocument(pagePath);
   const { absolutePath, relativePath } = resolveVaultPath(pagePath, "page");
 
@@ -2124,6 +2167,7 @@ export async function createNotebook(name: string) {
 }
 
 export async function renameNotebook(notebookPath: string, newName: string) {
+  requireOrdinaryLocation(notebookPath);
   if (isPortableNotebookPath(notebookPath)) {
     const displayName = newName.trim();
     if (!displayName) {
@@ -2165,6 +2209,7 @@ export async function renameNotebook(notebookPath: string, newName: string) {
 }
 
 export async function deleteNotebook(notebookPath: string) {
+  requireOrdinaryLocation(notebookPath);
   if (isPortableNotebookPath(notebookPath)) {
     const entry = findPortableNotebookByPath(notebookPath);
     if (!entry) {
@@ -2191,6 +2236,7 @@ export async function deleteNotebook(notebookPath: string) {
 // ---------------------------------------------------------------------------
 
 export async function createSection(notebookPath: string, name: string) {
+  requireOrdinaryLocation(notebookPath);
   const dirName = dirNameFromLabel(name);
   if (!dirName) {
     throw new VaultError("INVALID_NAME", "Section name is required.");
@@ -2215,6 +2261,7 @@ export async function createSection(notebookPath: string, name: string) {
 }
 
 export async function renameSection(sectionPath: string, newName: string) {
+  requireOrdinaryLocation(sectionPath);
   const dirName = dirNameFromLabel(newName);
   if (!dirName) {
     throw new VaultError("INVALID_NAME", "Section name is required.");
@@ -2248,6 +2295,7 @@ export async function renameSection(sectionPath: string, newName: string) {
 }
 
 export async function deleteSection(sectionPath: string) {
+  requireOrdinaryLocation(sectionPath);
   const { absolutePath, relativePath } = resolveVaultPath(sectionPath, "section");
   const stat = await fs.stat(absolutePath).catch(() => null);
   if (!stat?.isDirectory()) {
@@ -2264,6 +2312,8 @@ export async function deleteSection(sectionPath: string) {
 // ---------------------------------------------------------------------------
 
 export async function movePage(pagePath: string, targetSectionPath: string) {
+  requireOrdinaryLocation(resolveVaultPath(pagePath, "page").relativePath);
+  requireOrdinaryLocation(resolveVaultPath(targetSectionPath, "section").relativePath);
   const { source, absolutePath: srcAbsPath, relativePath: srcRelPath } = await readPageSource(pagePath);
   const { absolutePath: targetAbsPath, relativePath: targetRelPath } = resolveVaultPath(targetSectionPath, "section");
 

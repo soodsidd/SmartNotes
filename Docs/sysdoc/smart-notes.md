@@ -829,6 +829,14 @@ The reliable shell also has an in-place refresh-note path. The top-bar sync icon
 - **Optimistic tree selection (SN-53).** Sidebar clicks set `activePagePath` immediately before the async leave/save work finishes, so the active row highlights without waiting on flush/snapshot. Rows expose `data-selected="true"` and `aria-current="page"` for tests and assistive tech.
 - **Local tree patch on page create (SN-53).** Creating a page appends the returned `ApiPageDocument` to in-memory tree state and selects it directly. Do not follow create with a full `GET /api/vault` refresh ? that caused visible shell flash and unnecessary latency.
 
+### Bibliography paper identity and references (SN-279)
+
+Papers are full standard text pages owned by the Bibliography library. Each is stored as `.bibliography/<UUID>.html` with immutable `paper_id` frontmatter and `note_type: text`. The normal page, asset, comment, annotation, Companion and version APIs operate on this canonical path. Paper rename changes its title while keeping the UUID/path; moving ownership into or out of Bibliography is rejected. Referenced papers cannot be deleted until their references are removed.
+
+`POST /api/papers` creates a canonical paper; `GET /api/papers` lists papers and their current referring notebook/page locations. The normal vault tree includes the library when populated. The sidebar Bibliography surface is always available independently of notebook open/closed state.
+
+References are dedicated HTML nodes: `<div data-type="paper-reference" data-paper-id="UUID"></div>`. The referring HTML is authoritative; virtual child rows and reverse filters are derived, deduplicated per parent, and never persist a second body. Moving or renaming a referring page, section or notebook carries the unchanged UUID reference. Removing the final reference removes its child row but leaves the canonical notes. Existing ingest `<stem>.ref.json` files remain bibliographic ingest metadata and are not paper links.
+
 ## 6. Rich Text Editor
 
 **Plain English:** When you open a page, you see a rich editor — not a raw Markdown editor. You can bold text, add headings, create tables, write equations, collapse sections, and check off task items, all by clicking buttons or using keyboard shortcuts. Under the hood, vault text pages persist **HTML**, so the file on disk keeps the real rich layout rather than round-tripping through Markdown.

@@ -2,6 +2,7 @@
 export type NoteType = "text" | "ink" | "jupyter" | "log" | "design" | "app" | "spreadsheet";
 
 export interface VaultPage {
+  paperReference?: { id: string; canonicalPath: string; parentPath: string; missing: boolean };
   id: string;
   path: string;
   title: string;
