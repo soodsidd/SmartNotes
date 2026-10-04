@@ -55,7 +55,7 @@ import {
   createEditorExtensions,
   FONT_FAMILIES,
   FONT_SIZES,
-  insertUploadedEditorAsset,
+  insertAndPersistUploadedEditorAsset,
   looksLikeMarkdown,
   parseMarkdownToTiptapJson,
   TEXT_COLOR_PALETTE,
@@ -191,6 +191,11 @@ interface RichTextEditorProps {
   inkCaptureMode?: boolean;
   onDrawableBottomChange?: (value: number) => void;
   onPdfAttachmentOpen?: (target: PdfAttachmentTarget) => void;
+  onPersistAttachment?: (input: {
+    pagePath: string;
+    html: string;
+    assetUrl: string;
+  }) => Promise<boolean>;
 }
 
 interface HeadingChevronControl extends CollapsibleHeadingSection {
@@ -318,6 +323,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       inkCaptureMode = false,
       onDrawableBottomChange,
       onPdfAttachmentOpen,
+      onPersistAttachment,
     },
     ref
   ) {
@@ -473,12 +479,21 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     async function insertUploadedAsset(file: File) {
       if (!editor || !pagePath) return;
       const { asset } = await uploadEditorAsset(pagePath, file);
-      const html = insertUploadedEditorAsset(editor, asset, file.name, onChange);
-
-      // The helper publishes through the current page callback explicitly
-      // instead of relying solely on TipTap's onUpdate callback. A duplicate
-      // identical update is harmless and React batches it (SN-272).
-      lastEmittedRef.current = html;
+      await insertAndPersistUploadedEditorAsset(
+        editor,
+        asset,
+        file.name,
+        (verifiedHtml) => {
+          onChange(verifiedHtml);
+          lastEmittedRef.current = verifiedHtml;
+        },
+        (verifiedHtml) =>
+          onPersistAttachment?.({
+            pagePath,
+            html: verifiedHtml,
+            assetUrl: asset.url,
+          }) ?? Promise.resolve(false)
+      );
     }
 
     async function handleAssetFiles(files: FileList | File[] | null) {

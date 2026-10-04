@@ -3032,10 +3032,10 @@
     {
       "id": "unit-sn-272-editor-attachment-persistence",
       "name": "SN-272 editor attachment persistence",
-      "description": "Jest: tests/editor-attachment-persistence.test.ts — uploaded PDF insertion, current-draft publication, vault save, and reload.",
-      "intent": "Prevents toolbar and drag/drop PDF uploads from reporting success while leaving only an orphan asset and no durable attachment chip in the page HTML.",
+      "description": "Jest: tests/editor-attachment-persistence.test.ts — new-page first PDF insertion with a long filename, durable page-write completion, recovery-path failure, image-path preservation, reload, and reader resolution.",
+      "intent": "Prevents toolbar and drag/drop PDF uploads from reporting Attached while leaving only an orphan asset and no durable attachment chip in the page HTML, without changing image insertion or PDF reader behavior.",
       "whenToRun": "Pre-merge when changing editor asset upload, TipTap attachment insertion, rich-text draft publication, or attachment autosave wiring.",
-      "failureMeaning": "A PDF may upload into the page assets directory but disappear from the note because the chip was rejected or never published into the saved page draft.",
+      "failureMeaning": "A PDF may upload into the page assets directory but disappear from the note because the chip was rejected, a queued page write was not awaited, or a save failure hid the recovery path.",
       "appType": "node",
       "command": "npm test -- tests/editor-attachment-persistence.test.ts",
       "timeoutMs": 120000,
@@ -3065,7 +3065,16 @@
           "path": "src/components/rich-text-editor.tsx"
         },
         {
+          "path": "src/components/notebook-shell-reliable.tsx"
+        },
+        {
           "path": "src/lib/rich-text-editor-config.ts"
+        },
+        {
+          "path": "src/lib/page-reload.ts"
+        },
+        {
+          "path": "src/lib/pdf-attachment.ts"
         }
       ]
     },

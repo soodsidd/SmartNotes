@@ -283,6 +283,7 @@ import {
   type VaultTreeResponse,
 } from "@/lib/vault-contract";
 import {
+  awaitActiveSaveThenFlush,
   buildReloadDraftSnapshot,
   hasUnsavedLocalDraftChanges,
   getReloadStatusLabel,
@@ -838,6 +839,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const pendingPageReloadRef = React.useRef<PendingPageReload | null>(null);
   const pendingVaultReloadRef = React.useRef<PendingVaultReload | null>(null);
   const savingRef = React.useRef(false);
+  const activeSavePromiseRef = React.useRef<Promise<boolean> | null>(null);
   const queuedSaveRef = React.useRef(false);
   // When a companion/external write lands on an open design page, suppress
   // in-flight and queued Source-tab autosaves so a late PUT cannot overwrite
@@ -3193,12 +3195,23 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
     if (savingRef.current) {
       queuedSaveRef.current = true;
-      return true;
+      const activeSave = activeSavePromiseRef.current;
+      if (!activeSave) {
+        return false;
+      }
+      return awaitActiveSaveThenFlush(activeSave, flushSave);
     }
 
     savingRef.current = true;
     setSaveState("saving");
     setSaveError(null);
+
+    let resolveSaveAttempt!: (saved: boolean) => void;
+    let saveSucceeded = false;
+    const saveAttempt = new Promise<boolean>((resolve) => {
+      resolveSaveAttempt = resolve;
+    });
+    activeSavePromiseRef.current = saveAttempt;
 
     try {
       // Re-check immediately before the network write — file_updated may have
@@ -3206,6 +3219,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       if (designRemoteWriteFenceRef.current && currentDraft.noteType === "design") {
         queuedSaveRef.current = false;
         setSaveState("dirty");
+        saveSucceeded = true;
         return true;
       }
 
@@ -3240,6 +3254,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         }
         queuedSaveRef.current = false;
         setSaveState("dirty");
+        saveSucceeded = true;
         return true;
       }
 
@@ -3266,6 +3281,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         setSaveState("dirty");
       }
 
+      saveSucceeded = true;
       return true;
     } catch (error) {
       setSaveState("error");
@@ -3273,6 +3289,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       return false;
     } finally {
       savingRef.current = false;
+      if (activeSavePromiseRef.current === saveAttempt) {
+        activeSavePromiseRef.current = null;
+      }
+      resolveSaveAttempt(saveSucceeded);
       if (queuedSaveRef.current) {
         if (designRemoteWriteFenceRef.current && draftRef.current?.noteType === "design") {
           queuedSaveRef.current = false;
@@ -3528,25 +3548,44 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   const updateDraft = React.useCallback(
     (patch: Partial<Pick<PageDraft, "title" | "content">>) => {
-      setDraft((currentDraft: PageDraft | null) => {
-        if (!currentDraft) {
-          return currentDraft;
-        }
+      const currentDraft = draftRef.current;
+      if (!currentDraft) {
+        return;
+      }
 
-        const nextDraft = { ...currentDraft, ...patch };
-        draftRef.current = nextDraft;
+      const nextDraft = { ...currentDraft, ...patch };
+      draftRef.current = nextDraft;
+      setDraft(nextDraft);
 
-        syncTreePage(currentDraft.path, (page) => ({
-          ...page,
-          title: patch.title ?? page.title,
-          content: patch.content ?? page.content,
-          preview: buildPreview(patch.content ?? page.content),
-        }));
-
-        return nextDraft;
-      });
+      syncTreePage(currentDraft.path, (page) => ({
+        ...page,
+        title: patch.title ?? page.title,
+        content: patch.content ?? page.content,
+        preview: buildPreview(patch.content ?? page.content),
+      }));
     },
     [syncTreePage]
+  );
+
+  const persistEditorAttachment = React.useCallback(
+    async ({
+      pagePath,
+      html,
+      assetUrl,
+    }: {
+      pagePath: string;
+      html: string;
+      assetUrl: string;
+    }) => {
+      if (draftRef.current?.path !== pagePath) {
+        return false;
+      }
+
+      updateDraft({ content: html });
+      const saved = await flushSave();
+      return saved && pageContentCache.get(pagePath)?.html.includes(assetUrl) === true;
+    },
+    [flushSave, updateDraft]
   );
 
   const openPage = React.useCallback(
@@ -5935,6 +5974,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 previewAnnotationsJson={activeVersionPreview?.annotationsContent ?? undefined}
                 onTitleChange={(title) => updateDraft({ title })}
                 onContentChange={(content) => updateDraft({ content })}
+                onPersistAttachment={persistEditorAttachment}
                 onSelectionContextChange={setAiSectionContext}
                 onPdfAttachmentOpen={openPdfReader}
                 onAnnotationSaveStatusChange={(status) => {
@@ -8355,6 +8395,7 @@ function EditorPanel({
   previewAnnotationsJson,
   onTitleChange,
   onContentChange,
+  onPersistAttachment,
   onSelectionContextChange,
   onPdfAttachmentOpen,
   onAnnotationSaveStatusChange,
@@ -8368,6 +8409,11 @@ function EditorPanel({
   previewAnnotationsJson?: string;
   onTitleChange: (title: string) => void;
   onContentChange: (content: string) => void;
+  onPersistAttachment: (input: {
+    pagePath: string;
+    html: string;
+    assetUrl: string;
+  }) => Promise<boolean>;
   onSelectionContextChange: (context: EditorSectionContext | null) => void;
   onPdfAttachmentOpen?: (target: PdfAttachmentTarget) => void;
   onAnnotationSaveStatusChange?: (status: "idle" | "saving" | "saved" | "error") => void;
@@ -8568,6 +8614,7 @@ function EditorPanel({
           />
         }
         onChange={handleContentChange}
+        onPersistAttachment={onPersistAttachment}
         onSelectionContextChange={onSelectionContextChange}
         placeholder="Start writing..."
         pageTitle={draft.title}

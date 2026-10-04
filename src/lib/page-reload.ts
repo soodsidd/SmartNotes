@@ -22,6 +22,20 @@ export function rebaseDraftAfterSave<T extends ReloadableDraftSnapshot>(
   };
 }
 
+/**
+ * Serialize an explicit flush behind the page write already in flight. Callers
+ * must not treat the queued draft as durable until both writes have settled.
+ */
+export async function awaitActiveSaveThenFlush(
+  activeSave: Promise<boolean> | null,
+  flushLatest: () => Promise<boolean>
+): Promise<boolean> {
+  if (!activeSave || !(await activeSave)) {
+    return false;
+  }
+  return flushLatest();
+}
+
 export function buildReloadDraftSnapshot(page: ReloadableDraftSnapshot) {
   return JSON.stringify({
     path: page.path,

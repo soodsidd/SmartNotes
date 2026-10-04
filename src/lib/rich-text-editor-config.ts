@@ -252,3 +252,36 @@ export function insertUploadedEditorAsset(
   publishHtml(html);
   return html;
 }
+
+/**
+ * PDFs are not complete when their bytes reach the sibling assets directory.
+ * Keep the upload pending until the page write path confirms the new chip was
+ * saved. Images intentionally retain their established insert-only behavior.
+ */
+export async function insertAndPersistUploadedEditorAsset(
+  editor: Editor,
+  asset: UploadedEditorAsset,
+  originalFileName: string,
+  publishHtml: (html: string) => void,
+  persistHtml?: (html: string) => Promise<boolean>
+): Promise<string> {
+  const html = insertUploadedEditorAsset(editor, asset, originalFileName, publishHtml);
+  if (asset.isImage) {
+    return html;
+  }
+
+  let persisted = false;
+  try {
+    persisted = (await persistHtml?.(html)) === true;
+  } catch {
+    persisted = false;
+  }
+
+  if (!persisted) {
+    throw new Error(
+      `The file was uploaded to ${asset.path}, but the attachment could not be durably saved to this note. The uploaded copy is still available for recovery.`
+    );
+  }
+
+  return html;
+}
