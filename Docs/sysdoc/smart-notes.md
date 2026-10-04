@@ -1132,30 +1132,13 @@ PDF annotation summaries remain separate from extracted text and are unchanged. 
 
 ### Provider selection
 
-Providers are resolved via
-esolveAiProviderSelection(providers, settings, defaultProviderId):
-- The list of available providers comes from the server/settings (not hardcoded in the client).
-- Per-provider model preferences are stored in settings: claudeModel, ghcopilotModel, codexModel, cursorModel.
-- Per-provider effort preferences: ghcopilotEffort, codexEffort, cursorEffort (low / medium / high).
-- When no provider-specific model is stored,
-esolveProviderModel() picks the highest-quality model from the live suggestion list (e.g. o3 for Codex, opus for Claude, gpt-5.5-high for Cursor when present).
-- When no effort is stored,
-esolveProviderEffort() defaults effort-capable providers to high.
-- Falls back to settings.model only when resolving an explicit stored preference.
-- Falls back to the first available provider if the preferred one is not found.
+Smart Notes shows the provider and model choices supplied by Ascent Vector’s shared catalog. The chat server fetches GET http://127.0.0.1:8787/api/provider-catalog when /api/chat/providers is requested, accepts only schemaVersion 1, and offers only model IDs in modelsByProvider. The provider and model labels come from the same response; stored and sent model values remain IDs. Smart Notes maps AV’s copilot provider ID to its existing ghcopilot adapter and still checks whether each local CLI is installed.
 
-**Settings persistence:** On mount, loadChatModel() fetches /api/chat/settings and stores the full payload in aiStoredSettingsRef. When the user switches providers, handleProviderChange reads this ref via
-esolveAiProviderSelection +
-esolveProviderEffort to restore the saved model/effort or the quality defaults above. The ref is kept in sync whenever model, effort, or verbose is persisted via POST /api/chat/settings.
+The last valid catalog response is cached at <chat-state-dir>/provider-catalog.json. If the sidecar times out, is unreachable, or returns an invalid or incompatible payload, the server uses that cache, including after a restart. With no valid response or cache, the picker has no catalog entries. New enabled models appear on the next provider request without a Smart Notes code change. The first enabled model in AV’s provider order is the default unless a saved model is still offered. The free-text model field remains available for an explicit owner choice.
 
-**Live model discovery (SN-45, SN-61, SN-83):** packages/cli-chat/index.js populates each installed provider's model picker from live CLI queries plus a merged known-model catalog. Claude and Codex models are parsed from --help output; Cursor models come from cursor-agent models. The saved model is always kept first in the suggestion list even when it is no longer advertised. KNOWN_PROVIDER_MODELS contains a baseline catalog for every provider including Claude (sonnet, opus, haiku); these are always spread into the suggestion list so opus/sonnet appear even when claude --help does not enumerate them. Prior to SN-83, KNOWN_PROVIDER_MODELS had no claude entry and a broken conditional fallback that never fired because discoverClaudeModels() always appended 'haiku' unconditionally. When discovery returns nothing, the UI falls back to recent usage plus the known catalog; the model field remains free-text. For Cursor, the picker shows a note when high-tier models are absent from cursor-agent models output.
+resolveAiProviderSelection(providers, settings, defaultProviderId) restores per-provider model preferences (claudeModel, ghcopilotModel, codexModel, cursorModel) and effort preferences (ghcopilotEffort, codexEffort, cursorEffort). Missing effort defaults to high for effort-capable providers. On mount, loadChatModel() fetches /api/chat/providers and /api/chat/settings; provider changes read the saved settings ref, which is kept current after settings POSTs.
 
-**Codex web search (SN-61):** `codexExecArgs()` only passes `-c tools.web_search=live` when `codex exec --help` advertises `tools.web_search`, preventing turn-1 fatal exits on older Codex CLIs.
-
-**Codex session resume:** Follow-up turns invoke `codex exec resume <session-id> --json …`. The `resume` subcommand does **not** accept `--sandbox` (only fresh `codex exec` does). `codexExecArgs()` therefore omits sandbox flags when `resume: true`; the resumed session keeps its original sandbox profile. `--dangerously-bypass-approvals-and-sandbox` is still passed on resume when the editor profile requests full access.
-
-**Cursor provider:** Cursor Agent CLI (cursor-agent) is a first-class provider. Detection uses getCursorAgentSpec() which locates the bundled
-ode.exe + index.js inside %LOCALAPPDATA%\\cursor-agent\\versions\\<latest> on Windows, bypassing the .cmd wrapper to avoid the 8 KB cmd.exe command-line limit. The prompt is delivered via stdin. Headless invocations always pass --trust; sandbox cursor.autoApprove or cursor.headlessAutoApprove adds --force. Stream events follow the cursor-agent stream-json protocol. Auth check: cursor-agent status outputs plain text containing \
+Codex web search (SN-61): codexExecArgs() passes tools.web_search=live only when codex exec --help advertises it. Follow-up turns use codex exec resume <session-id> --json without --sandbox; resume retains its original sandbox profile. Cursor Agent CLI detection uses the bundled node.exe and index.js on Windows to avoid the .cmd command-line limit; its prompt is sent on stdin and headless runs pass --trust.
 
 ### Timeline format
 

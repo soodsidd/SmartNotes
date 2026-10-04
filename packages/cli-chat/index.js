@@ -27,6 +27,7 @@ const path   = require('path');
 const os     = require('os');
 const { resolveSandbox, claudeSandboxArgs, codexExecArgs, cursorHeadlessArgs } = require('./sandbox');
 const { createTraceLogger } = require('./trace-log');
+const { createProviderCatalog } = require('./provider-catalog');
 
 // pdf-parse (v2) is used for server-side text extraction from PDF attachments.
 // Loaded lazily so the module still starts if the package is absent.
@@ -63,6 +64,8 @@ const DEFAULTS = {
   verbose: true,
   sandbox: 'readonly',         // sandbox profile — see sandbox.js
   providers: null,             // custom provider config (or auto-detect)
+  providerCatalogUrl: null,    // AV sidecar catalog endpoint
+  providerCatalogFetch: null,  // injectable fetch for tests
   agent: null,                 // { name?, instructions?, sandbox? } | null
   recoverInterruptedOnStartup: null,
   traceFilePath: null,
@@ -581,69 +584,9 @@ function codexSupportsWebSearchConfig(codexSpec) {
   return /tools\.web_search/i.test(String(helpText || ''));
 }
 
-const KNOWN_PROVIDER_MODELS = {
-  claude: ['sonnet', 'opus', 'haiku'],
-  ghcopilot: ['auto', 'gpt-4.1'],
-  // Sourced from ~/.codex/models_cache.json (visibility:list) + live exec smoke.
-  // ChatGPT-auth rejects gpt-5.3-codex / gpt-5.2; do not offer them here.
-  codex: [
-    'gpt-5.6-sol',
-    'gpt-5.6-terra',
-    'gpt-5.6-luna',
-    'gpt-5.5',
-  ],
-  cursor: [
-    'auto',
-    'claude-opus-5-5-high',
-    'gpt-5.5-high',
-    'claude-opus-4-8-thinking-high',
-    'claude-4.6-sonnet-medium-thinking',
-    'gpt-5.5-medium',
-    'gpt-5.3-codex',
-    'composer-2.5',
-  ],
-};
-
-const PROVIDER_MODEL_RANK_HINTS = {
-  claude: ['opus', 'sonnet', 'haiku'],
-  codex: [
-    'gpt-5.6-sol',
-    'gpt-5.6-terra',
-    'gpt-5.6-luna',
-    'gpt-5.5',
-  ],
-  ghcopilot: ['gpt-4.1', 'gpt-4', 'auto'],
-  // 2026-09-25 scan: claude-opus-5-5 confirmed live on the cursor-agent account
-  // (no gpt-6/"Codex 6" found anywhere — see chat note). Ranked above the
-  // older opus-4-8 thinking tier so auto-pick prefers it.
-  cursor: [
-    'opus-5-5',
-    'thinking-high',
-    'opus-4-8-thinking-high',
-    'gpt-5.5-high',
-    'gpt-5.3-codex',
-    'gpt-5.5-medium',
-    'composer-2.5',
-    'auto',
-  ],
-};
-
-function scoreModelForProvider(provider, model) {
-  const hints = PROVIDER_MODEL_RANK_HINTS[provider] || [];
-  const lower = String(model || '').toLowerCase();
-  for (let index = 0; index < hints.length; index += 1) {
-    if (lower.includes(hints[index].toLowerCase())) {
-      return hints.length - index;
-    }
-  }
-  return 0;
-}
-
 function pickHighestQualityModel(provider, models) {
   if (!Array.isArray(models) || !models.length) return '';
-  return [...models].sort(
-    (left, right) => scoreModelForProvider(provider, right) - scoreModelForProvider(provider, left)
-  )[0] || '';
+  return models[0] || '';
 }
 
 function resolveProviderModel(settings, provider, models) {
@@ -775,6 +718,11 @@ function createChatModule(httpServer, io, userConfig = {}) {
   const projectCatalog = Object.freeze(normalizeProjectList(cfg.projects));
   const uploadDir = path.resolve(cfg.uploadDir);
   const stateDir = path.resolve(cfg.stateDir || (cfg.configPath ? path.dirname(cfg.configPath) : uploadDir));
+  const providerCatalog = createProviderCatalog({
+    cachePath: path.join(stateDir, 'provider-catalog.json'),
+    ...(cfg.providerCatalogUrl ? { url: cfg.providerCatalogUrl } : {}),
+    ...(cfg.providerCatalogFetch ? { fetchImpl: cfg.providerCatalogFetch } : {}),
+  });
   const shouldRecoverInterruptedJobs = typeof cfg.recoverInterruptedOnStartup === 'boolean'
     ? cfg.recoverInterruptedOnStartup
     : !!httpServer;
@@ -1742,119 +1690,9 @@ function createChatModule(httpServer, io, userConfig = {}) {
     return cancelled;
   }
 
-  function getRecentProviderModels(provider, limit = 8) {
-    const stats = loadUsageStats();
-    const messages = Array.isArray(stats.messages) ? stats.messages : [];
-    const recent = [];
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const entry = messages[i] || {};
-      if (entry.provider !== provider) continue;
-      if (!entry.model) continue;
-      recent.push(entry.model);
-      if (recent.length >= limit) break;
-    }
-    return uniqueStrings(recent);
-  }
-
-  function discoverClaudeModels(claudeCommand) {
-    if (!claudeCommand) return [];
-    const helpText = captureCommandOutput(claudeCommand, ['--help']);
-    const modelLine = String(helpText || '').split(/\r?\n/).find(line => line.includes('--model')) || '';
-    const matches = [];
-    for (const match of modelLine.matchAll(/'([^']+)'/g)) {
-      const value = (match[1] || '').trim();
-      if (/^(sonnet|opus|haiku)$/i.test(value) || /^claude-[a-z0-9-]+$/i.test(value)) {
-        matches.push(value);
-      }
-    }
-    return uniqueStrings([...matches, 'haiku']);
-  }
-
-  function discoverCodexModels(codexSpec) {
-    if (!codexSpec) return [];
-    const helpText = captureCommandOutput(codexSpec.cmd, [...(codexSpec.baseArgs || []), 'exec', '--help']);
-    const matches = [];
-    for (const match of String(helpText || '').matchAll(/model="?([A-Za-z0-9._-]+)"?/g)) {
-      const value = (match[1] || '').trim();
-      if (/^(o\d(?:-[a-z0-9-]+)?|gpt-[a-z0-9._-]+|codex-[a-z0-9._-]+)$/i.test(value)) {
-        matches.push(value);
-      }
-    }
-    for (const match of String(helpText || '').matchAll(/\b(o\d(?:-[a-z0-9-]+)?|gpt-[0-9][a-z0-9._-]*|codex-[a-z0-9._-]+)\b/gi)) {
-      const value = (match[1] || '').trim();
-      if (value) matches.push(value);
-    }
-    return uniqueStrings(matches);
-  }
-
-  function discoverCursorModels(cursorSpec) {
-    if (!cursorSpec) return [];
-    const output = captureCommandOutput(cursorSpec.cmd, [...(cursorSpec.baseArgs || []), 'models']);
-    return parseCursorModelsOutput(output);
-  }
-
-  function discoverGhCopilotModels() {
-    const helpText = captureCommandOutput('gh', ['copilot', '--', '--help']);
-    const matches = [];
-    for (const match of String(helpText || '').matchAll(/--model\s+<([^>]+)>/g)) {
-      const value = (match[1] || '').trim();
-      if (value && value !== 'model') matches.push(value);
-    }
-    return uniqueStrings(matches);
-  }
-
-  // Fallback catalogs when live provider queries fail or return nothing.
-  const FALLBACK_PROVIDER_MODELS = {
-    ghcopilot: KNOWN_PROVIDER_MODELS.ghcopilot,
-    codex: KNOWN_PROVIDER_MODELS.codex,
-    cursor: KNOWN_PROVIDER_MODELS.cursor,
-  };
-
-  function getProviderModelSuggestions(provider, settings, runtime) {
-    const storedModel = getProviderModel(settings, provider);
-    const recentModels = getRecentProviderModels(provider);
-    const knownModels = KNOWN_PROVIDER_MODELS[provider] || [];
-
-    if (provider === 'claude') {
-      const discovered = discoverClaudeModels(runtime.claudeCommand);
-      return uniqueStrings([
-        storedModel,
-        ...discovered,
-        ...recentModels,
-        ...knownModels,
-      ]);
-    }
-    if (provider === 'ghcopilot') {
-      const discovered = discoverGhCopilotModels();
-      return uniqueStrings([
-        storedModel,
-        ...recentModels,
-        ...discovered,
-        ...knownModels,
-        ...(discovered.length ? [] : FALLBACK_PROVIDER_MODELS.ghcopilot),
-      ]);
-    }
-    if (provider === 'codex') {
-      const discovered = discoverCodexModels(runtime.codexSpec);
-      return uniqueStrings([
-        storedModel,
-        ...recentModels,
-        ...discovered,
-        ...knownModels,
-        ...(discovered.length ? [] : FALLBACK_PROVIDER_MODELS.codex),
-      ]);
-    }
-    if (provider === 'cursor') {
-      const discovered = discoverCursorModels(runtime.cursorSpec);
-      return uniqueStrings([
-        storedModel,
-        ...recentModels,
-        ...discovered,
-        ...knownModels,
-        ...(discovered.length ? [] : FALLBACK_PROVIDER_MODELS.cursor),
-      ]);
-    }
-    return storedModel ? [storedModel] : [];
+  function getProviderModelSuggestions(provider) {
+    const catalogId = provider === 'ghcopilot' ? 'copilot' : provider;
+    return providerCatalog.get()?.providers.find(item => item.id === catalogId)?.models.map(model => model.id) || [];
   }
 
   /* ── Provider discovery ── */
@@ -1866,30 +1704,21 @@ function createChatModule(httpServer, io, userConfig = {}) {
     const ghCommand = which('gh');
     const codexSpec = getCodexCommandSpec(settings.codexCommand);
     const cursorSpec = getCursorAgentSpec();
-    const providers = [
-      {
-        id: 'claude', name: 'Claude CLI', command: 'claude',
-        installed: !!claudeCommand, streaming: true,
-        models: claudeCommand ? getProviderModelSuggestions('claude', settings, { claudeCommand, codexSpec, cursorSpec }) : [],
-      },
-      {
-        id: 'ghcopilot', name: 'GitHub Copilot CLI', command: 'gh',
-        installed: !!ghCommand, streaming: true,
-        models: ghCommand ? getProviderModelSuggestions('ghcopilot', settings, { claudeCommand, codexSpec, cursorSpec }) : [],
-      },
-      {
-        id: 'codex', name: 'Codex CLI', command: 'codex',
-        installed: !!codexSpec,
-        streaming: true,
-        models: codexSpec ? getProviderModelSuggestions('codex', settings, { claudeCommand, codexSpec, cursorSpec }) : [],
-      },
-      {
-        id: 'cursor', name: 'Cursor Agent CLI', command: 'cursor-agent',
-        installed: !!cursorSpec,
-        streaming: true,
-        models: cursorSpec ? getProviderModelSuggestions('cursor', settings, { claudeCommand, codexSpec, cursorSpec }) : [],
-      },
-    ];
+    const adapters = {
+      claude: { id: 'claude', command: 'claude', installed: !!claudeCommand },
+      copilot: { id: 'ghcopilot', command: 'gh', installed: !!ghCommand },
+      codex: { id: 'codex', command: 'codex', installed: !!codexSpec },
+      cursor: { id: 'cursor', command: 'cursor-agent', installed: !!cursorSpec },
+    };
+    const providers = (providerCatalog.get()?.providers || []).flatMap(item => {
+      const adapter = adapters[item.id];
+      if (!adapter) return [];
+      return [{
+        ...adapter, name: item.label, streaming: true,
+        models: adapter.installed ? item.models.map(model => model.id) : [],
+        modelLabels: Object.fromEntries(item.models.map(model => [model.id, model.label])),
+      }];
+    });
     const installedProviders = providers.filter(p => p.installed).map(p => p.id);
     const preferredDefault = (settings.defaultProvider || '').trim()
       || (settings.cursorModel || settings.cursorEffort ? 'cursor' : '')
@@ -2602,7 +2431,9 @@ function createChatModule(httpServer, io, userConfig = {}) {
       });
     }
 
-    if (apiPath === '/providers'  && req.method === 'GET')  return sendJson(res, 200, getProviders());
+    if (apiPath === '/providers'  && req.method === 'GET') {
+      return void providerCatalog.refresh().then(() => sendJson(res, 200, getProviders()));
+    }
     if (apiPath === '/auth'       && req.method === 'GET')  return sendJson(res, 200, checkAuth(url.searchParams.get('provider') || 'claude'));
     if (apiPath === '/settings'   && req.method === 'GET')  return sendJson(res, 200, loadConfig());
     if (apiPath === '/sandbox'    && req.method === 'GET')  return sendJson(res, 200, { profile: typeof cfg.sandbox === 'string' ? cfg.sandbox : 'custom', config: sandboxCfg });
@@ -3028,5 +2859,4 @@ module.exports = {
   buildCompanionProviderEnv,
   writeClaudeSystemPromptFile,
   removeClaudeSystemPromptFile,
-  KNOWN_PROVIDER_MODELS,
 };

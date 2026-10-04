@@ -12,6 +12,7 @@ export interface AiProviderOption {
   id: string;
   name: string;
   models?: string[];
+  modelLabels?: Record<string, string>;
 }
 
 export interface AiProviderSettings {
@@ -168,51 +169,8 @@ function getStoredProviderModel(settings: AiProviderSettings, providerId: string
   return settings.model;
 }
 
-const PROVIDER_MODEL_RANK_HINTS: Record<string, string[]> = {
-  claude: ["opus", "sonnet", "haiku"],
-  codex: ["o3", "gpt-5.5", "gpt-5.2", "codex-max", "gpt-5.1-codex-max", "gpt-5-codex", "gpt-5-mini", "gpt-4.5"],
-  ghcopilot: ["gpt-4.1", "gpt-4", "auto"],
-  // 2026-09-25 scan: claude-opus-5-5 confirmed live on the cursor-agent account
-  // (no gpt-6/"Codex 6" found anywhere — see chat note). Ranked above the
-  // older opus-4-8 thinking tier so auto-pick prefers it.
-  cursor: [
-    "opus-5-5",
-    "thinking-high",
-    "opus-4-8-thinking-high",
-    "gpt-5.5-high",
-    "gpt-5.3-codex",
-    "gpt-5.5-medium",
-    "composer-2.5",
-    "auto",
-  ],
-};
-
-const CURSOR_HIGH_TIER_MODELS = [
-  "claude-opus-5-5-high",
-  "gpt-5.5-high",
-  "claude-opus-4-8-thinking-high",
-  "claude-4.6-sonnet-medium-thinking",
-];
-
-function scoreModelForProvider(providerId: string, model: string) {
-  const hints = PROVIDER_MODEL_RANK_HINTS[providerId] ?? [];
-  const lower = model.toLowerCase();
-  for (let index = 0; index < hints.length; index += 1) {
-    if (lower.includes(hints[index]!.toLowerCase())) {
-      return hints.length - index;
-    }
-  }
-  return 0;
-}
-
-export function pickHighestQualityModel(providerId: string, models: string[]) {
-  if (!models.length) {
-    return "";
-  }
-
-  return [...models].sort(
-    (left, right) => scoreModelForProvider(providerId, right) - scoreModelForProvider(providerId, left)
-  )[0]!;
+export function pickHighestQualityModel(_providerId: string, models: string[]) {
+  return models[0] ?? "";
 }
 
 export function resolveProviderModel(
@@ -240,20 +198,6 @@ export function resolveProviderEffort(settings: AiProviderSettings, providerId: 
     return stored;
   }
   return providerSupportsEffort(providerId) ? "high" : "";
-}
-
-export function getProviderModelPickerNote(providerId: string, models: string[] = []) {
-  if (providerId !== "cursor") {
-    return null;
-  }
-
-  const available = new Set(models.map((model) => model.toLowerCase()));
-  const missing = CURSOR_HIGH_TIER_MODELS.filter((model) => !available.has(model.toLowerCase()));
-  if (!missing.length) {
-    return null;
-  }
-
-  return `High-tier models (${missing.join(", ")}) are not listed by cursor-agent models; type a model id manually if needed.`;
 }
 
 export function getStoredProviderEffort(settings: AiProviderSettings, providerId: string) {

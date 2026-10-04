@@ -502,6 +502,7 @@ interface ChatProvidersResponse {
     id: string;
     name: string;
     models?: string[];
+    modelLabels?: Record<string, string>;
   }>;
 }
 
@@ -744,7 +745,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [aiScope, setAiScope] = React.useState<AiScope>("whole");
   const [keepConversation, setKeepConversation] = React.useState(false);
   const [aiSectionContext, setAiSectionContext] = React.useState<EditorSectionContext | null>(null);
-  const [aiProviders, setAiProviders] = React.useState<Array<{ id: string; name: string; models?: string[] }>>([]);
+  const [aiProviders, setAiProviders] = React.useState<Array<{ id: string; name: string; models?: string[]; modelLabels?: Record<string, string> }>>([]);
   const [aiActiveProviderId, setAiActiveProviderId] = React.useState("");
   const [aiActiveModel, setAiActiveModel] = React.useState("");
   const [aiActiveEffort, setAiActiveEffort] = React.useState("");

@@ -36,7 +36,6 @@ import {
   copyTextToClipboard,
   getAiProviderModelOptions,
   getAssistantMessageCopyText,
-  getProviderModelPickerNote,
   getAiScopeSharedLabel,
   getAiScopeOptionDescription,
   normalizeCompanionDensity,
@@ -64,6 +63,7 @@ interface AiProvider {
   id: string;
   name: string;
   models?: string[];
+  modelLabels?: Record<string, string>;
 }
 
 const EFFORT_OPTIONS = [
@@ -660,7 +660,6 @@ function ProviderSettingsMenu({
     providers[0] ??
     null;
   const activeModels = getAiProviderModelOptions(activeProvider?.models, activeModelLabel);
-  const modelPickerNote = getProviderModelPickerNote(activeProvider?.id ?? "", activeModels);
   const [draftModel, setDraftModel] = React.useState(activeModelLabel);
   const modelListId = React.useId();
 
@@ -724,7 +723,7 @@ function ProviderSettingsMenu({
           />
           <datalist id={modelListId}>
             {activeModels.map((model) => (
-              <option key={model} value={model} />
+              <option key={model} value={model} label={activeProvider?.modelLabels?.[model] ?? model} />
             ))}
           </datalist>
         </div>
@@ -736,7 +735,7 @@ function ProviderSettingsMenu({
         >
           {activeModels.map((model) => (
             <DropdownMenuRadioItem key={model} value={model} className="text-xs">
-              {model}
+              {activeProvider?.modelLabels?.[model] ?? model}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
@@ -745,11 +744,6 @@ function ProviderSettingsMenu({
           No models available
         </DropdownMenuItem>
       )}
-      {modelPickerNote ? (
-        <div className="px-2 py-2 text-[10px] leading-relaxed text-muted-foreground">
-          {modelPickerNote}
-        </div>
-      ) : null}
       {activeProviderId && providerSupportsEffort(activeProviderId) && onEffortChange ? (
         <>
           <DropdownMenuSeparator />
@@ -893,7 +887,6 @@ function ChatSettingsPanel({
   const activeProvider =
     providers.find((p) => p.id === activeProviderId) ?? providers[0] ?? null;
   const activeModels = getAiProviderModelOptions(activeProvider?.models, activeModelLabel);
-  const modelPickerNote = getProviderModelPickerNote(activeProvider?.id ?? "", activeModels);
   const [draftModel, setDraftModel] = React.useState(activeModelLabel);
   const modelListId = React.useId();
 
@@ -966,7 +959,7 @@ function ChatSettingsPanel({
                     model === activeModelLabel ? "bg-[color:var(--accent)]" : "bg-transparent"
                   )}
                 />
-                {model}
+                {activeProvider?.modelLabels?.[model] ?? model}
               </button>
             ))}
           </div>
@@ -989,13 +982,10 @@ function ChatSettingsPanel({
             />
             <datalist id={modelListId}>
               {activeModels.map((m) => (
-                <option key={m} value={m} />
+                <option key={m} value={m} label={activeProvider?.modelLabels?.[m] ?? m} />
               ))}
             </datalist>
           </>
-        ) : null}
-        {modelPickerNote ? (
-          <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">{modelPickerNote}</p>
         ) : null}
       </div>
 

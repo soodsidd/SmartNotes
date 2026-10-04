@@ -8,7 +8,7 @@ import {
 } from "../src/lib/ai-sidebar";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { createChatModule, KNOWN_PROVIDER_MODELS } = require("../packages/cli-chat/index");
+const { createChatModule } = require("../packages/cli-chat/index");
 
 type ChatSettings = Record<string, unknown>;
 
@@ -39,15 +39,6 @@ function makePostReq(body: Record<string, unknown>): Readable & { url: string; m
   req.headers = { "content-type": "application/json" };
   return req;
 }
-
-describe("KNOWN_PROVIDER_MODELS — claude baseline", () => {
-  it("claude entry includes sonnet and opus so they always appear in suggestions regardless of CLI discovery", () => {
-    expect(Array.isArray(KNOWN_PROVIDER_MODELS.claude)).toBe(true);
-    expect(KNOWN_PROVIDER_MODELS.claude).toContain("sonnet");
-    expect(KNOWN_PROVIDER_MODELS.claude).toContain("opus");
-    expect(KNOWN_PROVIDER_MODELS.claude).toContain("haiku");
-  });
-});
 
 describe("chat settings — save/load round-trip", () => {
   let tempDir: string;

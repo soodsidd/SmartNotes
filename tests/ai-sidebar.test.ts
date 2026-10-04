@@ -21,7 +21,6 @@ import {
   getAiScopeOptions,
   getAiScopeTokenLabel,
   getAiProviderModelOptions,
-  getProviderModelPickerNote,
   getSectionMarkdown,
   getSectionOffsets,
   isParentContextScopeAvailable,
@@ -179,20 +178,20 @@ describe("resolveAiProviderSelection", () => {
     });
   });
 
-  it("falls back to the highest-quality model when no stored preference exists", () => {
+  it("falls back to the first catalog model when no stored preference exists", () => {
     expect(resolveAiProviderSelection(providers, { model: "ignored" }, "missing")).toEqual({
       providerId: "claude",
       providerName: "Claude",
-      model: "Opus",
+      model: "Sonnet",
     });
   });
 
-  it("falls back to the highest-quality codex model when no stored preference exists", () => {
+  it("uses the catalog order for Codex when no stored preference exists", () => {
     const codexProviders = [{ id: "codex", name: "Codex", models: ["gpt-5-mini", "o3", "gpt-5.5"] }];
     expect(resolveAiProviderSelection(codexProviders, {}, "codex")).toEqual({
       providerId: "codex",
       providerName: "Codex",
-      model: "o3",
+      model: "gpt-5-mini",
     });
   });
 
@@ -225,12 +224,9 @@ describe("getAiProviderModelOptions", () => {
 });
 
 describe("provider quality defaults", () => {
-  it("picks the highest-quality model for each provider", () => {
-    expect(pickHighestQualityModel("codex", ["gpt-5-mini", "o3", "gpt-5.5"])).toBe("o3");
-    expect(pickHighestQualityModel("claude", ["haiku", "opus", "sonnet"])).toBe("opus");
-    expect(pickHighestQualityModel("cursor", ["auto", "gpt-5.5-high", "gpt-5.5-medium"])).toBe(
-      "gpt-5.5-high"
-    );
+  it("uses the catalog's enabled model order for the default", () => {
+    expect(pickHighestQualityModel("codex", ["gpt-6-astra", "gpt-5.6-sol"])).toBe("gpt-6-astra");
+    expect(pickHighestQualityModel("claude", ["sonnet", "opus"])).toBe("sonnet");
   });
 
   it("defaults effort to high for effort-capable providers", () => {
@@ -239,19 +235,13 @@ describe("provider quality defaults", () => {
     expect(resolveProviderEffort({ codexEffort: "low" }, "codex")).toBe("low");
   });
 
-  it("uses stored model when present and falls back to quality ranking otherwise", () => {
-    expect(resolveProviderModel({}, "codex", ["gpt-5-mini", "o3"])).toBe("o3");
+  it("uses stored model when present and falls back to catalog order otherwise", () => {
+    expect(resolveProviderModel({}, "codex", ["gpt-5-mini", "o3"])).toBe("gpt-5-mini");
     expect(resolveProviderModel({ codexModel: "gpt-5-mini" }, "codex", ["gpt-5-mini", "o3"])).toBe(
       "gpt-5-mini"
     );
   });
 
-  it("explains when cursor high-tier models are missing from discovery", () => {
-    expect(getProviderModelPickerNote("cursor", ["auto", "gpt-5.5-medium"])).toContain(
-      "gpt-5.5-high"
-    );
-    expect(getProviderModelPickerNote("codex", ["o3"])).toBeNull();
-  });
 });
 
 // ─── buildAiTurnRequest ─────────────────────────────────────────────────────
