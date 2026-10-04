@@ -64,7 +64,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor, type EditorSectionContext, type RichTextEditorHandle } from "@/components/rich-text-editor";
 import { Bibliography, PaperChildRow, PaperReferencePicker } from "@/components/bibliography";
 import { BIBLIOGRAPHY_PATH, isBibliographyPath, paperReferenceHtml } from "@/lib/papers";
-import { flushInlinePapers } from "@/lib/inline-paper-save";
+import { flushInlinePapers, flushPaperFrame } from "@/lib/inline-paper-save";
+import { PaperNotesDock } from "@/components/paper-notes-dock";
+import {
+  PAPER_NOTES_DEFAULT_WIDTH,
+  PAPER_SPLIT_MIN_VIEWPORT,
+  clampPaperNotesWidth,
+  isPaperOpenPdfMessage,
+  paperShellLayout,
+  readPaperNotesOpen,
+  readPaperNotesWidth,
+  writePaperNotesOpen,
+  writePaperNotesWidth,
+} from "@/lib/paper-reading-shell";
 import type { AnnotationLayerHandle, AnnotationLayerProps, AnnotationStrokeSize, AnnotationTool } from "@/components/annotation-layer";
 import type { InkCanvasHandle, InkCanvasProps } from "@/components/ink-canvas";
 import type { JupyterNotebookViewProps } from "@/components/jupyter-notebook-view";
@@ -171,6 +183,9 @@ const ImmersivePdfReader = dynamic(
   companionWorking?: boolean;
   onToggleCompanion?: () => void;
   onPageChange?: (page: number) => void;
+  insetRight?: number;
+  modal?: boolean;
+  notesPanel?: { open: boolean; onToggle: () => void };
 }>;
 import {
   getVersionsControlLabel,
@@ -583,7 +598,9 @@ function readActivePdfReaderSession(): PdfAttachmentTarget | null {
       typeof parsed.pageCount === "number" && Number.isInteger(parsed.pageCount) && parsed.pageCount > 0
         ? parsed.pageCount
         : undefined;
-    return { href: parsed.href, fileName: parsed.fileName, page, pageCount };
+    const paperPath =
+      typeof parsed.paperPath === "string" && isBibliographyPath(parsed.paperPath) ? parsed.paperPath : undefined;
+    return { href: parsed.href, fileName: parsed.fileName, page, pageCount, paperPath };
   } catch {
     return null;
   }
@@ -637,6 +654,8 @@ function deepWorkDraft(descriptor: DeepWorkDescriptor): PageDraft {
 export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTreeResponse } = {}) {
   const searchParams = useSearchParams();
   const paperInline = searchParams?.get("paperInline") === "1";
+  // SN-281: the paper reading shell's notes frame; Companion stays with the host.
+  const paperDock = paperInline && searchParams?.get("paperDock") === "1";
   const [paperReturnPath, setPaperReturnPath] = React.useState<string | null>(null);
   const searchKey = searchParams?.toString() ?? "";
   const linkedProjectWorkspace = React.useMemo(
@@ -655,7 +674,6 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         sticky: typeof window === "undefined" || paperInline ? null : readStickyDeepWork(window.localStorage),
       }),
     // Mount-only: a later URL change must not re-run sticky restore mid-session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
   const [openedWorkspace, setOpenedWorkspace] = React.useState<DeepWorkDescriptor | null>(
@@ -683,7 +701,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     [draft?.path, projectWorkspace]
   );
   const [workspaceSession, setWorkspaceSession] = React.useState<JupyterSessionView | null>(null);
-  const restoredPdfReader = React.useMemo(readActivePdfReaderSession, []);
+  // Embedded paper frames share the tab's sessionStorage; only the top shell restores a reader.
+  const restoredPdfReader = React.useMemo(() => (paperInline ? null : readActivePdfReaderSession()), []);
   const [pdfReaderState, setPdfReaderState] = React.useState(
     createRetainedPdfReaderState(restoredPdfReader)
   );
@@ -765,14 +784,56 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [expandedPages, setExpandedPages] = React.useState<Set<string>>(() => readStoredStringSet(EXPANDED_PAGES_STORAGE_KEY));
   const [ghostVersions, setGhostVersions] = React.useState<VisibleGhostVersions | null>(null);
   const openPdfReader = React.useCallback((target: PdfAttachmentTarget) => {
-    writeActivePdfReaderSession(target);
-    setPdfReaderState((current) => openRetainedPdfReader(current, target));
-  }, []);
+    const currentPath = draftRef.current?.path ?? null;
+    const currentPaper = currentPath && isBibliographyPath(currentPath) ? currentPath : undefined;
+    if (paperInline && window.parent !== window && currentPaper) {
+      // SN-281: an embedded paper editor hands its PDF to the top shell, which
+      // opens the paper reading shell instead of a reader inside the frame.
+      window.parent.postMessage(
+        { type: "paper-open-pdf", paperPath: currentPaper, target: { href: target.href, fileName: target.fileName } },
+        window.location.origin
+      );
+      return;
+    }
+    const paperPath = target.paperPath ?? currentPaper;
+    const next = paperPath ? { ...target, paperPath } : target;
+    writeActivePdfReaderSession(next);
+    setPdfReaderState((current) => openRetainedPdfReader(current, next));
+  }, [paperInline]);
+  // SN-281 paper reading shell: PDF | paper notes dock | Companion overlay.
+  const paperShellPath = pdfReaderOpen ? pdfReader?.paperPath ?? null : null;
+  const [paperNotesWidth, setPaperNotesWidth] = React.useState(PAPER_NOTES_DEFAULT_WIDTH);
+  const [paperNotesOpen, setPaperNotesOpen] = React.useState(true);
+  // Narrow viewports show notes as a layer over the PDF; it starts hidden per open.
+  const [paperNotesOverlayOpen, setPaperNotesOverlayOpen] = React.useState(false);
+  const [viewportWidth, setViewportWidth] = React.useState(1280);
+  const [paperFrameReady, setPaperFrameReady] = React.useState(false);
+  const [paperDockActivated, setPaperDockActivated] = React.useState(false);
+  const [paperShellError, setPaperShellError] = React.useState<string | null>(null);
+  const paperFrameRef = React.useRef<HTMLIFrameElement>(null);
+  const liveFramesRef = React.useRef(new WeakSet<Window>());
+  const paperLayout = paperShellLayout({
+    viewportWidth,
+    notesWidth: paperNotesWidth,
+    notesOpen: paperNotesOpen,
+    overlayOpen: paperNotesOverlayOpen,
+  });
   const closePdfReader = React.useCallback(() => {
-    writeActivePdfReaderSession(null);
-    // Keep exactly one loaded EmbedPDF tree hidden for same-tab same-PDF
-    // resume. Opening a different href changes the keyed host and disposes it.
-    setPdfReaderState(closeRetainedPdfReader);
+    void (async () => {
+      const frame = paperFrameRef.current;
+      if (frame?.contentWindow && liveFramesRef.current.has(frame.contentWindow)) {
+        // Same save handshake as SN-279 inline frames: never discard dock edits.
+        setPaperShellError(null);
+        if (!(await flushPaperFrame(frame))) {
+          setPaperShellError("Paper notes could not be saved. The reader stays open — retry closing.");
+          return;
+        }
+      }
+      writeActivePdfReaderSession(null);
+      // Keep exactly one loaded EmbedPDF tree hidden for same-tab same-PDF
+      // resume. Opening a different href changes the keyed host and disposes it.
+      setPdfReaderState(closeRetainedPdfReader);
+    })();
   }, []);
   const handlePdfReaderPageChange = React.useCallback((page: number, pageCount?: number) => {
     setPdfReaderState((current) => {
@@ -3362,8 +3423,85 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       window.parent.postMessage({ type: "paper-flushed", requestId: event.data.requestId, saved }, window.location.origin);
     };
     window.addEventListener("message", receive);
+    // SN-281: the host may skip the flush handshake for a frame that never got here.
+    window.parent.postMessage({ type: "paper-frame-ready" }, window.location.origin);
     return () => window.removeEventListener("message", receive);
   }, [paperInline]);
+
+  // SN-281: messages from embedded paper frames (inline chips and the reading-shell dock).
+  React.useEffect(() => {
+    if (paperInline) return;
+    const receive = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || !event.source) return;
+      const source = Array.from(document.querySelectorAll("iframe")).find((frame) => frame.contentWindow === event.source);
+      if (!source?.contentWindow) return;
+      if (event.data?.type === "paper-frame-ready") {
+        liveFramesRef.current.add(source.contentWindow);
+        return;
+      }
+      if (event.data?.type === "paper-toggle-companion" && source.hasAttribute("data-paper-dock")) {
+        setAiOpen((current) => !current);
+        return;
+      }
+      if (!isPaperOpenPdfMessage(event.data)) return;
+      // An inline chip editor saves before its paper moves into the reading shell.
+      if (source.hasAttribute("data-paper-editor") && !(await flushPaperFrame(source))) return;
+      openPdfReader({ ...event.data.target, paperPath: event.data.paperPath });
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [openPdfReader, paperInline]);
+
+  React.useEffect(() => {
+    if (paperInline) return;
+    setPaperNotesWidth(readPaperNotesWidth(window.localStorage));
+    setPaperNotesOpen(readPaperNotesOpen(window.localStorage));
+    const syncViewport = () => setViewportWidth(window.innerWidth);
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, [paperInline]);
+
+  // Opening a paper's PDF: flush the host editor first so the notes frame loads
+  // the latest canonical paper, and start every narrow-viewport open on the PDF.
+  React.useEffect(() => {
+    setPaperFrameReady(false);
+    setPaperDockActivated(false);
+    setPaperShellError(null);
+    setPaperNotesOverlayOpen(false);
+    if (!paperShellPath) return;
+    let cancelled = false;
+    void flushSaveRef.current()
+      .catch(() => false)
+      .then(() => {
+        if (!cancelled) setPaperFrameReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [paperShellPath]);
+
+  // The notes frame is a second app instance; mount it only once notes are shown.
+  React.useEffect(() => {
+    if (paperShellPath && paperLayout.mode !== "hidden") setPaperDockActivated(true);
+  }, [paperLayout.mode, paperShellPath]);
+
+  const togglePaperNotes = React.useCallback(() => {
+    if (window.innerWidth < PAPER_SPLIT_MIN_VIEWPORT) {
+      setPaperNotesOverlayOpen((current) => !current);
+      return;
+    }
+    setPaperNotesOpen((current) => {
+      writePaperNotesOpen(window.localStorage, !current);
+      return !current;
+    });
+  }, []);
+
+  const commitPaperNotesWidth = React.useCallback((width: number) => {
+    const next = clampPaperNotesWidth(width, window.innerWidth);
+    writePaperNotesWidth(window.localStorage, next);
+    setPaperNotesWidth(next);
+  }, []);
 
   const handlePreviewGhostVersion = React.useCallback(
     async (parentPagePath: string, versionId: string, versionTs: string) => {
@@ -4917,6 +5055,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           activePdfFileName: pdfReaderOpen ? pdfReader?.fileName : undefined,
           pdfPage: pdfReaderOpen ? pdfReader?.page : undefined,
           pdfPageCount: pdfReaderOpen ? pdfReader?.pageCount : undefined,
+          // SN-281: in the paper reading shell the companion reasons over the whole paper.
+          paperPath: pdfReaderOpen ? pdfReader?.paperPath : undefined,
           activeJupyterCellIndex:
             turnJupyterFocus?.workspacePath === "notebook.ipynb" && turnJupyterFocus.documentKind === "notebook"
               ? turnJupyterFocus.activeCellIndex ?? undefined
@@ -5833,7 +5973,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               onReload={handleReload}
               onOpenSearch={openSearchModal}
               onOpenSidebar={() => setSidebarOpen(true)}
-              onToggleAi={() => setAiOpen((current) => !current)}
+              onToggleAi={() => {
+                // SN-281: inside the reading-shell dock the host owns Companion.
+                if (paperDock) window.parent.postMessage({ type: "paper-toggle-companion" }, window.location.origin);
+                else setAiOpen((current) => !current);
+              }}
               onOpenSettings={() => setSettingsOpen(true)}
               onExportPage={() => void handleExportCurrentPage()}
               onPrintPage={() => void handlePrintCurrentPage()}
@@ -6269,6 +6413,26 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           companionWorking={companionIconWorking}
           onToggleCompanion={() => setAiOpen((current) => !current)}
           onPageChange={handlePdfReaderPageChange}
+          insetRight={paperShellPath ? paperLayout.readerInsetRight : 0}
+          modal={!paperShellPath || paperLayout.mode !== "split"}
+          notesPanel={paperShellPath ? { open: paperLayout.mode !== "hidden", onToggle: togglePaperNotes } : undefined}
+        />
+      ) : null}
+
+      {paperShellPath && (paperDockActivated || paperShellError) ? (
+        <PaperNotesDock
+          paperPath={paperShellPath}
+          title={tree.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH)?.pages.find((page) => page.path === paperShellPath)?.title ?? "Paper"}
+          // A failed save keeps the notes visible so the error and editor are reachable.
+          layout={paperShellError && paperLayout.mode === "hidden"
+            ? paperShellLayout({ viewportWidth, notesWidth: paperNotesWidth, notesOpen: true, overlayOpen: true })
+            : paperLayout}
+          preferredWidth={paperNotesWidth}
+          frameReady={paperFrameReady}
+          error={paperShellError}
+          frameRef={paperFrameRef}
+          onHide={togglePaperNotes}
+          onWidthCommit={commitPaperNotesWidth}
         />
       ) : null}
 
@@ -8641,7 +8805,6 @@ function EditorPanel({
   const initialComments = React.useMemo(
     () => extractComments(draft.metadata),
     // Re-derive only when the page changes (key) or metadata.comments reference changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [draft.path, draft.metadata]
   );
 

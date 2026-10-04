@@ -23,7 +23,9 @@ export function openRetainedPdfReader(
   target: PdfAttachmentTarget
 ): RetainedPdfReaderState {
   if (current.target?.href === target.href) {
-    return { ...current, open: true };
+    // SN-281: the same PDF may be reopened from (or away from) its paper.
+    if (current.target.paperPath === target.paperPath) return { ...current, open: true };
+    return { target: { ...current.target, paperPath: target.paperPath }, open: true };
   }
   return { target, open: true };
 }

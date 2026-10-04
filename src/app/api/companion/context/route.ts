@@ -25,6 +25,8 @@ export async function POST(request: Request) {
       activeJupyterCellIndex?: number;
       /** Stable nbformat id for the active cell. */
       activeJupyterCellId?: string;
+      /** SN-281: canonical paper open in the paper reading shell. */
+      paperPath?: string;
     };
     if (!body.path) {
       throw new VaultError("INVALID_PATH", 'Body field "path" is required.');
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
           typeof body.activeJupyterCellId === "string" && body.activeJupyterCellId.trim()
             ? body.activeJupyterCellId.trim()
             : undefined,
+        paperPath: typeof body.paperPath === "string" && body.paperPath.trim() ? body.paperPath.trim() : undefined,
       })
     );
   } catch (error) {

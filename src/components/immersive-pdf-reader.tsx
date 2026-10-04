@@ -64,6 +64,7 @@ import {
   Highlighter,
   ListTree,
   BookOpen,
+  NotebookPen,
   Loader2,
   Maximize2,
   Minus,
@@ -439,7 +440,24 @@ export interface ImmersivePdfReaderProps {
   onToggleCompanion?: () => void;
   /** Reports the live 1-based page and loaded document page count. */
   onPageChange?: (page: number, pageCount?: number) => void;
+  /**
+   * SN-281 paper reading shell: pixels left free on the right for the docked
+   * paper notes. Companion never feeds this value; it overlays both frames.
+   */
+  insetRight?: number;
+  /** False when the reader shares the viewport with docked notes (non-modal split). */
+  modal?: boolean;
+  /** SN-281: toolbar toggle for the paper notes dock. */
+  notesPanel?: PaperNotesToggle;
 }
+
+export interface PaperNotesToggle {
+  open: boolean;
+  onToggle: () => void;
+}
+
+/** Context keeps the notes toggle out of the session/gate/surface prop chain. */
+const PaperNotesToggleContext = React.createContext<PaperNotesToggle | null>(null);
 
 /** Phone / tablet: prefer cheaper WASM paint (DPR 1, smaller tiles, buffer 1). */
 function isCoarsePointerClient(): boolean {
@@ -522,6 +540,9 @@ export default function ImmersivePdfReader({
   companionWorking = false,
   onToggleCompanion,
   onPageChange,
+  insetRight = 0,
+  modal = true,
+  notesPanel,
 }: ImmersivePdfReaderProps): React.ReactElement | null {
   const { engine, isLoading, error, fontsReady } = usePdfiumEngineWhenFontsReady();
   // Run PDFium on the main thread (SN-148). Worker blob: origin cannot fetch
@@ -714,18 +735,20 @@ export default function ImmersivePdfReader({
     <div
       ref={readerRootRef}
       className="pdf-reader"
-      role={open ? "dialog" : undefined}
-      aria-modal={open ? "true" : undefined}
+      role={open ? (modal ? "dialog" : "region") : undefined}
+      aria-modal={open && modal ? "true" : undefined}
       aria-hidden={open ? undefined : true}
       aria-label={`PDF reader: ${title}`}
       data-testid="pdf-reader"
       data-reader-state={open ? "open" : "retained"}
+      data-paper-shell={notesPanel ? "true" : undefined}
       style={
         open
-          ? undefined
+          ? insetRight > 0 ? { right: insetRight } : undefined
           : { visibility: "hidden", pointerEvents: "none" }
       }
     >
+      <PaperNotesToggleContext.Provider value={open ? notesPanel ?? null : null}>
       {error || pdfFetchError ? (
         <ReaderMessage
           title={title}
@@ -762,6 +785,7 @@ export default function ImmersivePdfReader({
           onPerformanceModeChange={performanceMode.setEnabled}
         />
       )}
+      </PaperNotesToggleContext.Provider>
     </div>
   );
 
@@ -1469,6 +1493,7 @@ function ReaderSurface({
   performanceMode,
   onPerformanceModeChange,
 }: ReaderSurfaceProps) {
+  const notesPanel = React.useContext(PaperNotesToggleContext);
   const { state: scrollState, provides: scroll } = useScroll(documentId);
   const { provides: scrollCap } = useScrollCapability();
   const { state: zoomState, provides: zoom } = useZoom(documentId);
@@ -2723,6 +2748,19 @@ function ReaderSurface({
           >
             <Pencil className="size-5" aria-hidden="true" />
           </button>
+          {notesPanel ? (
+            <button
+              type="button"
+              className="pdf-reader__control"
+              data-testid="pdf-reader-paper-notes-toggle"
+              aria-label={notesPanel.open ? "Hide paper notes" : "Show paper notes"}
+              aria-pressed={notesPanel.open}
+              title={notesPanel.open ? "Hide paper notes" : "Show this paper's notes beside the PDF"}
+              onClick={notesPanel.onToggle}
+            >
+              <NotebookPen className="size-5" aria-hidden="true" />
+            </button>
+          ) : null}
           {onToggleCompanion ? (
             <button
               type="button"

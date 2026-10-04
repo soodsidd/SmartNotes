@@ -2619,3 +2619,79 @@ mark {
 .paper-reference-frame { display: block; width: 100%; height: var(--paper-reference-frame-height); border: 0; background: var(--surface); }
 [data-paper-inline="true"] [data-testid="tree-sidebar-rail"],
 [data-paper-inline="true"] [data-testid="open-sidebar-btn"] { display: none; }
+/* ── Paper reading shell (SN-281) ─────────────────────────────────────────
+   PDF reader | paper notes dock. The dock sits on --z-paper-notes, above the
+   reader and below the companion rail, so Companion overlays both frames. */
+.paper-notes-dock {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-paper-notes);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  color: var(--foreground);
+  border-left: 1px solid var(--border);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) 0;
+}
+.paper-notes-dock[hidden] { display: none; }
+.paper-notes-dock[data-mode="overlay"] {
+  left: 0;
+  border-left: 0;
+  padding-left: env(safe-area-inset-left);
+}
+.paper-notes-dock__resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  width: 0.75rem;
+  transform: translateX(-50%);
+  cursor: col-resize;
+  touch-action: none;
+}
+.paper-notes-dock__resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 1px);
+  width: 2px;
+  background: transparent;
+}
+.paper-notes-dock__resize:hover::after,
+.paper-notes-dock__resize:focus-visible::after { background: var(--ring); }
+.paper-notes-dock__resize:focus-visible { outline: none; }
+.paper-notes-dock__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--desktop-chrome-height);
+  padding: 0.25rem 0.5rem 0.25rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--rail);
+}
+.paper-notes-dock__heading { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.paper-notes-dock__eyebrow { font-size: 0.75rem; color: var(--muted-foreground); }
+.paper-notes-dock__title {
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.paper-notes-dock__control { flex-shrink: 0; }
+.paper-notes-dock__error {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--destructive);
+  border-bottom: 1px solid var(--border);
+}
+.paper-notes-dock__status { padding: 0.75rem; font-size: 0.875rem; color: var(--muted-foreground); }
+.paper-notes-dock__frame { display: block; flex: 1; width: 100%; min-height: 0; border: 0; background: var(--surface); }
+@media (pointer: coarse) {
+  .paper-notes-dock__control { width: 2.75rem; height: 2.75rem; }
+}

@@ -13,6 +13,8 @@ export interface PdfAttachmentTarget {
   page?: number;
   /** Authoritative page count reported by the loaded immersive reader document. */
   pageCount?: number;
+  /** SN-281: canonical Bibliography paper that owns this PDF; opens the paper reading shell. */
+  paperPath?: string;
 }
 
 /** Derive a display name from a `/vault/...` href when the chip lacks a label. */
