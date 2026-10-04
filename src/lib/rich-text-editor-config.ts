@@ -187,6 +187,48 @@ export function parseMarkdownToTiptapJson(markdown: string): JSONContent {
   }
 }
 
+/**
+ * Silent content replacement for SN-55 page swaps. TipTap v3 defaults
+ * `emitUpdate` to true, which would fire `onUpdate`/`onChange` and dirty the
+ * destination draft during navigation (SN-280).
+ */
+export function setEditorHtmlSilent(editor: Editor, html: string): void {
+  editor.commands.setContent(html, { emitUpdate: false });
+}
+
+/** Thrown when an in-flight asset upload finishes after the editor left that page. */
+export class EditorUploadPageAffinityError extends Error {
+  readonly uploadPagePath: string;
+  readonly activePagePath: string | null;
+
+  constructor(uploadPagePath: string, activePagePath: string | null) {
+    super(
+      activePagePath
+        ? `Upload aborted: editor moved from ${uploadPagePath} to ${activePagePath}.`
+        : `Upload aborted: editor left ${uploadPagePath}.`
+    );
+    this.name = "EditorUploadPageAffinityError";
+    this.uploadPagePath = uploadPagePath;
+    this.activePagePath = activePagePath;
+  }
+}
+
+export function assertEditorUploadPageAffinity(input: {
+  uploadPagePath: string;
+  uploadGeneration: number;
+  activePagePath: string | null | undefined;
+  activeGeneration: number;
+}): void {
+  const activePagePath = input.activePagePath ?? null;
+  if (
+    !activePagePath ||
+    activePagePath !== input.uploadPagePath ||
+    input.activeGeneration !== input.uploadGeneration
+  ) {
+    throw new EditorUploadPageAffinityError(input.uploadPagePath, activePagePath);
+  }
+}
+
 export async function uploadEditorAsset(pagePath: string, file: File) {
   let blob: Blob;
   try {

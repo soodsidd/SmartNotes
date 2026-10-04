@@ -52,12 +52,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
+  assertEditorUploadPageAffinity,
   createEditorExtensions,
+  EditorUploadPageAffinityError,
   FONT_FAMILIES,
   FONT_SIZES,
   insertAndPersistUploadedEditorAsset,
   looksLikeMarkdown,
   parseMarkdownToTiptapJson,
+  setEditorHtmlSilent,
   TEXT_COLOR_PALETTE,
   uploadEditorAsset,
 } from "@/lib/rich-text-editor-config";
@@ -459,6 +462,19 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     const collapsedHeadingKeysByPageRef = React.useRef(new Map<string, string[]>());
     const collapseScopeId = React.useId();
     const pageStateKey = pagePath ?? "__page__";
+    // SN-280: capture upload affinity against the live page, not a stale
+    // useEditor closure. Generation bumps only when pagePath actually changes
+    // (not on mount) so the first upload is not falsely aborted.
+    const pagePathRef = React.useRef(pagePath);
+    const pageGenerationRef = React.useRef(0);
+    const seenPagePathRef = React.useRef(pagePath);
+    React.useEffect(() => {
+      if (seenPagePathRef.current !== pagePath) {
+        seenPagePathRef.current = pagePath;
+        pageGenerationRef.current += 1;
+      }
+      pagePathRef.current = pagePath;
+    }, [pagePath]);
 
     React.useEffect(() => {
       setCollapsedHeadingKeys(collapsedHeadingKeysByPageRef.current.get(pageStateKey) ?? []);
@@ -477,22 +493,41 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     );
 
     async function insertUploadedAsset(file: File) {
-      if (!editor || !pagePath) return;
-      const { asset } = await uploadEditorAsset(pagePath, file);
+      if (!editor) return;
+      const uploadPagePath = pagePathRef.current;
+      if (!uploadPagePath) return;
+      const uploadGeneration = pageGenerationRef.current;
+      const { asset } = await uploadEditorAsset(uploadPagePath, file);
+      // Abort after await if the mounted editor has navigated away (SN-280).
+      // Images previously skipped the PDF persist-path gate and could publishHtml
+      // onto the destination draft.
+      const assertStillOnUploadPage = () =>
+        assertEditorUploadPageAffinity({
+          uploadPagePath,
+          uploadGeneration,
+          activePagePath: pagePathRef.current,
+          activeGeneration: pageGenerationRef.current,
+        });
+      assertStillOnUploadPage();
       await insertAndPersistUploadedEditorAsset(
         editor,
         asset,
         file.name,
         (verifiedHtml) => {
+          assertStillOnUploadPage();
           onChange(verifiedHtml);
           lastEmittedRef.current = verifiedHtml;
         },
-        (verifiedHtml) =>
-          onPersistAttachment?.({
-            pagePath,
-            html: verifiedHtml,
-            assetUrl: asset.url,
-          }) ?? Promise.resolve(false)
+        async (verifiedHtml) => {
+          assertStillOnUploadPage();
+          return (
+            onPersistAttachment?.({
+              pagePath: uploadPagePath,
+              html: verifiedHtml,
+              assetUrl: asset.url,
+            }) ?? Promise.resolve(false)
+          );
+        }
       );
     }
 
@@ -509,11 +544,17 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           await insertUploadedAsset(file);
           toast.success(`Attached ${file.name}`, { id: toastId, duration: 2500 });
         } catch (err) {
+          if (err instanceof EditorUploadPageAffinityError) {
+            toast.dismiss(toastId);
+            continue;
+          }
           const msg = describeAssetUploadFailure(err);
           toast.error(msg, { id: toastId, duration: 6000 });
         }
       }
     }
+    const handleAssetFilesRef = React.useRef(handleAssetFiles);
+    handleAssetFilesRef.current = handleAssetFiles;
 
     function handleEditorClickCapture(e: React.MouseEvent) {
       if (readOnly || isDrawMode) return;
@@ -1067,9 +1108,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         },
         handlePaste(_view, event) {
           const items = event.clipboardData?.files;
-          if (items?.length && pagePath) {
+          if (items?.length && pagePathRef.current) {
             event.preventDefault();
-            void handleAssetFiles(items);
+            void handleAssetFilesRef.current(items);
             return true;
           }
           if (plainPasteArmedRef.current) {
@@ -1094,9 +1135,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         },
         handleDrop(_view, event) {
           const files = event.dataTransfer?.files;
-          if (files?.length && pagePath) {
+          if (files?.length && pagePathRef.current) {
             event.preventDefault();
-            void handleAssetFiles(files);
+            void handleAssetFilesRef.current(files);
             return true;
           }
           return false;
@@ -1418,7 +1459,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       if (!editor) return;
       if (content === lastEmittedRef.current) return;
       lastEmittedRef.current = content;
-      editor.commands.setContent(content);
+      setEditorHtmlSilent(editor, content);
     }, [editor, content]);
 
     React.useEffect(() => {
@@ -1879,7 +1920,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         swapContent(html: string) {
           if (!editor) return false;
           lastEmittedRef.current = html;
-          editor.commands.setContent(html);
+          setEditorHtmlSilent(editor, html);
           onSelectionContextChange?.(resolveSectionContext(editor));
           return true;
         },

@@ -78,4 +78,42 @@ export const ImageLayout = Image.extend({
           commands.updateAttributes(this.name, { width: normalizeWidth(width) }),
     };
   },
+
+  /**
+   * TipTap's stock resize NodeView `onUpdate` returns true without syncing
+   * `img.src`. Across SN-55 page swaps the editor stays mounted, so ProseMirror
+   * can reuse the NodeView while the model already holds the next page's URL —
+   * leaving the previous bitmap visible. Rebuild when `src` changes (SN-280).
+   */
+  addNodeView() {
+    const parent = this.parent?.();
+    if (!parent) {
+      return null;
+    }
+
+    return (props) => {
+      const nodeView = parent(props);
+      if (!nodeView || typeof nodeView.update !== "function") {
+        return nodeView;
+      }
+
+      let appliedSrc = String(props.node.attrs.src ?? "");
+      const originalUpdate = nodeView.update.bind(nodeView);
+
+      nodeView.update = (updatedNode, decorations, innerDecorations) => {
+        if (updatedNode.type.name !== this.name) {
+          return false;
+        }
+
+        const nextSrc = String(updatedNode.attrs.src ?? "");
+        if (nextSrc !== appliedSrc) {
+          return false;
+        }
+
+        return originalUpdate(updatedNode, decorations, innerDecorations);
+      };
+
+      return nodeView;
+    };
+  },
 });
