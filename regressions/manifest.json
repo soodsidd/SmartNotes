@@ -4564,6 +4564,76 @@
           "path": "e2e/sn-279-bibliography.spec.ts"
         }
       ]
+    },
+    {
+      "feature": "bibliography",
+      "risk": "high",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-281",
+      "addedAt": "2026-10-04",
+      "enabled": true,
+      "whenToRun": "Pre-merge when touching the paper reading shell, PDF reader layout/insets, the paper notes dock, companion over-reader layering, or companion paper context.",
+      "failureMeaning": "Opening a paper's PDF may lose the docked notes, forget the notes width, let Companion resize or hide the PDF/notes frames, drop dock edits on close, or give Companion an incomplete paper.",
+      "id": "unit-paper-reading-shell",
+      "name": "Paper reading shell layout, persistence, z-order and companion paper context",
+      "description": "Pure split/overlay layout and width persistence, reader < notes < companion z-order, non-displacement (no companion input), dock rendering, paper PDF hand-off validation, and Open paper companion context.",
+      "intent": "Guards SN-281 split geometry, persisted width, companion overlay layering/non-displacement and whole-paper companion context.",
+      "appType": "node",
+      "command": "npm test -- tests/paper-reading-shell.test.tsx tests/companion-context.test.ts tests/pdf-reader-session.test.ts",
+      "timeoutMs": 300000,
+      "tags": [
+        "bibliography",
+        "papers",
+        "pdf",
+        "companion",
+        "targeted"
+      ],
+      "testType": "unit",
+      "suite": "feature-bundle",
+      "cost": "fast",
+      "sourceFiles": [
+        {
+          "path": "tests/paper-reading-shell.test.tsx"
+        },
+        {
+          "path": "tests/companion-context.test.ts"
+        }
+      ]
+    },
+    {
+      "feature": "bibliography",
+      "risk": "high",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-281",
+      "addedAt": "2026-10-04",
+      "enabled": true,
+      "whenToRun": "Pre-merge when touching the paper reading shell, PDF reader layout/insets, the paper notes dock, companion over-reader layering, or companion paper context.",
+      "failureMeaning": "Opening a paper's PDF may lose the docked notes, forget the notes width, let Companion resize or hide the PDF/notes frames, drop dock edits on close, or give Companion an incomplete paper.",
+      "id": "e2e-paper-reading-shell",
+      "name": "Paper PDF + docked notes + Companion overlay on desktop and mobile",
+      "description": "Opens a paper's PDF, verifies docked notes split and drag-resize persistence, Companion overlay without frame movement, notes toggle, narrow notes layer, and dock edits saved before close.",
+      "intent": "Guards the SN-281 paper reading shell end to end in the real app on desktop and mobile.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-281-paper-reading-shell.spec.ts",
+      "timeoutMs": 600000,
+      "tags": [
+        "bibliography",
+        "papers",
+        "pdf",
+        "companion",
+        "e2e",
+        "desktop",
+        "mobile",
+        "targeted"
+      ],
+      "testType": "e2e",
+      "suite": "feature-bundle",
+      "cost": "slow",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-281-paper-reading-shell.spec.ts"
+        }
+      ]
     }
   ]
 }

@@ -1254,9 +1254,35 @@ Builder functions: `appendAiTimelineText()`, `appendAiTimelineReasoning()`, `app
 
 `ReliableNotebookShell` creates one shared `AiSidebar` element and one prop bundle. On wide screens its containing rail changes from the in-layout docked presentation to a fixed over-reader presentation; on narrow screens the same element stays inside `MobileAiSheet`, whose layer rises above the reader. The PDF reader does not own a second companion mount or a PDF-only settings store.
 
-The immersive layer order is defined by design-system tokens: `--z-pdf-reader` (300), `--z-companion-rail` (350), `--z-companion-overlay` (400), and `--z-jupyter-inline-ai` (425, SN-249) for the Jupyter inline-AI overlay described under Jupyter inline AI fast lane. `AiSidebar` opts its own portaled settings dialog and dropdown positioners into the overlay token only while the reader is active. Shared dialogs and menus keep their default layer everywhere else. This avoids both prop drift from duplicate mounts and body-portal controls appearing beneath the reader.
+The immersive layer order is defined by design-system tokens: `--z-pdf-reader` (300), `--z-paper-notes` (320, SN-281 paper notes dock), `--z-companion-rail` (350), `--z-companion-overlay` (400), and `--z-jupyter-inline-ai` (425, SN-249) for the Jupyter inline-AI overlay described under Jupyter inline AI fast lane. `AiSidebar` opts its own portaled settings dialog and dropdown positioners into the overlay token only while the reader is active. Shared dialogs and menus keep their default layer everywhere else. This avoids both prop drift from duplicate mounts and body-portal controls appearing beneath the reader.
 
 **Over-reader width control (SN-161):** The over-reader rail is `position: fixed` but is no longer a fixed `min(24rem,42vw)` lock — it renders the same `ai-sidebar-resize-handle` and applies the same persisted `aiSidebarWidth` with the SN-46 clamps (`AI_SIDEBAR_MIN_WIDTH` … `getAiSidebarMaxWidth`, max 80% viewport), so width tracks the pointer over the PDF and carries between the notebook and over-reader presentations via one storage key. Both the tree and AI resize handlers write the rail width directly to the DOM per `requestAnimationFrame` during the drag and commit React state once on `pointerup` (with `setPointerCapture`), instead of calling `setAiSidebarWidth` on every `pointermove`. The old per-frame full-shell re-render left the AI rail edge trailing the pointer as a ghosted second divider; direct 1:1 DOM tracking gives a single clean divider. The SN-197 single shared mount and `--z-companion-rail` layering are unchanged.
+
+### Paper reading shell (SN-281)
+
+**Plain English:** When you open a PDF that belongs to a Bibliography paper, the reader no longer takes the whole screen. The PDF is on the left and the paper's own notes are docked on the right, so you can read and write side by side. You can drag the divider and the app remembers the width. Companion still opens on the right, but it floats above the PDF and notes instead of squeezing them, and closing it leaves both exactly where they were. While you read, Companion is given the whole paper: its notes, every attached PDF, and the page you are on.
+
+**When it activates.** `PdfAttachmentTarget.paperPath` marks a PDF as owned by a canonical paper. `openPdfReader` in `ReliableNotebookShell` sets it when the open draft is a Bibliography path. Inside an embedded paper frame (`paperInline=1`, the SN-279 chip or this dock), opening a PDF does not mount a reader in the frame. The frame posts `paper-open-pdf` (`{ paperPath, target }`, validated by `isPaperOpenPdfMessage`) to the top shell. The host flushes a source chip frame via the SN-279 save handshake and then opens the reader with `paperPath`. `paperPath` persists with the reader session (sessionStorage), so a reload restores the shell. Embedded frames never restore a reader session, because they share the tab's sessionStorage. Reopening the same href keeps the retained EmbedPDF host and only updates `paperPath`.
+
+**Layout (`src/lib/paper-reading-shell.ts`).** `paperShellLayout({ viewportWidth, notesWidth, notesOpen, overlayOpen })` is pure and takes no Companion input. That makes non-displacement structural. Modes:
+- `split` (viewport ≥ 680px): the reader gets `insetRight = notesWidth` (style `right`) and is non-modal (`role="region"`).
+- `overlay` (narrow): a full-width notes layer over the PDF. It starts hidden on every open and is reached from the reader's Notes toggle.
+- `hidden`: the PDF gets the whole viewport.
+
+Width is clamped to notes ≥ 320px and PDF ≥ 360px (default 440px). It is persisted unclamped in `localStorage["smart-notes-paper-notes-width"]`, and the wide-screen open state is persisted in `smart-notes-paper-notes-open`. `PaperNotesDock` is portaled to `body` on `--z-paper-notes` (320). It has a pointer separator (rAF DOM writes during drag, one commit on pointerup, iframe pointer-events off while dragging; same pattern as SN-161) and a keyboard separator (Arrow ±24px, Home/End).
+
+**Notes frame and saves.** The dock embeds `/?page=<paper>&paperInline=1&paperDock=1`, the SN-279 same-origin standard shell. Before the frame mounts, the host flushes its own save so the frame loads the latest paper. The frame mounts lazily the first time notes are shown, and stays mounted while hidden so unsaved state survives toggling. Each embedded frame posts `paper-frame-ready` once its flush listener is live. Closing the reader awaits `paper-flush`/`paper-flushed` for a live dock frame; on failure the reader and notes stay open with an alert. The host's clean canonical draft adopts the frame's saves through the existing SN-279 follow logic. The frame's Companion button posts `paper-toggle-companion`, so the host owns the only Companion.
+
+**Companion overlay.** This is unchanged from SN-197: over the reader the single shared `AiSidebar` rail is `position: fixed` on `--z-companion-rail` (350), and narrow screens use `MobileAiSheet`. Layer order: reader 300 < paper notes 320 < companion rail 350 < companion floating 400. Dismissing Companion restores nothing, because neither frame ever moved.
+
+**Companion context.** Each turn passes `paperPath` to `/api/companion/context`. `buildCompanionPageContext` then resolves PDFs against the paper, even when the host page is a referring page, and prepends `## Open paper (Bibliography)` via `formatOpenPaperContext`. That block contains:
+- title, path, and paper id;
+- every attached PDF, with the reader's PDF marked `open in reader, page N of M` and a pointer to `pdf_read_pages`;
+- the paper notes HTML (up to 20,000 chars), included only when the host page is not the paper itself.
+
+The existing current-page PDF text and annotation blocks follow. A non-Bibliography `paperPath` is ignored.
+
+**Evidence.** `tests/paper-reading-shell.test.tsx` covers layout, persistence, z-order, non-displacement, the dock, and message validation. `tests/companion-context.test.ts` covers the paper context. `e2e/sn-281-paper-reading-shell.spec.ts` runs on desktop and mobile.
 
 ### Lessons Learned
 
