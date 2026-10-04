@@ -1,5 +1,15 @@
 # Smart Notes Design System
 
+## Shared paper notes (SN-279)
+
+Bibliography, virtual paper rows, reference controls, and ownership breadcrumbs
+reuse `--surface`, `--secondary`, `--border`, `--foreground`, `--muted-foreground`,
+`--accent`, `--ring`, standard Button/Input controls, existing tree indent/density,
+and 44px mobile touch targets. The sole new metric is
+`--paper-reference-frame-height: 640px`: a bounded, full-width standard editor
+inside the document flow with its own scrolling, on desktop and mobile.
+The inline frame preserves all existing text-page features; it is not a popup.
+
 This folder is the tracked UI reference set for Smart Notes.
 
 **System:** Clarity v1.0 — cool neutral grays, teal accent, all-sans Hanken Grotesk typography.

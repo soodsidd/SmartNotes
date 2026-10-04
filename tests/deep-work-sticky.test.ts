@@ -279,7 +279,8 @@ describe("SN-262 sticky Deep Work disk workspace", () => {
     it("seeds the opened workspace from sticky state at mount so no vault page is selected first", () => {
       expect(SHELL_SOURCE).toContain("restorableStickyDeepWork({");
       expect(SHELL_SOURCE).toContain(
-        "sticky: typeof window === \"undefined\" ? null : readStickyDeepWork(window.localStorage),"
+        // SN-279: inline paper frames never restore Deep Work.
+        "sticky: typeof window === \"undefined\" || paperInline ? null : readStickyDeepWork(window.localStorage),"
       );
       expect(SHELL_SOURCE).toMatch(
         /React\.useState<DeepWorkDescriptor \| null>\(\s*restoredStickyWorkspace\s*\)/
@@ -332,7 +333,7 @@ describe("SN-262 sticky Deep Work disk workspace", () => {
       expect(SHELL_SOURCE).toContain("lastSavedSnapshotRef.current = snapshotDraft(workspaceDraft)");
       expect(SHELL_SOURCE).toContain("setPendingVaultReload(null)");
       expect(SHELL_SOURCE).toContain(
-        "if (nextDraft && typeof window !== \"undefined\" && !nextDraft.path.startsWith(\"deep-work-\"))"
+        "if (nextDraft && typeof window !== \"undefined\" && !paperInline && !nextDraft.path.startsWith(\"deep-work-\"))"
       );
     });
   });

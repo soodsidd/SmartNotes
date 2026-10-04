@@ -4501,6 +4501,69 @@
       "whenToRun": "Pre-merge when touching src/lib/jupyter-inline-ai.ts, the inline overlay in src/components/jupyter-notebook-view.tsx, the fast-lane settings section of src/components/ai-sidebar.tsx, or src/lib/jupyter-focus.ts's dismiss/apply-answer/keybinding message contracts.",
       "failureMeaning": "A failure here means a bare caret click may reopen the overlay, selection or explicit Alt+Right-click actions may be missing, comment-only actions may appear on the wrong trigger, plain right-click may steal JupyterLab's menu, passive selection/scroll events may discard an in-flight cell rewrite, the append chord may replace rather than preserve the comment, or an inline result may route to the wrong surface or undo boundary.",
       "maintenanceNotes": "SN-264 made bare caret focus quiet and moved comment actions behind explicit Alt+Right-click while retaining selection and append-chord behavior. SN-265 protects notebook-routed streaming/apply and sticky Retry states from passive selection-clear and scroll dismissal."
+    },
+    {
+      "id": "unit-bibliography-papers",
+      "name": "Bibliography canonical identity and editor references",
+      "description": "Protects UUID ownership, rename/move persistence, reference removal, virtual children, ingest compatibility, editor round-trip and inline save acknowledgement.",
+      "intent": "Protects UUID ownership, rename/move persistence, reference removal, virtual children, ingest compatibility, editor round-trip and inline save acknowledgement.",
+      "whenToRun": "Pre-merge for Bibliography or paper reference changes. For the UI check, set SMART_NOTES_E2E_PREVIEW_URL to a sidecar-registered preview using the worktree .e2e-vault and .e2e-state.",
+      "failureMeaning": "Paper ownership, live shared editing, or reference navigation may be broken.",
+      "appType": "node",
+      "command": "npm test -- tests/papers.test.ts tests/paper-reference-editor.test.ts tests/page-tree.test.ts tests/sn-280-editor-page-swap-isolation.test.ts",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": [
+        "bibliography",
+        "papers",
+        "targeted"
+      ],
+      "feature": "bibliography",
+      "testType": "integration",
+      "suite": "feature-bundle",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-279",
+      "addedAt": "2026-10-04",
+      "sourceFiles": [
+        {
+          "path": "tests/papers.test.ts"
+        },
+        {
+          "path": "tests/paper-reference-editor.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "e2e-bibliography-papers",
+      "name": "Bibliography and live inline paper workflow on desktop and mobile",
+      "description": "Creates a standard paper through Bibliography, inserts a reference, opens the virtual child, edits inline, verifies canonical save, removes the reference, and checks search and responsive layout.",
+      "intent": "Creates a standard paper through Bibliography, inserts a reference, opens the virtual child, edits inline, verifies canonical save, removes the reference, and checks search and responsive layout.",
+      "whenToRun": "Pre-merge for Bibliography or paper reference changes. For the UI check, set SMART_NOTES_E2E_PREVIEW_URL to a sidecar-registered preview using the worktree .e2e-vault and .e2e-state.",
+      "failureMeaning": "Paper ownership, live shared editing, or reference navigation may be broken.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-279-bibliography.spec.ts",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": [
+        "bibliography",
+        "papers",
+        "targeted"
+      ],
+      "feature": "bibliography",
+      "testType": "e2e",
+      "suite": "feature-bundle",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-279",
+      "addedAt": "2026-10-04",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-279-bibliography.spec.ts"
+        }
+      ]
     }
   ]
 }

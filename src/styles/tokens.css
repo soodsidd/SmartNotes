@@ -1,4 +1,5 @@
 :root {
+  --paper-reference-frame-height: 640px;
   --background: #f6f6f4;
   --foreground: #0d0d0d;
   --surface: #fbfbf9;

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { bibliographyEntries, paperChildren, paperPath, paperReferenceHtml, paperReferenceIds } from "@/lib/papers";
-import { createPaper, createPage, readPage, savePage, renamePage, movePage, readVaultTree, deletePage, invalidateVaultTreeCache, renameNotebook, renameSection, saveReferenceSidecar } from "@/server/vault/pages";
+import { createPaper, createPage, readPage, savePage, renamePage, movePage, readVaultTree, deletePage, invalidateVaultTreeCache, renameNotebook, renameSection, savePageComments } from "@/server/vault/pages";
 
 describe("Bibliography identity and references", () => {
   let root: string;
@@ -70,9 +70,11 @@ describe("Bibliography identity and references", () => {
     const paper = await createPaper("Live notes");
     const content = '<h2>Edited inline</h2><p><strong>Shared</strong></p><a data-type="file-attachment" href="/vault/paper.pdf">paper.pdf</a>';
     await savePage({ path: paperPath(String(paper.metadata.paper_id)), title: paper.title, body: content });
+    await savePageComments(paper.path, [{ id: "comment-1", quote: "Shared", text: "A shared comment", createdAt: new Date().toISOString(), resolvedAt: null }]);
     const entry = bibliographyEntries((await readVaultTree({ skipCache: true })).tree)[0];
     expect(entry.page.content).toBe(content);
     expect((await readPage(paper.path)).body).toBe(content);
+    expect((await readPage(paper.path)).metadata.comments).toEqual([expect.objectContaining({ text: "A shared comment" })]);
     await expect(createPage({ notebookPath: ".bibliography", title: "Bypass" })).rejects.toMatchObject({ code: "BIBLIOGRAPHY_OWNERSHIP" });
   });
 

@@ -19,8 +19,11 @@ export function SwUpdateBanner() {
   const [pendingBuildId, setPendingBuildId] = React.useState<string | null>(null);
   const [dismissedBuildId, setDismissedBuildId] = React.useState<string | null>(null);
   const [reloading, setReloading] = React.useState(false);
+  const [embedded, setEmbedded] = React.useState(false);
 
   React.useEffect(() => {
+    // SN-279: inline paper frames defer update prompts to the host page.
+    setEmbedded(new URLSearchParams(window.location.search).get("paperInline") === "1");
     setPendingBuildId(getPendingSwBuildId());
     const stopListener = initSwUpdateListener();
     const unsubscribe = subscribeSwUpdate((buildId) => setPendingBuildId(buildId));
@@ -37,7 +40,7 @@ export function SwUpdateBanner() {
     void triggerForceReload();
   }, []);
 
-  if (!visible) {
+  if (!visible || embedded) {
     return null;
   }
 

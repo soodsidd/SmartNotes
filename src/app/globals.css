@@ -2614,3 +2614,8 @@ mark {
     page-break-inside: avoid;
   }
 }
+/* SN-279: standard page editor embedded in document flow, on Clarity surfaces. */
+.paper-reference { margin-block: 1rem; max-width: 100%; }
+.paper-reference-frame { display: block; width: 100%; height: var(--paper-reference-frame-height); border: 0; background: var(--surface); }
+[data-paper-inline="true"] [data-testid="tree-sidebar-rail"],
+[data-paper-inline="true"] [data-testid="open-sidebar-btn"] { display: none; }

@@ -1834,6 +1834,7 @@ export interface NestPageInput {
 }
 
 export async function nestPage(input: NestPageInput) {
+  requireOrdinaryLocation(resolveVaultPath(input.path, "page").relativePath);
   const page = await readPageDocument(input.path);
   if (page.designLinked) {
     throw new VaultError(

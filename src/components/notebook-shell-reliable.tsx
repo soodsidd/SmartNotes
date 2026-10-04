@@ -62,6 +62,9 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor, type EditorSectionContext, type RichTextEditorHandle } from "@/components/rich-text-editor";
+import { Bibliography, PaperChildRow, PaperReferencePicker } from "@/components/bibliography";
+import { BIBLIOGRAPHY_PATH, isBibliographyPath, paperReferenceHtml } from "@/lib/papers";
+import { flushInlinePapers } from "@/lib/inline-paper-save";
 import type { AnnotationLayerHandle, AnnotationLayerProps, AnnotationStrokeSize, AnnotationTool } from "@/components/annotation-layer";
 import type { InkCanvasHandle, InkCanvasProps } from "@/components/ink-canvas";
 import type { JupyterNotebookViewProps } from "@/components/jupyter-notebook-view";
@@ -471,6 +474,8 @@ type LoadTreeOptions = {
   expandAll?: boolean;
   ensureExpanded?: TreeExpandEnsurePaths;
   skipCache?: boolean;
+  /** Draft snapshot when the fetch began; a changed draft is not re-hydrated. */
+  draftSnapshot?: string | null;
 };
 
 type PageDraft = ApiPageDocument;
@@ -631,6 +636,8 @@ function deepWorkDraft(descriptor: DeepWorkDescriptor): PageDraft {
 
 export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTreeResponse } = {}) {
   const searchParams = useSearchParams();
+  const paperInline = searchParams?.get("paperInline") === "1";
+  const [paperReturnPath, setPaperReturnPath] = React.useState<string | null>(null);
   const searchKey = searchParams?.toString() ?? "";
   const linkedProjectWorkspace = React.useMemo(
     () => parseDeepWorkDescriptor(new URLSearchParams(searchKey)),
@@ -645,7 +652,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     () =>
       restorableStickyDeepWork({
         linkedWorkspace: linkedProjectWorkspace,
-        sticky: typeof window === "undefined" ? null : readStickyDeepWork(window.localStorage),
+        sticky: typeof window === "undefined" || paperInline ? null : readStickyDeepWork(window.localStorage),
       }),
     // Mount-only: a later URL change must not re-run sticky restore mid-session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1802,6 +1809,17 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       }
 
       if (isPageReloadPending(latestPage, detectionDraft)) {
+        // Canonical paper views follow shared edits while clean. Dirty views
+        // retain the existing explicit conflict/reload workflow.
+        if (isBibliographyPath(latestPage.path) && !savingRef.current && !hasUnsavedLocalDraftChanges(visibleDraft, lastSavedSnapshotRef.current)) {
+          const nextDraft = { ...visibleDraft, title: latestPage.title, content: latestPage.content, metadata: latestPage.metadata };
+          draftRef.current = nextDraft;
+          lastSavedSnapshotRef.current = snapshotDraft(nextDraft);
+          pageContentCache.set(nextDraft.path, { html: nextDraft.content });
+          setDraft(nextDraft);
+          setPendingPageReload(null);
+          return;
+        }
         setReloadSafetyMessage(null);
         setPendingPageReload({
           page: latestPage,
@@ -2015,6 +2033,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     // replacing the editor draft.
     const handleFileUpdated = (event: FileUpdatedEvent) => {
       if (!event.path) return;
+      if (isBibliographyPath(event.path)) {
+        window.dispatchEvent(new Event("paper-updated"));
+        // Keep inactive reference labels and canonical tree payloads current.
+        void fetchVaultPage(event.path).then((page) => setTree((currentTree) => currentTree.map((notebook) => notebook.path === BIBLIOGRAPHY_PATH ? { ...notebook, pages: notebook.pages.map((entry) => entry.path === page.path ? page : entry) } : notebook))).catch(() => undefined);
+      }
       if (
         (event.originClientId && event.originClientId === syncOriginIdRef.current) ||
         (event.originSocketId && event.originSocketId === socketRef.current?.id)
@@ -2787,10 +2810,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     );
 
     // SN-263: never persist a synthetic Deep Work path as the last vault page.
-    if (nextDraft && typeof window !== "undefined" && !nextDraft.path.startsWith("deep-work-")) {
+    if (nextDraft && typeof window !== "undefined" && !paperInline && !nextDraft.path.startsWith("deep-work-")) {
       window.localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, nextDraft.path);
     }
-  }, []);
+  }, [paperInline]);
 
   const applySelection = React.useCallback(
     (selection: TreeSelection) => {
@@ -2904,6 +2927,15 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       }
 
       isInitialTreeLoadRef.current = false;
+      if (paperInline) {
+        const requested = searchParams?.get("page") ?? "";
+        const library = payload.tree.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH);
+        if (!library?.pages.some((page) => page.path === requested)) {
+          applySelection({ notebook: null, section: null, page: null });
+          setSaveError("This Bibliography paper is unavailable. Return to the referring page and retry.");
+          return;
+        }
+      }
       // SN-262: read the workspace from a ref, not the closure. A sticky restore
       // that fails server validation clears the workspace while the initial tree
       // fetch is still in flight; the stale closure would otherwise re-select the
@@ -2935,9 +2967,19 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         notebookPath: preferred?.notebookPath ?? activeNotebookPathRef.current,
       });
 
+      // SN-279: a payload fetched before a local edit or save is stale for the
+      // open draft; re-hydrating would drop the edit (e.g. an inserted paper
+      // reference) and autosave would persist the old body.
+      if (
+        options?.draftSnapshot !== undefined &&
+        selection.page?.path === draftRef.current?.path &&
+        (draftRef.current ? snapshotDraft(draftRef.current) : null) !== options.draftSnapshot
+      ) {
+        return;
+      }
       applySelection(selection);
     },
-    [applySelection]
+    [applySelection, paperInline, searchParams]
   );
 
   const loadTree = React.useCallback(
@@ -2953,6 +2995,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     },
     [applyVaultPayload, startupBaselineMode]
   );
+
+  const currentDraftSnapshot = React.useCallback(() => (draftRef.current ? snapshotDraft(draftRef.current) : null), []);
 
   const canAutoRefreshVaultTree = React.useCallback(() => {
     if (savingRef.current || timerRef.current) {
@@ -2974,14 +3018,14 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     }
 
     try {
-      await loadTree({ pagePath: activePagePathRef.current }, { skipCache: true });
+      await loadTree({ pagePath: activePagePathRef.current }, { skipCache: true, draftSnapshot: currentDraftSnapshot() });
       setPendingVaultReload(null);
       return true;
     } catch {
       setPendingVaultReload({ detectedAt: Date.now() });
       return false;
     }
-  }, [canAutoRefreshVaultTree, loadTree]);
+  }, [canAutoRefreshVaultTree, currentDraftSnapshot, loadTree]);
 
   const clearGhostDismissTimers = React.useCallback(() => {
     if (ghostDismissTimerRef.current) {
@@ -3144,6 +3188,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   }, [refreshVaultTreeFromLive]);
 
   const flushSave = React.useCallback(async () => {
+    if (!(await flushInlinePapers())) return false;
     const currentDraft = draftRef.current;
     if (!currentDraft) {
       return true;
@@ -3305,6 +3350,21 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   }, [hydrateDraft, replaceTreePage]);
   flushSaveRef.current = flushSave;
 
+  React.useEffect(() => {
+    if (!paperInline) return;
+    const receive = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== window.parent || event.data?.type !== "paper-flush" || typeof event.data.requestId !== "string") return;
+      let saved = false;
+      try {
+        saved = await flushSaveRef.current();
+        await annotationLayerRef.current?.flush();
+      } catch { saved = false; }
+      window.parent.postMessage({ type: "paper-flushed", requestId: event.data.requestId, saved }, window.location.origin);
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [paperInline]);
+
   const handlePreviewGhostVersion = React.useCallback(
     async (parentPagePath: string, versionId: string, versionTs: string) => {
       setGhostContextMenu(null);
@@ -3409,7 +3469,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   }, [activeProjectWorkspace]);
 
   React.useEffect(() => {
-    if (!vaultUiStateHydrated || isLoadingTree) {
+    if (paperInline || !vaultUiStateHydrated || isLoadingTree) {
       return;
     }
 
@@ -3438,6 +3498,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     return () => window.clearTimeout(timer);
   }, [
     closedNotebooks,
+    paperInline,
     archivedNotebooks,
     expandedNotebooks,
     expandedPages,
@@ -3469,7 +3530,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       try {
         if (serverVault) {
           applyVaultPayload(serverVault, preferred);
-          await loadTree(preferred, { skipCache: true }).catch(() => undefined);
+          await loadTree(preferred, { skipCache: true, draftSnapshot: currentDraftSnapshot() }).catch(() => undefined);
           return;
         }
         await loadTree(preferred, { coldStart: true, skipCache: true });
@@ -3477,7 +3538,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         setIsLoadingTree(false);
       }
     })();
-  }, [applyVaultPayload, loadTree, searchParams, serverVault]);
+  }, [applyVaultPayload, currentDraftSnapshot, loadTree, searchParams, serverVault]);
 
   React.useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") {
@@ -3590,6 +3651,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   const openPage = React.useCallback(
     async (pagePath: string) => {
+      if (!(await flushInlinePapers())) {
+        toast.error("Save the open paper notes before leaving this page.");
+        return;
+      }
       if (pagePath === activePagePathRef.current) {
         setVersionPreview(null);
         return;
@@ -3947,8 +4012,24 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   }, [selectSection]);
 
   const handleSidebarOpenPage = React.useCallback((pagePath: string) => {
+    setPaperReturnPath(null);
     void openPage(pagePath);
   }, [openPage]);
+
+  const handleOpenPaperChild = React.useCallback((pagePath: string, parentPath: string) => {
+    setPaperReturnPath(parentPath);
+    void openPage(pagePath);
+  }, [openPage]);
+
+  const handleCreatePaper = React.useCallback(async (title: string) => {
+    if (!(await flushInlinePapers()) || !(await flushSaveRef.current())) throw new Error("Save the current notes before creating a paper.");
+    const response = await vaultWriteFetch("/api/papers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) });
+    if (!response.ok) throw new Error(await readErrorMessage(response, "Could not create paper."));
+    const { page } = await response.json();
+    await loadTree({ pagePath: page.path }, { skipCache: true });
+    setSidebarOpen(false);
+    setPaperReturnPath(null);
+  }, [loadTree]);
 
   const handleSidebarNestPage = React.useCallback(
     async (pagePath: string, parentId: string | null) => {
@@ -5574,7 +5655,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
 
   return (
-    <main className="h-screen overflow-hidden bg-background text-foreground" data-testid="app-shell">
+    <main className="h-screen overflow-hidden bg-background text-foreground" data-testid="app-shell" data-paper-inline={paperInline ? "true" : undefined}>
       <input
         ref={docxImportInputRef}
         type="file"
@@ -5655,6 +5736,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 />
                 <div className="min-h-0 flex-1">
                   <Sidebar
+                    onCreatePaper={handleCreatePaper}
+                    onOpenPaperChild={handleOpenPaperChild}
                     variant="desktop"
                     tree={treeWithOverrides}
                     isTreeLoading={isLoadingTree}
@@ -5741,8 +5824,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               isAiOpen={aiOpen}
               isAiReady={companionIconReady}
               isAiWorking={companionIconWorking}
-              canCreateSection={Boolean(activeSelection.notebook)}
-              canCreatePage={Boolean(activeCreateTarget)}
+              canCreateSection={Boolean(activeSelection.notebook) && activeNotebookPath !== BIBLIOGRAPHY_PATH}
+              canCreatePage={Boolean(activeCreateTarget) && activeNotebookPath !== BIBLIOGRAPHY_PATH}
               canExportPage={canExportCurrentTextPage}
               canRefreshNote={Boolean(draft) && !activeVersionPreview}
               isRefreshingNote={isRefreshingNote}
@@ -5808,6 +5891,18 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               onOpenCapture={openCaptureDialog}
               onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
             />
+            {draft && isBibliographyPath(draft.path) && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-secondary px-3 py-2" data-testid="paper-ownership">
+              <span className="min-w-0 break-words text-xs">Bibliography / {draft.title} · Shared canonical notes</span>
+              {paperReturnPath && <Button variant="outline" className="min-h-11" onClick={() => { const parent = paperReturnPath; setPaperReturnPath(null); void openPage(parent); }}>Back to referring page</Button>}
+            </div>}
+            {draft?.noteType === "text" && !paperInline && <PaperReferencePicker
+              papers={(tree.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH)?.pages ?? []).filter((page) => page.path !== draft.path)}
+              disabled={Boolean(activeVersionPreview)}
+              onInsert={(id) => {
+                if (!editorRef.current?.insertHtml(paperReferenceHtml(id), { avoidDocStart: true })) { toast.error("Could not insert paper reference."); return; }
+                setExpandedPages((current) => new Set([...current, draft.path]));
+              }}
+            />}
             <div className="flex min-h-0 flex-1 flex-col">
             {activeVersionPreview ? (
               <VersionPreviewBanner
@@ -6070,6 +6165,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             <SheetTitle className="font-serif text-2xl">Notes</SheetTitle>
           </SheetHeader>
           <Sidebar
+            onCreatePaper={handleCreatePaper}
+            onOpenPaperChild={handleOpenPaperChild}
             tree={treeWithOverrides}
             isTreeLoading={isLoadingTree}
             activeNotebookPath={activeNotebookPath}
@@ -6728,6 +6825,8 @@ function TopBar({
 }
 
 export const Sidebar = React.memo(function Sidebar({
+  onCreatePaper,
+  onOpenPaperChild,
   variant = "mobile",
   tree,
   isTreeLoading = false,
@@ -6797,6 +6896,8 @@ export const Sidebar = React.memo(function Sidebar({
   onExportPagePackage,
 }: {
   variant?: "desktop" | "mobile";
+  onCreatePaper?: (title: string) => Promise<void>;
+  onOpenPaperChild?: (path: string, parentPath: string) => void;
   tree: VaultNotebook[];
   isTreeLoading?: boolean;
   activeNotebookPath: string | null;
@@ -6880,7 +6981,7 @@ export const Sidebar = React.memo(function Sidebar({
   // Ref (not state) so onDragOver closures see the current section path synchronously
   const draggedPageSectionPathRef = React.useRef<string | null>(null);
   const visibleNotebooks = React.useMemo(
-    () => tree.filter((notebook) => !closedNotebooks.has(notebook.path) && !archivedNotebooks.has(notebook.path)),
+    () => tree.filter((notebook) => notebook.path !== BIBLIOGRAPHY_PATH && !closedNotebooks.has(notebook.path) && !archivedNotebooks.has(notebook.path)),
     [archivedNotebooks, closedNotebooks, tree]
   );
   const pageRowsByNotebook = React.useMemo(() => {
@@ -6897,7 +6998,7 @@ export const Sidebar = React.memo(function Sidebar({
         continue;
       }
 
-      const pageTree = buildPageTree(notebook.pages);
+      const pageTree = buildPageTree(notebook.pages, tree.find((entry) => entry.path === BIBLIOGRAPHY_PATH)?.pages ?? []);
       const flatNodes = flattenPageTree(pageTree, expandedPages);
       byNotebookPath.set(notebook.path, {
         flatNodes,
@@ -6906,7 +7007,7 @@ export const Sidebar = React.memo(function Sidebar({
     }
 
     return byNotebookPath;
-  }, [expandedNotebooks, expandedPages, visibleNotebooks]);
+  }, [expandedNotebooks, expandedPages, visibleNotebooks, tree]);
   const pageRowsBySection = React.useMemo(() => {
     const bySectionPath = new Map<
       string,
@@ -6926,7 +7027,7 @@ export const Sidebar = React.memo(function Sidebar({
           continue;
         }
 
-        const pageTree = buildPageTree(section.pages);
+        const pageTree = buildPageTree(section.pages, tree.find((entry) => entry.path === BIBLIOGRAPHY_PATH)?.pages ?? []);
         const flatNodes = flattenPageTree(pageTree, expandedPages);
         bySectionPath.set(section.path, {
           flatNodes,
@@ -6936,7 +7037,7 @@ export const Sidebar = React.memo(function Sidebar({
     }
 
     return bySectionPath;
-  }, [expandedNotebooks, expandedPages, expandedSections, visibleNotebooks]);
+  }, [expandedNotebooks, expandedPages, expandedSections, visibleNotebooks, tree]);
 
   React.useEffect(() => {
     const dismissMenus = () => {
@@ -6969,6 +7070,7 @@ export const Sidebar = React.memo(function Sidebar({
       data-density-variant={variant}
       data-vault-ready={isTreeLoading ? "false" : "true"}
     >
+      <Bibliography tree={tree} loading={isTreeLoading} onOpen={onOpenPage} onCreate={onCreatePaper ?? (async () => { throw new Error("Paper creation unavailable."); })} />
       <div className={cn("flex items-center justify-between gap-2 px-1.5", compactDesktop ? "mb-1" : "mb-2")}>
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Vault</p>
@@ -7033,7 +7135,7 @@ export const Sidebar = React.memo(function Sidebar({
       <OpenClosedNotebooksDialog
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        tree={tree}
+        tree={tree.filter((notebook) => notebook.path !== BIBLIOGRAPHY_PATH)}
         closedNotebooks={closedNotebooks}
         archivedNotebooks={archivedNotebooks}
         pinnedNotebooks={pinnedNotebooks}
@@ -7193,6 +7295,7 @@ export const Sidebar = React.memo(function Sidebar({
                     const nestingLookup = notebookRows?.nestingLookup ?? EMPTY_PAGE_NESTING_ACTION_LOOKUP;
 
                     return flatNodes.map((node) => {
+                      if (node.page.paperReference) return <PaperChildRow key={node.page.path} page={node.page} depth={node.depth} onOpen={onOpenPaperChild ?? onOpenPage} />;
                       const nestingState = getPageNestingActionState(nestingLookup, node.page.path);
                       const active = node.page.path === activePagePath;
                       const isInkPage = node.page.noteType === "ink";
@@ -7699,6 +7802,7 @@ export const Sidebar = React.memo(function Sidebar({
                               }
 
                               return flatNodes.flatMap((node) => {
+                                if (node.page.paperReference) return [<PaperChildRow key={node.page.path} page={node.page} depth={node.depth} onOpen={onOpenPaperChild ?? onOpenPage} />];
                                 const nestingState = getPageNestingActionState(nestingLookup, node.page.path);
                                 const active = node.page.path === activePagePath;
                                 const isInkPage = node.page.noteType === "ink";

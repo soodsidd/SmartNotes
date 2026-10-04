@@ -148,7 +148,8 @@ export interface EditorSectionContext {
 
 export interface RichTextEditorHandle {
   insertMarkdown: (markdown: string) => boolean;
-  insertHtml: (html: string) => boolean;
+  /** `avoidDocStart` appends instead of inserting above the page title on an untouched page. */
+  insertHtml: (html: string, options?: { avoidDocStart?: boolean }) => boolean;
   insertText: (text: string) => boolean;
   swapContent: (html: string) => boolean;
   getExportSnapshot: () => PageContentExport | null;
@@ -1909,8 +1910,11 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           const json = parseMarkdownToTiptapJson(markdown);
           return editor.chain().focus().insertContent(json).run();
         },
-        insertHtml(html: string) {
+        insertHtml(html: string, options?: { avoidDocStart?: boolean }) {
           if (!editor) return false;
+          if (options?.avoidDocStart && editor.state.selection.from <= 1) {
+            return editor.chain().focus("end").insertContent(html).run();
+          }
           return editor.chain().focus().insertContent(html).run();
         },
         insertText(text: string) {

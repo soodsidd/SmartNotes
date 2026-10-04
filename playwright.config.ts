@@ -4,6 +4,9 @@ import path from 'node:path';
 const PORT = Number(process.env.PORT || 3199);
 const VAULT = path.resolve(__dirname, '.e2e-vault');
 const STATE_DIR = path.resolve(__dirname, '.e2e-state');
+// Registered sidecar previews own their process/port. Reuse one when supplied;
+// the same isolated fixtures, projects, and specs still run through this harness.
+const REGISTERED_PREVIEW_URL = process.env.SMART_NOTES_E2E_PREVIEW_URL;
 
 export default defineConfig({
   testDir: './e2e',
@@ -24,7 +27,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    baseURL: REGISTERED_PREVIEW_URL || `http://localhost:${PORT}`,
     trace: 'retain-on-failure'
   },
   projects: [
@@ -40,7 +43,7 @@ export default defineConfig({
       },
     }
   ],
-  webServer: {
+  webServer: REGISTERED_PREVIEW_URL ? undefined : {
     command: `node server.js`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: false,

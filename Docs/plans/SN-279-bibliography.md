@@ -25,7 +25,8 @@ existing standard page shell. This intentionally reuses all page capabilities
 implementing a second partial editor. The frame carries only a canonical path;
 no body is copied into the parent. Ownership/breadcrumb chrome stays outside the
 frame. A save handshake precedes collapse/back so failed writes retain the editor.
-Recursive inline expansion is bounded; nested references can open a full page.
+Recursive references start collapsed; an editor is created only on explicit
+expansion, and the save handshake drains nested editors before their parent.
 
 Desktop uses the existing sidebar density and full available editor width.
 Mobile uses the existing sidebar sheet, wrapping controls, full-width frame,

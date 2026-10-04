@@ -19,6 +19,7 @@ import { Editor } from "@tiptap/core";
 import { Markdown } from "tiptap-markdown";
 import { CommentExtension } from "./comment-plugin";
 import { FileAttachment } from "./file-attachment-extension";
+import { PaperReference } from "./paper-reference-extension";
 import { HeadingWithAnchorId, PageToc } from "@/lib/page-toc";
 import {
   describeAssetUploadFailure,
@@ -121,6 +122,7 @@ export function createEditorExtensions(
       },
     }),
     FileAttachment,
+    PaperReference,
     Markdown.configure({
       html: true,
       tightLists: true,

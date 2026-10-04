@@ -14,7 +14,9 @@ describe("vault freshness shell wiring (SN-91)", () => {
   it("revalidates the SSR vault payload from the live server on mount and resume", () => {
     // SN-205 threads an optional `?page=` deep-link `preferred` selection through
     // the same mount/resume revalidation (undefined when no deep-link is present).
-    expect(shellSrc).toContain("await loadTree(preferred, { skipCache: true }).catch(() => undefined);");
+    // SN-279: the revalidation must not re-hydrate a draft edited while it was in flight.
+    expect(shellSrc).toContain("await loadTree(preferred, { skipCache: true, draftSnapshot: currentDraftSnapshot() }).catch(() => undefined);");
+    expect(shellSrc).toContain("skipCache: true, draftSnapshot: currentDraftSnapshot() });");
     expect(shellSrc).toContain("await loadTree(preferred, { coldStart: true, skipCache: true });");
     expect(shellSrc).toContain('window.addEventListener("focus", handleResume)');
     expect(shellSrc).toContain('document.addEventListener("visibilitychange", handleResume)');

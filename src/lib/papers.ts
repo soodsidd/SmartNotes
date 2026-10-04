@@ -9,7 +9,8 @@ export function paperPath(id: string): string {
 }
 
 export function isBibliographyPath(value: string): boolean {
-  return value === BIBLIOGRAPHY_PATH || value.startsWith(`${BIBLIOGRAPHY_PATH}/`);
+  const normalized = value.toLowerCase();
+  return normalized === BIBLIOGRAPHY_PATH || normalized.startsWith(`${BIBLIOGRAPHY_PATH}/`);
 }
 
 /** Only the dedicated HTML node is a paper reference; .ref.json is ingest metadata. */
