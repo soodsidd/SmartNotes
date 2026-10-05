@@ -26,6 +26,16 @@ export function paperReferenceIds(html: string): string[] {
   return [...ids];
 }
 
+/** SN-282: strip every reference node for one paper; other ids and content stay byte-identical. */
+export function removePaperReferences(html: string, id: string): string {
+  const target = id.toLowerCase();
+  return html.replace(/<div\b[^>]*>\s*<\/div>/gi, (tag) => {
+    if (!/\bdata-type\s*=\s*["']paper-reference["']/i.test(tag)) return tag;
+    const tagId = tag.match(/\bdata-paper-id\s*=\s*["']([^"']+)["']/i)?.[1];
+    return tagId?.toLowerCase() === target ? "" : tag;
+  });
+}
+
 export function paperReferenceHtml(id: string): string {
   paperPath(id);
   return `<div data-type="paper-reference" data-paper-id="${id.toLowerCase()}"></div>`;

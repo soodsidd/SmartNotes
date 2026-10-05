@@ -2,6 +2,8 @@ export function emitVaultSideEffects(input: {
   treeChanged?: boolean;
   fileUpdated?: { path: string; content: string; kind?: "log_form" | "app_data" | "spreadsheet"; originSocketId?: string; originClientId?: string };
   notebookUpdated?: { path: string; contentHash: string };
+  /** SN-282: one command wrote several pages (e.g. paper removal clearing references). */
+  filesUpdated?: Array<{ path: string; content: string }>;
   /**
    * SN-270: a Deep Work workspace-source write landed on disk. Carries the
    * server-resolved real root so only the shell whose live session owns that
@@ -25,6 +27,9 @@ export function emitVaultSideEffects(input: {
       } else {
         emitter.emit("file_updated", input.fileUpdated);
       }
+    }
+    for (const file of input.filesUpdated ?? []) {
+      emitter.emit("file_updated", file);
     }
     if (input.notebookUpdated) {
       emitter.emit("jupyter_notebook_updated", input.notebookUpdated);

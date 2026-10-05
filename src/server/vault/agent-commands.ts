@@ -57,6 +57,7 @@ import {
   readVaultPdfPages,
 } from "./companion-context";
 import { readSpreadsheetWorkbook, writeSpreadsheetWorkbook } from "./spreadsheet";
+import { addPaperReference, attachPdfToPaper, createPaperForCompanion, listPapers, removePaper } from "./paper-tools";
 import {
   applyCellWrites,
   listWorksheets,
@@ -66,7 +67,7 @@ import {
   type SheetSelector,
 } from "@/lib/spreadsheet-cells";
 
-export type VaultCommandGroup = "page" | "notebook" | "section" | "comment" | "version" | "vault" | "pdf" | "jupyter" | "log" | "design" | "app" | "spreadsheet";
+export type VaultCommandGroup = "page" | "notebook" | "section" | "comment" | "version" | "vault" | "pdf" | "jupyter" | "log" | "design" | "app" | "spreadsheet" | "paper";
 
 export interface VaultCommandRequest {
   group: VaultCommandGroup;
@@ -83,6 +84,8 @@ export interface VaultCommandResult {
   treeChanged?: boolean;
   /** When set, emit file_updated for multi-tab sync. */
   fileUpdated?: { path: string; content: string; kind?: "log_form" | "spreadsheet" };
+  /** SN-282: additional pages written by one command (e.g. references cleared on paper removal). */
+  filesUpdated?: Array<{ path: string; content: string }>;
   /** When set, emit jupyter_notebook_updated so active embedded notebook views can refresh. */
   notebookUpdated?: { path: string; contentHash: string };
 }
@@ -1528,6 +1531,81 @@ async function runPdfCommand(action: string, args: Record<string, unknown>): Pro
 }
 
 // ---------------------------------------------------------------------------
+// Bibliography paper commands (SN-282)
+// ---------------------------------------------------------------------------
+
+async function runPaperCommand(action: string, args: Record<string, unknown>): Promise<VaultCommandResult> {
+  switch (action) {
+    case "list": {
+      const papers = await listPapers(optionalString(args.query));
+      return { ok: true, group: "paper", action, data: { papers } };
+    }
+
+    case "create": {
+      const title = requireString(args.title, "title");
+      const referenceFromPath = optionalString(args.referenceFromPath) || undefined;
+      const { paper, referencedFrom } = await createPaperForCompanion({ title, referenceFromPath });
+      return {
+        ok: true,
+        group: "paper",
+        action,
+        data: { paper: { id: paper.metadata.paper_id, path: paper.path, title: paper.title }, referencedFrom: referencedFrom?.path ?? null },
+        treeChanged: true,
+        fileUpdated: referencedFrom ? { path: referencedFrom.path, content: referencedFrom.body } : undefined,
+      };
+    }
+
+    case "reference_add": {
+      const result = await addPaperReference(requireString(args.path, "path"), requireString(args.paper, "paper"));
+      return {
+        ok: true,
+        group: "paper",
+        action,
+        data: { path: result.page.path, paper: { id: result.paper.metadata.paper_id, path: result.paper.path, title: result.paper.title }, added: result.added },
+        treeChanged: result.added,
+        fileUpdated: result.added ? { path: result.page.path, content: result.page.body } : undefined,
+      };
+    }
+
+    case "remove": {
+      const result = await removePaper(requireString(args.paper, "paper"));
+      return {
+        ok: true,
+        group: "paper",
+        action,
+        data: {
+          id: result.id,
+          path: result.path,
+          title: result.title,
+          clearedReferences: result.clearedReferences.map(({ path: pagePath, title }) => ({ path: pagePath, title })),
+        },
+        treeChanged: true,
+        filesUpdated: result.clearedReferences.map(({ path: pagePath, body }) => ({ path: pagePath, content: body })),
+      };
+    }
+
+    case "attach_pdf": {
+      const result = await attachPdfToPaper({
+        paper: requireString(args.paper, "paper"),
+        url: requireString(args.url, "url"),
+        fileName: optionalString(args.fileName) || undefined,
+      });
+      return {
+        ok: true,
+        group: "paper",
+        action,
+        data: { path: result.page.path, attachment: result.attachment },
+        treeChanged: true,
+        fileUpdated: { path: result.page.path, content: result.page.body },
+      };
+    }
+
+    default:
+      throw new VaultError("UNKNOWN_COMMAND", `Unknown paper command: ${action}`, 400);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Jupyter notebook commands (SN-114)
 // ---------------------------------------------------------------------------
 
@@ -1700,6 +1778,8 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
       return runDesignCommand(action, args);
     case "app":
       return runAppCommand(action, args);
+    case "paper":
+      return runPaperCommand(action, args);
     default:
       throw new VaultError("INVALID_INPUT", `Unknown command group: ${group}`, 400);
   }
@@ -1744,6 +1824,7 @@ export function listVaultCommands() {
     log: ["get", "put", "query", "render", "asset_put"],
     spreadsheet: ["list_sheets", "read_range", "write_cells", "summarize"],
     design: ["render"],
+    paper: ["list", "create", "reference_add", "remove", "attach_pdf"],
     app: ["template_list", "template_get", "inventory_list", "inventory_get", "query", "create", "update"],
   };
 }

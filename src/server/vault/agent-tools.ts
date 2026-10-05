@@ -806,6 +806,63 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
       toIndex: { type: "number", required: true, description: "Destination zero-based cell index." },
     },
   },
+
+  // ---- SN-282: Bibliography paper tools ----
+
+  {
+    name: "paper_list",
+    description:
+      "List canonical Bibliography papers (id, path, title, referring pages). Pass query to find a paper by partial title before creating a duplicate.",
+    group: "paper",
+    action: "list",
+    parameters: {
+      query: { type: "string", description: "Optional case-insensitive partial title filter." },
+    },
+  },
+  {
+    name: "paper_create",
+    description:
+      "Create a canonical paper in Bibliography (a standard text page with a stable paper id). Pass referenceFromPath to also insert a paper reference into that article/page, which makes the paper appear as its child row.",
+    group: "paper",
+    action: "create",
+    parameters: {
+      title: { type: "string", required: true, description: "Paper title." },
+      referenceFromPath: { type: "string", description: "Optional vault-relative page path that should reference the new paper." },
+    },
+  },
+  {
+    name: "paper_reference_add",
+    description:
+      "Insert a reference to an existing Bibliography paper at the end of a page (idempotent: a page references each paper at most once). The paper becomes that page's child row; nothing is copied or moved.",
+    group: "paper",
+    action: "reference_add",
+    parameters: {
+      path: { type: "string", required: true, description: "Vault-relative path of the referring page." },
+      paper: { type: "string", required: true, description: "Paper id or .bibliography/<id>.html path." },
+    },
+  },
+  {
+    name: "paper_remove",
+    description:
+      "Remove a Bibliography paper object: first clears its reference from every referring page (each snapshotted, so restorable via page_versions/page_restore), then deletes the paper notes and attachments. Returns the pages whose references were cleared. Use instead of page_delete for papers.",
+    group: "paper",
+    action: "remove",
+    parameters: {
+      paper: { type: "string", required: true, description: "Paper id or .bibliography/<id>.html path." },
+    },
+  },
+  {
+    name: "paper_attach_pdf",
+    description:
+      "Download a PDF from a public http(s) URL (max 50 MB, must be an actual PDF, not a landing page) and attach it to a paper exactly like a normal PDF upload: stored in the paper's assets and inserted as a PDF chip at the end of its notes. Returns the attachment href for pdf_read_pages.",
+    group: "paper",
+    action: "attach_pdf",
+    parameters: {
+      paper: { type: "string", required: true, description: "Paper id or .bibliography/<id>.html path." },
+      url: { type: "string", required: true, description: "Direct http(s) URL of the PDF (e.g. https://arxiv.org/pdf/1706.03762)." },
+      fileName: { type: "string", description: "Optional attachment file name; .pdf is appended when missing." },
+    },
+  },
 ];
 
 const TOOL_LOOKUP = new Map(VAULT_TOOL_DEFINITIONS.map((tool) => [tool.name, tool]));
@@ -897,6 +954,7 @@ Workflows:
 - Get parent page: page_parent with path → returns parent page (via parent_id) or section/notebook context
 - Jupyter context/mutations: jupyter_notebook_context reads bounded cell source/outputs; jupyter_cell_create/edit/reorder/delete changes notebook.ipynb without executing code or owning kernels. Create shape: { "tool": "jupyter_cell_create", "args": { "path": "<page.html>", "cellType": "code", "source": "print('hello')", "index": 0 } } (omit index to append; cellType may be code, markdown, or raw)
 - Comment triage: comment_list → comment_context → comment_address (or page_write for broad rewrites)
+- Bibliography papers (SN-282): papers are canonical pages under .bibliography/<id>.html, referenced from other pages by id. From an article: paper_list { query } to find an existing paper, else paper_create { title, referenceFromPath: "<article path>" }; for an existing paper use paper_reference_add { path, paper }. Attach a PDF with paper_attach_pdf { paper, url } (direct PDF link), then read it with pdf_read_pages using the returned href. Edit paper notes with the normal page tools on the paper path. Remove with paper_remove (clears references, then deletes) — never page_delete/page_move/page_create inside .bibliography.
 - Page delete: page_delete with vault-relative path (never filesystem delete; clears assets and triggers tree reload warning)
 - Tree mutations: page/notebook/section create, rename, move, delete via vault tools (not direct file operations)
 - Math / LaTeX (text pages only): use $...$ for inline and $$...$$ for block equations — server normalizes to Tiptap math nodes on page_write/page_create/page_append/page_prepend/page_edit/page_replace_section. Design pages (note_type=design) are raw HTML/CSS and are never math-normalized; use page_write/page_edit only (page_append/prepend/replace_section/page_render are rejected)
