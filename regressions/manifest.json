@@ -4604,6 +4604,42 @@
       "feature": "bibliography",
       "risk": "high",
       "lifecycle": "pre-merge",
+      "addedBy": "SN-282",
+      "addedAt": "2026-10-04",
+      "enabled": true,
+      "whenToRun": "Pre-merge when touching Companion paper tools (paper_* vault tools), paper reference removal, server-side PDF download/attach, or paper-scoped companion context.",
+      "failureMeaning": "Companion may create duplicate or unreferenced papers, leave broken references after removing a paper, attach a non-PDF or fetch from the local network, store PDFs that do not open like a normal upload, or lose the paper's notes/PDFs/attachments from context.",
+      "id": "unit-companion-paper-tools",
+      "name": "Companion paper tools: create/reference/remove, PDF download+attach, paper-scoped context",
+      "description": "paper_* tool registry; create from an article with reference and find; idempotent references; removal that clears and snapshots every reference then deletes assets; mocked PDF download+attach with editor-identical chip; http(s)/private-network/redirect/size/%PDF guards; notes-mode Open paper context with attachments.",
+      "intent": "Guards SN-282 Companion paper mutation tools and paper-scoped companion context without network access.",
+      "appType": "node",
+      "command": "npm test -- tests/paper-tools.test.ts tests/papers.test.ts",
+      "timeoutMs": 300000,
+      "tags": [
+        "bibliography",
+        "papers",
+        "pdf",
+        "companion",
+        "agent-tools",
+        "targeted"
+      ],
+      "testType": "unit",
+      "suite": "feature-bundle",
+      "cost": "fast",
+      "sourceFiles": [
+        {
+          "path": "tests/paper-tools.test.ts"
+        },
+        {
+          "path": "src/server/vault/paper-tools.ts"
+        }
+      ]
+    },
+    {
+      "feature": "bibliography",
+      "risk": "high",
+      "lifecycle": "pre-merge",
       "addedBy": "SN-281",
       "addedAt": "2026-10-04",
       "enabled": true,

@@ -28,6 +28,11 @@ export const PAPER_PDF_DOWNLOAD_LIMITS = {
   maxRedirects: 5,
 } as const;
 
+/** A new paper's body is the "<p></p>" placeholder; replace it instead of appending under it. */
+function appendToPaperBody(body: string, fragment: string): string {
+  return /^\s*(<p>\s*<\/p>\s*)*$/i.test(body) ? fragment : appendHtmlBlock(body, fragment);
+}
+
 export interface PaperSummary {
   id: string;
   path: string;
@@ -82,7 +87,7 @@ export async function addPaperReference(pagePath: string, paper: string) {
     return { page, paper: canonical, added: false };
   }
   await snapshotPageContent(page.path);
-  const saved = await savePage({ path: page.path, title: page.title, body: appendHtmlBlock(page.body, paperReferenceHtml(id)) });
+  const saved = await savePage({ path: page.path, title: page.title, body: appendToPaperBody(page.body, paperReferenceHtml(id)) });
   return { page: saved, paper: canonical, added: true };
 }
 
@@ -239,7 +244,8 @@ export async function downloadPdf(
 /** Same chip markup the editor's FileAttachment node renders for a PDF upload. */
 export function pdfAttachmentChipHtml(href: string, fileName: string): string {
   const safeHref = escapeHtml(href);
-  return `<p><span data-file-attachment="" data-file-type="pdf" class="file-attachment-chip file-attachment-chip--pdf" contenteditable="false"><span class="file-attachment-icon" aria-hidden="true">PDF</span><span class="file-attachment-name" data-href="${safeHref}">${escapeHtml(fileName)}</span></span></p>`;
+  const safeName = escapeHtml(fileName);
+  return `<p><span href="${safeHref}" filename="${safeName}" data-file-attachment="" data-file-type="pdf" class="file-attachment-chip file-attachment-chip--pdf" contenteditable="false"><span class="file-attachment-icon" aria-hidden="true">PDF</span><span class="file-attachment-name" data-href="${safeHref}">${safeName}</span></span></p>`;
 }
 
 export async function attachPdfToPaper(
@@ -254,7 +260,7 @@ export async function attachPdfToPaper(
   // Re-read after the download so concurrent note edits are not overwritten.
   const page = await readPage(canonicalPath);
   await snapshotPageContent(page.path);
-  const saved = await savePage({ path: page.path, title: page.title, body: appendHtmlBlock(page.body, pdfAttachmentChipHtml(asset.url, asset.fileName)) });
+  const saved = await savePage({ path: page.path, title: page.title, body: appendToPaperBody(page.body, pdfAttachmentChipHtml(asset.url, asset.fileName)) });
   return {
     page: saved,
     attachment: { href: asset.url, path: asset.path, fileName: asset.fileName, bytes: download.buffer.length, sourceUrl: download.url },

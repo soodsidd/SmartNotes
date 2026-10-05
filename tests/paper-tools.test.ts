@@ -149,6 +149,13 @@ describe("SN-282 companion paper tools", () => {
     expect(context.pageContext).toContain(`.bibliography/${paper.id}.assets/attention-2.pdf`);
   });
 
+  it("replaces a new paper's empty placeholder body instead of appending under it", async () => {
+    const paper = (await tool("paper_create", { title: "Fresh" })).data.paper;
+    expect((await readPage(paper.path)).body).toBe("<p></p>");
+    const result = await attachPdfToPaper({ paper: paper.id, url: "https://example.org/fresh.pdf" }, { fetchImpl: pdfFetch(), lookup: publicLookup });
+    expect((await readPage(paper.path)).body).toBe(pdfAttachmentChipHtml(result.attachment.href, "fresh.pdf"));
+  });
+
   it("rejects non-PDF responses, oversize bodies, and private or non-http URLs without writing", async () => {
     const paper = (await tool("paper_create", { title: "Guarded" })).data.paper;
     const html = async () => new Response("<html>landing page</html>", { status: 200, headers: { "content-type": "text/html" } });

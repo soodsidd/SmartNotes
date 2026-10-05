@@ -833,7 +833,7 @@ The reliable shell also has an in-place refresh-note path. The top-bar sync icon
 
 **Plain English:** A paper is a normal Smart Notes text page that lives once in the Bibliography library. Any page can reference it; the reference shows up as a child row under that page and as a chip in the page body that expands the same live notes inline. Editing from any place edits the one canonical paper, and renaming or moving pages never breaks the link because the link is a permanent ID, not a file path.
 
-**Storage and identity.** Each paper is `.bibliography/<UUID>.html` with immutable `paper_id` frontmatter and `note_type: text`. The normal page, asset, comment, annotation, Companion and version APIs operate on this canonical path. Paper rename changes the title while keeping the UUID/path; creating pages/sections in, renaming, or moving ownership into or out of Bibliography is rejected (`BIBLIOGRAPHY_OWNERSHIP`). A referenced paper cannot be deleted until its references are removed (`PAPER_REFERENCED`).
+**Storage and identity.** Each paper is `.bibliography/<UUID>.html` with immutable `paper_id` frontmatter and `note_type: text`. The normal page, asset, comment, annotation, Companion and version APIs operate on this canonical path. Paper rename changes the title while keeping the UUID/path; creating pages/sections in, renaming, or moving ownership into or out of Bibliography is rejected (`BIBLIOGRAPHY_OWNERSHIP`). A referenced paper cannot be deleted until its references are removed (`PAPER_REFERENCED`); Companion's `paper_remove` (SN-282) clears them first, then deletes.
 
 **APIs.** `POST /api/papers` creates a canonical paper; `GET /api/papers` lists papers with their current referring notebook/page locations. The vault tree includes the library as a hidden `.bibliography` notebook when populated; the sidebar filters it out of the notebook list and renders the always-available Bibliography disclosure (search, title/recent sort, referring notebook/page filters, New paper).
 
@@ -1280,9 +1280,30 @@ Width is clamped to notes ≥ 320px and PDF ≥ 360px (default 440px). It is per
 - every attached PDF, with the reader's PDF marked `open in reader, page N of M` and a pointer to `pdf_read_pages`;
 - the paper notes HTML (up to 20,000 chars), included only when the host page is not the paper itself.
 
-The existing current-page PDF text and annotation blocks follow. A non-Bibliography `paperPath` is ignored.
+The existing current-page PDF text and annotation blocks follow. A non-Bibliography `paperPath` is ignored. Since SN-282 the same block is added when the paper itself is the current page (notes mode, no `paperPath`), and it lists other `.assets` attachments.
 
 **Evidence.** `tests/paper-reading-shell.test.tsx` covers layout, persistence, z-order, non-displacement, the dock, and message validation. `tests/companion-context.test.ts` covers the paper context. `e2e/sn-281-paper-reading-shell.spec.ts` runs on desktop and mobile.
+
+### Companion paper tools (SN-282)
+
+**Plain English:** Companion can now manage papers for you. From any article it can find or create a paper in the Bibliography and link it, so the paper shows up under that article. It can download a PDF from a web link and attach it to a paper, and the result is the same as if you had dropped the PDF in yourself. It can also delete a paper. Before it deletes, it removes every link to that paper so no page is left with a broken chip. When a paper is open, as notes or in the PDF reader, Companion sees the whole paper: notes, PDFs, and other attachments.
+
+**Tools.** These are a `paper` group on the existing `POST /api/agent/vault` dispatcher (`src/server/vault/paper-tools.ts`). There is no parallel paper API. The UI uses the same primitives: `createPaper`, `savePage`, `uploadPageAsset`, `deletePage`. A `paper` argument is either a paper id or a `.bibliography/<id>.html` path (a `/vault/` prefix is accepted). Anything else is `NOT_A_PAPER`.
+- `paper_list { query? }` returns id, path, title, and the pages that reference the paper. Use it to find a paper before creating a duplicate.
+- `paper_create { title, referenceFromPath? }` creates a canonical paper. With `referenceFromPath`, it also appends the SN-279 reference node to that page, which produces the virtual child row.
+- `paper_reference_add { path, paper }` appends a reference to an existing paper. It is idempotent: at most one reference per page. A paper cannot reference itself.
+- `paper_remove { paper }` is the defined safe removal. First it strips every reference node for that id from each referring page (`removePaperReferences`). Each page is snapshotted first, so `page_restore` can undo it. Then it deletes the paper and its `.assets` folder. The result lists the cleared pages and emits a `file_updated` event for each one (`filesUpdated` side effect), so open editors follow. The SN-279 `PAPER_REFERENCED` guard on plain `page_delete` is unchanged.
+- `paper_attach_pdf { paper, url, fileName? }` downloads the PDF on the server, stores it with `uploadPageAsset` in the paper's `.assets` folder, and appends the exact chip markup the editor's `FileAttachment` node saves. That makes it durable and openable in the SN-281 reading shell like a manual upload. A new paper's empty `<p></p>` placeholder is replaced rather than appended under.
+  - Download guards: only http(s); no localhost, private, link-local, or CGNAT addresses, checked after DNS resolution and again on every redirect hop (max 5).
+  - Limits: 50 MB cap (streamed), 60 s timeout.
+  - The body must start with `%PDF-`. Landing pages return `NOT_A_PDF` with a hint to use the direct link.
+  - File name comes from `fileName`, then Content-Disposition, then the URL basename. `.pdf` is enforced and a unique suffix is added on collision.
+
+**Discovery.** Tool definitions are in `VAULT_TOOL_DEFINITIONS` and the vault tools prompt workflow. They are also in `DEFAULT_SYSTEM_PROMPT` ("Bibliography papers (SN-282)") and in the per-turn "Recommended operations" block in `ai-sidebar.ts`, which is injected every turn so it survives stale saved prompts. The sandboxed companion bridge allowlist includes them too. The download runs on the server, so a sandbox with no network can still attach PDFs.
+
+**Paper-scoped context.** `buildCompanionPageContext` treats a Bibliography page opened as an ordinary page (notes mode) as an open paper, even without `paperPath`. The `## Open paper (Bibliography)` block is described in SN-281. It now also lists `### Other attachments`: files in the paper's `.assets` folder that are not linked PDFs, such as images or unlinked PDFs.
+
+**Evidence.** `tests/paper-tools.test.ts` covers the tool registry; create from an article, reference, and find; removal with reference clearing, snapshots, and asset removal; download and attach; URL, redirect, size, and non-PDF guards; and notes-mode context. `evidence/SN-282/` holds a real-server tool flow (arXiv 1706.03762) and desktop/mobile screenshots.
 
 ### Lessons Learned
 
