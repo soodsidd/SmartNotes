@@ -35,6 +35,10 @@ import {
   COMPANION_DENSITY_STORAGE_KEY,
   copyTextToClipboard,
   getAiProviderModelOptions,
+  filterAiProviderModels,
+  samePinnedCompanionModel,
+  MAX_PINNED_COMPANION_MODELS,
+  type PinnedCompanionModel,
   getAssistantMessageCopyText,
   getAiScopeSharedLabel,
   getAiScopeOptionDescription,
@@ -627,12 +631,15 @@ interface AiConversationProps {
   mobile?: boolean;
   providers?: AiProvider[];
   activeProviderId?: string;
+  pinnedCompanionModels?: PinnedCompanionModel[];
   verboseEnabled: boolean;
   systemPrompt?: string;
   defaultSystemPrompt?: string;
   onProviderChange?: (providerId: string) => void;
   onModelChange?: (providerId: string, model: string) => void;
   onEffortChange?: (effort: string) => void;
+  onTogglePinnedCompanionModel?: (pin: PinnedCompanionModel) => void;
+  onPinnedCompanionModelSelect?: (pin: PinnedCompanionModel) => void;
   onVerboseChange?: (enabled: boolean) => void;
   onSystemPromptSave?: (prompt: string) => Promise<void> | void;
   fastLaneProviderId?: string;
@@ -681,6 +688,8 @@ function ProviderSettingsMenu({
   onProviderChange,
   onModelChange,
   onEffortChange,
+  pinnedCompanionModels = [],
+  onTogglePinnedCompanionModel,
   verboseEnabled,
   onVerboseChange,
   includeProviderSection = true,
@@ -694,6 +703,8 @@ function ProviderSettingsMenu({
   onProviderChange?: (id: string) => void;
   onModelChange?: (id: string, model: string) => void;
   onEffortChange?: (effort: string) => void;
+  pinnedCompanionModels?: PinnedCompanionModel[];
+  onTogglePinnedCompanionModel?: (pin: PinnedCompanionModel) => void;
   verboseEnabled?: boolean;
   onVerboseChange?: (enabled: boolean) => void;
   includeProviderSection?: boolean;
@@ -705,11 +716,25 @@ function ProviderSettingsMenu({
     null;
   const activeModels = getAiProviderModelOptions(activeProvider?.models, activeModelLabel);
   const [draftModel, setDraftModel] = React.useState(activeModelLabel);
+  const [isFiltering, setIsFiltering] = React.useState(false);
   const modelListId = React.useId();
+  const pinLimitHintId = React.useId();
+  const currentPin = { providerId: activeProviderId ?? "", model: activeModelLabel, effort: activeEffort ?? "" };
+  const isPinned = pinnedCompanionModels.some((pin) => samePinnedCompanionModel(pin, currentPin));
+  const pinLimitReached = !isPinned && pinnedCompanionModels.length >= MAX_PINNED_COMPANION_MODELS;
+  const visibleModels = isFiltering
+    ? filterAiProviderModels(activeProvider?.models ?? [], draftModel)
+    : activeModels;
 
   React.useEffect(() => {
     setDraftModel(activeModelLabel);
+    setIsFiltering(false);
   }, [activeModelLabel]);
+
+  React.useEffect(() => {
+    setDraftModel(activeModelLabel);
+    setIsFiltering(false);
+  }, [activeProviderId]);
 
   const commitDraftModel = React.useCallback(() => {
     if (!onModelChange || !activeProvider?.id) {
@@ -741,6 +766,27 @@ function ProviderSettingsMenu({
           <DropdownMenuSeparator />
         </>
       ) : null}
+      {onTogglePinnedCompanionModel && activeProviderId && activeModelLabel ? (
+        <>
+          <DropdownMenuCheckboxItem
+            checked={isPinned}
+            disabled={pinLimitReached}
+            onSelect={(event) => event.preventDefault()}
+            onCheckedChange={() => onTogglePinnedCompanionModel(currentPin)}
+            className="text-xs"
+            data-testid="ai-pin-toggle"
+            aria-describedby={pinLimitReached ? pinLimitHintId : undefined}
+          >
+            Pin {activeModelLabel} (max 3)
+          </DropdownMenuCheckboxItem>
+          {pinLimitReached ? (
+            <p id={pinLimitHintId} className="px-1.5 pb-1 text-[10px] text-muted-foreground" data-testid="ai-pin-limit-hint">
+              Max 3 pinned. Unpin one to add another.
+            </p>
+          ) : null}
+          <DropdownMenuSeparator />
+        </>
+      ) : null}
       <div className="flex items-center justify-between px-2 pt-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
         <span>Model</span>
         <span className="truncate text-[9px] normal-case tracking-normal text-muted-foreground">
@@ -748,11 +794,14 @@ function ProviderSettingsMenu({
         </span>
       </div>
       {onModelChange ? (
-        <div className="px-2 pb-1 pt-2" onPointerDown={(event) => event.stopPropagation()}>
+        <div className="relative px-2 pb-1 pt-2" onPointerDown={(event) => event.stopPropagation()}>
           <Input
             value={draftModel}
-            onChange={(event) => setDraftModel(event.target.value)}
-            onBlur={commitDraftModel}
+            onChange={(event) => { setDraftModel(event.target.value); setIsFiltering(true); }}
+            onBlur={(event) => {
+              if (event.currentTarget.closest('[role="menu"]')?.contains(event.relatedTarget)) return;
+              commitDraftModel();
+            }}
             onKeyDown={(event) => {
               event.stopPropagation();
               if (event.key === "Enter") {
@@ -762,22 +811,23 @@ function ProviderSettingsMenu({
               }
             }}
             placeholder="Default"
-            list={modelListId}
-            className="h-8 rounded border-border bg-background px-2 text-xs"
+            role="combobox"
+            aria-label="Model"
+            aria-controls={modelListId}
+            aria-expanded="true"
+            data-testid="ai-model-combobox"
+            className="h-8 rounded border-border bg-background px-2 pr-7 text-xs focus-visible:ring-ring"
           />
-          <datalist id={modelListId}>
-            {activeModels.map((model) => (
-              <option key={model} value={model} label={activeProvider?.modelLabels?.[model] ?? model} />
-            ))}
-          </datalist>
+          <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-4 size-3 text-muted-foreground" />
         </div>
       ) : null}
-      {activeModels.length > 0 && onModelChange ? (
+      {visibleModels.length > 0 && onModelChange ? (
         <DropdownMenuRadioGroup
+          id={modelListId}
           value={activeModelLabel || ""}
-          onValueChange={(model) => onModelChange(activeProvider?.id ?? "", model)}
+          onValueChange={(model) => { setIsFiltering(false); onModelChange(activeProvider?.id ?? "", model); }}
         >
-          {activeModels.map((model) => (
+          {visibleModels.map((model) => (
             <DropdownMenuRadioItem key={model} value={model} className="text-xs">
               {activeProvider?.modelLabels?.[model] ?? model}
             </DropdownMenuRadioItem>
@@ -785,7 +835,7 @@ function ProviderSettingsMenu({
         </DropdownMenuRadioGroup>
       ) : (
         <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-          No models available
+          {isFiltering ? "No matching models" : "No models available"}
         </DropdownMenuItem>
       )}
       {activeProviderId && providerSupportsEffort(activeProviderId) && onEffortChange ? (
@@ -828,6 +878,8 @@ function ComposerProviderSwitcher({
   onProviderChange,
   onModelChange,
   onEffortChange,
+  pinnedCompanionModels,
+  onTogglePinnedCompanionModel,
   disabled,
   mobile,
   floatingLayerZ,
@@ -840,6 +892,8 @@ function ComposerProviderSwitcher({
   onProviderChange?: (id: string) => void;
   onModelChange?: (id: string, model: string) => void;
   onEffortChange?: (effort: string) => void;
+  pinnedCompanionModels?: PinnedCompanionModel[];
+  onTogglePinnedCompanionModel?: (pin: PinnedCompanionModel) => void;
   disabled: boolean;
   mobile?: boolean;
   floatingLayerZ?: string;
@@ -877,6 +931,8 @@ function ComposerProviderSwitcher({
           onProviderChange={onProviderChange}
           onModelChange={onModelChange}
           onEffortChange={onEffortChange}
+          pinnedCompanionModels={pinnedCompanionModels}
+          onTogglePinnedCompanionModel={onTogglePinnedCompanionModel}
           includeVerboseSection={false}
         />
       </DropdownMenuContent>
@@ -1364,12 +1420,15 @@ function AiConversation({
   mobile,
   providers,
   activeProviderId,
+  pinnedCompanionModels = [],
   verboseEnabled,
   systemPrompt,
   defaultSystemPrompt,
   onProviderChange,
   onModelChange,
   onEffortChange,
+  onTogglePinnedCompanionModel,
+  onPinnedCompanionModelSelect,
   onVerboseChange,
   onSystemPromptSave,
   fastLaneProviderId,
@@ -1939,6 +1998,32 @@ function AiConversation({
           data-testid="ai-composer"
           data-turn-active={isTurnActive ? "true" : "false"}
         >
+          {pinnedCompanionModels.length > 0 ? (
+            <div className="mb-1.5 flex min-w-0 gap-1 overflow-x-auto pb-0.5" aria-label="Pinned Companion models" data-testid="ai-pinned-models">
+              {pinnedCompanionModels.map((pin) => {
+                const selected = activeProviderId === pin.providerId && activeModelLabel === pin.model && (activeEffort ?? "") === pin.effort;
+                const label = pin.model === "auto" || !pin.effort ? pin.model : `${pin.model} · ${pin.effort}`;
+                return (
+                  <button
+                    key={`${pin.providerId}\u0000${pin.model}\u0000${pin.effort}`}
+                    type="button"
+                    data-testid="ai-pinned-model"
+                    aria-label={`Use pinned ${pin.providerId} ${pin.model}${pin.effort ? ` ${pin.effort}` : ""}`}
+                    aria-pressed={selected}
+                    disabled={Boolean(disabled || isTurnActive || !onPinnedCompanionModelSelect)}
+                    onClick={() => onPinnedCompanionModelSelect?.(pin)}
+                    className={cn(
+                      "shrink-0 rounded border px-1.5 text-[11px] text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60",
+                      mobile ? "min-h-11" : "min-h-6",
+                      selected ? "border-border text-foreground" : "border-transparent hover:text-foreground"
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           {failedSend ? (
             <div
               role="alert"
@@ -2043,6 +2128,8 @@ function AiConversation({
                   onProviderChange={onProviderChange}
                   onModelChange={onModelChange}
                   onEffortChange={onEffortChange}
+                  pinnedCompanionModels={pinnedCompanionModels}
+                  onTogglePinnedCompanionModel={onTogglePinnedCompanionModel}
                   disabled={Boolean(disabled || isTurnActive)}
                   floatingLayerZ={floatingLayerZ}
                 />
@@ -2106,6 +2193,8 @@ function AiConversation({
                 onProviderChange={onProviderChange}
                 onModelChange={onModelChange}
                 onEffortChange={onEffortChange}
+                pinnedCompanionModels={pinnedCompanionModels}
+                onTogglePinnedCompanionModel={onTogglePinnedCompanionModel}
                 disabled={Boolean(disabled || isTurnActive)}
                 mobile
                 floatingLayerZ={floatingLayerZ}

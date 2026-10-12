@@ -86,6 +86,29 @@ describe("chat settings — save/load round-trip", () => {
     expect(data.codexModel).toBe("gpt-5-codex");
   });
 
+  it("persists at most three distinct Companion pin tuples across server restarts", async () => {
+    const pins = [
+      { providerId: "ghcopilot", model: "auto", effort: "high" },
+      { providerId: "ghcopilot", model: "auto", effort: "low" },
+      { providerId: "codex", model: "gpt-6-sol", effort: "high" },
+    ];
+    const first = makeRes();
+    chat.handleRequest(makePostReq({ pinnedCompanionModels: pins }), first.res);
+    expect((await first.result).status).toBe(200);
+
+    const fourth = makeRes();
+    chat.handleRequest(makePostReq({ pinnedCompanionModels: [...pins, { providerId: "cursor", model: "auto", effort: "" }] }), fourth.res);
+    await fourth.result;
+
+    const restarted = createChatModule(null, null, {
+      configPath, workingDirectory: tempDir, stateDir: tempDir,
+      recoverInterruptedOnStartup: false, uploadDir: path.join(tempDir, "uploads"),
+    });
+    const read = makeRes();
+    restarted.handleRequest(makeGetReq(), read.res);
+    expect((await read.result).data.pinnedCompanionModels).toEqual(pins);
+  });
+
   it("persists and restores effort for each effort-capable provider", async () => {
     const cases = [
       { provider: "ghcopilot", effortKey: "ghcopilotEffort", modelKey: "ghcopilotModel", model: "gpt-4.1" },

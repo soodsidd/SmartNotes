@@ -417,6 +417,7 @@ app.prepare().then(async () => {
     workingDirectory: __dirname,
     uploadDir: chatRuntimeDir,
     stateDir: chatRuntimeDir,
+    configPath: path.join(chatRuntimeDir, 'chat-settings.json'),
     sandbox: 'editor',
     // Resolved lazily after listen so port 0 / AV dynamic previews propagate
     // the actual bound port to companion guidance and provider child env.

@@ -15,6 +15,49 @@ export interface AiProviderOption {
   modelLabels?: Record<string, string>;
 }
 
+export interface PinnedCompanionModel {
+  providerId: string;
+  model: string;
+  effort: string;
+}
+
+export const MAX_PINNED_COMPANION_MODELS = 3;
+
+export function samePinnedCompanionModel(a: PinnedCompanionModel, b: PinnedCompanionModel) {
+  return a.providerId === b.providerId && a.model === b.model && a.effort === b.effort;
+}
+
+export function normalizePinnedCompanionModels(value: unknown): PinnedCompanionModel[] {
+  if (!Array.isArray(value)) return [];
+  const pins: PinnedCompanionModel[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const candidate = entry as Record<string, unknown>;
+    if (typeof candidate.providerId !== "string" || typeof candidate.model !== "string" || typeof candidate.effort !== "string") continue;
+    const pin = {
+      providerId: candidate.providerId.trim(),
+      model: candidate.model.trim(),
+      effort: candidate.effort.trim(),
+    };
+    if (!pin.providerId || !pin.model || pins.some((existing) => samePinnedCompanionModel(existing, pin))) continue;
+    pins.push(pin);
+    if (pins.length === MAX_PINNED_COMPANION_MODELS) break;
+  }
+  return pins;
+}
+
+export function togglePinnedCompanionModel(pins: PinnedCompanionModel[], pin: PinnedCompanionModel) {
+  if (pins.some((existing) => samePinnedCompanionModel(existing, pin))) {
+    return pins.filter((existing) => !samePinnedCompanionModel(existing, pin));
+  }
+  return pins.length < MAX_PINNED_COMPANION_MODELS ? [...pins, pin] : pins;
+}
+
+export function filterAiProviderModels(models: string[], query: string) {
+  const needle = query.trim().toLocaleLowerCase();
+  return needle ? models.filter((model) => model.toLocaleLowerCase().includes(needle)) : models;
+}
+
 export interface AiProviderSettings {
   model?: string;
   claudeModel?: string;
