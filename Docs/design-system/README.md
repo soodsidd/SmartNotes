@@ -130,3 +130,9 @@ Reuses existing Clarity tokens only; no new color, spacing, radius, or type valu
 | Phone status chip | Existing `--border` / `--surface` / `--muted-foreground` / `--destructive` / `--accent` chip pattern; short text label always visible |
 | Infrequent actions | Labeled **More** menu (`DropdownMenu`) — create, export, print, reload/refresh, settings |
 | Companion mobile header (settings, close, density, scope, Keep) | `size-11` / `min-h-11` with existing ghost/chip surfaces |
+
+## Quick Capture text-first layout (SN-290)
+
+Quick Capture follows the approved Screen 6 hierarchy: the content area comes first and receives focus, while title and routing fields follow. The current notebook and Inbox or selected section are shown as a text summary before Save. The saved state keeps Open as a separate action.
+
+The dialog reuses `Dialog`, `Textarea`, `Input`, `Button`, and existing select styles. Surfaces and focus use `--background`, `--foreground`, `--muted-foreground`, `--border`, `--input`, and `--ring`. Layout uses the existing `gap-2`, `gap-4`, `sm:grid-cols-2`, `text-base`, and `min-h-[260px]` values from the previous Capture modal. Mobile actions and selects use the established `min-h-11` / `h-11` 44px touch target, and selects use `text-base` until the `sm` breakpoint. No new color, spacing, or typography values were introduced.

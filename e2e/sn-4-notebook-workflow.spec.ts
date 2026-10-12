@@ -172,8 +172,10 @@ test("SN-4 desktop notebook workflow stays synced through tree mutations", async
     await page.getByTestId("capture-title-input").fill(captureTitle);
     await page.getByTestId("capture-notebook-select").selectOption(renamedNotebookName);
     await page.getByTestId("capture-content-input").fill("Inbox capture evidence for SN-4.");
-    await Promise.all([waitForVaultRefresh(page), page.getByTestId("capture-submit-btn").click()]);
-
+    await page.getByTestId("capture-submit-btn").click();
+    await expect(page.getByTestId("capture-saved")).toContainText("Saved");
+    await expectActivePageTitle(page, renamedPageTitle);
+    await page.getByTestId("capture-open-btn").click();
     await expectActivePageTitle(page, captureTitle);
     await expect.poll(() => fileExists(path.join(VAULT, renamedNotebookName, "Inbox", captureSlug))).toBe(true);
 

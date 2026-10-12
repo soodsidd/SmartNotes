@@ -37,10 +37,12 @@ test("Quick Capture retains drafts, retries a failed save, and discards explicit
   await expect(page.getByTestId("capture-content-input")).toHaveValue("Keep this unfinished capture");
   await page.getByTestId("capture-submit-btn").click();
   await expect(page.getByTestId("capture-error")).toBeHidden();
+  await expect(page.getByTestId("capture-saved")).toContainText("Saved");
   await expect(page.getByTestId("capture-title-input")).toBeHidden();
   expect(captureIds).toHaveLength(2);
   expect(captureIds[1]).toBe(captureIds[0]);
 
+  await page.getByTestId("capture-done-btn").click();
   await page.getByTestId("capture-btn").click();
   await expect(page.getByTestId("capture-content-input")).toHaveValue("");
   await page.getByTestId("capture-content-input").fill("Discard this instead");
