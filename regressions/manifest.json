@@ -3747,7 +3747,7 @@
       "appType": "node",
       "command": "npm test -- tests/search.test.ts",
       "timeoutMs": 120000,
-      "enabled": false,
+      "enabled": true,
       "tags": [
         "unit",
         "node",
@@ -3765,7 +3765,7 @@
           "path": "tests/search.test.ts"
         }
       ],
-      "intent": "Guards behavior introduced or fixed in historical work (search.test.ts).",
+      "intent": "Guards client Fuse search (stripped HTML, snippets, recents) and the SN-288 incremental VaultSearchIndexer: a single-page draft update re-indexes only that page and search finds the live draft.",
       "whenToRun": "Pre-merge when touching the related feature area."
     },
     {
