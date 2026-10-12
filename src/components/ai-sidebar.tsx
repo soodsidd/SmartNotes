@@ -8,7 +8,7 @@ import rehypeKatexImport from "rehype-katex";
 // rehype-katex bundles an older vfile; cast away the type mismatch (works at runtime)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rehypeKatex = rehypeKatexImport as any;
-import { AlertCircle, AlignJustify, Check, ChevronDown, Code2, Copy, FileText, Paperclip, Send, Settings, Sparkles, Square, X } from "lucide-react";
+import { AlertCircle, AlignJustify, ArrowDown, Check, ChevronDown, Code2, Copy, FileText, Paperclip, Send, Settings, Sparkles, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,6 +48,13 @@ import {
   type AiDocumentAttachmentKind,
   type CompanionDensity,
 } from "@/lib/ai-sidebar";
+import {
+  classifyTranscriptChange,
+  isNearBottom,
+  resolveCompanionScroll,
+  snapshotTranscript,
+  type TranscriptSnapshot,
+} from "@/lib/companion-scroll";
 import { cn } from "@/lib/utils";
 
 export interface AiSidebarMessage {
@@ -1373,6 +1380,10 @@ function AiConversation({
   elevateFloatingLayers,
 }: AiConversationProps) {
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  // SN-285: follow the stream only while the reader is parked at the live bottom.
+  const followingRef = React.useRef(true);
+  const transcriptSnapshotRef = React.useRef<TranscriptSnapshot | null>(null);
+  const [detachedFromLatest, setDetachedFromLatest] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const floatingLayerZ = elevateFloatingLayers
     ? "z-[var(--z-companion-overlay)]"
@@ -1626,14 +1637,38 @@ function AiConversation({
     onEditFailedSend?.();
   }, [failedSend, onEditFailedSend, updateComposerDraft]);
 
-  React.useEffect(() => {
+  const scrollToLatest = React.useCallback(() => {
+    const node = scrollRef.current;
+    followingRef.current = true;
+    setDetachedFromLatest(false);
+    if (node) {
+      node.scrollTop = node.scrollHeight;
+    }
+  }, []);
+
+  const handleTranscriptScroll = React.useCallback(() => {
     const node = scrollRef.current;
     if (!node) {
       return;
     }
+    const following = isNearBottom(node);
+    followingRef.current = following;
+    setDetachedFromLatest(!following);
+  }, []);
 
-    node.scrollTop = node.scrollHeight;
-  }, [messages]);
+  React.useLayoutEffect(() => {
+    const node = scrollRef.current;
+    const snapshot = snapshotTranscript(messages);
+    const change = classifyTranscriptChange(transcriptSnapshotRef.current, snapshot);
+    transcriptSnapshotRef.current = snapshot;
+    if (!node) {
+      return;
+    }
+
+    if (resolveCompanionScroll(change, followingRef.current) === "follow") {
+      scrollToLatest();
+    }
+  }, [messages, scrollToLatest]);
 
   return (
     <div
@@ -1795,60 +1830,82 @@ function AiConversation({
         </div>
       ) : null}
 
-      <div
-        ref={scrollRef}
-        className={cn(
-          "minimal-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-3.5 py-4",
-          mobile && "px-4 pb-3"
-        )}
-        style={{ gap: "var(--chat-message-gap)" }}
-      >
-        {messages.length === 0 ? (
-          <EmptyConversation disabled={disabled} />
-        ) : (
-          messages.map((message) => {
-            const isUser = message.role === "user";
-            const live = !isUser && Boolean(message.isStreaming);
-            const timeline = isUser
-              ? []
-              : (message.timeline ?? []).filter((entry) => {
-                  if (entry.type === "text") {
-                    return true;
-                  }
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          ref={scrollRef}
+          className={cn(
+            "minimal-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-3.5 py-4",
+            mobile && "px-4 pb-3"
+          )}
+          style={{ gap: "var(--chat-message-gap)" }}
+          onScroll={handleTranscriptScroll}
+          data-testid="ai-transcript"
+        >
+          {messages.length === 0 ? (
+            <EmptyConversation disabled={disabled} />
+          ) : (
+            messages.map((message) => {
+              const isUser = message.role === "user";
+              const live = !isUser && Boolean(message.isStreaming);
+              const timeline = isUser
+                ? []
+                : (message.timeline ?? []).filter((entry) => {
+                    if (entry.type === "text") {
+                      return true;
+                    }
 
-                  return verboseEnabled;
-                });
-            const lastTextEntryId = !isUser
-              ? [...timeline].reverse().find((entry) => entry.type === "text")?.id
-              : null;
+                    return verboseEnabled;
+                  });
+              const lastTextEntryId = !isUser
+                ? [...timeline].reverse().find((entry) => entry.type === "text")?.id
+                : null;
 
-            return (
-              <div
-                key={message.id}
-                className={cn("flex flex-col", isUser ? "items-end" : "items-stretch")}
-              >
-                {isUser ? (
-                  <>
-                    <div className="mb-1.5 text-right text-[11px] text-muted-foreground">You</div>
-                    <div className="max-w-[88%] rounded-[var(--radius-lg)] border border-border bg-[color:color-mix(in_oklab,var(--accent)_12%,var(--surface))] px-3.5 py-3 text-[length:var(--chat-prose-size)] leading-[var(--chat-prose-leading)] text-foreground">
-                      <div className="whitespace-pre-wrap break-words">
-                        {message.content || (message.isStreaming ? "…" : "")}
+              return (
+                <div
+                  key={message.id}
+                  className={cn("flex flex-col", isUser ? "items-end" : "items-stretch")}
+                >
+                  {isUser ? (
+                    <>
+                      <div className="mb-1.5 text-right text-[11px] text-muted-foreground">You</div>
+                      <div className="max-w-[88%] rounded-[var(--radius-lg)] border border-border bg-[color:color-mix(in_oklab,var(--accent)_12%,var(--surface))] px-3.5 py-3 text-[length:var(--chat-prose-size)] leading-[var(--chat-prose-leading)] text-foreground">
+                        <div className="whitespace-pre-wrap break-words">
+                          {message.content || (message.isStreaming ? "…" : "")}
+                        </div>
                       </div>
-                    </div>
-                  </>
-                ) : (
-                  <AssistantMessageRow
-                    message={message}
-                    assistantLabel={assistantLabel}
-                    timeline={timeline}
-                    lastTextEntryId={lastTextEntryId}
-                    live={live}
-                  />
-                )}
-              </div>
-            );
-          })
-        )}
+                    </>
+                  ) : (
+                    <AssistantMessageRow
+                      message={message}
+                      assistantLabel={assistantLabel}
+                      timeline={timeline}
+                      lastTextEntryId={lastTextEntryId}
+                      live={live}
+                    />
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+        {detachedFromLatest && messages.length > 0 ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={scrollToLatest}
+              className={cn(
+                "pointer-events-auto rounded-full border border-border shadow-sm",
+                mobile && "min-h-11"
+              )}
+              data-testid="ai-jump-to-latest"
+            >
+              <ArrowDown className="size-3.5" />
+              Jump to latest
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className={cn("shrink-0 px-3 pb-3", mobile && "border-t border-border px-3 pb-4 pt-2")}>
