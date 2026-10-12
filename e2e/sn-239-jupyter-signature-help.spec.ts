@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
+import { clickShellMoreItem } from "./helpers";
 
 const ROOT = path.resolve(__dirname, "..");
 const E2E_VAULT = path.join(ROOT, ".e2e-vault");
@@ -58,7 +59,7 @@ test("SN-239 pinned profile provides Python signature help without modifying Fil
   ).toBeVisible({ timeout: 20_000 });
   expect(await fs.readFile(path.join(WORKING_DIR, "notebook.ipynb"))).toEqual(before);
 
-  await page.getByTestId("app-settings-trigger").click();
+  await clickShellMoreItem(page, "app-settings-trigger");
   const dialog = page.getByTestId("app-settings-dialog");
   const profileStatus = page.getByTestId("settings-jupyter-profile-status");
   await expect(profileStatus).toContainText(

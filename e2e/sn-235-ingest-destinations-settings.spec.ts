@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
-import { dismissBlockingOverlays } from "./helpers";
+import { clickShellMoreItem, dismissBlockingOverlays } from "./helpers";
 
 function evidencePath(projectName: string) {
   return path.resolve(__dirname, "evidence", `sn-235-ingest-destinations-settings-${projectName}.png`);
@@ -11,7 +11,7 @@ test.describe.configure({ mode: "serial" });
 async function openIngestSettingsTab(page: Page) {
   await page.goto("/");
   await dismissBlockingOverlays(page);
-  await page.getByTestId("app-settings-trigger").click();
+  await clickShellMoreItem(page, "app-settings-trigger");
   await expect(page.getByTestId("app-settings-dialog")).toBeVisible({ timeout: 10000 });
   await page.getByTestId("settings-tab-ingest").click();
   await expect(page.getByTestId("ingest-destinations-settings-panel")).toBeVisible({ timeout: 10000 });

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { dismissBlockingOverlays } from "./helpers";
+import { clickShellMoreItem, dismissBlockingOverlays } from "./helpers";
 
 async function stubChatModelRoutes(page: import("@playwright/test").Page) {
   await page.route("**/api/chat/providers", async (route) => {
@@ -197,8 +197,8 @@ async function injectMockStream(
 
 async function clickReloadButton(page: import("@playwright/test").Page) {
   await dismissBlockingOverlays(page);
-  // Prefer a DOM click — the AI resize handle often intercepts Playwright pointer clicks.
-  await page.getByTestId("reload-btn").evaluate((el) => (el as HTMLButtonElement).click());
+  // SN-289: reload lives under More; prefer a DOM click once the menu item is open.
+  await clickShellMoreItem(page, "reload-btn");
 }
 
 // ─── Functional flow tests ────────────────────────────────────────────────────

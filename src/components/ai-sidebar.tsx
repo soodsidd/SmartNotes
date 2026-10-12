@@ -326,7 +326,10 @@ function CompanionDensityMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className={cn(SIDEBAR_CHIP_CLASS, mobile ? "min-w-0 gap-1" : "px-1.5")}
+        className={cn(
+          SIDEBAR_CHIP_CLASS,
+          mobile ? "min-h-11 min-w-0 gap-1 px-3" : "px-1.5"
+        )}
         data-testid="companion-density-control"
         aria-label={`Companion reading density: ${activeLabel}`}
         title={`Reading density: ${activeLabel}`}
@@ -369,7 +372,7 @@ function CompanionKeepToggle({
         SIDEBAR_CHIP_CLASS,
         "cursor-pointer select-none",
         checked && "text-foreground",
-        mobile ? "min-w-0" : "px-1.5"
+        mobile ? "min-h-11 min-w-0 px-3" : "px-1.5"
       )}
       title="Keep this conversation — saved to the vault and restored when you return to this page and scope."
       data-testid={mobile ? "companion-keep-toggle-mobile-label" : "companion-keep-toggle-label"}
@@ -426,7 +429,10 @@ function AiScopeControl({
   if (!canChooseScope) {
     return (
       <span
-        className={cn(SIDEBAR_SCOPE_CHIP_CLASS, mobile ? "min-w-0 flex-1" : "max-w-[min(100%,11rem)] truncate")}
+        className={cn(
+          SIDEBAR_SCOPE_CHIP_CLASS,
+          mobile ? "min-h-11 min-w-0 flex-1 px-3" : "max-w-[min(100%,11rem)] truncate"
+        )}
         data-testid={mobile ? "ai-scope-control-mobile" : "ai-scope-control"}
         title={chipTitle}
       >
@@ -440,7 +446,10 @@ function AiScopeControl({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className={cn(SIDEBAR_SCOPE_CHIP_CLASS, mobile ? "min-w-0 flex-1" : "max-w-[min(100%,11rem)] truncate")}
+        className={cn(
+          SIDEBAR_SCOPE_CHIP_CLASS,
+          mobile ? "min-h-11 min-w-0 flex-1 px-3" : "max-w-[min(100%,11rem)] truncate"
+        )}
         data-testid={mobile ? "ai-scope-control-mobile" : "ai-scope-control"}
         title={chipTitle}
         aria-label={
@@ -1694,22 +1703,22 @@ function AiConversation({
             <CompanionDensityMenu density={density} onDensityChange={updateDensity} mobile positionerClassName={floatingLayerZ} />
             <button
               type="button"
-              aria-label="AI settings"
+              aria-label="Companion settings"
               data-testid="ai-settings-mobile"
               onClick={() => setSettingsOpen(true)}
-              className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <Settings className="size-3.5" />
+              <Settings className="size-4" />
             </button>
             <Button
               type="button"
               variant="ghost"
-              size="icon-sm"
-              className="shrink-0 rounded-md"
+              size="icon"
+              className="size-11 shrink-0 rounded-md"
               onClick={onClose}
-              aria-label="Close AI sheet"
+              aria-label="Close Companion"
             >
-              <X className="size-3.5" />
+              <X className="size-4" />
             </Button>
           </>
         ) : (

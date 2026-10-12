@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ensureNotebookTreeVisible } from "./helpers";
+import { clickShellMoreItem, ensureNotebookTreeVisible } from "./helpers";
 
 // SAFE real-artifact fixture (acceptance-gating, SN-167). A ~3.8MB self-contained
 // concept site with inline <style> — the exact class of artifact that does NOT
@@ -264,13 +264,10 @@ test("SN-167 desktop: companion write to an open design page surfaces reload and
   });
   expect(written.ok(), `page_write failed: ${await written.text()}`).toBeTruthy();
 
-  // Header reload button (the rotate icon the owner uses) lights up for a
-  // pending page update; the banner is a secondary affordance.
-  const headerReload = page.getByTestId("reload-btn");
-  await expect(headerReload).toBeEnabled({ timeout: 20000 });
+  // SN-289: pending reload lives under More; the More trigger lights a pending dot.
+  await expect(page.getByTestId("pending-page-reload-indicator")).toBeVisible({ timeout: 20000 });
   await expect(page.getByTestId("page-changed-reload-btn")).toBeVisible({ timeout: 20000 });
-  // Prefer the header control — that's the button circled in review.
-  await headerReload.click();
+  await clickShellMoreItem(page, "reload-btn");
 
   // After reload the isolated frame shows the companion's new content — no full
   // page refresh needed (regression: the view previously kept the stale body).
@@ -354,10 +351,10 @@ test("SN-167 desktop: external direct-disk edit to an open design page is detect
     document.dispatchEvent(new Event("visibilitychange"));
   });
 
-  // Header reload + banner both activate; click the header control.
-  const headerReload = page.getByTestId("reload-btn");
+  // SN-289: pending reload under More + banner; prefer the More-menu reload item.
+  await expect(page.getByTestId("pending-page-reload-indicator")).toBeVisible({ timeout: 20000 });
   await expect(page.getByTestId("page-changed-reload-btn")).toBeVisible({ timeout: 20000 });
-  await headerReload.click();
+  await clickShellMoreItem(page, "reload-btn");
   await expect(frame.getByTestId("art-marker")).toHaveText(markerB, { timeout: 20000 });
 });
 

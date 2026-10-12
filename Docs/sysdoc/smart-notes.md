@@ -1395,7 +1395,7 @@ cloudflared tunnel ingress rule https://notes-inbound.lucidrss.com/
 
 ## 10. Mobile Layout
 
-**Plain English:** On a phone, the screen is too small to show the sidebar and editor side by side. Instead, you navigate through a stack of screens: first you see your list of Notebooks, tap to see Sections, tap again for Pages, then tap a page to open the editor. Capture and AI open as overlays. Until the dedicated bottom nav ships, vault search is entered from the top-bar search icon and opens as a fullscreen command dialog on sub-xl viewports.
+**Plain English:** On a phone, the screen is too small to show the sidebar and editor side by side. Instead, you navigate through a stack of screens: first you see your list of Notebooks, tap to see Sections, tap again for Pages, then tap a page to open the editor. Capture and Companion open as overlays. Until the dedicated bottom nav ships, vault search is entered from the top-bar search icon and opens as a fullscreen command dialog on sub-xl viewports.
 
 **Mobile view stack** (managed by AppState.mobileView):
 
@@ -1415,21 +1415,27 @@ Navigation:
 - search — legacy AppState hook only; current reliable shell search is top-bar icon -> SearchModal
 - ai — handled by a Sheet component in the editor view (does not change mobileView)
 
-**AI on mobile (SN-39, SN-75):** The companion opens as a **fullscreen sheet** (`MobileAiSheet`, `data-testid="mobile-ai-sheet"`, `100dvh`) over the editor. While open on sub-xl viewports, `notebook-shell-reliable.tsx` hides note chrome so only the companion is visible. The mobile header includes companion density, a settings gear (`data-testid="ai-settings-mobile"`) that opens the shared `AiSettingsDialog` (system prompt editable on phone/tablet), and an `AiScopeControl` dropdown (`data-testid="ai-scope-control-mobile"`) for hierarchical scope (Whole note, Current section, Page tree, Page + parent context when available). The composer uses full available width: textarea `flex-1`, attach/send `shrink-0` with 44px touch targets (`min-h-11`).
+**Shell top bar (SN-289):** The primary row is intentionally short: **menu**, **search**, **capture**, **Companion**, and a labeled **More** control. Frequent actions use the design-system **44px** target (size-11) below the `xl` breakpoint and stay compact on desktop (`xl:size-8`). Every primary control has an accessible name. Infrequent actions (create notebook/section/page variants, export, print, refresh/reload, settings, open workspace) live behind More so the row is not a wall of 28–32px icons. On phone widths, save/sync/error/pending state is a single text-bearing chip (`data-testid="shell-status-chip"`, `getShellStatusSummary`) so pending and error remain understandable without relying on the socket icon alone; desktop keeps the separate sync + save chips.
+
+**AI on mobile (SN-39, SN-75, SN-289):** The companion opens as a **fullscreen sheet** (`MobileAiSheet`, `data-testid="mobile-ai-sheet"`, `100dvh`) over the editor. While open on sub-xl viewports, `notebook-shell-reliable.tsx` hides note chrome so only the companion is visible. The mobile header includes companion density, a settings control (`data-testid="ai-settings-mobile"`) that opens the shared `AiSettingsDialog` (system prompt editable on phone/tablet), and an `AiScopeControl` dropdown (`data-testid="ai-scope-control-mobile"`) for hierarchical scope (Whole note, Current section, Page tree, Page + parent context when available). Header settings/close and density/scope/Keep chips use **44px** targets on mobile. The composer uses full available width: textarea `flex-1`, attach/send `shrink-0` with 44px touch targets (`min-h-11`).
 
 **Draw mode toolbar (SN-43):** Mobile ink controls in annotation-draw-toolbar.tsx use **expandable vertical selectors** for color and stroke width — bare icon triggers (active color dot or stroke bar) with no chevrons or pill chrome; tap opens a **downward** popover list. This keeps the horizontal toolbar footprint minimal while preserving touch-friendly targets.
 
-**App settings on mobile:** Same top-bar gear as desktop opens AppSettingsDialog (font size, theme, shortcut reference, install status, and Reload app). Reload app is the manual stale-PWA escape hatch: it sends `FORCE_RELOAD` to the service worker, clears cached root shell variants including `/?source=pwa`, clears `smart-notes-vault-pdfs-*` Cache Storage buckets, then reloads the page from the network.
+**App settings on mobile (SN-289):** Settings opens from the top-bar **More** menu (same `AppSettingsDialog`: font size, theme, shortcut reference, install status, and Reload app). Reload app is the manual stale-PWA escape hatch: it sends `FORCE_RELOAD` to the service worker, clears cached root shell variants including `/?source=pwa`, clears `smart-notes-vault-pdfs-*` Cache Storage buckets, then reloads the page from the network.
 
 **Remote notebook creation on mobile/PWA (SN-100):** A phone or installed PWA is only a client of the Smart Notes backend. Remote notebook folders live on the backend host filesystem, so mobile creation uses an in-app server-folder browser with path jump, parent/root navigation, folder creation, validation, and **Use this folder** before registration. It does not call the native Windows picker because that picker opens on the backend host desktop session and may be invisible to the mobile user. Desktop Windows keeps the native picker available for local same-machine use, with the server browser as the cross-device fallback.
 
-**Editor top bar recovery controls:** The editor top bar shows a persistent `Connection lost - changes may not be saving` indicator after failed vault writes. The main toolbar has a single reload-style action: normally it refreshes only the current note from the vault without reloading the app shell; when a remote page or vault-structure update is pending, the same action reloads that content and a separate warning indicator explains the pending state. App reload stays in Settings or the update-available banner.
+**Editor top bar recovery controls (SN-289):** Phone chrome shows pending/error/save as the text chip above. Desktop still surfaces a persistent connection-lost indicator after failed vault writes plus separate sync/save chips. Refresh/reload (including remote page or vault-structure updates) lives under **More**; when an update is pending, More carries an accent pending dot and the existing page-changed banner remains a secondary affordance. App reload stays in Settings or the update-available banner.
 
 **Search entry points (SN-18):**
 - Desktop and tablet: `Cmd/Ctrl+K` when the editor is not focused, or the top-bar search icon.
 - Phone / sub-xl: the same search icon opens the shared SearchModal as a fullscreen overlay.
 
 **Responsive boundary:** Layout switches at the xl breakpoint. `notebook-shell-reliable.tsx` renders both layouts and hides/shows them via CSS.
+
+### Lessons Learned
+
+- **Do not enlarge every top-bar icon in place.** Phone width cannot afford a full row of 44px icons; promote only frequent actions and park the rest behind a labeled More menu while keeping save/error state as readable text (SN-289).
 
 ## 11. Theme & Design Tokens
 
