@@ -109,3 +109,13 @@ The Open Notebook picker’s organization toolbar, pinned section, group headers
 
 Notebook and page shortcuts keep the existing Clarity hierarchy and type icons. The normal grouped list is notebook-only; individual group headers and the all-groups control use the same 44px interaction pattern. Groups are restrained operational labels rather than decorative cards, and all organization stays inside the existing picker so it does not turn the tree into a second organizational workspace.
 
+
+## Companion Jump to latest (SN-285)
+
+Reuses existing tokens only; no new color, spacing, radius, or type values.
+
+| Surface | Existing tokens/patterns |
+|---------|--------------------------|
+| Jump to latest pill | `Button` `variant="secondary"` `size="sm"` (`--secondary`, `--secondary-foreground`), `border-border`, `rounded-full` as used by companion chips, `shadow-sm`, Lucide `ArrowDown` `size-3.5` |
+| Placement | Absolutely centered `bottom-2` inside the transcript wrapper so it never covers the composer |
+| Mobile | `min-h-11` 44px touch target, matching other companion mobile controls |
