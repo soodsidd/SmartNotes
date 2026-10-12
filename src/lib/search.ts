@@ -1,6 +1,6 @@
 import Fuse from "fuse.js";
 import { stripHtml } from "@/lib/html-utils";
-import type { VaultNotebook } from "@/lib/vault-contract";
+import type { VaultNotebook, VaultPage } from "@/lib/vault-contract";
 
 export interface SearchHighlightRange {
   start: number;
@@ -124,45 +124,154 @@ function sortByRecent(entries: SearchIndexEntry[]) {
   });
 }
 
-export function buildVaultSearchIndex(tree: VaultNotebook[]): VaultSearchIndex {
-  const entries = tree.flatMap((notebook) =>
-    [
-      ...notebook.pages.map((page) => ({
-        path: page.path,
-        title: page.title,
-        bodyText: stripHtml(page.content),
-        breadcrumb: `${notebook.name} / Root`,
-        updatedAt: page.updatedAt,
-        createdAt: page.createdAt,
-      })),
-      ...notebook.sections.flatMap((section) =>
-        section.pages.map((page) => ({
-        path: page.path,
-        title: page.title,
-        bodyText: stripHtml(page.content),
-        breadcrumb: `${notebook.name} / ${section.name}`,
-        updatedAt: page.updatedAt,
-        createdAt: page.createdAt,
-        }))
-      ),
-    ]
-  );
+const FUSE_OPTIONS = {
+  includeMatches: true,
+  includeScore: true,
+  shouldSort: true,
+  threshold: 0.35,
+  ignoreLocation: true,
+  minMatchCharLength: 1,
+  keys: [
+    { name: "title", weight: 0.45 },
+    { name: "bodyText", weight: 0.55 },
+  ],
+};
 
+function buildSearchEntry(page: VaultPage, breadcrumb: string): SearchIndexEntry {
   return {
-    entries,
-    fuse: new Fuse(entries, {
-      includeMatches: true,
-      includeScore: true,
-      shouldSort: true,
-      threshold: 0.35,
-      ignoreLocation: true,
-      minMatchCharLength: 1,
-      keys: [
-        { name: "title", weight: 0.45 },
-        { name: "bodyText", weight: 0.55 },
-      ],
-    }),
+    path: page.path,
+    title: page.title,
+    bodyText: stripHtml(page.content),
+    breadcrumb,
+    updatedAt: page.updatedAt,
+    createdAt: page.createdAt,
   };
+}
+
+function forEachTreePage(
+  tree: VaultNotebook[],
+  visit: (page: VaultPage, breadcrumb: string) => void
+) {
+  for (const notebook of tree) {
+    const rootBreadcrumb = `${notebook.name} / Root`;
+    for (const page of notebook.pages) {
+      visit(page, rootBreadcrumb);
+    }
+    for (const section of notebook.sections) {
+      const sectionBreadcrumb = `${notebook.name} / ${section.name}`;
+      for (const page of section.pages) {
+        visit(page, sectionBreadcrumb);
+      }
+    }
+  }
+}
+
+interface IndexedPageRecord {
+  page: VaultPage;
+  breadcrumb: string;
+  entry: SearchIndexEntry;
+}
+
+export interface VaultSearchSyncStats {
+  added: number;
+  updated: number;
+  removed: number;
+}
+
+/**
+ * SN-288: incremental whole-vault search index.
+ *
+ * `sync(tree)` walks the tree comparing page object identity (tree patches keep
+ * unchanged page objects), so only pages that actually changed are re-stripped
+ * and re-added to Fuse. Unchanged pages cost one reference comparison. Callers
+ * should sync lazily (search open / idle), never on the keystroke path.
+ */
+export class VaultSearchIndexer {
+  private records = new Map<string, IndexedPageRecord>();
+  private fuse = new Fuse<SearchIndexEntry>([], FUSE_OPTIONS);
+  private snapshot: VaultSearchIndex = { entries: [], fuse: this.fuse };
+  private lastTree: VaultNotebook[] | null = null;
+
+  sync(tree: VaultNotebook[]): VaultSearchSyncStats {
+    const stats: VaultSearchSyncStats = { added: 0, updated: 0, removed: 0 };
+    if (tree === this.lastTree) {
+      return stats;
+    }
+    this.lastTree = tree;
+
+    const seen = new Set<string>();
+    const staleEntries = new Set<SearchIndexEntry>();
+    const freshEntries: SearchIndexEntry[] = [];
+
+    forEachTreePage(tree, (page, breadcrumb) => {
+      if (seen.has(page.path)) {
+        return;
+      }
+      seen.add(page.path);
+      const existing = this.records.get(page.path);
+      if (existing && existing.page === page && existing.breadcrumb === breadcrumb) {
+        return;
+      }
+      if (
+        existing &&
+        existing.breadcrumb === breadcrumb &&
+        existing.page.content === page.content &&
+        existing.page.title === page.title &&
+        existing.page.updatedAt === page.updatedAt &&
+        existing.page.createdAt === page.createdAt
+      ) {
+        existing.page = page;
+        return;
+      }
+      const entry = buildSearchEntry(page, breadcrumb);
+      if (existing) {
+        staleEntries.add(existing.entry);
+        stats.updated += 1;
+      } else {
+        stats.added += 1;
+      }
+      this.records.set(page.path, { page, breadcrumb, entry });
+      freshEntries.push(entry);
+    });
+
+    for (const [path, record] of this.records) {
+      if (!seen.has(path)) {
+        staleEntries.add(record.entry);
+        this.records.delete(path);
+        stats.removed += 1;
+      }
+    }
+
+    if (staleEntries.size > 0) {
+      this.fuse.remove((doc) => staleEntries.has(doc));
+    }
+    for (const entry of freshEntries) {
+      this.fuse.add(entry);
+    }
+    if (staleEntries.size > 0 || freshEntries.length > 0) {
+      this.snapshot = {
+        entries: Array.from(this.records.values(), (record) => record.entry),
+        fuse: this.fuse,
+      };
+    }
+    return stats;
+  }
+
+  /** Stable until the next sync that changes content; safe as a memo dependency. */
+  getIndex(): VaultSearchIndex {
+    return this.snapshot;
+  }
+}
+
+export const EMPTY_VAULT_SEARCH_INDEX: VaultSearchIndex = {
+  entries: [],
+  fuse: new Fuse<SearchIndexEntry>([], FUSE_OPTIONS),
+};
+
+export function buildVaultSearchIndex(tree: VaultNotebook[]): VaultSearchIndex {
+  const indexer = new VaultSearchIndexer();
+  indexer.sync(tree);
+  return indexer.getIndex();
 }
 
 export function buildRecentSearchResults(index: VaultSearchIndex, limit = 8): SearchResult[] {
