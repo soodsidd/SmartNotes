@@ -31,6 +31,7 @@ import {
   Link2,
   Lock,
   Search,
+  Settings,
   Download,
   Printer,
   Table2,
@@ -109,7 +110,8 @@ import {
   createRetainedPdfReaderState,
   openRetainedPdfReader,
 } from "@/lib/pdf-reader-session";
-import { AppSettingsDialog, AppSettingsTrigger } from "@/components/app-settings-dialog";
+import { AppSettingsDialog } from "@/components/app-settings-dialog";
+import { getShellStatusSummary, type ShellStatusTone } from "@/lib/shell-status";
 import { CreateNotebookDialog } from "@/components/create-notebook-dialog";
 import { LinkDesignSourceDialog } from "@/components/link-design-source-dialog";
 import { OpenClosedNotebooksDialog } from "@/components/open-closed-notebooks-dialog";
@@ -5985,6 +5987,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             <TopBar
               header={buildHeaderContext(activeSelection)}
               saveLabel={saveLabel}
+              saveState={saveState}
+              isViewingVersion={Boolean(versionPreview)}
               syncConnectionState={syncConnectionState}
               isReloading={isReloading}
               hasPendingPageReload={hasPendingPageReload}
@@ -6672,9 +6676,27 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
 }
 
+/** SN-289: frequent shell actions use 44px targets below xl; desktop chrome stays compact. */
+const SHELL_PRIMARY_ACTION_CLASS = "size-11 shrink-0 xl:size-8";
+
+function shellStatusToneClass(tone: ShellStatusTone): string {
+  switch (tone) {
+    case "error":
+      return "border-destructive/60 bg-destructive/10 text-destructive";
+    case "pending":
+      return "border-border bg-surface text-foreground";
+    case "attention":
+      return "border-accent/40 bg-accent/10 text-accent";
+    default:
+      return "border-border bg-surface text-muted-foreground";
+  }
+}
+
 function TopBar({
   header,
   saveLabel,
+  saveState,
+  isViewingVersion,
   syncConnectionState,
   isReloading,
   hasPendingPageReload,
@@ -6708,6 +6730,8 @@ function TopBar({
 }: {
   header: { title: string; subtitle: string | null };
   saveLabel: string;
+  saveState: SaveState;
+  isViewingVersion: boolean;
   syncConnectionState: SyncConnectionState;
   isReloading: boolean;
   hasPendingPageReload: boolean;
@@ -6749,14 +6773,39 @@ function TopBar({
       : syncConnectionState === "connecting"
         ? "Connecting"
         : "Disconnected";
+  const shellStatus = getShellStatusSummary({
+    connectionLost,
+    connectionMessage: connection.message,
+    syncConnectionState,
+    saveState,
+    saveLabel,
+    hasPendingPageReload,
+    hasPendingVaultReload,
+    isViewingVersion,
+  });
+  const pendingReload = hasPendingPageReload || hasPendingVaultReload;
+  const reloadLabel = hasPendingPageReload
+    ? "Reload latest page changes"
+    : hasPendingVaultReload
+      ? "Reload vault structure"
+      : "Refresh note from saved version";
+  const reloadDisabled =
+    isReloading || isRefreshingNote || (!canRefreshNote && !pendingReload);
 
   return (
     <header
-      className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/95 pl-1 pr-3 backdrop-blur md:h-14 md:pl-2 md:pr-4 xl:h-[var(--desktop-chrome-height)] xl:pr-3"
+      className="flex h-11 shrink-0 items-center justify-between gap-1.5 border-b border-border bg-background/95 pl-1 pr-2 backdrop-blur md:h-14 md:gap-2 md:pl-2 md:pr-4 xl:h-[var(--desktop-chrome-height)] xl:pr-3"
       data-print-chrome="true"
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2 xl:gap-1.5">
-        <Button variant="ghost" size="icon" className="shrink-0 xl:hidden" onClick={onOpenSidebar} data-testid="open-sidebar-btn">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 xl:gap-1.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(SHELL_PRIMARY_ACTION_CLASS, "xl:hidden")}
+          onClick={onOpenSidebar}
+          aria-label="Open menu"
+          data-testid="open-sidebar-btn"
+        >
           <Menu className="size-4" />
         </Button>
         <div className="flex min-w-0 items-center gap-2 md:gap-3 xl:gap-2">
@@ -6772,22 +6821,46 @@ function TopBar({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5 md:gap-2 xl:gap-1">
+      <div className="flex shrink-0 items-center gap-1 md:gap-2 xl:gap-1">
+        {/* Phone: one text-bearing status chip (SN-289). Desktop keeps separate sync/save chips. */}
+        <div
+          className={cn(
+            "flex max-w-[7.5rem] items-center gap-1 rounded border px-1.5 py-1 text-[11px] font-medium md:hidden",
+            shellStatusToneClass(shellStatus.tone)
+          )}
+          data-testid="shell-status-chip"
+          role="status"
+          aria-live="polite"
+          title={shellStatus.label}
+          aria-label={shellStatus.label}
+        >
+          {shellStatus.tone === "error" ? (
+            <WifiOff className="size-3 shrink-0" aria-hidden="true" />
+          ) : shellStatus.tone === "attention" ? (
+            <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
+          ) : shellStatus.tone === "ok" ? (
+            <CheckCircle2 className="size-3 shrink-0" aria-hidden="true" />
+          ) : (
+            <LoaderCircle className="size-3 shrink-0 animate-spin" aria-hidden="true" />
+          )}
+          <span className="truncate">{shellStatus.shortLabel}</span>
+        </div>
+
         {connectionLost ? (
           <div
-            className="flex items-center gap-1.5 rounded border border-destructive/60 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive"
+            className="hidden items-center gap-1.5 rounded border border-destructive/60 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive md:flex"
             data-testid="connection-lost-indicator"
             role="status"
             aria-live="polite"
             title={connection.message ?? undefined}
           >
             <WifiOff className="size-3.5 shrink-0" />
-            <span className="hidden sm:inline">{connection.message}</span>
+            <span>{connection.message}</span>
           </div>
         ) : null}
         <div
           className={cn(
-            "flex items-center gap-1.5 rounded border px-2 py-1 text-xs",
+            "hidden items-center gap-1.5 rounded border px-2 py-1 text-xs md:flex",
             syncConnected
               ? "border-border bg-surface text-muted-foreground"
               : "border-destructive/40 bg-destructive/10 text-destructive"
@@ -6798,84 +6871,114 @@ function TopBar({
           title={syncLabel}
         >
           {syncConnected ? <CheckCircle2 className="size-3.5" /> : <WifiOff className="size-3.5" />}
-          <span className="hidden md:inline">{syncLabel}</span>
+          <span>{syncLabel}</span>
         </div>
-        <div className="hidden rounded border border-border bg-surface px-3 py-1 text-xs text-muted-foreground md:block xl:px-2 xl:text-[11px]" data-testid="save-status">
+        <div
+          className="hidden rounded border border-border bg-surface px-3 py-1 text-xs text-muted-foreground md:block xl:px-2 xl:text-[11px]"
+          data-testid="save-status"
+        >
           {saveLabel}
         </div>
-        <Button variant="ghost" size="icon" onClick={onOpenSearch} aria-label="Open search" data-testid="open-search-btn">
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className={SHELL_PRIMARY_ACTION_CLASS}
+          onClick={onOpenSearch}
+          aria-label="Open search"
+          data-testid="open-search-btn"
+        >
           <Search className="size-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={onOpenCapture} data-testid="capture-btn">
+        <Button
+          variant="ghost"
+          size="icon"
+          className={SHELL_PRIMARY_ACTION_CLASS}
+          onClick={onOpenCapture}
+          aria-label="Open capture"
+          data-testid="capture-btn"
+        >
           <Inbox className="size-4" />
         </Button>
-        {onOpenWorkspace ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onOpenWorkspace}
-            aria-label="Open workspace"
-            title="Open workspace"
-            data-testid="open-workspace-btn"
-          >
-            <FolderOpen className="size-4" />
-          </Button>
-        ) : null}
-        {canExportPage ? (
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onExportPage}
-              aria-label="Export page as HTML"
-              title="Export page as HTML"
-              data-testid="export-page-btn"
-            >
-              <Download className="size-4" />
-            </Button>
-            <div className="flex items-center" data-testid="print-page-controls">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onPrintPage}
-                aria-label="Print page"
-                title="Print page (Ctrl+P)"
-                data-testid="print-page-btn"
-                className="rounded-r-none"
-              >
-                <Printer className="size-4" />
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  className="inline-flex h-9 w-6 items-center justify-center rounded-r-sm border-l border-border/60 text-foreground/70 hover:bg-accent/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label="Print options"
-                  data-testid="print-page-menu-trigger"
-                >
-                  <ChevronDown className="size-3.5" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onClick={onOpenAdvancedPrintSettings}
-                    data-testid="print-advanced-settings-item"
-                  >
-                    Advanced print settings…
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </>
-        ) : null}
+        <Button
+          variant={isAiOpen ? "default" : "ghost"}
+          size="icon"
+          onClick={onToggleAi}
+          aria-label={
+            isAiOpen
+              ? "Close Companion"
+              : isAiReady
+                ? "Open Companion — answer ready"
+                : isAiWorking
+                  ? "Open Companion — working"
+                  : "Open Companion"
+          }
+          data-testid="ai-toggle-btn"
+          className={cn(
+            SHELL_PRIMARY_ACTION_CLASS,
+            "relative",
+            isAiOpen &&
+              "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent)]/90",
+            !isAiOpen && isAiReady && "bg-accent/10 text-accent hover:bg-accent/15"
+          )}
+        >
+          <Sparkles className="size-4" />
+          {/* SN-211: closed-panel companion affordance. Ready is a solid accent dot
+              (attention); working is a quiet, slower muted pulse that yields to
+              reduced-motion. Both clear once the companion is opened. */}
+          {isAiReady ? (
+            <span
+              className="absolute right-1.5 top-1.5 size-2 rounded-full bg-accent xl:right-1 xl:top-1"
+              role="status"
+              aria-live="polite"
+              aria-label="Companion answer ready"
+              data-testid="companion-ready-indicator"
+            />
+          ) : isAiWorking ? (
+            <span
+              className="absolute right-1.5 top-1.5 size-2 rounded-full bg-muted-foreground/70 animate-pulse motion-reduce:animate-none xl:right-1 xl:top-1"
+              aria-hidden="true"
+              data-testid="companion-working-indicator"
+            />
+          ) : null}
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="inline-flex size-9 items-center justify-center rounded-sm text-foreground/70 hover:bg-accent/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            data-testid="add-menu-trigger"
+            className={cn(
+              "relative inline-flex items-center justify-center gap-1 rounded-lg text-foreground/80 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              SHELL_PRIMARY_ACTION_CLASS,
+              "w-auto min-w-11 px-2 xl:min-w-8 xl:px-1.5",
+              pendingReload && "bg-accent/10 text-accent hover:bg-accent/15"
+            )}
+            aria-label="More"
+            data-testid="shell-more-menu"
+            data-shell-more="true"
           >
-            <Plus className="size-4" />
+            <MoreHorizontal className="size-4" />
+            <span className="text-xs font-medium xl:sr-only">More</span>
+            {pendingReload ? (
+              <span
+                className="absolute right-1 top-1 size-2 rounded-full bg-accent"
+                aria-hidden="true"
+                data-testid={
+                  hasPendingPageReload
+                    ? "pending-page-reload-indicator"
+                    : "pending-vault-reload-indicator"
+                }
+              />
+            ) : null}
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onCreateNotebook}>New notebook</DropdownMenuItem>
+          <DropdownMenuContent align="end" className="min-w-[13.5rem]">
+            <DropdownMenuItem onClick={onCreateNotebook} data-testid="create-notebook-menu-item">
+              <Plus className="mr-2 size-3.5" />
+              New notebook
+            </DropdownMenuItem>
             {onOpenWorkspace ? (
-              <DropdownMenuItem onClick={onOpenWorkspace} data-testid="open-workspace-menu-item">
+              <DropdownMenuItem
+                onClick={onOpenWorkspace}
+                data-testid="open-workspace-menu-item"
+              >
                 <FolderOpen className="mr-2 size-3.5" />
                 Open workspace…
               </DropdownMenuItem>
@@ -6892,111 +6995,63 @@ function TopBar({
             <DropdownMenuItem onClick={onCreateDesignPage} disabled={!canCreatePage}>
               New design page
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onCreateSpreadsheetPage} disabled={!canCreatePage} data-testid="create-spreadsheet-menu-item">
+            <DropdownMenuItem
+              onClick={onCreateSpreadsheetPage}
+              disabled={!canCreatePage}
+              data-testid="create-spreadsheet-menu-item"
+            >
               <Table2 className="mr-2 size-3.5 text-chart-2" />
               New spreadsheet
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onLinkDesign} data-testid="link-design-menu-item">
               <Link2 className="mr-2 size-3.5" />
               Link design…
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {canExportPage ? (
+              <>
+                <DropdownMenuItem onClick={onExportPage} data-testid="export-page-btn">
+                  <Download className="mr-2 size-3.5" />
+                  Export page as HTML
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onPrintPage} data-testid="print-page-btn">
+                  <Printer className="mr-2 size-3.5" />
+                  Print page
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={onOpenAdvancedPrintSettings}
+                  data-testid="print-advanced-settings-item"
+                >
+                  Advanced print settings…
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            <DropdownMenuItem
+              onClick={pendingReload ? onReload : onRefreshNote}
+              disabled={reloadDisabled}
+              data-testid="reload-btn"
+            >
+              {isReloading || isRefreshingNote ? (
+                <LoaderCircle className="mr-2 size-3.5 animate-spin" />
+              ) : (
+                <RotateCw className="mr-2 size-3.5" />
+              )}
+              {reloadLabel}
+            </DropdownMenuItem>
+            {pendingReload ? (
+              <DropdownMenuItem disabled data-testid="reload-status-indicator">
+                <AlertTriangle className="mr-2 size-3.5 text-accent" />
+                {hasPendingPageReload ? "Remote note update available" : "Vault structure changed"}
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onOpenSettings} data-testid="app-settings-trigger">
+              <Settings className="mr-2 size-3.5" />
+              Settings
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={hasPendingPageReload || hasPendingVaultReload ? onReload : onRefreshNote}
-          disabled={isReloading || isRefreshingNote || (!canRefreshNote && !hasPendingPageReload && !hasPendingVaultReload)}
-          aria-label={
-            hasPendingPageReload
-              ? "Reload latest page changes"
-              : hasPendingVaultReload
-                ? "Reload vault structure"
-                : "Refresh note from saved version"
-          }
-          title={
-            hasPendingPageReload
-              ? "Reload latest page changes"
-              : hasPendingVaultReload
-                ? "Reload vault structure"
-                : "Refresh note from saved version"
-          }
-          className={cn(
-            "relative",
-            (hasPendingPageReload || hasPendingVaultReload) && "bg-accent/10 text-accent hover:bg-accent/15"
-          )}
-          data-testid="reload-btn"
-        >
-          {isReloading || isRefreshingNote ? <LoaderCircle className="size-4 animate-spin" /> : <RotateCw className="size-4" />}
-          {hasPendingPageReload ? (
-            <span
-              className="absolute right-1 top-1 size-2 rounded-full bg-accent"
-              aria-hidden="true"
-              data-testid="pending-page-reload-indicator"
-            />
-          ) : hasPendingVaultReload ? (
-            <span
-              className="absolute right-1 top-1 size-2 rounded-full bg-accent"
-              aria-hidden="true"
-              data-testid="pending-vault-reload-indicator"
-            />
-          ) : null}
-        </Button>
-        {hasPendingPageReload || hasPendingVaultReload ? (
-          <span
-            className="inline-flex size-8 items-center justify-center text-accent"
-            role="status"
-            aria-live="polite"
-            aria-label={hasPendingPageReload ? "Remote note update available" : "Vault structure changed"}
-            title={hasPendingPageReload ? "Remote note update available" : "Vault structure changed"}
-            data-testid="reload-status-indicator"
-          >
-            <AlertTriangle className="size-4" />
-          </span>
-        ) : null}
-        <Button
-          variant={isAiOpen ? "default" : "ghost"}
-          size="icon"
-          onClick={onToggleAi}
-          aria-label={
-            isAiOpen
-              ? "Close Smart Notes AI"
-              : isAiReady
-                ? "Open Smart Notes AI — answer ready"
-                : isAiWorking
-                  ? "Open Smart Notes AI — working"
-                  : "Open Smart Notes AI"
-          }
-          data-testid="ai-toggle-btn"
-          className={cn(
-            "relative",
-            isAiOpen &&
-              "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent)]/90",
-            !isAiOpen && isAiReady && "bg-accent/10 text-accent hover:bg-accent/15"
-          )}
-        >
-          <Sparkles className="size-4" />
-          {/* SN-211: closed-panel companion affordance. Ready is a solid accent dot
-              (attention); working is a quiet, slower muted pulse that yields to
-              reduced-motion. Both clear once the companion is opened. */}
-          {isAiReady ? (
-            <span
-              className="absolute right-1 top-1 size-2 rounded-full bg-accent"
-              role="status"
-              aria-live="polite"
-              aria-label="Companion answer ready"
-              data-testid="companion-ready-indicator"
-            />
-          ) : isAiWorking ? (
-            <span
-              className="absolute right-1 top-1 size-2 rounded-full bg-muted-foreground/70 animate-pulse motion-reduce:animate-none"
-              aria-hidden="true"
-              data-testid="companion-working-indicator"
-            />
-          ) : null}
-        </Button>
-        <AppSettingsTrigger onClick={onOpenSettings} />
       </div>
     </header>
   );

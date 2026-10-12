@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   apiCreatePage,
+  clickShellMoreItem,
   createVaultNotebook,
   deletePageViaMenu,
   ensureNotebookTreeVisible,
@@ -180,7 +181,7 @@ test("Right-click on a page shows context menu and Delete removes it", async ({ 
   });
   const pPath = created.path;
 
-  await page.getByTestId("reload-btn").click({ force: true });
+  await clickShellMoreItem(page, "reload-btn");
   const item = page.getByTestId(`page-${pPath}`);
   await expect(item).toBeVisible({ timeout: 10000 });
   await item.click({ button: "right" });
@@ -215,7 +216,7 @@ test("Rename via page menu updates sidebar and persists", async ({ page, request
   });
   const pPath = created.path;
 
-  await page.getByTestId("reload-btn").click({ force: true }).catch(() => undefined);
+  await clickShellMoreItem(page, "reload-btn").catch(() => undefined);
   const tree = await ensureNotebookTreeVisible(page);
   await expect(page.getByTestId(`page-${pPath}`).filter({ visible: true })).toBeVisible({ timeout: 10000 });
   await tree.getByText("Welcome to Smart Notes").first().click();
@@ -242,7 +243,7 @@ test("Editing content autosaves and survives reload", async ({ page, request }, 
   const pPath = created.path;
   const filePath = path.join(VAULT, pPath);
 
-  await page.getByTestId("reload-btn").click({ force: true }).catch(() => undefined);
+  await clickShellMoreItem(page, "reload-btn").catch(() => undefined);
   const tree = await ensureNotebookTreeVisible(page);
   await tree.getByText(original, { exact: true }).first().click();
   await expectActivePageTitle(page, original);
@@ -293,7 +294,7 @@ test("Delete via page menu removes the page", async ({ page, request }, testInfo
   });
   const pPath = created.path;
 
-  await page.getByTestId("reload-btn").click({ force: true });
+  await clickShellMoreItem(page, "reload-btn");
   await expect(page.getByTestId(`page-${pPath}`)).toBeVisible({ timeout: 10000 });
   await deletePageViaMenu(page, pPath);
   await expect(page.getByTestId("tree").getByText(title)).toHaveCount(0);

@@ -119,3 +119,14 @@ Reuses existing tokens only; no new color, spacing, radius, or type values.
 | Jump to latest pill | `Button` `variant="secondary"` `size="sm"` (`--secondary`, `--secondary-foreground`), `border-border`, `rounded-full` as used by companion chips, `shadow-sm`, Lucide `ArrowDown` `size-3.5` |
 | Placement | Absolutely centered `bottom-2` inside the transcript wrapper so it never covers the composer |
 | Mobile | `min-h-11` 44px touch target, matching other companion mobile controls |
+
+## Shell + Companion chrome touch targets (SN-289)
+
+Reuses existing Clarity tokens only; no new color, spacing, radius, or type values.
+
+| Surface | Existing tokens/patterns |
+|---------|--------------------------|
+| Frequent shell actions (menu, search, capture, Companion, More) | `size-11` (44px) below `xl`; compact `xl:size-8` on desktop chrome |
+| Phone status chip | Existing `--border` / `--surface` / `--muted-foreground` / `--destructive` / `--accent` chip pattern; short text label always visible |
+| Infrequent actions | Labeled **More** menu (`DropdownMenu`) — create, export, print, reload/refresh, settings |
+| Companion mobile header (settings, close, density, scope, Keep) | `size-11` / `min-h-11` with existing ghost/chip surfaces |

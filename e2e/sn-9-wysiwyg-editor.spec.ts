@@ -1,7 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
-import { createVaultNotebook, expectActivePageTitle, submitCreatePageDialog, submitTextDialog } from "./helpers";
+import {
+  clickShellMoreItem,
+  createVaultNotebook,
+  expectActivePageTitle,
+  submitCreatePageDialog,
+  submitTextDialog,
+} from "./helpers";
 
 const VAULT = process.env.SMART_NOTES_VAULT ?? path.resolve(".", ".e2e-vault");
 
@@ -190,7 +196,7 @@ tags: []
     const notePath = path.join(secDir, "HTML Render Test.html");
     fs.writeFileSync(notePath, noteContent, "utf-8");
 
-    await page.getByTestId("reload-btn").click({ force: true }).catch(() => undefined);
+    await clickShellMoreItem(page, "reload-btn").catch(() => undefined);
     await page.reload();
     await page.waitForLoadState("networkidle");
 

@@ -50,11 +50,29 @@ export async function closeNotebookTreeSheet(page: Page) {
   }
 }
 
+/** Open the shell More menu (SN-289): create/export/reload/settings live behind it. */
+export async function openShellMoreMenu(page: Page) {
+  await closeNotebookTreeSheet(page);
+  const more = page.getByTestId("shell-more-menu");
+  await expect(more).toBeVisible({ timeout: 10000 });
+  await more.evaluate((btn: HTMLElement) => btn.click());
+}
+
+/** Click a shell More-menu item by test id (opens More first when needed). */
+export async function clickShellMoreItem(page: Page, testId: string) {
+  const item = page.getByTestId(testId);
+  if (!(await item.isVisible().catch(() => false))) {
+    await openShellMoreMenu(page);
+  }
+  await expect(item).toBeVisible({ timeout: 5000 });
+  await item.evaluate((el: HTMLElement) => el.click());
+}
+
 /** New notebook opens CreateNotebookDialog (vault vs remote), not the generic dialog-input. */
 export async function createVaultNotebook(page: Page, name: string) {
   await ensureNotebookTreeVisible(page);
   await closeNotebookTreeSheet(page);
-  await page.getByTestId("add-menu-trigger").evaluate((btn: HTMLElement) => btn.click());
+  await openShellMoreMenu(page);
   await page.getByRole("menuitem", { name: "New notebook" }).click();
   await expect(page.getByTestId("create-notebook-dialog")).toBeVisible({ timeout: 5000 });
   await page.getByTestId("create-vault-notebook-option").click();
