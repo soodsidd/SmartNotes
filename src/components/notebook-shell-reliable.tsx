@@ -81,6 +81,7 @@ import type { SpreadsheetPageHandle, SpreadsheetPageViewProps } from "@/componen
 import { focusedLogUrl } from "@/lib/api/log";
 import { normalizeVaultRelativePagePath } from "@/lib/app-frame";
 import { clearQuickCaptureDraft, readQuickCaptureDraft, writeQuickCaptureDraft } from "@/lib/quick-capture-draft";
+import { captureDestinationLabel } from "@/lib/quick-capture-destination";
 import {
   buildAscentVectorReturnUrl,
   deepWorkPendingPath,
@@ -593,6 +594,7 @@ interface CaptureDialogState {
   sectionPath: string;
   isSubmitting: boolean;
   error: string | null;
+  savedPagePath: string | null;
 }
 
 interface TreeSelection {
@@ -745,8 +747,16 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       sectionPath: retained?.sectionPath ?? "",
       isSubmitting: false,
       error: null,
+      savedPagePath: null,
     };
   });
+  React.useEffect(() => {
+    if (!captureDialog.open || !captureDialog.savedPagePath) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("capture-done")?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [captureDialog.open, captureDialog.savedPagePath]);
   React.useEffect(() => {
     if (!captureDialog.captureId) return;
     writeQuickCaptureDraft(window.localStorage, {
@@ -1271,6 +1281,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       ),
     [tree]
   );
+  const currentCaptureDestination = captureDestinationLabel(captureDialog, tree);
 
   const aiSection = React.useMemo(() => {
     if (!draft) {
@@ -4749,6 +4760,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           sectionPath: activeSelection.section?.path ?? tree[0]?.sections[0]?.path ?? "",
           isSubmitting: false,
           error: null,
+          savedPagePath: null,
         });
   }, [activeSelection.notebook?.path, activeSelection.section?.path, tree]);
 
@@ -4784,12 +4796,6 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       return;
     }
 
-    const canLeave = await flushSave();
-    if (!canLeave) {
-      setCaptureDialog((current) => ({ ...current, error: "Finish saving the current page, then retry this capture." }));
-      return;
-    }
-
     setCaptureDialog((current) => ({ ...current, isSubmitting: true, error: null }));
     let page: ApiPageDocument;
     try {
@@ -4811,15 +4817,31 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     }
 
     clearQuickCaptureDraft(window.localStorage);
-    setCaptureDialog((current) => ({ ...current, open: false, captureId: null, content: "", isSubmitting: false, error: null }));
-    try {
-      await loadTree({ pagePath: page.path });
-      setSidebarOpen(false);
-      toast.success("Saved");
-    } catch {
-      toast.warning("Saved but could not open. Find the capture in its destination.");
+    setCaptureDialog((current) => ({ ...current, captureId: null, content: "", isSubmitting: false, error: null, savedPagePath: page.path }));
+    void fetchVaultTree({ skipCache: true })
+      .then((payload) => {
+        setTree(payload.tree);
+        setVaultRoot(payload.root);
+      })
+      .catch(() => undefined);
+  }, [captureDialog]);
+
+  const handleOpenSavedCapture = React.useCallback(async () => {
+    if (!captureDialog.savedPagePath || captureDialog.isSubmitting) return;
+    setCaptureDialog((current) => ({ ...current, isSubmitting: true, error: null }));
+    const canLeave = await flushSave();
+    if (!canLeave) {
+      setCaptureDialog((current) => ({ ...current, isSubmitting: false, error: "Saved, but the current page could not finish saving. Retry Open when it is safe to leave." }));
+      return;
     }
-  }, [captureDialog, flushSave, loadTree]);
+    try {
+      await loadTree({ pagePath: captureDialog.savedPagePath });
+      setSidebarOpen(false);
+      setCaptureDialog((current) => ({ ...current, open: false, savedPagePath: null, isSubmitting: false, error: null }));
+    } catch {
+      setCaptureDialog((current) => ({ ...current, isSubmitting: false, error: "Saved, but could not open the page. Retry Open or find it in the destination." }));
+    }
+  }, [captureDialog.isSubmitting, captureDialog.savedPagePath, flushSave, loadTree]);
 
   const handleAiSubmit = React.useCallback(async (
     composerPrompt: string,
@@ -6520,33 +6542,43 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           <DialogHeader>
             <DialogTitle>Quick capture</DialogTitle>
             <DialogDescription>
-              Save clipped text to Inbox or turn it into a new page in a real notebook section.
+              Capture a thought now. Choose where it goes before saving.
             </DialogDescription>
           </DialogHeader>
 
+          {captureDialog.savedPagePath ? (
+            <div className="grid gap-2" role="status" data-testid="capture-saved">
+              <p className="font-medium text-foreground">Saved</p>
+              <p className="text-sm text-muted-foreground">You can keep working here.</p>
+            </div>
+          ) : (
           <div className="grid gap-4">
+            <p className="text-sm text-muted-foreground" data-testid="capture-destination-summary">
+              Saving to <span className="font-medium text-foreground">{currentCaptureDestination}</span>
+            </p>
+            <div className="space-y-2">
+              <label htmlFor="capture-content" className="text-sm font-medium text-foreground">Content</label>
+              <Textarea
+                id="capture-content"
+                autoFocus
+                value={captureDialog.content}
+                onChange={(event) =>
+                  setCaptureDialog((current) => ({
+                    ...current,
+                    content: event.target.value,
+                    error: null,
+                  }))
+                }
+                className="min-h-[260px] rounded border-border bg-background/70 px-4 py-3 text-base leading-6"
+                placeholder="Paste text, links, or copied AI output."
+                data-testid="capture-content-input"
+              />
+            </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Destination</label>
-                <select
-                  value={captureDialog.destination}
-                  onChange={(event) =>
-                    setCaptureDialog((current) => ({
-                      ...current,
-                      destination: event.target.value as "inbox" | "page",
-                      error: null,
-                    }))
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
-                  data-testid="capture-destination-select"
-                >
-                  <option value="inbox">Inbox</option>
-                  <option value="page">New page</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Title</label>
+                <label htmlFor="capture-title" className="text-sm font-medium text-foreground">Title (optional)</label>
                 <Input
+                  id="capture-title"
                   value={captureDialog.title}
                   onChange={(event) =>
                     setCaptureDialog((current) => ({
@@ -6558,12 +6590,32 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   data-testid="capture-title-input"
                 />
               </div>
+              <div className="space-y-2">
+                <label htmlFor="capture-destination" className="text-sm font-medium text-foreground">Destination</label>
+                <select
+                  id="capture-destination"
+                  value={captureDialog.destination}
+                  onChange={(event) =>
+                    setCaptureDialog((current) => ({
+                      ...current,
+                      destination: event.target.value as "inbox" | "page",
+                      error: null,
+                    }))
+                  }
+                  className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:h-10 sm:text-sm"
+                  data-testid="capture-destination-select"
+                >
+                  <option value="inbox">Inbox</option>
+                  <option value="page">New page</option>
+                </select>
+              </div>
             </div>
 
             {captureDialog.destination === "inbox" ? (
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Notebook</label>
+                <label htmlFor="capture-notebook" className="text-sm font-medium text-foreground">Notebook</label>
                 <select
+                  id="capture-notebook"
                   value={captureDialog.notebookPath}
                   onChange={(event) =>
                     setCaptureDialog((current) => ({
@@ -6572,7 +6624,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                       error: null,
                     }))
                   }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:h-10 sm:text-sm"
                   data-testid="capture-notebook-select"
                 >
                   {tree.map((notebook) => (
@@ -6584,8 +6636,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               </div>
             ) : (
               <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Section</label>
+                <label htmlFor="capture-section" className="text-sm font-medium text-foreground">Section</label>
                 <select
+                  id="capture-section"
                   value={captureDialog.sectionPath}
                   onChange={(event) =>
                     setCaptureDialog((current) => ({
@@ -6594,7 +6647,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                       error: null,
                     }))
                   }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-base outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:h-10 sm:text-sm"
                   data-testid="capture-section-select"
                 >
                   {allSections.map((section) => (
@@ -6605,24 +6658,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 </select>
               </div>
             )}
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Captured content</label>
-              <Textarea
-                value={captureDialog.content}
-                onChange={(event) =>
-                  setCaptureDialog((current) => ({
-                    ...current,
-                    content: event.target.value,
-                    error: null,
-                  }))
-                }
-                className="min-h-[260px] rounded border-border bg-background/70 px-4 py-3 font-mono text-sm leading-6"
-                placeholder="Paste text, links, or copied AI output."
-                data-testid="capture-content-input"
-              />
-            </div>
           </div>
+          )}
 
           {captureDialog.error && (
             <p role="alert" className="text-sm text-foreground" data-testid="capture-error">
@@ -6631,7 +6668,19 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           )}
 
           <DialogFooter>
+            {captureDialog.savedPagePath ? (
+              <>
+                <Button className="min-h-11 sm:min-h-0" variant="outline" onClick={() => void handleOpenSavedCapture()} disabled={captureDialog.isSubmitting} data-testid="capture-open-btn">
+                  {captureDialog.isSubmitting ? <LoaderCircle className="size-4 animate-spin" /> : "Open"}
+                </Button>
+                <Button id="capture-done" className="min-h-11 sm:min-h-0" disabled={captureDialog.isSubmitting} onClick={() => setCaptureDialog((current) => ({ ...current, open: false, savedPagePath: null, error: null }))} data-testid="capture-done-btn">
+                  Done
+                </Button>
+              </>
+            ) : (
+            <>
             <Button
+              className="min-h-11 sm:min-h-0"
               variant="ghost"
               onClick={() => {
                 clearQuickCaptureDraft(window.localStorage);
@@ -6643,6 +6692,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               Discard draft
             </Button>
             <Button
+              className="min-h-11 sm:min-h-0"
               variant="outline"
               onClick={() => setCaptureDialog((current) => ({ ...current, open: false }))}
               disabled={captureDialog.isSubmitting}
@@ -6651,11 +6701,13 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               Close
             </Button>
             <Button
+              className="min-h-11 sm:min-h-0"
               onClick={() => void handleCaptureSubmit()}
               disabled={
                 captureDialog.isSubmitting ||
                 !captureDialog.content.trim() ||
-                (captureDialog.destination === "page" && !captureDialog.sectionPath)
+                (captureDialog.destination === "page" && !allSections.some((section) => section.sectionPath === captureDialog.sectionPath)) ||
+                (captureDialog.destination === "inbox" && Boolean(captureDialog.notebookPath) && !tree.some((notebook) => notebook.path === captureDialog.notebookPath))
               }
               data-testid="capture-submit-btn"
             >
@@ -6663,12 +6715,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 <LoaderCircle className="size-4 animate-spin" />
               ) : captureDialog.error ? (
                 "Retry save"
-              ) : captureDialog.destination === "inbox" ? (
-                "Save to Inbox"
               ) : (
-                "Create new page"
+                "Save"
               )}
             </Button>
+            </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
