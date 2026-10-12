@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import path from "node:path";
 import { getVaultRoot } from "./config";
 import { VaultError } from "./errors";
@@ -2420,10 +2421,82 @@ export async function capturePage(input: {
   content?: string;
   notebookPath?: string;
   sectionPath?: string;
+  captureId?: string;
 }) {
   const destination = input.destination ?? "inbox";
   const title = input.title?.trim() || "Untitled capture";
   const content = input.content ?? "";
+
+  if (input.captureId !== undefined) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.captureId)) {
+      throw new VaultError("INVALID_INPUT", "Invalid capture ID.", 400);
+    }
+
+    // A retry may arrive after the page was committed but before its response
+    // reached the browser. Find the original page even if the draft destination
+    // changed after that uncertain response.
+    const { tree } = await readVaultTree({ skipCache: true });
+    const existing = tree.flatMap((notebook) => notebook.sections.flatMap((section) => section.pages))
+      .find((page) => page.metadata?.capture_id === input.captureId);
+    if (existing) {
+      const page = await readPage(existing.path);
+      if (page.title === title && page.body === content) return page;
+      return savePage({ path: page.path, title, body: content });
+    }
+
+    const sectionPath = destination === "page"
+      ? input.sectionPath
+      : await ensureInboxSection(input.notebookPath);
+    if (!sectionPath) {
+      throw new VaultError("INVALID_PATH", "\"sectionPath\" is required for destination=page.");
+    }
+    const section = resolveVaultPath(sectionPath, "section");
+    const sectionStat = await fs.stat(section.absolutePath).catch(() => null);
+    if (!sectionStat?.isDirectory()) {
+      throw new VaultError("SECTION_NOT_FOUND", `Section not found: ${section.relativePath}`, 404);
+    }
+
+    const now = new Date().toISOString();
+    const source = serializeFrontmatterDocument({
+      title, created: now, updated: now, capture_id: input.captureId,
+    }, content);
+    const tempPath = path.join(section.absolutePath, `.capture-${input.captureId}.${process.pid}.${crypto.randomUUID()}.tmp`);
+    await fs.writeFile(tempPath, source, "utf8");
+    try {
+      const desiredFileName = fileNameFromTitle(title);
+      const stem = desiredFileName.replace(/\.html$/i, "");
+      for (let counter = 1; ; counter += 1) {
+        const fileName = counter === 1 ? desiredFileName : `${stem}-${counter}${PAGE_FILE_EXTENSION}`;
+        const pagePath = toVaultRelativePath(path.posix.join(section.relativePath, fileName));
+        const absolutePath = resolveVaultPath(pagePath, "page").absolutePath;
+        try {
+          // Linking a complete temp file is exclusive: concurrent retries cannot
+          // publish two copies or expose a half-written page.
+          try {
+            await fs.link(tempPath, absolutePath);
+          } catch (linkError) {
+            const code = (linkError as NodeJS.ErrnoException).code;
+            // Some portable-notebook filesystems (FAT/exFAT, some shares) lack
+            // hard links; an exclusive create still prevents duplicate pages.
+            if (code !== "EPERM" && code !== "ENOTSUP" && code !== "EXDEV" && code !== "ENOSYS") throw linkError;
+            await fs.writeFile(absolutePath, source, { encoding: "utf8", flag: "wx" });
+          }
+          invalidateVaultCache();
+          return buildPageDocument(pagePath, source);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+          const page = await readPage(pagePath);
+          if (page.metadata.capture_id !== input.captureId) continue;
+          if (page.title !== title || page.body !== content) {
+            return savePage({ path: pagePath, title, body: content });
+          }
+          return page;
+        }
+      }
+    } finally {
+      await fs.rm(tempPath, { force: true }).catch(() => undefined);
+    }
+  }
 
   if (destination === "page") {
     if (!input.sectionPath) {
