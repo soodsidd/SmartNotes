@@ -1,9 +1,16 @@
+import * as htmlUtils from "@/lib/html-utils";
 import {
   buildRecentSearchResults,
   buildVaultSearchIndex,
   searchVaultIndex,
+  VaultSearchIndexer,
 } from "@/lib/search";
-import type { VaultNotebook } from "@/lib/vault-contract";
+import type { VaultNotebook, VaultPage } from "@/lib/vault-contract";
+
+jest.mock("@/lib/html-utils", () => {
+  const actual = jest.requireActual("@/lib/html-utils");
+  return { ...actual, stripHtml: jest.fn(actual.stripHtml) };
+});
 
 const TREE: VaultNotebook[] = [
   {
@@ -76,5 +83,90 @@ describe("search helpers", () => {
       source: "recent",
       breadcrumb: "Research / Optics",
     });
+  });
+});
+
+function makeVault(pageCount: number): VaultNotebook[] {
+  const pages: VaultPage[] = Array.from({ length: pageCount }, (_, i) => ({
+    id: `vault/page-${i}.html`,
+    path: `Vault/page-${i}.html`,
+    title: `Page ${i}`,
+    slug: `page-${i}`,
+    createdAt: "2026-06-01T12:00:00Z",
+    updatedAt: "2026-06-01T12:00:00Z",
+    preview: "",
+    content: `<p>Ordinary body text number ${i}.</p>`,
+    parentId: null,
+    noteType: "text",
+  }));
+  return [{ id: "vault", path: "Vault", name: "Vault", color: "", pages, sections: [] }];
+}
+
+// Mirrors the shell's syncTreePage: unchanged pages keep object identity.
+function patchPage(tree: VaultNotebook[], path: string, content: string): VaultNotebook[] {
+  return tree.map((notebook) => ({
+    ...notebook,
+    pages: notebook.pages.map((page) => (page.path === path ? { ...page, content } : page)),
+    sections: notebook.sections.map((section) => ({
+      ...section,
+      pages: section.pages.map((page) => (page.path === path ? { ...page, content } : page)),
+    })),
+  }));
+}
+
+describe("VaultSearchIndexer (SN-288)", () => {
+  const stripHtmlMock = htmlUtils.stripHtml as jest.Mock;
+
+  beforeEach(() => stripHtmlMock.mockClear());
+
+  it("re-indexes only the edited page on a single-page draft update and finds the live draft", () => {
+    const indexer = new VaultSearchIndexer();
+    let tree = makeVault(200);
+    expect(indexer.sync(tree)).toEqual({ added: 200, updated: 0, removed: 0 });
+    expect(stripHtmlMock).toHaveBeenCalledTimes(200);
+    const before = indexer.getIndex();
+
+    stripHtmlMock.mockClear();
+    tree = patchPage(tree, "Vault/page-42.html", "<p>Freshly typed zanzibar quokka draft</p>");
+    expect(indexer.sync(tree)).toEqual({ added: 0, updated: 1, removed: 0 });
+    expect(stripHtmlMock).toHaveBeenCalledTimes(1);
+
+    const after = indexer.getIndex();
+    expect(after).not.toBe(before);
+    expect(after.fuse).toBe(before.fuse); // mutated in place, not reconstructed
+    expect(after.entries).toHaveLength(200);
+    const results = searchVaultIndex(after, "zanzibar quokka");
+    expect(results[0]?.path).toBe("Vault/page-42.html");
+    expect(results[0]?.excerpt).toContain("zanzibar quokka");
+    expect(searchVaultIndex(after, "Ordinary body text number 42")[0]?.path).not.toBe(
+      "Vault/page-42.html"
+    );
+  });
+
+  it("does no work for an identical tree and handles add/remove incrementally", () => {
+    const indexer = new VaultSearchIndexer();
+    const tree = makeVault(5);
+    indexer.sync(tree);
+    const snapshot = indexer.getIndex();
+    stripHtmlMock.mockClear();
+
+    expect(indexer.sync(tree)).toEqual({ added: 0, updated: 0, removed: 0 });
+    // New tree object, same page objects (e.g. unrelated sibling-state patch).
+    expect(indexer.sync(tree.map((notebook) => ({ ...notebook })))).toEqual({
+      added: 0,
+      updated: 0,
+      removed: 0,
+    });
+    expect(indexer.getIndex()).toBe(snapshot);
+    expect(stripHtmlMock).not.toHaveBeenCalled();
+
+    const [notebook] = tree;
+    const trimmed = [{ ...notebook, pages: notebook.pages.slice(1) }];
+    expect(indexer.sync(trimmed)).toEqual({ added: 0, updated: 0, removed: 1 });
+    expect(indexer.getIndex().entries).toHaveLength(4);
+    expect(searchVaultIndex(indexer.getIndex(), "Page 0").map((r) => r.path)).not.toContain(
+      "Vault/page-0.html"
+    );
+    expect(stripHtmlMock).not.toHaveBeenCalled();
   });
 });

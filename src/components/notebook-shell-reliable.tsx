@@ -249,8 +249,9 @@ import {
 } from "@/lib/api/companion";
 import {
   buildRecentSearchResults,
-  buildVaultSearchIndex,
+  EMPTY_VAULT_SEARCH_INDEX,
   searchVaultIndex,
+  VaultSearchIndexer,
   type SearchResult,
   type VaultSearchIndex,
 } from "@/lib/search";
@@ -773,7 +774,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [searchIndex, setSearchIndex] = React.useState<VaultSearchIndex>(() => buildVaultSearchIndex([]));
+  // SN-288: incremental, lazily-synced index — never rebuilt on the typing path.
+  const searchIndexerRef = React.useRef<VaultSearchIndexer | null>(null);
+  if (!searchIndexerRef.current) {
+    searchIndexerRef.current = new VaultSearchIndexer();
+  }
   const [serverSearchResults, setServerSearchResults] = React.useState<SearchResult[]>([]);
   const [serverSearchState, setServerSearchState] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
   const [isLoadingTree, setIsLoadingTree] = React.useState(!serverVault || startupBaselineMode);
@@ -1095,9 +1100,27 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     window.localStorage.setItem(EXPANDED_PAGES_STORAGE_KEY, JSON.stringify([...expandedPages]));
   }, [expandedPages]);
 
+  // SN-288: while search is closed, fold tree changes into the index only once
+  // the editor goes idle, so typing never pays per-vault indexing cost. Open
+  // search syncs synchronously below (incremental: only changed pages).
   React.useEffect(() => {
-    setSearchIndex(buildVaultSearchIndex(tree));
-  }, [tree]);
+    if (searchOpen || typeof window === "undefined") {
+      return;
+    }
+    const indexer = searchIndexerRef.current;
+    if (!indexer) {
+      return;
+    }
+    const run = () => {
+      indexer.sync(tree);
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const handle = window.requestIdleCallback(run, { timeout: 5000 });
+      return () => window.cancelIdleCallback(handle);
+    }
+    const handle = window.setTimeout(run, 1500);
+    return () => window.clearTimeout(handle);
+  }, [searchOpen, tree]);
 
   React.useEffect(() => {
     treeRef.current = tree;
@@ -1164,6 +1187,17 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     [activeSelection]
   );
 
+  const searchIndex = React.useMemo<VaultSearchIndex>(() => {
+    if (!searchOpen) {
+      // Closed: stable identity so result memos never recompute while typing.
+      return EMPTY_VAULT_SEARCH_INDEX;
+    }
+    const indexer = searchIndexerRef.current as VaultSearchIndexer;
+    // Current draft freshness: the live draft is patched into `tree`, so the
+    // active page is re-indexed (alone) when search opens or the tree moves.
+    indexer.sync(tree);
+    return indexer.getIndex();
+  }, [searchOpen, tree]);
   const trimmedSearchQuery = searchQuery.trim();
   const clientSearchResults = React.useMemo(
     () => searchVaultIndex(searchIndex, searchQuery),
