@@ -775,6 +775,71 @@ function ProviderSettingsMenu({
   );
 }
 
+function ComposerProviderSwitcher({
+  providers,
+  activeProviderId,
+  activeProviderLabel,
+  activeModelLabel,
+  activeEffort,
+  onProviderChange,
+  onModelChange,
+  onEffortChange,
+  disabled,
+  mobile,
+  floatingLayerZ,
+}: {
+  providers: AiProvider[];
+  activeProviderId?: string;
+  activeProviderLabel: string;
+  activeModelLabel: string;
+  activeEffort?: string;
+  onProviderChange?: (id: string) => void;
+  onModelChange?: (id: string, model: string) => void;
+  onEffortChange?: (effort: string) => void;
+  disabled: boolean;
+  mobile?: boolean;
+  floatingLayerZ?: string;
+}) {
+  const label = `${activeProviderLabel} · ${activeModelLabel || "default"}`;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        type="button"
+        disabled={disabled || providers.length === 0}
+        aria-label={`Change AI provider and model. Current: ${label}`}
+        data-testid="ai-composer-provider-switcher"
+        className={cn(
+          SIDEBAR_CHIP_CLASS,
+          "min-w-0 max-w-full shrink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60",
+          mobile ? "min-h-11 px-3" : "min-h-7"
+        )}
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className="size-2.5 shrink-0 opacity-60" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        side="top"
+        className="max-h-[min(70vh,28rem)] w-[220px] overflow-y-auto"
+        positionerClassName={floatingLayerZ}
+      >
+        <ProviderSettingsMenu
+          providers={providers}
+          activeProviderId={activeProviderId}
+          activeProviderLabel={activeProviderLabel}
+          activeModelLabel={activeModelLabel}
+          activeEffort={activeEffort}
+          onProviderChange={onProviderChange}
+          onModelChange={onModelChange}
+          onEffortChange={onEffortChange}
+          includeVerboseSection={false}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function SystemPromptEditor({
   systemPrompt,
   defaultSystemPrompt,
@@ -1784,18 +1849,25 @@ function AiConversation({
               <Paperclip className="size-3.5" />
             </Button>
             {!mobile ? (
-              <span className="text-[10px] text-muted-foreground">
-                {isTurnActive ? (
-                  <span className="text-[color:var(--accent)]">Working…</span>
-                ) : isAttaching ? (
-                  <span>Attaching…</span>
-                ) : (
-                  <>
-                    {activeProviderLabel}
-                    {activeModelLabel ? ` · ${activeModelLabel}` : ""}
-                  </>
-                )}
-              </span>
+              <>
+                <ComposerProviderSwitcher
+                  providers={providers ?? []}
+                  activeProviderId={activeProviderId}
+                  activeProviderLabel={activeProviderLabel}
+                  activeModelLabel={activeModelLabel}
+                  activeEffort={activeEffort}
+                  onProviderChange={onProviderChange}
+                  onModelChange={onModelChange}
+                  onEffortChange={onEffortChange}
+                  disabled={Boolean(disabled || isTurnActive)}
+                  floatingLayerZ={floatingLayerZ}
+                />
+                {isTurnActive || isAttaching ? (
+                  <span className={cn("shrink-0 text-[10px]", isTurnActive ? "text-[color:var(--accent)]" : "text-muted-foreground")}>
+                    {isTurnActive ? "Working…" : "Attaching…"}
+                  </span>
+                ) : null}
+              </>
             ) : (
               <ComposerTextarea
                 value={composerDraft}
@@ -1842,6 +1914,28 @@ function AiConversation({
               </Button>
             )}
           </div>
+          {mobile ? (
+            <div className="mt-1.5 flex min-w-0 items-center gap-2">
+              <ComposerProviderSwitcher
+                providers={providers ?? []}
+                activeProviderId={activeProviderId}
+                activeProviderLabel={activeProviderLabel}
+                activeModelLabel={activeModelLabel}
+                activeEffort={activeEffort}
+                onProviderChange={onProviderChange}
+                onModelChange={onModelChange}
+                onEffortChange={onEffortChange}
+                disabled={Boolean(disabled || isTurnActive)}
+                mobile
+                floatingLayerZ={floatingLayerZ}
+              />
+              {isTurnActive || isAttaching ? (
+                <span className={cn("shrink-0 text-[10px]", isTurnActive ? "text-[color:var(--accent)]" : "text-muted-foreground")}>
+                  {isTurnActive ? "Working…" : "Attaching…"}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           {attachmentError ? (
             <p className="mt-1.5 text-[11px] text-destructive">{attachmentError}</p>
           ) : null}

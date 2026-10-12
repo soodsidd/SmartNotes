@@ -49,6 +49,60 @@ function renderCompanion(
 }
 
 describe("Companion composer local draft", () => {
+  it.each([false, true])("switches provider and model from the %s composer footer", async (mobile) => {
+    const onProviderChange = jest.fn();
+    const onModelChange = jest.fn();
+    const onSubmit = jest.fn();
+    const providers = [
+      { id: "codex", name: "Codex", models: ["gpt-5.4", "gpt-5.6-sol"] },
+      { id: "claude", name: "Claude", models: ["sonnet"] },
+    ];
+    const view = renderCompanion({
+      mobile,
+      providers,
+      activeProviderId: "codex",
+      onProviderChange,
+      onModelChange,
+      onSubmit,
+    });
+
+    const chip = screen.getByTestId("ai-composer-provider-switcher");
+    expect(chip.textContent).toContain("Codex · gpt-5.4");
+    fireEvent.click(chip);
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "gpt-5.6-sol" }));
+    expect(onModelChange).toHaveBeenCalledWith("codex", "gpt-5.6-sol");
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    view.rerender(<AiSidebar {...view.props} activeModelLabel="gpt-5.6-sol" />);
+    expect(chip.textContent).toContain("Codex · gpt-5.6-sol");
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Claude" }));
+    expect(onProviderChange).toHaveBeenCalledWith("claude");
+    view.rerender(<AiSidebar {...view.props} activeProviderId="claude" activeProviderLabel="Claude" activeModelLabel="sonnet" />);
+    expect(chip.textContent).toContain("Claude · sonnet");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("keeps the %s footer label visible while the composer is locked", (mobile) => {
+    const onSubmit = jest.fn();
+    const { rerender, props } = renderCompanion({
+      mobile,
+      providers: [{ id: "codex", name: "Codex", models: ["gpt-5.4"] }],
+      activeProviderId: "codex",
+      onSubmit,
+      isTurnActive: true,
+    });
+    const chip = screen.getByTestId("ai-composer-provider-switcher") as HTMLButtonElement;
+    expect(chip.textContent).toContain("Codex · gpt-5.4");
+    expect(chip.disabled).toBe(true);
+    expect(screen.getByText("Working…")).toBeTruthy();
+    fireEvent.click(chip);
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    rerender(<AiSidebar {...props} isTurnActive={false} disabled />);
+    expect(chip.disabled).toBe(true);
+    expect(chip.textContent).toContain("Codex · gpt-5.4");
+  });
+
   it("keeps typing local and submits the current prompt text", () => {
     const onSubmit = jest.fn();
     renderCompanion({ onSubmit });

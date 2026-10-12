@@ -117,7 +117,7 @@ describe("immersive PDF companion shell", () => {
       "z-[var(--z-companion-rail)]"
     );
 
-    fireEvent.click(screen.getByText("Codex · gpt-5.6-sol"));
+    fireEvent.click(screen.getByTestId("ai-composer-provider-switcher"));
     const providerMenu = document.querySelector(
       '[data-slot="dropdown-menu-content"]'
     );
