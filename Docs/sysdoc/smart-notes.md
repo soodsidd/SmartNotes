@@ -1220,6 +1220,8 @@ Builder functions: `appendAiTimelineText()`, `appendAiTimelineReasoning()`, `app
 
 **Empty state (SN-70):** When no messages are shown, the companion explains that vault writes save on disk immediately and the owner must click **Reload** in the editor to view updates; the editor may still show the pre-save draft until then.
 
+**Transcript scroll-follow (SN-285):** The transcript (`data-testid="ai-transcript"`) follows streamed tokens only while the reader is within `COMPANION_FOLLOW_THRESHOLD_PX` (48px) of the live bottom; scrolling up detaches, holding the viewport steady as tokens arrive and showing a **Jump to latest** pill (`data-testid="ai-jump-to-latest"`, secondary `Button`, `ArrowDown`) that snaps to the bottom and rejoins following. Returning to the bottom manually also resumes following. Opening, restoring, replacing, or clearing a conversation and sending a new prompt always land at the latest message. The pure policy (`isNearBottom`, `classifyTranscriptChange`, `resolveCompanionScroll`) lives in `src/lib/companion-scroll.ts`; tests in `tests/companion-scroll.test.tsx`.
+
 **Dev showcase:** `/_dev/screens?surface=desktop|mobile` (`src/components/ai-screens-showcase.tsx`) renders a fixture thread with table + code block for visual evidence (`e2e/sn-39-companion-reading.spec.ts` -> `e2e/evidence/`).
 
 ### Companion session persistence (SN-80)
