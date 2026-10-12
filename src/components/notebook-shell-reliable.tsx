@@ -287,7 +287,9 @@ import {
   buildReloadDraftSnapshot,
   hasUnsavedLocalDraftChanges,
   getReloadStatusLabel,
+  isVaultRefreshPayloadStale,
   rebaseDraftAfterSave,
+  resolveAttachmentDraftContent,
   shouldBlockPendingPageReload,
 } from "@/lib/page-reload";
 import { buildEffectiveEditorHtml, planPageSwap } from "@/lib/editor-swap-helpers";
@@ -847,6 +849,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // the companion bytes before the owner clicks Reload.
   const designRemoteWriteFenceRef = React.useRef(false);
   const flushSaveRef = React.useRef<() => Promise<boolean>>(async () => true);
+  const draftEpochRef = React.useRef(0);
   const editorRef = React.useRef<RichTextEditorHandle | null>(null);
   const docxImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const pagePackageImportInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -2773,6 +2776,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   }, [aiParentInfo, draft?.path, draft?.sectionPath, hasPageTreeScope]);
 
   const hydrateDraft = React.useCallback((nextDraft: PageDraft | null) => {
+    draftEpochRef.current += 1;
     hydratingRef.current = true;
     draftRef.current = nextDraft;
     if (nextDraft?.noteType === "text") {
@@ -2975,14 +2979,36 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     }
 
     try {
-      await loadTree({ pagePath: activePagePathRef.current }, { skipCache: true });
+      // SN-283: fence the fetch. A file picker closing fires focus, and the
+      // attach + durable save can land while this skipCache fetch is in flight;
+      // applying the older payload would rehydrate pre-attach HTML and the
+      // queued save would write it over the new chip.
+      const fence = {
+        draftEpoch: draftEpochRef.current,
+        lastSavedSnapshot: lastSavedSnapshotRef.current,
+      };
+      const pagePath = activePagePathRef.current;
+      const payload = await fetchVaultTree({
+        sequential: startupBaselineMode || undefined,
+        skipCache: true,
+      });
+      if (
+        isVaultRefreshPayloadStale(fence, {
+          draftEpoch: draftEpochRef.current,
+          lastSavedSnapshot: lastSavedSnapshotRef.current,
+          canAutoRefresh: canAutoRefreshVaultTree(),
+        })
+      ) {
+        return false;
+      }
+      applyVaultPayload(payload, { pagePath });
       setPendingVaultReload(null);
       return true;
     } catch {
       setPendingVaultReload({ detectedAt: Date.now() });
       return false;
     }
-  }, [canAutoRefreshVaultTree, loadTree]);
+  }, [applyVaultPayload, canAutoRefreshVaultTree, startupBaselineMode]);
 
   const clearGhostDismissTimers = React.useCallback(() => {
     if (ghostDismissTimerRef.current) {
@@ -3555,6 +3581,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       }
 
       const nextDraft = { ...currentDraft, ...patch };
+      draftEpochRef.current += 1;
       draftRef.current = nextDraft;
       setDraft(nextDraft);
 
@@ -3582,7 +3609,16 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         return false;
       }
 
-      updateDraft({ content: html });
+      // SN-283: do not push the insert-time snapshot over a draft that already
+      // carries the chip (and possibly newer edits from onChange).
+      const nextContent = resolveAttachmentDraftContent(
+        draftRef.current.content,
+        html,
+        assetUrl
+      );
+      if (nextContent !== null) {
+        updateDraft({ content: nextContent });
+      }
       const saved = await flushSave();
       return saved && pageContentCache.get(pagePath)?.html.includes(assetUrl) === true;
     },

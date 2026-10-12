@@ -327,3 +327,17 @@ export async function insertAndPersistUploadedEditorAsset(
 
   return html;
 }
+
+/**
+ * Serialize async tasks so overlapping attaches (two pickers, drop during an
+ * upload) insert and persist one at a time instead of racing each other's
+ * draft snapshots (SN-283). A failed task never blocks later ones.
+ */
+export function createSerialTaskQueue() {
+  let tail: Promise<unknown> = Promise.resolve();
+  return function enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const run = tail.then(task, task);
+    tail = run.catch(() => undefined);
+    return run;
+  };
+}

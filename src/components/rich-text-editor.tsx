@@ -58,6 +58,7 @@ import {
   FONT_FAMILIES,
   FONT_SIZES,
   insertAndPersistUploadedEditorAsset,
+  createSerialTaskQueue,
   looksLikeMarkdown,
   parseMarkdownToTiptapJson,
   setEditorHtmlSilent,
@@ -531,9 +532,21 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       );
     }
 
-    async function handleAssetFiles(files: FileList | File[] | null) {
-      if (!files?.length || readOnly) return;
-      for (const file of Array.from(files)) {
+    // SN-283: one attach at a time across pickers, drops, and pastes so
+    // overlapping uploads never race each other's insert/persist snapshots.
+    const assetQueueRef = React.useRef<ReturnType<typeof createSerialTaskQueue> | null>(null);
+    if (!assetQueueRef.current) {
+      assetQueueRef.current = createSerialTaskQueue();
+    }
+
+    function handleAssetFiles(files: FileList | File[] | null) {
+      if (!files?.length || readOnly) return Promise.resolve();
+      const batch = Array.from(files);
+      return assetQueueRef.current!(() => processAssetFiles(batch));
+    }
+
+    async function processAssetFiles(files: File[]) {
+      for (const file of files) {
         const isSupported = file.type.startsWith("image/") || /\.pdf$/i.test(file.name);
         if (!isSupported) {
           toast.error("Unsupported file type. Allowed: images and PDF.", { duration: 4000 });

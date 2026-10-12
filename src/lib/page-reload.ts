@@ -116,3 +116,40 @@ export function getReloadButtonLabel(input: {
 
   return "Reload vault";
 }
+
+export interface VaultRefreshFence {
+  draftEpoch: number;
+  lastSavedSnapshot: string | null;
+}
+
+/**
+ * An opportunistic live tree refresh (focus/visibility resume, e.g. after a
+ * file picker closes) captures the vault before an in-flight attach/save lands.
+ * Applying that payload would rehydrate the active draft with pre-attach HTML,
+ * and the queued save would then write the stale body over the new chip
+ * (SN-283). Discard the payload if the draft was edited, a save landed, or the
+ * shell is no longer safe to auto-refresh while the fetch was in flight.
+ */
+export function isVaultRefreshPayloadStale(
+  started: VaultRefreshFence,
+  current: VaultRefreshFence & { canAutoRefresh: boolean }
+): boolean {
+  return (
+    !current.canAutoRefresh ||
+    current.draftEpoch !== started.draftEpoch ||
+    current.lastSavedSnapshot !== started.lastSavedSnapshot
+  );
+}
+
+/**
+ * Attachment persistence must not push an HTML snapshot captured at insert
+ * time over a draft that already contains the asset (and possibly newer
+ * edits). Only adopt the snapshot when the live draft has lost the asset.
+ */
+export function resolveAttachmentDraftContent(
+  currentContent: string,
+  insertedHtml: string,
+  assetUrl: string
+): string | null {
+  return currentContent.includes(assetUrl) ? null : insertedHtml;
+}
