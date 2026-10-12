@@ -827,6 +827,7 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
     action: "create",
     parameters: {
       title: { type: "string", required: true, description: "Paper title." },
+      homeNotebookPath: { type: "string", description: "Home notebook path; required when referenceFromPath is omitted." },
       referenceFromPath: { type: "string", description: "Optional vault-relative page path that should reference the new paper." },
     },
   },
@@ -954,7 +955,7 @@ Workflows:
 - Get parent page: page_parent with path → returns parent page (via parent_id) or section/notebook context
 - Jupyter context/mutations: jupyter_notebook_context reads bounded cell source/outputs; jupyter_cell_create/edit/reorder/delete changes notebook.ipynb without executing code or owning kernels. Create shape: { "tool": "jupyter_cell_create", "args": { "path": "<page.html>", "cellType": "code", "source": "print('hello')", "index": 0 } } (omit index to append; cellType may be code, markdown, or raw)
 - Comment triage: comment_list → comment_context → comment_address (or page_write for broad rewrites)
-- Bibliography papers (SN-282): papers are canonical pages under .bibliography/<id>.html, referenced from other pages by id. From an article: paper_list { query } to find an existing paper, else paper_create { title, referenceFromPath: "<article path>" }; for an existing paper use paper_reference_add { path, paper }. Attach a PDF with paper_attach_pdf { paper, url } (direct PDF link), then read it with pdf_read_pages using the returned href. Edit paper notes with the normal page tools on the paper path. Remove with paper_remove (clears references, then deletes) — never page_delete/page_move/page_create inside .bibliography.
+- Bibliography papers (SN-282): papers are canonical pages under .bibliography/<id>.html, referenced from other pages by id. From an article: paper_list { query } to find an existing paper, else paper_create { title, referenceFromPath: "<article path>" } (the paper's home notebook defaults to that article's notebook; pass homeNotebookPath when creating without a referring page); for an existing paper use paper_reference_add { path, paper }. Attach a PDF with paper_attach_pdf { paper, url } (direct PDF link), then read it with pdf_read_pages using the returned href. Edit paper notes with the normal page tools on the paper path. Remove with paper_remove (clears references, then deletes) — never page_delete/page_move/page_create inside .bibliography.
 - Page delete: page_delete with vault-relative path (never filesystem delete; clears assets and triggers tree reload warning)
 - Tree mutations: page/notebook/section create, rename, move, delete via vault tools (not direct file operations)
 - Math / LaTeX (text pages only): use $...$ for inline and $$...$$ for block equations — server normalizes to Tiptap math nodes on page_write/page_create/page_append/page_prepend/page_edit/page_replace_section. Design pages (note_type=design) are raw HTML/CSS and are never math-normalized; use page_write/page_edit only (page_append/prepend/replace_section/page_render are rejected)

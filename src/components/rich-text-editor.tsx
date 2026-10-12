@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
   Code,
+  FileText,
   Heading1,
   Heading2,
   Heading3,
@@ -196,6 +197,7 @@ interface RichTextEditorProps {
   inkCaptureMode?: boolean;
   onDrawableBottomChange?: (value: number) => void;
   onPdfAttachmentOpen?: (target: PdfAttachmentTarget) => void;
+  onAttachPaper?: () => void;
   onPersistAttachment?: (input: {
     pagePath: string;
     html: string;
@@ -328,6 +330,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       inkCaptureMode = false,
       onDrawableBottomChange,
       onPdfAttachmentOpen,
+      onAttachPaper,
       onPersistAttachment,
     },
     ref
@@ -2042,6 +2045,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             onInsertImage={() => fileInputRef.current?.click()}
             onTakePhoto={cameraCaptureSupported ? () => cameraInputRef.current?.click() : undefined}
             onInsertAttachment={() => attachmentInputRef.current?.click()}
+            onAttachPaper={onAttachPaper}
             onOpenLink={openLinkDialog}
             onOpenMathInline={() => openMathDialog(false)}
             onOpenMathBlock={() => openMathDialog(true)}
@@ -2087,6 +2091,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             onInsertImage={() => fileInputRef.current?.click()}
             onTakePhoto={cameraCaptureSupported ? () => cameraInputRef.current?.click() : undefined}
             onInsertAttachment={() => attachmentInputRef.current?.click()}
+            onAttachPaper={onAttachPaper}
             onOpenLink={openLinkDialog}
             onOpenMathInline={() => openMathDialog(false)}
             onOpenMathBlock={() => openMathDialog(true)}
@@ -3158,6 +3163,7 @@ function InsertOverflowDropdown({
   onInsertImage,
   onTakePhoto,
   onInsertAttachment,
+  onAttachPaper,
   onOpenLink,
   onOpenMathInline,
   onOpenMathBlock,
@@ -3175,6 +3181,7 @@ function InsertOverflowDropdown({
   /** Provided only on capture-capable mobile/tablet browsers (SN-140). */
   onTakePhoto?: () => void;
   onInsertAttachment: () => void;
+  onAttachPaper?: () => void;
   onOpenLink: () => void;
   onOpenMathInline: () => void;
   onOpenMathBlock: () => void;
@@ -3248,6 +3255,12 @@ function InsertOverflowDropdown({
           testId={mobile ? "toolbar-attachment-mobile" : "toolbar-attachment"}
           onSelect={onInsertAttachment}
         />
+        {onAttachPaper && <DropdownMenuItemWithIcon
+          icon={<FileText className="size-3.5" />}
+          label="Attach paper…"
+          testId={mobile ? "toolbar-attach-paper-mobile" : "toolbar-attach-paper"}
+          onSelect={onAttachPaper}
+        />}
         <DropdownMenuItemWithIcon
           icon={<TableIcon className="size-3.5" />}
           label="Insert table"

@@ -10,6 +10,19 @@ and 44px mobile touch targets. The sole new metric is
 inside the document flow with its own scrolling, on desktop and mobile.
 The inline frame preserves all existing text-page features; it is not a popup.
 
+## Bibliography v2 tree and paper page (SN-292)
+
+Fork photos #7, #12 and #17. The only new value is `--paper` (light
+`oklch(0.62 0.15 50)`, dark `oklch(0.74 0.13 55)`; Tailwind `text-paper`): the
+orange paper glyph (Lucide `FileBadge`) on the pinned top-level **Bibliography**
+entry, each notebook's muted **Bibliography** shortcut, and every paper row. Rows
+reuse the tree page-row height, indent, `--accent` active ring and 13px compact
+title; the two Bibliography labels inherit the 16px "Open workspace" size. Put
+text sizes on an inner span: the unlayered global `button { font-size: inherit }`
+overrides utilities placed on a `<button>`. The paper page context bar
+(**Back to topic** · "Bibliography · shared paper page") is `text-xs`
+`--muted-foreground` on `--surface`, left-aligned with the editor toolbar.
+
 ## Paper reading shell (SN-281)
 
 Opening a paper's PDF shows three layers: PDF reader | paper notes dock |

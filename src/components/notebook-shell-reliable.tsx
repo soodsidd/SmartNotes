@@ -63,8 +63,9 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor, type EditorSectionContext, type RichTextEditorHandle } from "@/components/rich-text-editor";
-import { Bibliography, PaperChildRow, PaperReferencePicker } from "@/components/bibliography";
-import { BIBLIOGRAPHY_PATH, isBibliographyPath, paperReferenceHtml } from "@/lib/papers";
+import { Bibliography, NotebookBibliographyShortcut, PaperChildRow } from "@/components/bibliography";
+import { PaperAttachDialog } from "@/components/paper-attach-dialog";
+import { BIBLIOGRAPHY_PATH, isBibliographyPath, paperBackTarget, paperHomeNotebook, paperReferenceHtml } from "@/lib/papers";
 import { flushInlinePapers, flushPaperFrame } from "@/lib/inline-paper-save";
 import { PaperNotesDock } from "@/components/paper-notes-dock";
 import {
@@ -699,6 +700,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // SN-281: the paper reading shell's notes frame; Companion stays with the host.
   const paperDock = paperInline && searchParams?.get("paperDock") === "1";
   const [paperReturnPath, setPaperReturnPath] = React.useState<string | null>(null);
+  const [paperAttachOpen, setPaperAttachOpen] = React.useState(false);
+  // SN-292 (#7): last ordinary page shown, so Back to topic returns where the user came from.
+  const [paperTopicPath, setPaperTopicPath] = React.useState<string | null>(null);
   const searchKey = searchParams?.toString() ?? "";
   const linkedProjectWorkspace = React.useMemo(
     () => parseDeepWorkDescriptor(new URLSearchParams(searchKey)),
@@ -735,6 +739,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [activeSectionPath, setActiveSectionPath] = React.useState<string | null>(null);
   const [activePagePath, setActivePagePath] = React.useState<string | null>(initialWorkspaceDraft?.path ?? null);
   const [draft, setDraft] = React.useState<PageDraft | null>(initialWorkspaceDraft);
+  const draftPathForPaperTopic = draft?.path ?? null;
+  React.useEffect(() => {
+    if (draftPathForPaperTopic && !isBibliographyPath(draftPathForPaperTopic)) setPaperTopicPath(draftPathForPaperTopic);
+  }, [draftPathForPaperTopic]);
   // SN-262: an opened/sticky Deep Work root owns the Jupyter surface only while
   // its own pending draft is the active page. Selecting a vault `.jupyter` note
   // must launch that note-owned session, not the disk workspace.
@@ -4306,18 +4314,43 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   const handleOpenPaperChild = React.useCallback((pagePath: string, parentPath: string) => {
     setPaperReturnPath(parentPath);
+    // SN-292 (#17): keep the referring page open so its paper child row stays visible.
+    setExpandedPages((expanded) => expanded.has(parentPath) ? expanded : new Set([...expanded, parentPath]));
     void openPage(pagePath);
   }, [openPage]);
 
-  const handleCreatePaper = React.useCallback(async (title: string) => {
+  const attachPaperToCurrentPage = React.useCallback((id: string) => {
+    const current = draftRef.current;
+    if (!current || isBibliographyPath(current.path) || !editorRef.current?.insertHtml(paperReferenceHtml(id), { avoidDocStart: true })) {
+      toast.error("Could not attach paper to this page.");
+      return;
+    }
+    setExpandedPages((expanded) => new Set([...expanded, current.path]));
+  }, []);
+
+  const createAndAttachPaper = React.useCallback(async (input: { title: string; homeNotebookPath: string; sourceLink: string; pdf: File | null }) => {
     if (!(await flushInlinePapers()) || !(await flushSaveRef.current())) throw new Error("Save the current notes before creating a paper.");
-    const response = await vaultWriteFetch("/api/papers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) });
+    if (input.pdf && input.pdf.type !== "application/pdf" && !/\.pdf$/i.test(input.pdf.name)) throw new Error("Choose a PDF file.");
+    const response = await vaultWriteFetch("/api/papers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
     if (!response.ok) throw new Error(await readErrorMessage(response, "Could not create paper."));
     const { page } = await response.json();
-    await loadTree({ pagePath: page.path }, { skipCache: true });
-    setSidebarOpen(false);
-    setPaperReturnPath(null);
-  }, [loadTree]);
+    let pdfError = false;
+    if (input.pdf) {
+      try {
+        const form = new FormData(); form.set("file", input.pdf);
+        const upload = await vaultWriteFetch(`/api/assets?path=${encodeURIComponent(page.path)}`, { method: "POST", body: form });
+        if (!upload.ok) throw new Error("PDF upload failed.");
+        const { asset } = await upload.json();
+        const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const body = `<p><span data-file-attachment="" data-file-type="pdf" class="file-attachment-chip file-attachment-chip--pdf" contenteditable="false"><span class="file-attachment-icon" aria-hidden="true">PDF</span><span class="file-attachment-name" data-href="${escape(asset.url)}">${escape(input.pdf.name)}</span></span></p>`;
+        const save = await vaultWriteFetch("/api/page", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: page.path, title: page.title, content: body }) });
+        if (!save.ok) throw new Error("PDF attachment save failed.");
+      } catch { pdfError = true; }
+    }
+    await loadTree({ pagePath: activePagePathRef.current }, { skipCache: true, draftSnapshot: currentDraftSnapshot() });
+    attachPaperToCurrentPage(String(page.metadata.paper_id));
+    if (pdfError) toast.error("Paper attached, but its PDF could not be saved. Add the PDF from the paper page.");
+  }, [attachPaperToCurrentPage, currentDraftSnapshot, loadTree]);
 
   const handleSidebarNestPage = React.useCallback(
     async (pagePath: string, parentId: string | null) => {
@@ -6152,8 +6185,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 />
                 <div className="min-h-0 flex-1">
                   <Sidebar
-                    onCreatePaper={handleCreatePaper}
                     onOpenPaperChild={handleOpenPaperChild}
+                    activePaperReferrerPath={paperReturnPath}
                     variant="desktop"
                     tree={treeWithOverrides}
                     isTreeLoading={isLoadingTree}
@@ -6231,7 +6264,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface" data-testid="page-main">
             <TopBar
-              header={buildHeaderContext(activeSelection)}
+              header={buildHeaderContext(activeSelection, tree)}
               saveLabel={saveLabel}
               saveState={saveState}
               isViewingVersion={Boolean(versionPreview)}
@@ -6313,18 +6346,14 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               onOpenCapture={openCaptureDialog}
               onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
             />
-            {draft && isBibliographyPath(draft.path) && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-secondary px-3 py-2" data-testid="paper-ownership">
-              <span className="min-w-0 break-words text-xs">Bibliography / {draft.title} · Shared canonical notes</span>
-              {paperReturnPath && <Button variant="outline" className="min-h-11" onClick={() => { const parent = paperReturnPath; setPaperReturnPath(null); void openPage(parent); }}>Back to referring page</Button>}
-            </div>}
-            {draft?.noteType === "text" && !paperInline && <PaperReferencePicker
-              papers={(tree.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH)?.pages ?? []).filter((page) => page.path !== draft.path)}
-              disabled={Boolean(activeVersionPreview)}
-              onInsert={(id) => {
-                if (!editorRef.current?.insertHtml(paperReferenceHtml(id), { avoidDocStart: true })) { toast.error("Could not insert paper reference."); return; }
-                setExpandedPages((current) => new Set([...current, draft.path]));
-              }}
-            />}
+            {draft && isBibliographyPath(draft.path) && (() => {
+              // SN-292 (#7): context bar under the standard header.
+              const topic = paperBackTarget({ paperPath: draft.path, tree, referringPath: paperReturnPath, previousPath: paperTopicPath });
+              return <div className="flex min-h-9 flex-wrap items-center gap-x-5 gap-y-1 bg-surface px-4 py-1.5 text-xs text-muted-foreground xl:pl-10" data-testid="paper-ownership">
+                <button type="button" className="min-h-11 rounded-sm hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:no-underline disabled:opacity-60 xl:min-h-0" disabled={!topic} onClick={() => { if (!topic) return; setPaperReturnPath(null); void openPage(topic); }} data-testid="paper-back-to-topic">Back to topic</button>
+                <span>Bibliography · shared paper page</span>
+              </div>;
+            })()}
             <div className="flex min-h-0 flex-1 flex-col">
             {activeVersionPreview ? (
               <VersionPreviewBanner
@@ -6491,6 +6520,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 previewAnnotationsJson={activeVersionPreview?.annotationsContent ?? undefined}
                 onTitleChange={(title) => updateDraft({ title })}
                 onContentChange={(content) => updateDraft({ content })}
+                onAttachPaper={!paperInline && !isBibliographyPath(draft.path) && !activeVersionPreview ? () => setPaperAttachOpen(true) : undefined}
                 onPersistAttachment={persistEditorAttachment}
                 onSelectionContextChange={setAiSectionContext}
                 onPdfAttachmentOpen={openPdfReader}
@@ -6581,14 +6611,15 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         </div>
       </div>
 
+      <PaperAttachDialog open={paperAttachOpen} onOpenChange={setPaperAttachOpen} tree={tree} onAttach={attachPaperToCurrentPage} onCreate={createAndAttachPaper} />
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent side="left" className="w-[92vw] max-w-[360px] border-r border-border bg-[color:var(--rail)] p-0">
           <SheetHeader className="border-b border-border px-4 py-4">
             <SheetTitle className="font-serif text-2xl">Notes</SheetTitle>
           </SheetHeader>
           <Sidebar
-            onCreatePaper={handleCreatePaper}
             onOpenPaperChild={handleOpenPaperChild}
+            activePaperReferrerPath={paperReturnPath}
             tree={treeWithOverrides}
             isTreeLoading={isLoadingTree}
             activeNotebookPath={activeNotebookPath}
@@ -7372,8 +7403,8 @@ function TopBar({
 }
 
 export const Sidebar = React.memo(function Sidebar({
-  onCreatePaper,
   onOpenPaperChild,
+  activePaperReferrerPath = null,
   variant = "mobile",
   tree,
   isTreeLoading = false,
@@ -7443,8 +7474,9 @@ export const Sidebar = React.memo(function Sidebar({
   onExportPagePackage,
 }: {
   variant?: "desktop" | "mobile";
-  onCreatePaper?: (title: string) => Promise<void>;
   onOpenPaperChild?: (path: string, parentPath: string) => void;
+  /** SN-292: referring page whose paper child row is the active one. */
+  activePaperReferrerPath?: string | null;
   tree: VaultNotebook[];
   isTreeLoading?: boolean;
   activeNotebookPath: string | null;
@@ -7603,6 +7635,7 @@ export const Sidebar = React.memo(function Sidebar({
   const notebookRootPageIndentBase = compactDesktop ? 4 : 8;
   const sectionPageIndentBase = compactDesktop ? 14 : 20;
   const ghostIndentOffset = compactDesktop ? 14 : 16;
+  const isActivePaperChild = (page: VaultPage) => Boolean(page.paperReference) && page.paperReference!.canonicalPath === activePagePath && (!activePaperReferrerPath || page.paperReference!.parentPath === activePaperReferrerPath);
   const resolvePageIndent = (base: number, depth: number) =>
     compactDesktop ? `calc(${base}px + ${depth} * var(--desktop-tree-indent-step))` : base + depth * 12;
   const resolveGhostIndent = (base: number, depth: number) =>
@@ -7617,7 +7650,6 @@ export const Sidebar = React.memo(function Sidebar({
       data-density-variant={variant}
       data-vault-ready={isTreeLoading ? "false" : "true"}
     >
-      <Bibliography tree={tree} loading={isTreeLoading} onOpen={onOpenPage} onCreate={onCreatePaper ?? (async () => { throw new Error("Paper creation unavailable."); })} />
       <div className={cn("flex items-center justify-between gap-2 px-1.5", compactDesktop ? "mb-1" : "mb-2")}>
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Vault</p>
@@ -7678,6 +7710,8 @@ export const Sidebar = React.memo(function Sidebar({
           Open workspace
         </Button>
       ) : null}
+
+      <Bibliography tree={tree} loading={isTreeLoading} compact={compactDesktop} activePagePath={activePagePath} onOpen={onOpenPage} />
 
       <OpenClosedNotebooksDialog
         open={pickerOpen}
@@ -7836,13 +7870,14 @@ export const Sidebar = React.memo(function Sidebar({
 
               {notebookOpen ? (
                 <div className={cn("mt-1", compactDesktop ? "space-y-0.5 pl-3" : "space-y-1 pl-4")}>
+                  <NotebookBibliographyShortcut tree={tree} notebook={notebook} compact={compactDesktop} activePagePath={activePagePath} onOpen={onOpenPage} />
                   {(() => {
                     const notebookRows = pageRowsByNotebook.get(notebook.path);
                     const flatNodes = notebookRows?.flatNodes ?? [];
                     const nestingLookup = notebookRows?.nestingLookup ?? EMPTY_PAGE_NESTING_ACTION_LOOKUP;
 
                     return flatNodes.map((node) => {
-                      if (node.page.paperReference) return <PaperChildRow key={node.page.path} page={node.page} depth={node.depth} onOpen={onOpenPaperChild ?? onOpenPage} />;
+                      if (node.page.paperReference) return <PaperChildRow key={node.page.path} page={node.page} indentPx={resolvePageIndent(notebookRootPageIndentBase, node.depth)} compact={compactDesktop} active={isActivePaperChild(node.page)} onOpen={onOpenPaperChild ?? onOpenPage} />;
                       const nestingState = getPageNestingActionState(nestingLookup, node.page.path);
                       const active = node.page.path === activePagePath;
                       const isInkPage = node.page.noteType === "ink";
@@ -8349,7 +8384,7 @@ export const Sidebar = React.memo(function Sidebar({
                               }
 
                               return flatNodes.flatMap((node) => {
-                                if (node.page.paperReference) return [<PaperChildRow key={node.page.path} page={node.page} depth={node.depth} onOpen={onOpenPaperChild ?? onOpenPage} />];
+                                if (node.page.paperReference) return [<PaperChildRow key={node.page.path} page={node.page} indentPx={resolvePageIndent(sectionPageIndentBase, node.depth)} compact={compactDesktop} active={isActivePaperChild(node.page)} onOpen={onOpenPaperChild ?? onOpenPage} />];
                                 const nestingState = getPageNestingActionState(nestingLookup, node.page.path);
                                 const active = node.page.path === activePagePath;
                                 const isInkPage = node.page.noteType === "ink";
@@ -9046,6 +9081,7 @@ function EditorPanel({
   previewAnnotationsJson,
   onTitleChange,
   onContentChange,
+  onAttachPaper,
   onPersistAttachment,
   onSelectionContextChange,
   onPdfAttachmentOpen,
@@ -9060,6 +9096,7 @@ function EditorPanel({
   previewAnnotationsJson?: string;
   onTitleChange: (title: string) => void;
   onContentChange: (content: string) => void;
+  onAttachPaper?: () => void;
   onPersistAttachment: (input: {
     pagePath: string;
     html: string;
@@ -9264,6 +9301,7 @@ function EditorPanel({
           />
         }
         onChange={handleContentChange}
+        onAttachPaper={onAttachPaper}
         onPersistAttachment={onPersistAttachment}
         onSelectionContextChange={onSelectionContextChange}
         placeholder="Start writing..."
@@ -9533,7 +9571,11 @@ function draftFromTreePage(selection: TreeSelection): PageDraft {
   };
 }
 
-function buildHeaderContext(selection: TreeSelection) {
+function buildHeaderContext(selection: TreeSelection, tree: VaultNotebook[]) {
+  if (selection.page && isBibliographyPath(selection.page.path)) {
+    const home = paperHomeNotebook(selection.page, tree);
+    return { title: selection.page.title, subtitle: `${home?.name ?? "Notebook"} / Bibliography` };
+  }
   if (selection.page && selection.section && selection.notebook) {
     return {
       title: selection.page.title,

@@ -48,6 +48,43 @@ export interface PaperReferrer {
   notebookName: string;
 }
 
+export function paperHomeNotebook(page: VaultPage, tree: VaultNotebook[]): VaultNotebook | null {
+  const homePath = page.metadata?.paper_home_notebook;
+  if (typeof homePath === "string") return tree.find((notebook) => notebook.path === homePath) ?? null;
+  // Papers created on the foundation branch predate explicit home ownership.
+  const legacyReferrer = bibliographyEntries(tree).find((entry) => entry.page.path === page.path)?.referrers[0];
+  return tree.find((notebook) => notebook.path === legacyReferrer?.notebookPath) ?? null;
+}
+
+/**
+ * SN-292 (#7): where "Back to topic" goes from a paper page. Prefer the
+ * referring row the user clicked, then the page they came from, then a
+ * referrer (home notebook first). Only pages still in the tree qualify.
+ */
+export function paperBackTarget(input: {
+  paperPath: string;
+  tree: VaultNotebook[];
+  referringPath?: string | null;
+  previousPath?: string | null;
+}): string | null {
+  const { paperPath: canonical, tree, referringPath, previousPath } = input;
+  const exists = (target?: string | null): target is string => Boolean(target) && !isBibliographyPath(target!) && tree.some((notebook) =>
+    notebook.pages.some((page) => page.path === target) || notebook.sections.some((section) => section.pages.some((page) => page.path === target)));
+  if (exists(referringPath)) return referringPath;
+  if (exists(previousPath)) return previousPath;
+  const entry = bibliographyEntries(tree).find((candidate) => candidate.page.path === canonical);
+  if (!entry) return null;
+  const home = entry.page.metadata?.paper_home_notebook;
+  const referrer = entry.referrers.find((item) => item.notebookPath === home) ?? entry.referrers[0];
+  return referrer?.path ?? null;
+}
+
+export function notebookReferencedPapers(tree: VaultNotebook[], notebookPath: string): VaultPage[] {
+  return bibliographyEntries(tree)
+    .filter((entry) => entry.referrers.some((referrer) => referrer.notebookPath === notebookPath))
+    .map((entry) => entry.page);
+}
+
 export function bibliographyEntries(tree: VaultNotebook[]) {
   const papers = tree.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH)?.pages ?? [];
   const referrers = new Map<string, PaperReferrer[]>();

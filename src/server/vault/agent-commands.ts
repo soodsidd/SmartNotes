@@ -1544,7 +1544,8 @@ async function runPaperCommand(action: string, args: Record<string, unknown>): P
     case "create": {
       const title = requireString(args.title, "title");
       const referenceFromPath = optionalString(args.referenceFromPath) || undefined;
-      const { paper, referencedFrom } = await createPaperForCompanion({ title, referenceFromPath });
+      const homeNotebookPath = optionalString(args.homeNotebookPath) || undefined;
+      const { paper, referencedFrom } = await createPaperForCompanion({ title, homeNotebookPath, referenceFromPath });
       return {
         ok: true,
         group: "paper",

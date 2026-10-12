@@ -52,6 +52,9 @@ describe("SN-282 companion paper tools", () => {
     expect(created.treeChanged).toBe(true);
     expect(created.data.paper.path).toBe(`.bibliography/${created.data.paper.id}.html`);
     expect(created.data.referencedFrom).toBe(article.path);
+    // SN-292: the referring article's notebook becomes the paper's home.
+    expect((await readPage(created.data.paper.path)).metadata.paper_home_notebook).toBe("Research");
+    await expect(tool("paper_create", { title: "Homeless" })).rejects.toMatchObject({ code: "INVALID_NOTEBOOK" });
     expect(created.fileUpdated.path).toBe(article.path);
 
     const body = (await readPage(article.path)).body;
@@ -76,7 +79,7 @@ describe("SN-282 companion paper tools", () => {
 
   it("references an existing paper by canonical path and rejects non-paper targets", async () => {
     const article = await createPage({ sectionPath: "Research/Articles", title: "Second article" });
-    const paper = (await tool("paper_create", { title: "Existing" })).data.paper;
+    const paper = (await tool("paper_create", { title: "Existing", homeNotebookPath: "Research" })).data.paper;
     const added = await tool("paper_reference_add", { path: article.path, paper: `/vault/${paper.path}` });
     expect(added.data.added).toBe(true);
     expect(paperReferenceIds((await readPage(article.path)).body)).toEqual([paper.id]);
@@ -85,8 +88,8 @@ describe("SN-282 companion paper tools", () => {
   });
 
   it("removes a paper by clearing every reference first (snapshotted) so no reference is orphaned", async () => {
-    const keep = (await tool("paper_create", { title: "Keep" })).data.paper;
-    const drop = (await tool("paper_create", { title: "Drop" })).data.paper;
+    const keep = (await tool("paper_create", { title: "Keep", homeNotebookPath: "Research" })).data.paper;
+    const drop = (await tool("paper_create", { title: "Drop", homeNotebookPath: "Research" })).data.paper;
     const first = await createPage({ sectionPath: "Research/Articles", title: "First" });
     const second = await createPage({ sectionPath: "Research/Articles", title: "Second" });
     await savePage({ path: first.path, title: first.title, body: `<p>Intro</p>${paperReferenceHtml(drop.id)}${paperReferenceHtml(keep.id)}<p>Outro</p>` });
@@ -119,7 +122,7 @@ describe("SN-282 companion paper tools", () => {
   });
 
   it("downloads a PDF and attaches it to the paper like a normal upload", async () => {
-    const paper = (await tool("paper_create", { title: "With PDF" })).data.paper;
+    const paper = (await tool("paper_create", { title: "With PDF", homeNotebookPath: "Research" })).data.paper;
     await savePage({ path: paper.path, title: "With PDF", body: "<p>My notes</p>" });
     const result = await attachPdfToPaper(
       { paper: paper.id, url: "https://arxiv.org/pdf/1706.03762" },
@@ -150,14 +153,14 @@ describe("SN-282 companion paper tools", () => {
   });
 
   it("replaces a new paper's empty placeholder body instead of appending under it", async () => {
-    const paper = (await tool("paper_create", { title: "Fresh" })).data.paper;
+    const paper = (await tool("paper_create", { title: "Fresh", homeNotebookPath: "Research" })).data.paper;
     expect((await readPage(paper.path)).body).toBe("<p></p>");
     const result = await attachPdfToPaper({ paper: paper.id, url: "https://example.org/fresh.pdf" }, { fetchImpl: pdfFetch(), lookup: publicLookup });
     expect((await readPage(paper.path)).body).toBe(pdfAttachmentChipHtml(result.attachment.href, "fresh.pdf"));
   });
 
   it("rejects non-PDF responses, oversize bodies, and private or non-http URLs without writing", async () => {
-    const paper = (await tool("paper_create", { title: "Guarded" })).data.paper;
+    const paper = (await tool("paper_create", { title: "Guarded", homeNotebookPath: "Research" })).data.paper;
     const html = async () => new Response("<html>landing page</html>", { status: 200, headers: { "content-type": "text/html" } });
     await expect(attachPdfToPaper({ paper: paper.id, url: "https://example.org/abs/1" }, { fetchImpl: html, lookup: publicLookup }))
       .rejects.toMatchObject({ code: "NOT_A_PDF" });
@@ -186,7 +189,7 @@ describe("SN-282 companion paper tools", () => {
   });
 
   it("gives Companion the whole paper when its notes are open as an ordinary page", async () => {
-    const paper = (await tool("paper_create", { title: "Notes mode" })).data.paper;
+    const paper = (await tool("paper_create", { title: "Notes mode", homeNotebookPath: "Research" })).data.paper;
     const assets = path.join(root, ".bibliography", `${paper.id}.assets`);
     await fs.mkdir(assets, { recursive: true });
     await fs.writeFile(path.join(assets, "main.pdf"), PDF_BYTES);

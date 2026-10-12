@@ -724,12 +724,14 @@ export async function readPage(pagePath: string) {
   return readPageDocument(pagePath);
 }
 
-export async function createPaper(title: string) {
+export async function createPaper(title: string, homeNotebookPath: string, sourceLink?: string) {
   if (typeof title !== "string" || !title.trim()) throw new VaultError("INVALID_TITLE", "A paper title is required.");
+  const home = (await readVaultTree({ skipCache: true })).tree.find((notebook) => notebook.path === homeNotebookPath);
+  if (!home || home.path === BIBLIOGRAPHY_PATH) throw new VaultError("INVALID_NOTEBOOK", "Choose a home notebook for this paper.", 400);
   const id = randomUUID();
   const { absolutePath, relativePath } = resolveVaultPath(paperPath(id), "page");
   const now = new Date().toISOString();
-  const source = serializeFrontmatterDocument({ title: title.trim(), paper_id: id, note_type: "text", created: now, updated: now }, "<p></p>");
+  const source = serializeFrontmatterDocument({ title: title.trim(), paper_id: id, paper_home_notebook: home.path, ...(sourceLink?.trim() ? { paper_source: sourceLink.trim() } : {}), note_type: "text", created: now, updated: now }, "<p></p>");
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.writeFile(absolutePath, source, { encoding: "utf8", flag: "wx" });
   invalidateVaultCache();
@@ -2205,6 +2207,16 @@ export async function renameNotebook(notebookPath: string, newName: string) {
       throw new VaultError("NOTEBOOK_EXISTS", `A notebook named "${dirName}" already exists.`, 409);
     }
     await renameDirectory(absolutePath, nextAbsolutePath);
+    // The paper remains in central storage; only its home breadcrumb changes.
+    const paperDirectory = path.join(vaultRoot, BIBLIOGRAPHY_PATH);
+    for (const entry of await fs.readdir(paperDirectory).catch(() => [])) {
+      if (!isPageFileName(entry)) continue;
+      const paperFile = path.join(paperDirectory, entry);
+      const source = await fs.readFile(paperFile, "utf8");
+      const parsed = parseFrontmatterDocument(source);
+      if (parsed.metadata.paper_home_notebook !== relativePath) continue;
+      await writeAtomically(paperFile, serializeFrontmatterDocument({ ...parsed.metadata, paper_home_notebook: nextRelativePath }, parsed.body));
+    }
   }
   invalidateVaultCache();
   return { previousPath: relativePath, path: nextRelativePath, name: dirName };

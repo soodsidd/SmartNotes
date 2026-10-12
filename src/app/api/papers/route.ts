@@ -19,7 +19,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const page = await createPaper(body.title);
+    const page = await createPaper(body.title, body.homeNotebookPath, body.sourceLink);
     emitVaultSideEffects({ treeChanged: true });
     return NextResponse.json({ page: toApiPageDocument(page) }, { status: 201 });
   } catch (error) {

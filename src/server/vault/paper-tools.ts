@@ -91,8 +91,11 @@ export async function addPaperReference(pagePath: string, paper: string) {
   return { page: saved, paper: canonical, added: true };
 }
 
-export async function createPaperForCompanion(input: { title: string; referenceFromPath?: string }) {
-  const paper = await createPaper(input.title);
+export async function createPaperForCompanion(input: { title: string; homeNotebookPath?: string; referenceFromPath?: string }) {
+  const { tree } = await readVaultTree({ skipCache: true });
+  const home = input.homeNotebookPath ?? tree.find((notebook) => input.referenceFromPath?.startsWith(`${notebook.path}/`))?.path;
+  if (!home) throw new VaultError("INVALID_NOTEBOOK", "Choose a home notebook for this paper.", 400);
+  const paper = await createPaper(input.title, home);
   const reference = input.referenceFromPath ? await addPaperReference(input.referenceFromPath, paper.path) : null;
   return { paper, referencedFrom: reference?.page ?? null };
 }
