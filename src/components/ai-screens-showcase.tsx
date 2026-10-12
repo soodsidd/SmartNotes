@@ -40,10 +40,36 @@ const SAMPLE_MESSAGES: AiSidebarMessage[] = [
 
 interface AiScreensShowcaseProps {
   surface: "desktop" | "mobile";
+  /** SN-285: start with a live reply and expose `window.__devScreensStream` to append tokens. */
+  stream?: boolean;
 }
 
-export function AiScreensShowcase({ surface }: AiScreensShowcaseProps) {
+const STREAM_MESSAGES: AiSidebarMessage[] = [
+  SAMPLE_MESSAGES[0],
+  { id: "assistant-stream", role: "assistant", content: "", isStreaming: true },
+];
+
+export function AiScreensShowcase({ surface, stream = false }: AiScreensShowcaseProps) {
   const [inputValue, setInputValue] = React.useState("");
+  const [messages, setMessages] = React.useState<AiSidebarMessage[]>(stream ? STREAM_MESSAGES : SAMPLE_MESSAGES);
+
+  React.useEffect(() => {
+    if (!stream) {
+      return;
+    }
+    const target = window as unknown as {
+      __devScreensStream?: { append: (text: string) => void; finish: () => void };
+    };
+    const patchLast = (patch: (message: AiSidebarMessage) => AiSidebarMessage) =>
+      setMessages((current) => [...current.slice(0, -1), patch(current[current.length - 1])]);
+    target.__devScreensStream = {
+      append: (text) => patchLast((message) => ({ ...message, content: `${message.content}${text}` })),
+      finish: () => patchLast((message) => ({ ...message, isStreaming: false })),
+    };
+    return () => {
+      delete target.__devScreensStream;
+    };
+  }, [stream]);
   const sharedProps = {
     pageTitle: "Strength Training — Minimum Versions",
     scopeLabel: "Whole note",
@@ -55,7 +81,7 @@ export function AiScreensShowcase({ surface }: AiScreensShowcaseProps) {
     activeProviderLabel: "Claude",
     activeModelLabel: "Sonnet",
     assistantLabel: "assistant",
-    messages: SAMPLE_MESSAGES,
+    messages,
     inputValue,
     verboseEnabled: true,
     onInputChange: setInputValue,
