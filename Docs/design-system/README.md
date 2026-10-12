@@ -1,5 +1,29 @@
 # Smart Notes Design System
 
+## Shared paper notes (SN-279)
+
+Bibliography, virtual paper rows, reference controls, and ownership breadcrumbs
+reuse `--surface`, `--secondary`, `--border`, `--foreground`, `--muted-foreground`,
+`--accent`, `--ring`, standard Button/Input controls, existing tree indent/density,
+and 44px mobile touch targets. The sole new metric is
+`--paper-reference-frame-height: 640px`: a bounded, full-width standard editor
+inside the document flow with its own scrolling, on desktop and mobile.
+The inline frame preserves all existing text-page features; it is not a popup.
+
+## Paper reading shell (SN-281)
+
+Opening a paper's PDF shows three layers: PDF reader | paper notes dock |
+Companion overlay. The dock reuses `--surface` (frame), `--rail` (header bar),
+`--border`, `--foreground`, `--muted-foreground` (eyebrow), `--ring` (separator
+hover/focus line), `--destructive` (save failure), `--desktop-chrome-height`
+(header), the standard ghost icon Button, and 44px coarse-pointer targets.
+New values: `--z-paper-notes: 320` (above the reader, below the companion rail
+so Companion overlays both frames without displacing them) and these
+behavioural metrics in `src/lib/paper-reading-shell.ts`: notes default `440px`,
+minimum `320px`, PDF minimum `360px`, keyboard resize step `24px`. Below a
+`680px` viewport (both minimums) the dock becomes a full-width layer over the
+PDF, opened from the reader's Notes toggle and dismissed with Back to PDF.
+
 This folder is the tracked UI reference set for Smart Notes.
 
 **System:** Clarity v1.0 — cool neutral grays, teal accent, all-sans Hanken Grotesk typography.
@@ -78,11 +102,12 @@ Immersive surfaces use the shared z-index scale in `src/styles/tokens.css`. Keep
 | Token | Value | Use |
 |-------|-------|-----|
 | `--z-pdf-reader` | `300` | Full-viewport immersive PDF reader |
+| `--z-paper-notes` | `320` | Paper reading shell notes dock beside (or, on narrow screens, over) the reader (SN-281) |
 | `--z-companion-rail` | `350` | Companion rail or full-screen sheet displayed over the reader |
 | `--z-companion-overlay` | `400` | Companion-owned portaled dialogs, dropdowns, selects, and popovers displayed over the reader |
 | `--z-jupyter-inline-ai` | `425` | Portaled inline-AI actions, working state, and answers displayed over embedded JupyterLab chrome |
 
-The required ordering is reader < companion rail/sheet < companion floating controls < Jupyter inline AI. Shared dialogs and menus retain their normal layer; only companion-owned portals opt into the elevated overlay token while the immersive reader is active.
+The required ordering is reader < paper notes dock < companion rail/sheet < companion floating controls < Jupyter inline AI. Shared dialogs and menus retain their normal layer; only companion-owned portals opt into the elevated overlay token while the immersive reader is active.
 
 ## Notebook tree key-note gem (SN-229)
 

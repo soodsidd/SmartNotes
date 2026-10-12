@@ -2,10 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import * as cheerio from "cheerio";
 import { readPage } from "./pages";
-import { resolveVaultPath, toVaultRelativePath } from "./paths";
+import { resolveVaultPath, siblingAssetDirectory, toVaultRelativePath } from "./paths";
 import { formatNotebookContext, readNotebookContext } from "./jupyter-notebook";
 import { readPdfAnnotations } from "./pdf-annotations";
 import { extractPdfPageTextItems } from "./pdf-text-geometry";
+import { isBibliographyPath } from "@/lib/papers";
 import {
   collectPdfHighlightQuoteTargets,
   formatPdfAnnotationCompanionContext,
@@ -42,6 +43,8 @@ export const COMPANION_CONTEXT_LIMITS = {
   maxHighlightQuoteChars: 280,
   /** Bound on how many distinct pages get positioned-text extraction for quotes. */
   maxHighlightQuotePages: 20,
+  /** SN-281: paper notes included when the open paper is not the current page. */
+  maxPaperNotesChars: 20_000,
 } as const;
 
 async function getPdfParser(): Promise<PdfParserConstructor | null> {
@@ -656,6 +659,80 @@ async function buildPdfContext(pagePath: string, html: string, options: PdfConte
   return lines.join("\n");
 }
 
+/**
+ * SN-281: the paper reading shell (PDF | paper notes | Companion) gives the
+ * agent the whole paper object: identity, notes, and every attached PDF, with
+ * the one open in the reader marked. PDF text for the open page follows in the
+ * PDF block; other attachments are listed with paths for pdf_read_pages.
+ */
+export function formatOpenPaperContext(input: {
+  path: string;
+  title: string;
+  paperId?: string | null;
+  notesHtml?: string | null;
+  pdfs: Array<{ href: string; name: string }>;
+  /** SN-282: other files in the paper's assets (images, unlinked PDFs). */
+  attachments?: string[];
+  activePdfHref?: string | null;
+  currentPage?: number;
+  pageCount?: number;
+}): string {
+  const lines = [
+    "## Open paper (Bibliography)",
+    input.activePdfHref
+      ? "The owner is reading this paper in the paper reading shell: PDF reader with the paper's notes docked beside it."
+      : "The owner has this Bibliography paper open. You can read and edit everything in it: notes (page tools on the path below), attached PDFs, and other attachments.",
+    `Title: ${input.title}`,
+    `Path: ${input.path}`,
+  ];
+  if (input.paperId) lines.push(`Paper id: ${input.paperId}`);
+  lines.push("", `### Attached PDFs (${input.pdfs.length})`);
+  if (!input.pdfs.length) lines.push("[No PDFs are attached to this paper's notes.]");
+  const active = input.activePdfHref?.toLowerCase();
+  for (const pdf of input.pdfs) {
+    const open = active && pdf.href.toLowerCase() === active;
+    const position = open && input.currentPage
+      ? `, page ${input.currentPage}${input.pageCount ? ` of ${input.pageCount}` : ""}`
+      : "";
+    lines.push(`- ${pdf.name} — ${pdf.href}${open ? ` (open in reader${position})` : ""}`);
+  }
+  if (input.pdfs.length) {
+    lines.push("Use pdf_read_pages / pdf_page_count with these paths to read any attached PDF beyond the context below.");
+  }
+  if (input.attachments?.length) {
+    lines.push("", `### Other attachments (${input.attachments.length})`);
+    for (const attachment of input.attachments) lines.push(`- ${attachment}`);
+  }
+  if (input.notesHtml !== undefined && input.notesHtml !== null) {
+    const notes = input.notesHtml.trim();
+    const max = COMPANION_CONTEXT_LIMITS.maxPaperNotesChars;
+    lines.push("", "### Paper notes");
+    if (!notes) {
+      lines.push("[The paper's notes are empty.]");
+    } else {
+      lines.push("```html", notes.slice(0, max), "```");
+      if (notes.length > max) {
+        lines.push(`[Paper notes truncated: showing ${max} of ${notes.length} characters. Use page_get on ${input.path} for the rest.]`);
+      }
+    }
+  } else {
+    lines.push("", "Paper notes: the current page context above is this paper's notes.");
+  }
+  return lines.join("\n");
+}
+
+async function listPaperAttachments(paperPagePath: string, linked: string[]): Promise<string[]> {
+  const directory = siblingAssetDirectory(toVaultRelativePath(paperPagePath));
+  const { absolutePath } = resolveVaultPath(directory, "section");
+  const entries = await fs.readdir(absolutePath, { withFileTypes: true }).catch(() => []);
+  const known = new Set(linked.map((href) => href.toLowerCase()));
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => `${directory}/${entry.name}`)
+    .filter((href) => !known.has(href.toLowerCase()))
+    .sort();
+}
+
 async function buildNotebookContext(
   pagePath: string,
   focus: { index?: number; cellId?: string } = {}
@@ -686,12 +763,36 @@ export async function buildCompanionPageContext(input: {
   pdfPageCount?: number;
   activeJupyterCellIndex?: number;
   activeJupyterCellId?: string;
+  /** SN-281: canonical Bibliography paper open in the paper reading shell. */
+  paperPath?: string;
 }) {
   const base = input.basePageContext.trim();
   const blocks = [base].filter(Boolean);
+  // SN-282: a paper open as an ordinary page (notes mode) is also an open paper.
+  const paperPath = input.paperPath && isBibliographyPath(input.paperPath)
+    ? input.paperPath
+    : isBibliographyPath(toVaultRelativePath(input.path)) ? input.path : undefined;
 
   try {
-    const page = await readPage(input.path);
+    // In the paper reading shell, PDFs resolve against the paper even when the
+    // host page is a referring page that opened it through an inline chip.
+    const page = await readPage(paperPath ?? input.path);
+    if (paperPath) {
+      const activeHref =
+        input.activePdfHref ? normalizePdfHref(page.path, input.activePdfHref) : null;
+      const pdfs = findEmbeddedPdfReferences(page.path, page.body);
+      blocks.push(formatOpenPaperContext({
+        path: page.path,
+        title: page.title,
+        paperId: typeof page.metadata.paper_id === "string" ? page.metadata.paper_id : null,
+        notesHtml: page.path === input.path ? undefined : page.body,
+        pdfs,
+        attachments: await listPaperAttachments(page.path, pdfs.map((pdf) => pdf.href)),
+        activePdfHref: activeHref,
+        currentPage: input.pdfPage,
+        pageCount: input.pdfPageCount,
+      }));
+    }
     const pdfContext = await buildPdfContext(page.path, page.body, {
       pdfChunkOffset: input.pdfChunkOffset,
       pdfMaxChars: input.pdfMaxChars,

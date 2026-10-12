@@ -52,6 +52,13 @@ const ALLOWED_TOOLS = new Set([
   // notebook.ipynb and preserve the server-owned reload event path.
   "jupyter_notebook_context",
   "jupyter_cell_edit",
+  // SN-282 Bibliography paper tools. The PDF download runs on the server, so a
+  // network-less sandbox can still attach a paper PDF through this bridge.
+  "paper_list",
+  "paper_create",
+  "paper_reference_add",
+  "paper_remove",
+  "paper_attach_pdf",
   // SN-258 project-workspace operations. The server dispatcher routes these
   // to capability-authenticated /api/workspace/* endpoints, never vault tools.
   "workspace_source_list",

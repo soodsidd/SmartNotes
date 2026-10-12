@@ -117,6 +117,72 @@ title: Seed
     });
   });
 
+  it("gives the paper reading shell the whole paper: notes, every attached PDF, and the open page", async () => {
+    await withVaultFixture(async (vaultRoot) => {
+      mockPdfText = "WHOLE DOCUMENT TEXT MUST NOT BE READ";
+      mockPdfTotalPages = 9;
+      mockPdfPages.set(3, "Scaled dot-product attention on page three.");
+      const id = "0b7a3c1e-4f2d-4a8b-9c3d-2e1f0a9b8c7d";
+      const assets = path.join(vaultRoot, ".bibliography", `${id}.assets`);
+      await fs.mkdir(assets, { recursive: true });
+      await fs.writeFile(path.join(assets, "main.pdf"), "mock pdf");
+      await fs.writeFile(path.join(assets, "supplement.pdf"), "mock pdf");
+      await fs.writeFile(
+        path.join(vaultRoot, ".bibliography", `${id}.html`),
+        `---\ntitle: Attention Is All You Need\npaper_id: ${id}\n---\n<p>Key claim: attention suffices.</p>` +
+          `<a href="/vault/.bibliography/${id}.assets/main.pdf">main.pdf</a>` +
+          `<a href="/vault/.bibliography/${id}.assets/supplement.pdf">supplement.pdf</a>`,
+        "utf8"
+      );
+      await fs.writeFile(
+        path.join(vaultRoot, "Notebook", "Section", "seed.html"),
+        `---\ntitle: Seed\n---\n<div data-type="paper-reference" data-paper-id="${id}"></div>`,
+        "utf8"
+      );
+
+      // Opened through an inline chip: the host page is the referring page.
+      const context = await buildCompanionPageContext({
+        path: "Notebook/Section/seed.html",
+        basePageContext: "Referring page body",
+        activePdfHref: `/vault/.bibliography/${id}.assets/main.pdf`,
+        pdfPage: 3,
+        pdfPageCount: 9,
+        paperPath: `.bibliography/${id}.html`,
+      });
+
+      expect(context.pageContext).toContain("## Open paper (Bibliography)");
+      expect(context.pageContext).toContain("Title: Attention Is All You Need");
+      expect(context.pageContext).toContain(`Paper id: ${id}`);
+      expect(context.pageContext).toContain("Key claim: attention suffices.");
+      expect(context.pageContext).toContain(`main.pdf — .bibliography/${id}.assets/main.pdf (open in reader, page 3 of 9)`);
+      expect(context.pageContext).toContain(`supplement.pdf — .bibliography/${id}.assets/supplement.pdf`);
+      expect(context.pageContext).toContain("pdf_read_pages");
+      expect(context.pageContext).toContain("Scaled dot-product attention on page three.");
+      expect(context.pageContext).not.toContain("WHOLE DOCUMENT TEXT MUST NOT BE READ");
+
+      // Opened from the paper itself: notes are already the base page context.
+      const own = await buildCompanionPageContext({
+        path: `.bibliography/${id}.html`,
+        basePageContext: "<p>Key claim: attention suffices.</p>",
+        paperPath: `.bibliography/${id}.html`,
+      });
+      expect(own.pageContext).toContain("the current page context above is this paper's notes");
+      expect(own.pageContext.match(/Key claim: attention suffices\./g)).toHaveLength(1);
+    });
+  });
+
+  it("ignores a non-Bibliography paperPath", async () => {
+    await withVaultFixture(async (vaultRoot) => {
+      await fs.writeFile(path.join(vaultRoot, "Notebook", "Section", "seed.html"), `---\ntitle: Seed\n---\n<p>Body</p>`, "utf8");
+      const context = await buildCompanionPageContext({
+        path: "Notebook/Section/seed.html",
+        basePageContext: "Base",
+        paperPath: "Notebook/Section/seed.html",
+      });
+      expect(context.pageContext).not.toContain("Open paper");
+    });
+  });
+
   it("never falls back to whole-document text when live reader href is not in saved page HTML", async () => {
     await withVaultFixture(async (vaultRoot) => {
       mockPdfText = "WHOLE DOCUMENT TEXT MUST NOT BE READ";

@@ -84,6 +84,8 @@ export interface CompanionPageContextOptions {
   activeJupyterCellIndex?: number;
   /** Stable nbformat id for the active cell, when live focus reports it. */
   activeJupyterCellId?: string;
+  /** SN-281: canonical Bibliography paper open in the paper reading shell. */
+  paperPath?: string;
 }
 
 /** Builds page context plus first-class page assets/notebook context for a companion turn. */

@@ -1844,6 +1844,8 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
       `- Read exactly one PDF page when its href is known: { "tool": "pdf_read_page", "args": { "href": "/vault/Notebook/Section/page.assets/document.pdf", "page": 7 } }`,
       `- Read up to 3 surrounding PDF pages: { "tool": "pdf_read_pages", "args": { "href": "/vault/Notebook/Section/page.assets/document.pdf", "startPage": 6, "endPage": 8 } }`,
       `- Get page count without extracting text: { "tool": "pdf_page_count", "args": { "href": "/vault/Notebook/Section/page.assets/document.pdf" } }`,
+      `- Find or create a Bibliography paper and reference it from this page: { "tool": "paper_list", "args": { "query": "title words" } }, then { "tool": "paper_reference_add", "args": { "path": "${notePath}", "paper": "<paper id>" } } or { "tool": "paper_create", "args": { "title": "Paper title", "referenceFromPath": "${notePath}" } }`,
+      `- Download a PDF onto a paper: { "tool": "paper_attach_pdf", "args": { "paper": "<paper id or .bibliography path>", "url": "https://arxiv.org/pdf/1706.03762" } }; remove a paper (clears references first): { "tool": "paper_remove", "args": { "paper": "<paper id>" } }`,
       `- List sibling pages: { "tool": "page_siblings", "args": { "path": "${notePath}" } }`,
       `- Get parent page: { "tool": "page_parent", "args": { "path": "${notePath}" } }`,
       `- Search vault: { "tool": "page_search", "args": { "query": "search term" } }`,

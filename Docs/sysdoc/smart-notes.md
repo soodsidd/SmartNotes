@@ -834,6 +834,23 @@ The reliable shell also has an in-place refresh-note path. The top-bar sync icon
 - **Optimistic tree selection (SN-53).** Sidebar clicks set `activePagePath` immediately before the async leave/save work finishes, so the active row highlights without waiting on flush/snapshot. Rows expose `data-selected="true"` and `aria-current="page"` for tests and assistive tech.
 - **Local tree patch on page create (SN-53).** Creating a page appends the returned `ApiPageDocument` to in-memory tree state and selects it directly. Do not follow create with a full `GET /api/vault` refresh ? that caused visible shell flash and unnecessary latency.
 
+### Bibliography paper identity and references (SN-279)
+
+**Plain English:** A paper is a normal Smart Notes text page that lives once in the Bibliography library. Any page can reference it; the reference shows up as a child row under that page and as a chip in the page body that expands the same live notes inline. Editing from any place edits the one canonical paper, and renaming or moving pages never breaks the link because the link is a permanent ID, not a file path.
+
+**Storage and identity.** Each paper is `.bibliography/<UUID>.html` with immutable `paper_id` frontmatter and `note_type: text`. The normal page, asset, comment, annotation, Companion and version APIs operate on this canonical path. Paper rename changes the title while keeping the UUID/path; creating pages/sections in, renaming, or moving ownership into or out of Bibliography is rejected (`BIBLIOGRAPHY_OWNERSHIP`). A referenced paper cannot be deleted until its references are removed (`PAPER_REFERENCED`); Companion's `paper_remove` (SN-282) clears them first, then deletes.
+
+**APIs.** `POST /api/papers` creates a canonical paper; `GET /api/papers` lists papers with their current referring notebook/page locations. The vault tree includes the library as a hidden `.bibliography` notebook when populated; the sidebar filters it out of the notebook list and renders the always-available Bibliography disclosure (search, title/recent sort, referring notebook/page filters, New paper).
+
+**References.** A reference is a dedicated HTML node: `<div data-type="paper-reference" data-paper-id="UUID"></div>` (Tiptap `paperReference`, atom block). The referring HTML is authoritative; virtual child rows (`VaultPage.paperReference`) and reverse filters are derived from tree page content, deduplicated per parent, never nestable, and never persist a second body. Moving/renaming a referring page, section or notebook carries the unchanged UUID. Removing the final reference removes the child row but leaves the canonical notes. Existing ingest `<stem>.ref.json` files remain bibliographic ingest metadata and are not paper links.
+
+**Inline expansion.** The chip expands, in document flow, a same-origin iframe of the standard shell at `/?page=<canonical>&paperInline=1` (full page capabilities; no copied body). Inline mode hides the sidebar rail, does not persist last-active page/ui-state, and defers SW update prompts to the host. Collapse/Back/Remove and parent navigation/save first run a `paper-flush` → `paper-flushed` postMessage save handshake (origin- and source-checked, 15s timeout); a failed save keeps the editor open. A ProseMirror filter blocks deleting a chip whose inline editor is open. Clean canonical views adopt external paper saves automatically; dirty views use the normal reload/conflict flow.
+
+### Lessons Learned
+
+- Each chip node view owns its own React root (`createRoot`) rather than a Tiptap `ReactNodeViewRenderer` portal; portals are bound to the `EditorContent` instance, and shell re-renders could orphan a live chip (stale DOM, lost state).
+- Tree reloads that were fetched before a local edit/save are stale for the open draft. `LoadTreeOptions.draftSnapshot` makes `applyVaultPayload` keep the tree update but skip re-hydrating a draft that changed since the fetch began (first-hydration refetch and live refresh both pass it). Without this, a reference inserted right after page load was overwritten and autosaved away.
+
 ## 6. Rich Text Editor
 
 **Plain English:** When you open a page, you see a rich editor — not a raw Markdown editor. You can bold text, add headings, create tables, write equations, collapse sections, and check off task items, all by clicking buttons or using keyboard shortcuts. Under the hood, vault text pages persist **HTML**, so the file on disk keeps the real rich layout rather than round-tripping through Markdown.
@@ -1244,9 +1261,56 @@ Builder functions: `appendAiTimelineText()`, `appendAiTimelineReasoning()`, `app
 
 `ReliableNotebookShell` creates one shared `AiSidebar` element and one prop bundle. On wide screens its containing rail changes from the in-layout docked presentation to a fixed over-reader presentation; on narrow screens the same element stays inside `MobileAiSheet`, whose layer rises above the reader. The PDF reader does not own a second companion mount or a PDF-only settings store.
 
-The immersive layer order is defined by design-system tokens: `--z-pdf-reader` (300), `--z-companion-rail` (350), `--z-companion-overlay` (400), and `--z-jupyter-inline-ai` (425, SN-249) for the Jupyter inline-AI overlay described under Jupyter inline AI fast lane. `AiSidebar` opts its own portaled settings dialog and dropdown positioners into the overlay token only while the reader is active. Shared dialogs and menus keep their default layer everywhere else. This avoids both prop drift from duplicate mounts and body-portal controls appearing beneath the reader.
+The immersive layer order is defined by design-system tokens: `--z-pdf-reader` (300), `--z-paper-notes` (320, SN-281 paper notes dock), `--z-companion-rail` (350), `--z-companion-overlay` (400), and `--z-jupyter-inline-ai` (425, SN-249) for the Jupyter inline-AI overlay described under Jupyter inline AI fast lane. `AiSidebar` opts its own portaled settings dialog and dropdown positioners into the overlay token only while the reader is active. Shared dialogs and menus keep their default layer everywhere else. This avoids both prop drift from duplicate mounts and body-portal controls appearing beneath the reader.
 
 **Over-reader width control (SN-161):** The over-reader rail is `position: fixed` but is no longer a fixed `min(24rem,42vw)` lock — it renders the same `ai-sidebar-resize-handle` and applies the same persisted `aiSidebarWidth` with the SN-46 clamps (`AI_SIDEBAR_MIN_WIDTH` … `getAiSidebarMaxWidth`, max 80% viewport), so width tracks the pointer over the PDF and carries between the notebook and over-reader presentations via one storage key. Both the tree and AI resize handlers write the rail width directly to the DOM per `requestAnimationFrame` during the drag and commit React state once on `pointerup` (with `setPointerCapture`), instead of calling `setAiSidebarWidth` on every `pointermove`. The old per-frame full-shell re-render left the AI rail edge trailing the pointer as a ghosted second divider; direct 1:1 DOM tracking gives a single clean divider. The SN-197 single shared mount and `--z-companion-rail` layering are unchanged.
+
+### Paper reading shell (SN-281)
+
+**Plain English:** When you open a PDF that belongs to a Bibliography paper, the reader no longer takes the whole screen. The PDF is on the left and the paper's own notes are docked on the right, so you can read and write side by side. You can drag the divider and the app remembers the width. Companion still opens on the right, but it floats above the PDF and notes instead of squeezing them, and closing it leaves both exactly where they were. While you read, Companion is given the whole paper: its notes, every attached PDF, and the page you are on.
+
+**When it activates.** `PdfAttachmentTarget.paperPath` marks a PDF as owned by a canonical paper. `openPdfReader` in `ReliableNotebookShell` sets it when the open draft is a Bibliography path. Inside an embedded paper frame (`paperInline=1`, the SN-279 chip or this dock), opening a PDF does not mount a reader in the frame. The frame posts `paper-open-pdf` (`{ paperPath, target }`, validated by `isPaperOpenPdfMessage`) to the top shell. The host flushes a source chip frame via the SN-279 save handshake and then opens the reader with `paperPath`. `paperPath` persists with the reader session (sessionStorage), so a reload restores the shell. Embedded frames never restore a reader session, because they share the tab's sessionStorage. Reopening the same href keeps the retained EmbedPDF host and only updates `paperPath`.
+
+**Layout (`src/lib/paper-reading-shell.ts`).** `paperShellLayout({ viewportWidth, notesWidth, notesOpen, overlayOpen })` is pure and takes no Companion input. That makes non-displacement structural. Modes:
+- `split` (viewport ≥ 680px): the reader gets `insetRight = notesWidth` (style `right`) and is non-modal (`role="region"`).
+- `overlay` (narrow): a full-width notes layer over the PDF. It starts hidden on every open and is reached from the reader's Notes toggle.
+- `hidden`: the PDF gets the whole viewport.
+
+Width is clamped to notes ≥ 320px and PDF ≥ 360px (default 440px). It is persisted unclamped in `localStorage["smart-notes-paper-notes-width"]`, and the wide-screen open state is persisted in `smart-notes-paper-notes-open`. `PaperNotesDock` is portaled to `body` on `--z-paper-notes` (320). It has a pointer separator (rAF DOM writes during drag, one commit on pointerup, iframe pointer-events off while dragging; same pattern as SN-161) and a keyboard separator (Arrow ±24px, Home/End).
+
+**Notes frame and saves.** The dock embeds `/?page=<paper>&paperInline=1&paperDock=1`, the SN-279 same-origin standard shell. Before the frame mounts, the host flushes its own save so the frame loads the latest paper. The frame mounts lazily the first time notes are shown, and stays mounted while hidden so unsaved state survives toggling. Each embedded frame posts `paper-frame-ready` once its flush listener is live. Closing the reader awaits `paper-flush`/`paper-flushed` for a live dock frame; on failure the reader and notes stay open with an alert. The host's clean canonical draft adopts the frame's saves through the existing SN-279 follow logic. The frame's Companion button posts `paper-toggle-companion`, so the host owns the only Companion.
+
+**Companion overlay.** This is unchanged from SN-197: over the reader the single shared `AiSidebar` rail is `position: fixed` on `--z-companion-rail` (350), and narrow screens use `MobileAiSheet`. Layer order: reader 300 < paper notes 320 < companion rail 350 < companion floating 400. Dismissing Companion restores nothing, because neither frame ever moved.
+
+**Companion context.** Each turn passes `paperPath` to `/api/companion/context`. `buildCompanionPageContext` then resolves PDFs against the paper, even when the host page is a referring page, and prepends `## Open paper (Bibliography)` via `formatOpenPaperContext`. That block contains:
+- title, path, and paper id;
+- every attached PDF, with the reader's PDF marked `open in reader, page N of M` and a pointer to `pdf_read_pages`;
+- the paper notes HTML (up to 20,000 chars), included only when the host page is not the paper itself.
+
+The existing current-page PDF text and annotation blocks follow. A non-Bibliography `paperPath` is ignored. Since SN-282 the same block is added when the paper itself is the current page (notes mode, no `paperPath`), and it lists other `.assets` attachments.
+
+**Evidence.** `tests/paper-reading-shell.test.tsx` covers layout, persistence, z-order, non-displacement, the dock, and message validation. `tests/companion-context.test.ts` covers the paper context. `e2e/sn-281-paper-reading-shell.spec.ts` runs on desktop and mobile.
+
+### Companion paper tools (SN-282)
+
+**Plain English:** Companion can now manage papers for you. From any article it can find or create a paper in the Bibliography and link it, so the paper shows up under that article. It can download a PDF from a web link and attach it to a paper, and the result is the same as if you had dropped the PDF in yourself. It can also delete a paper. Before it deletes, it removes every link to that paper so no page is left with a broken chip. When a paper is open, as notes or in the PDF reader, Companion sees the whole paper: notes, PDFs, and other attachments.
+
+**Tools.** These are a `paper` group on the existing `POST /api/agent/vault` dispatcher (`src/server/vault/paper-tools.ts`). There is no parallel paper API. The UI uses the same primitives: `createPaper`, `savePage`, `uploadPageAsset`, `deletePage`. A `paper` argument is either a paper id or a `.bibliography/<id>.html` path (a `/vault/` prefix is accepted). Anything else is `NOT_A_PAPER`.
+- `paper_list { query? }` returns id, path, title, and the pages that reference the paper. Use it to find a paper before creating a duplicate.
+- `paper_create { title, referenceFromPath? }` creates a canonical paper. With `referenceFromPath`, it also appends the SN-279 reference node to that page, which produces the virtual child row.
+- `paper_reference_add { path, paper }` appends a reference to an existing paper. It is idempotent: at most one reference per page. A paper cannot reference itself.
+- `paper_remove { paper }` is the defined safe removal. First it strips every reference node for that id from each referring page (`removePaperReferences`). Each page is snapshotted first, so `page_restore` can undo it. Then it deletes the paper and its `.assets` folder. The result lists the cleared pages and emits a `file_updated` event for each one (`filesUpdated` side effect), so open editors follow. The SN-279 `PAPER_REFERENCED` guard on plain `page_delete` is unchanged.
+- `paper_attach_pdf { paper, url, fileName? }` downloads the PDF on the server, stores it with `uploadPageAsset` in the paper's `.assets` folder, and appends the exact chip markup the editor's `FileAttachment` node saves. That makes it durable and openable in the SN-281 reading shell like a manual upload. A new paper's empty `<p></p>` placeholder is replaced rather than appended under.
+  - Download guards: only http(s); no localhost, private, link-local, or CGNAT addresses, checked after DNS resolution and again on every redirect hop (max 5).
+  - Limits: 50 MB cap (streamed), 60 s timeout.
+  - The body must start with `%PDF-`. Landing pages return `NOT_A_PDF` with a hint to use the direct link.
+  - File name comes from `fileName`, then Content-Disposition, then the URL basename. `.pdf` is enforced and a unique suffix is added on collision.
+
+**Discovery.** Tool definitions are in `VAULT_TOOL_DEFINITIONS` and the vault tools prompt workflow. They are also in `DEFAULT_SYSTEM_PROMPT` ("Bibliography papers (SN-282)") and in the per-turn "Recommended operations" block in `ai-sidebar.ts`, which is injected every turn so it survives stale saved prompts. The sandboxed companion bridge allowlist includes them too. The download runs on the server, so a sandbox with no network can still attach PDFs.
+
+**Paper-scoped context.** `buildCompanionPageContext` treats a Bibliography page opened as an ordinary page (notes mode) as an open paper, even without `paperPath`. The `## Open paper (Bibliography)` block is described in SN-281. It now also lists `### Other attachments`: files in the paper's `.assets` folder that are not linked PDFs, such as images or unlinked PDFs.
+
+**Evidence.** `tests/paper-tools.test.ts` covers the tool registry; create from an article, reference, and find; removal with reference clearing, snapshots, and asset removal; download and attach; URL, redirect, size, and non-PDF guards; and notes-mode context. `evidence/SN-282/` holds a real-server tool flow (arXiv 1706.03762) and desktop/mobile screenshots.
 
 ### Lessons Learned
 
