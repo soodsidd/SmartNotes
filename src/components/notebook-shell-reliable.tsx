@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
 import { toast } from "sonner";
-import { AiSidebar, MobileAiSheet, type AiComposerAttachment, type AiComposerSnapshot, type AiSidebarMessage } from "@/components/ai-sidebar";
+import { AiSidebar, MobileAiSheet, type AiComposerAttachment, type AiComposerFailedSend, type AiComposerSnapshot, type AiSidebarMessage } from "@/components/ai-sidebar";
 import { SearchModal } from "@/components/search-modal";
 import { Button } from "@/components/ui/button";
 import {
@@ -197,6 +197,7 @@ import {
   buildAiPageContext,
   buildAiParentContextMarkdown,
   buildAiSidebarTraceEvent,
+  isDuplicateTurnIdRejection,
   AI_SIDEBAR_DEFAULT_WIDTH,
   AI_SIDEBAR_MIN_WIDTH,
   buildAiTurnRequest,
@@ -387,6 +388,36 @@ import {
 
 // SN-80: companion thread <-> sidecar message conversion. Streaming flags and
 // transient state are dropped; message history is the authoritative record.
+/**
+ * SN-287: a composer send that never reached an accepted server-owned turn.
+ * Keeps the original turn identity so Retry re-sends under the SAME turn_id:
+ * if the first attempt was in fact accepted, the server rejects the reuse with
+ * 409 and the client reattaches instead of launching a duplicate turn.
+ */
+type AiFailedSendRecord = AiComposerFailedSend & {
+  turnId: string | null;
+  userMessageId: string | null;
+  assistantMessageId: string | null;
+  threadKey: string;
+};
+
+type AiSubmitOptions = {
+  /** "composer" sends own their attachments and are retained on failure. */
+  origin?: "composer" | "app";
+  retryOf?: AiFailedSendRecord | null;
+};
+
+function revokeComposerAttachmentUrls(attachments: AiComposerAttachment[]) {
+  if (typeof URL === "undefined") {
+    return;
+  }
+  attachments.forEach((attachment) => {
+    if (attachment.kind === "image") {
+      URL.revokeObjectURL(attachment.url);
+    }
+  });
+}
+
 function toStoredCompanionMessages(messages: AiSidebarMessage[]): CompanionStoredMessage[] {
   return messages
     .filter((message) => message.role === "user" || message.role === "assistant")
@@ -763,6 +794,19 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [aiComposerResetKey, setAiComposerResetKey] = React.useState(0);
   const [aiComposerInjectKey, setAiComposerInjectKey] = React.useState(0);
   const aiComposerSnapshotRef = React.useRef<AiComposerSnapshot>({ draft: "", attachments: [] });
+  const [aiFailedSend, setAiFailedSendState] = React.useState<AiFailedSendRecord | null>(null);
+  const aiFailedSendRef = React.useRef<AiFailedSendRecord | null>(null);
+  const setAiFailedSend = React.useCallback(
+    (next: AiFailedSendRecord | null, options: { revoke?: boolean } = {}) => {
+      const previous = aiFailedSendRef.current;
+      if (previous && previous !== next && options.revoke) {
+        revokeComposerAttachmentUrls(previous.attachments);
+      }
+      aiFailedSendRef.current = next;
+      setAiFailedSendState(next);
+    },
+    []
+  );
   const [aiScope, setAiScope] = React.useState<AiScope>("whole");
   const [keepConversation, setKeepConversation] = React.useState(false);
   const [aiSectionContext, setAiSectionContext] = React.useState<EditorSectionContext | null>(null);
@@ -956,8 +1000,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   const resetAiComposer = React.useCallback(() => {
     clearAiComposerSnapshot();
+    // SN-287: a failed send belongs to the thread it was typed in.
+    setAiFailedSend(null, { revoke: true });
     setAiComposerResetKey((current) => current + 1);
-  }, [clearAiComposerSnapshot]);
+  }, [clearAiComposerSnapshot, setAiFailedSend]);
 
   // SN-254: Answer-comment prose → open Companion with a prefilled composer draft.
   const handleJupyterAskInCompanion = React.useCallback(
@@ -4739,7 +4785,18 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     }
   }, [captureDialog, flushSave, loadTree]);
 
-  const handleAiSubmit = React.useCallback(async (composerPrompt: string, attachments: AiComposerAttachment[] = []) => {
+  const handleAiSubmit = React.useCallback(async (
+    composerPrompt: string,
+    attachments: AiComposerAttachment[] = [],
+    options: AiSubmitOptions = {}
+  ) => {
+    const origin = options.origin ?? "app";
+    const retryOf = options.retryOf ?? null;
+    if (origin === "composer" && !retryOf) {
+      // SN-287: the composer handed its draft + attachments to this send; the
+      // stored snapshot no longer owns them (and must not revoke their URLs).
+      aiComposerSnapshotRef.current = { draft: "", attachments: [] };
+    }
     const textAttachments = attachments.filter(
       (attachment): attachment is Extract<AiComposerAttachment, { kind: "text" | "markdown" | "html" }> =>
         attachment.kind === "text" || attachment.kind === "markdown" || attachment.kind === "html"
@@ -4756,26 +4813,57 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
     const hasUploadedAttachment = imageAttachments.length > 0 || pdfAttachments.length > 0;
 
-    if (
-      !draft ||
-      (activeProjectWorkspace && !workspaceSession?.capability) ||
-      (!prompt.trim() && !hasUploadedAttachment) ||
-      activeTurnIdRef.current
-    ) {
+    if (!prompt.trim() && !hasUploadedAttachment) {
       return;
     }
 
     const submitScopeKey = companionScopeKeyRef.current;
-    const submitPath = companionStorePathRef.current || draft.path;
+    const submitPath = companionStorePathRef.current || draft?.path || "";
     const submitThreadKey = `${submitPath}::${submitScopeKey}`;
+    // SN-287: a retry may only reuse its turn identity on the thread it failed on.
+    const retryIdentity = retryOf && retryOf.threadKey === submitThreadKey && retryOf.turnId
+      ? retryOf
+      : null;
+    const retainFailedSend = (error: string, turnIdentity: {
+      turnId: string | null;
+      userMessageId: string | null;
+      assistantMessageId: string | null;
+    }) => {
+      if (origin !== "composer") {
+        return;
+      }
+      setAiFailedSend({
+        id: turnIdentity.turnId ?? `failed-${Date.now()}`,
+        prompt: composerPrompt,
+        attachments,
+        error,
+        threadKey: submitThreadKey,
+        ...turnIdentity,
+      }, { revoke: true });
+    };
+
+    if (
+      !draft ||
+      (activeProjectWorkspace && !workspaceSession?.capability) ||
+      activeTurnIdRef.current
+    ) {
+      // Nothing reached the server: keep the draft so it is never silently lost.
+      retainFailedSend(
+        activeTurnIdRef.current
+          ? "Smart Notes AI is still working on the previous reply."
+          : "Smart Notes AI is not available for this page.",
+        retryIdentity ?? { turnId: null, userMessageId: null, assistantMessageId: null }
+      );
+      return;
+    }
+
     const submitMessages =
       aiMessagesBindingKeyRef.current === submitThreadKey
         ? aiMessagesRef.current
         : [];
-    clearAiComposerSnapshot();
 
-    const userMessageId = `user-${Date.now()}`;
-    const assistantMessageId = `assistant-${Date.now()}`;
+    const userMessageId = retryIdentity?.userMessageId ?? `user-${Date.now()}`;
+    const assistantMessageId = retryIdentity?.assistantMessageId ?? `assistant-${Date.now()}`;
     let pageContext = buildAiPageContext({
       scope: aiScope,
       pageContent: draft.content,
@@ -4828,6 +4916,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       } : null,
     });
     const history = submitMessages
+      // SN-287: a retried attempt's own (failed) messages are not history.
+      .filter((message) => message.id !== userMessageId && message.id !== assistantMessageId)
       .filter((message) => message.role === "user" || message.role === "assistant")
       .map((message) => ({
         role: message.role,
@@ -4844,7 +4934,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     // finds it from any page under the subtree (and across navigation/teardown).
     const submitGeneration = aiSubmitGenerationRef.current + 1;
     aiSubmitGenerationRef.current = submitGeneration;
-    const turnId = safeRandomUUID();
+    const turnId = retryIdentity?.turnId ?? safeRandomUUID();
     const pointer: CompanionActiveTurn = {
       turnId,
       assistantMessageId,
@@ -4952,7 +5042,20 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         body: turnRequestBody,
       });
 
-      const payload = (await response.json()) as { error?: string; turn_id?: string; chat_id?: string };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; turn_id?: string; chat_id?: string };
+      if (retryIdentity && isDuplicateTurnIdRejection(response.status, payload.error)) {
+        // SN-287: the earlier attempt WAS accepted (the server already owns this
+        // turn_id). Never start a second turn — attach to (or reconcile) the
+        // existing one through the durable-pointer path.
+        revokeComposerAttachmentUrls(attachments);
+        activeTurnIdRef.current = null;
+        activeTurnContextRef.current = null;
+        setAiTurnActive(false);
+        updateAiMessage(assistantMessageId, (message) => ({ ...message, isStreaming: false }));
+        reattachDiscoveryKeyRef.current = null;
+        await reattachOrReconcileTurn(submitPath, submitScopeKey, pointer);
+        return;
+      }
       if (!response.ok || payload.error) {
         throw new Error(payload.error ?? "Could not reach Smart Notes AI.");
       }
@@ -4961,6 +5064,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       if (acceptedTurnId !== turnId) {
         throw new Error("Companion turn identity was not accepted by the server.");
       }
+      // Accepted: the composer attachments' preview URLs are no longer needed.
+      revokeComposerAttachmentUrls(attachments);
     } catch (error) {
       await clearCompanionActiveTurnPointer(submitPath, submitScopeKey);
       // SN-211: the turn never launched — drop the closed-panel watcher so no
@@ -4974,16 +5079,61 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         activeTurnIdRef.current = null;
         activeTurnContextRef.current = null;
       }
+      const errorMessage = error instanceof Error ? error.message : "Could not reach Smart Notes AI.";
       if (submitGeneration === aiSubmitGenerationRef.current) {
         setAiTurnActive(false);
         updateAiMessage(assistantMessageId, (message) => ({
           ...message,
           isStreaming: false,
-          errorMessage: error instanceof Error ? error.message : "Could not reach Smart Notes AI.",
+          errorMessage,
         }));
+        // SN-287: keep the draft + attachments with the turn identity so Retry
+        // cannot duplicate a turn the server may already have accepted. Only for
+        // the thread still on screen; a cancelled send is not offered for retry.
+        if (
+          companionStorePathRef.current === submitPath &&
+          companionScopeKeyRef.current === submitScopeKey
+        ) {
+          retainFailedSend(errorMessage, { turnId, userMessageId, assistantMessageId });
+        } else if (origin === "composer") {
+          revokeComposerAttachmentUrls(attachments);
+        }
+      } else if (origin === "composer") {
+        revokeComposerAttachmentUrls(attachments);
       }
     }
-  }, [aiActiveModel, aiActiveProviderId, aiAssistantLabel, aiPageTreeContext, aiParentContextMarkdown, aiScope, aiScopeLabel, aiSectionMarkdown, clearAiComposerSnapshot, clearCompanionActiveTurnPointer, draft, pdfReader, pdfReaderOpen, persistCompanionActiveTurn, activeProjectWorkspace, updateAiMessage, vaultRoot, workspaceSession]);
+  }, [aiActiveModel, aiActiveProviderId, aiAssistantLabel, aiPageTreeContext, aiParentContextMarkdown, aiScope, aiScopeLabel, aiSectionMarkdown, clearCompanionActiveTurnPointer, draft, pdfReader, pdfReaderOpen, persistCompanionActiveTurn, activeProjectWorkspace, reattachOrReconcileTurn, setAiFailedSend, updateAiMessage, vaultRoot, workspaceSession]);
+
+  // SN-287: Retry re-sends the failed prompt/attachments under the original
+  // turn identity (see AiFailedSendRecord). Never runs while a turn is live.
+  const handleAiRetryFailedSend = React.useCallback(() => {
+    const failed = aiFailedSendRef.current;
+    if (!failed || activeTurnIdRef.current) {
+      return;
+    }
+    setAiFailedSend(null);
+    void handleAiSubmit(failed.prompt, failed.attachments, { origin: "composer", retryOf: failed });
+  }, [handleAiSubmit, setAiFailedSend]);
+
+  // SN-287: Edit moves the failed prompt back into the composer (which now owns
+  // the attachments) and drops the failed exchange from the transcript so it is
+  // neither shown twice nor sent as history.
+  const handleAiEditFailedSend = React.useCallback(() => {
+    const failed = aiFailedSendRef.current;
+    if (!failed) {
+      return;
+    }
+    setAiFailedSend(null);
+    if (failed.userMessageId || failed.assistantMessageId) {
+      setAiMessages((current) => {
+        const next = current.filter(
+          (message) => message.id !== failed.userMessageId && message.id !== failed.assistantMessageId
+        );
+        aiMessagesRef.current = next;
+        return next;
+      });
+    }
+  }, [setAiFailedSend]);
 
   const handleAiCancel = React.useCallback(() => {
     const currentTurnId = activeTurnIdRef.current;
@@ -5621,7 +5771,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     fastLaneModelLabel: fastLaneModel,
     onFastLaneProviderChange: (providerId: string) => void handleFastLaneProviderChange(providerId),
     onFastLaneModelChange: (providerId: string, model: string) => void handleFastLaneModelChange(providerId, model),
-    onSubmit: (prompt: string, attachments?: AiComposerAttachment[]) => void handleAiSubmit(prompt, attachments),
+    onSubmit: (prompt: string, attachments?: AiComposerAttachment[]) =>
+      void handleAiSubmit(prompt, attachments, { origin: "composer" }),
+    failedSend: aiFailedSend,
+    onRetryFailedSend: handleAiRetryFailedSend,
+    onEditFailedSend: handleAiEditFailedSend,
     onCancel: handleAiCancel,
     onScopeChange: setAiScope,
     onComposerSnapshot: handleAiComposerSnapshot,

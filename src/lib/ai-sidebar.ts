@@ -2217,3 +2217,59 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   document.body.removeChild(textarea);
   return copied;
 }
+
+// ─── SN-287: Composer Enter handling ─────────────────────────────────────────
+
+/**
+ * Keypress window (ms) after `compositionend` during which an Enter keydown is
+ * treated as the IME commit, not a send. Safari/WebKit fires the committing
+ * Enter keydown AFTER compositionend with `isComposing === false`.
+ */
+export const COMPOSER_COMPOSITION_COMMIT_GRACE_MS = 50;
+
+export type ComposerEnterAction = "submit" | "newline" | "hold" | "pass";
+
+/**
+ * SN-287: decide what an Enter keydown does in the Companion composer.
+ *   - "pass":    not a plain Enter we own (other key, IME composition commit) —
+ *                let the browser/IME handle it; never send.
+ *   - "newline": let the textarea insert a newline (Shift+Enter, or any Enter on
+ *                mobile, where only the Send button submits).
+ *   - "hold":    desktop Enter while a turn runs — swallow it so the follow-up
+ *                draft stays put; no second turn is launched.
+ *   - "submit":  desktop Enter on an idle composer.
+ */
+export function resolveComposerEnterAction(params: {
+  key: string;
+  shiftKey?: boolean;
+  isComposing?: boolean;
+  keyCode?: number;
+  /** ms since the last compositionend, or null when none is recent. */
+  msSinceCompositionEnd?: number | null;
+  mobile?: boolean;
+  turnActive?: boolean;
+}): ComposerEnterAction {
+  if (params.key !== "Enter") {
+    return "pass";
+  }
+  // 229 is the legacy "IME is processing this key" keyCode (Chrome/Android, old Safari).
+  if (params.isComposing || params.keyCode === 229) {
+    return "pass";
+  }
+  if (
+    typeof params.msSinceCompositionEnd === "number" &&
+    params.msSinceCompositionEnd >= 0 &&
+    params.msSinceCompositionEnd < COMPOSER_COMPOSITION_COMMIT_GRACE_MS
+  ) {
+    return "pass";
+  }
+  if (params.shiftKey || params.mobile) {
+    return "newline";
+  }
+  return params.turnActive ? "hold" : "submit";
+}
+
+/** SN-287: server rejection of a reused client turn id — proof the first send was accepted. */
+export function isDuplicateTurnIdRejection(status: number, error: string | undefined) {
+  return status === 409 && /turn_id already exists/i.test(error ?? "");
+}
