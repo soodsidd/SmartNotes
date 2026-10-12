@@ -335,7 +335,11 @@ Reports the currently deployed app build id for service-worker update detection.
 
 ### GET /api/search?q=\<query\>&limit=\<n\>
 
+**Plain English:** Search first looks through an in-memory copy of the vault kept in the browser, and only asks the server (this endpoint) when that copy finds nothing. Keeping that copy up to date must never slow down typing: editing a page updates only that page's search entry, and only when search is actually used or the editor is idle.
+
 Vault-wide fallback search over page title plus stripped HTML body content. The reliable shell uses this only when the in-memory Fuse index returns zero matches, so the UI can still search the full vault tree with centered excerpts from the first hit.
+
+**Client index contract (SN-288):** the in-memory index is a `VaultSearchIndexer` (`src/lib/search.ts`) held in a ref by `notebook-shell-reliable.tsx`, not rebuilt from `tree`. `sync(tree)` diffs by page object identity (`syncTreePage` keeps unchanged pages' identity), so only changed pages are re-stripped (`stripHtml`) and swapped into the Fuse collection with `remove`/`add`; removed paths drop out. The shell syncs inside the `searchIndex` memo only while search is open, which keeps the active page's live draft (patched into `tree` on every editor update) searchable. While search is closed it syncs on `requestIdleCallback` (falling back to a timeout) and the memo returns the stable `EMPTY_VAULT_SEARCH_INDEX`, so keystrokes do not recompute search results or the recent-pages list. Do not reintroduce a `[tree]` effect that calls `buildVaultSearchIndex` (now a one-shot helper for tests/callers without a live tree): it puts work proportional to the vault on every keystroke.
 
 **Query params:** `q` (required), `limit` (optional, default 20, max 50)
 **Response:** `{ results: SearchResult[] }`
