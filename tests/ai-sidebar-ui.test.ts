@@ -171,9 +171,10 @@ describe("Paste-to-attach", () => {
     expect(notebookShellSrc).toContain(
       "const hasUploadedAttachment = imageAttachments.length > 0 || pdfAttachments.length > 0;"
     );
-    expect(notebookShellSrc).toContain(
-      "if (!draft || (!prompt.trim() && !hasUploadedAttachment) || activeTurnIdRef.current)"
-    );
+    // SN-287: the empty-send guard is separate so a blocked (busy/unavailable)
+    // composer send is retained as a failed send instead of silently dropped.
+    expect(notebookShellSrc).toContain("if (!prompt.trim() && !hasUploadedAttachment) {");
+    expect(notebookShellSrc).toMatch(/!draft \|\|\s+\(activeProjectWorkspace && !workspaceSession\?\.capability\) \|\|\s+activeTurnIdRef\.current/);
   });
 
   it("keeps companion draft typing out of ReliableNotebookShell state", () => {
@@ -240,8 +241,10 @@ describe("Active turn composer state", () => {
     expect(SIDEBAR_SRC).toContain('data-turn-active={isTurnActive ? "true" : "false"}');
   });
 
-  it("locks the composer and shows Working… while isTurnActive", () => {
-    expect(SIDEBAR_SRC).toContain("const composerLocked = Boolean(disabled || isTurnActive || isAttaching)");
+  it("keeps the composer editable (SN-287) and shows Working… while isTurnActive", () => {
+    // SN-287: a running turn no longer locks the composer; only Send is swapped for Stop.
+    expect(SIDEBAR_SRC).toContain("const composerLocked = Boolean(disabled || isAttaching)");
+    expect(SIDEBAR_SRC).toContain("Draft a follow-up…");
     expect(SIDEBAR_SRC).toContain("Working…");
     expect(SIDEBAR_SRC).toContain("Attaching…");
     expect(SIDEBAR_SRC).toContain("disabled={composerLocked}");
@@ -254,9 +257,11 @@ describe("Active turn composer state", () => {
     expect(SIDEBAR_SRC).toContain("onClick={() => onCancel?.()}");
   });
 
-  it("does not submit on Enter while a turn is active", () => {
-    const enterGuards = SIDEBAR_SRC.match(/event\.key === "Enter" && !event\.shiftKey && !isTurnActive/g) ?? [];
-    expect(enterGuards.length).toBeGreaterThanOrEqual(2);
+  it("routes Enter through the composition-safe resolver on both composers (SN-287)", () => {
+    const handlers = SIDEBAR_SRC.match(/onKeyDown=\{handleComposerKeyDown\}/g) ?? [];
+    expect(handlers.length).toBe(2);
+    expect(SIDEBAR_SRC).toContain("turnActive: isTurnActive");
+    expect(SIDEBAR_SRC).toContain("if (isAttaching || isTurnActive || disabled)");
   });
 });
 

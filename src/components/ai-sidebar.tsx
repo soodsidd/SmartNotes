@@ -8,7 +8,7 @@ import rehypeKatexImport from "rehype-katex";
 // rehype-katex bundles an older vfile; cast away the type mismatch (works at runtime)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rehypeKatex = rehypeKatexImport as any;
-import { AlignJustify, Check, ChevronDown, Code2, Copy, FileText, Paperclip, Send, Settings, Sparkles, Square, X } from "lucide-react";
+import { AlertCircle, AlignJustify, Check, ChevronDown, Code2, Copy, FileText, Paperclip, Send, Settings, Sparkles, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -40,6 +40,7 @@ import {
   getAiScopeOptionDescription,
   normalizeCompanionDensity,
   providerSupportsEffort,
+  resolveComposerEnterAction,
   type AiScope,
   type AiScopeOption,
   type AiSidebarTimelineEntry,
@@ -96,6 +97,18 @@ export type AiComposerAttachment =
 export interface AiComposerSnapshot {
   draft: string;
   attachments: AiComposerAttachment[];
+}
+
+/**
+ * SN-287: a composer send that did not reach an accepted server-owned turn.
+ * The shell owns the record (it survives composer remounts) and the retry
+ * identity; the composer only renders it and offers Retry / Edit.
+ */
+export interface AiComposerFailedSend {
+  id: string;
+  prompt: string;
+  attachments: AiComposerAttachment[];
+  error: string;
 }
 
 function getFileExtension(name: string) {
@@ -214,6 +227,8 @@ function ComposerTextarea({
   onChange,
   onKeyDown,
   onPaste,
+  onCompositionStart,
+  onCompositionEnd,
   placeholder,
   disabled,
   mobile,
@@ -223,6 +238,8 @@ function ComposerTextarea({
   onChange: (value: string) => void;
   onKeyDown?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onPaste?: (event: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+  onCompositionStart?: () => void;
+  onCompositionEnd?: () => void;
   placeholder: string;
   disabled?: boolean;
   mobile?: boolean;
@@ -238,6 +255,11 @@ function ComposerTextarea({
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
+      onCompositionStart={onCompositionStart}
+      onCompositionEnd={onCompositionEnd}
+      // SN-287: mobile Enter inserts a newline (only the Send button submits);
+      // desktop Enter sends, so label the soft-keyboard key accordingly.
+      enterKeyHint={mobile ? "enter" : "send"}
       placeholder={placeholder}
       rows={1}
       disabled={disabled}
@@ -607,6 +629,12 @@ interface AiConversationProps {
   onScopeChange: (scope: AiScope) => void;
   onAttach?: (attachments: AiComposerAttachment[]) => void;
   onComposerSnapshot?: (snapshot: AiComposerSnapshot) => void;
+  /** SN-287: a failed composer send held for Retry / Edit (shell-owned). */
+  failedSend?: AiComposerFailedSend | null;
+  /** SN-287: retry the failed send under its original turn identity. */
+  onRetryFailedSend?: () => void;
+  /** SN-287: the composer has taken the failed prompt/attachments back for editing. */
+  onEditFailedSend?: () => void;
   onClose?: () => void;
   /** Raises only companion-owned portaled dialogs and menus above the immersive reader. */
   elevateFloatingLayers?: boolean;
@@ -1338,6 +1366,9 @@ function AiConversation({
   onScopeChange,
   onAttach,
   onComposerSnapshot,
+  failedSend,
+  onRetryFailedSend,
+  onEditFailedSend,
   onClose,
   elevateFloatingLayers,
 }: AiConversationProps) {
@@ -1359,7 +1390,11 @@ function AiConversation({
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
   const [isAttaching, setIsAttaching] = React.useState(false);
   const { density, updateDensity } = useCompanionDensity();
-  const composerLocked = Boolean(disabled || isTurnActive || isAttaching);
+  // SN-287: a running turn no longer locks the composer — the owner can draft a
+  // follow-up (text and attachments) while reading. Only Send is unavailable.
+  const composerLocked = Boolean(disabled || isAttaching);
+  const compositionActiveRef = React.useRef(false);
+  const compositionEndedAtRef = React.useRef<number | null>(null);
 
   const revokeAttachmentUrl = React.useCallback((attachment: AiComposerAttachment) => {
     if (attachment.kind === "image") {
@@ -1382,12 +1417,6 @@ function AiConversation({
       attachmentsRef.current = nextAttachments;
       return nextAttachments;
     });
-  }, [revokeAttachmentUrl]);
-
-  const clearAttachments = React.useCallback((items: AiComposerAttachment[]) => {
-    items.forEach(revokeAttachmentUrl);
-    attachmentsRef.current = [];
-    setAttachments([]);
   }, [revokeAttachmentUrl]);
 
   const addFilesAsAttachments = React.useCallback(async (files: File[]) => {
@@ -1523,23 +1552,79 @@ function AiConversation({
   }, [revokeAttachmentUrl]);
 
   const submitComposer = React.useCallback(() => {
-    if (isAttaching) {
+    // SN-287: a follow-up drafted during a running turn stays local; it never
+    // launches a second turn.
+    if (isAttaching || isTurnActive || disabled) {
       return;
     }
 
-    const prompt = composerDraft;
-    const currentAttachments = attachments;
+    const prompt = composerDraftRef.current;
+    const currentAttachments = attachmentsRef.current;
     if (!prompt.trim() && currentAttachments.length === 0) {
       return;
     }
     if (currentAttachments.length > 0) {
       onAttach?.(currentAttachments);
-      clearAttachments(currentAttachments);
     }
-    onSubmit(prompt, currentAttachments);
+    // SN-287: attachment ownership (incl. image object URLs) transfers to the
+    // send. The shell keeps them on a failed send for Retry / Edit, so the
+    // composer must not revoke them here.
+    attachmentsRef.current = [];
+    setAttachments([]);
     updateComposerDraft("");
-    onComposerSnapshot?.({ draft: "", attachments: [] });
-  }, [attachments, clearAttachments, composerDraft, isAttaching, onAttach, onComposerSnapshot, onSubmit, updateComposerDraft]);
+    onSubmit(prompt, currentAttachments);
+  }, [disabled, isAttaching, isTurnActive, onAttach, onSubmit, updateComposerDraft]);
+
+  const handleComposerKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      const endedAt = compositionEndedAtRef.current;
+      const action = resolveComposerEnterAction({
+        key: event.key,
+        shiftKey: event.shiftKey,
+        isComposing: event.nativeEvent.isComposing || compositionActiveRef.current,
+        keyCode: event.keyCode,
+        msSinceCompositionEnd: endedAt === null ? null : Date.now() - endedAt,
+        mobile,
+        turnActive: isTurnActive,
+      });
+      if (action === "submit") {
+        event.preventDefault();
+        submitComposer();
+      } else if (action === "hold") {
+        event.preventDefault();
+      }
+    },
+    [isTurnActive, mobile, submitComposer]
+  );
+
+  const handleCompositionStart = React.useCallback(() => {
+    compositionActiveRef.current = true;
+    compositionEndedAtRef.current = null;
+  }, []);
+
+  const handleCompositionEnd = React.useCallback(() => {
+    compositionActiveRef.current = false;
+    compositionEndedAtRef.current = Date.now();
+  }, []);
+
+  // SN-287: move a failed send back into the composer, ahead of any follow-up
+  // the owner already drafted, so nothing typed in the meantime is lost.
+  const editFailedSend = React.useCallback(() => {
+    if (!failedSend) {
+      return;
+    }
+    const current = composerDraftRef.current;
+    const merged = !current.trim()
+      ? failedSend.prompt
+      : !failedSend.prompt.trim()
+        ? current
+        : `${failedSend.prompt}\n\n${current}`;
+    updateComposerDraft(merged);
+    const restored = [...failedSend.attachments, ...attachmentsRef.current];
+    attachmentsRef.current = restored;
+    setAttachments(restored);
+    onEditFailedSend?.();
+  }, [failedSend, onEditFailedSend, updateComposerDraft]);
 
   React.useEffect(() => {
     const node = scrollRef.current;
@@ -1788,18 +1873,51 @@ function AiConversation({
           data-testid="ai-composer"
           data-turn-active={isTurnActive ? "true" : "false"}
         >
+          {failedSend ? (
+            <div
+              role="alert"
+              className="mb-2 flex items-center gap-2 rounded border border-border bg-muted/45 px-2 py-1.5 text-[11px]"
+              data-testid="ai-failed-send"
+            >
+              <AlertCircle className="size-3.5 shrink-0 text-destructive" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-destructive">Not sent</p>
+                <p className="truncate text-muted-foreground" title={failedSend.error}>
+                  {failedSend.error}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className={cn("shrink-0", mobile && "min-h-11")}
+                onClick={editFailedSend}
+                data-testid="ai-failed-send-edit"
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="xs"
+                className={cn("shrink-0", mobile && "min-h-11")}
+                onClick={() => onRetryFailedSend?.()}
+                disabled={disabled || isTurnActive || !onRetryFailedSend}
+                data-testid="ai-failed-send-retry"
+              >
+                Retry
+              </Button>
+            </div>
+          ) : null}
           {!mobile ? (
             <ComposerTextarea
               value={composerDraft}
               onChange={updateComposerDraft}
-              placeholder="Ask anything about this note…"
+              placeholder={isTurnActive ? "Draft a follow-up…" : "Ask anything about this note…"}
               disabled={composerLocked}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey && !isTurnActive) {
-                  event.preventDefault();
-                  submitComposer();
-                }
-              }}
+              onKeyDown={handleComposerKeyDown}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
               onPaste={handleComposerPaste}
               data-testid="ai-input"
             />
@@ -1872,15 +1990,12 @@ function AiConversation({
               <ComposerTextarea
                 value={composerDraft}
                 onChange={updateComposerDraft}
-                placeholder={isTurnActive ? "Working…" : "Ask anything about this note…"}
+                placeholder={isTurnActive ? "Draft a follow-up…" : "Ask anything about this note…"}
                 disabled={composerLocked}
                 mobile
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey && !isTurnActive) {
-                    event.preventDefault();
-                    submitComposer();
-                  }
-                }}
+                onKeyDown={handleComposerKeyDown}
+                onCompositionStart={handleCompositionStart}
+                onCompositionEnd={handleCompositionEnd}
                 onPaste={handleComposerPaste}
                 data-testid="ai-input"
               />
