@@ -1,6 +1,7 @@
 "use client";
 
 import "@/lib/syncfusion-license";
+import "@/styles/syncfusion-spreadsheet.css";
 
 import * as React from "react";
 import { AlertTriangle, FileDown, FileUp, Menu, Sheet } from "lucide-react";

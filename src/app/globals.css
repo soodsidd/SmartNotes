@@ -2,16 +2,7 @@
 @import "../styles/tokens.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@syncfusion/ej2-base/styles/material3.css";
-@import "@syncfusion/ej2-inputs/styles/material3.css";
-@import "@syncfusion/ej2-buttons/styles/material3.css";
-@import "@syncfusion/ej2-splitbuttons/styles/material3.css";
-@import "@syncfusion/ej2-lists/styles/material3.css";
-@import "@syncfusion/ej2-navigations/styles/material3.css";
-@import "@syncfusion/ej2-popups/styles/material3.css";
-@import "@syncfusion/ej2-dropdowns/styles/material3.css";
-@import "@syncfusion/ej2-grids/styles/material3.css";
-@import "@syncfusion/ej2-react-spreadsheet/styles/material3.css";
+/* Syncfusion Spreadsheet Material3 styles load with SpreadsheetPageView (SN-291). */
 
 @custom-variant dark (&:where(.dark, .dark *));
 

@@ -1,0 +1,12 @@
+/* Syncfusion Spreadsheet theme — loaded only with SpreadsheetPageView (SN-291).
+   Keep these out of globals.css so ordinary notes do not pay the multi-MB CSS cost. */
+@import "@syncfusion/ej2-base/styles/material3.css";
+@import "@syncfusion/ej2-inputs/styles/material3.css";
+@import "@syncfusion/ej2-buttons/styles/material3.css";
+@import "@syncfusion/ej2-splitbuttons/styles/material3.css";
+@import "@syncfusion/ej2-lists/styles/material3.css";
+@import "@syncfusion/ej2-navigations/styles/material3.css";
+@import "@syncfusion/ej2-popups/styles/material3.css";
+@import "@syncfusion/ej2-dropdowns/styles/material3.css";
+@import "@syncfusion/ej2-grids/styles/material3.css";
+@import "@syncfusion/ej2-react-spreadsheet/styles/material3.css";
