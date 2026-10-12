@@ -547,14 +547,15 @@ Creates a manual ZIP snapshot immediately (does not require `enabled: true`). Re
 
 ### POST /api/capture
 
-Captures content to the Inbox or a specific section.
+Captures content to the Inbox or a specific section. Quick Capture supplies a stable UUID `captureId` so retries after a failed or lost response resolve to one page.
 
-**Body:** `{ destination?: "inbox" | "page", title?: string, content?: string, notebookPath?: string, sectionPath?: string }`
+**Body:** `{ captureId?: string, destination?: "inbox" | "page", title?: string, content?: string, notebookPath?: string, sectionPath?: string }`
 
 - `destination: "inbox"` (default) — finds or creates an Inbox section and creates the page there.
 - `destination: "page"` — requires `sectionPath`; creates the page in that section.
+- `captureId` — optional UUID. The first request commits title and body as one complete page and records the ID in frontmatter (`capture_id`). A repeated ID returns that page or updates its title/body, including when the retry selects a different destination. Existing callers without an ID keep the legacy create-then-save behavior.
 
-**Error codes:** `VaultError` codes are `PAGE_NOT_FOUND` (404), `SECTION_NOT_FOUND` (404), `NOTEBOOK_NOT_FOUND` (404), `PAGE_EXISTS` (409), `MALFORMED_FRONTMATTER` (400), `INVALID_PATH` (400), `INVALID_TITLE` (400), `ASSET_COLLISION` (409), `UNSUPPORTED_ACTION` (400).
+**Error codes:** `VaultError` codes are `PAGE_NOT_FOUND` (404), `SECTION_NOT_FOUND` (404), `NOTEBOOK_NOT_FOUND` (404), `PAGE_EXISTS` (409), `INVALID_INPUT` (400, malformed capture ID), `MALFORMED_FRONTMATTER` (400), `INVALID_PATH` (400), `INVALID_TITLE` (400), `ASSET_COLLISION` (409), `UNSUPPORTED_ACTION` (400).
 
 ### POST /api/ingest
 
@@ -986,7 +987,7 @@ The editor tracks which `<h2>` the cursor is under and exposes it as `EditorSect
 - **Spellcheck is a live DOM attribute, not note content (SN-130).** Toggling Settings → Spellcheck must update `editor.view.dom` with `setAttribute('spellcheck', ...)`; relying only on the initial `useEditor` `editorProps.attributes` leaves an already-mounted editor stuck on the old value. Keep the preference out of vault HTML.
 - **Format-bar chrome blur must not cancel control pointerdown (SN-221).** `ToolbarBtn` fires Bold/TOC/link actions from `onMouseDown`. Calling `preventDefault()` on the format bar's capturing `pointerdown` for interactive targets suppresses compatibility `mousedown`, so Insert table of contents and other toolbar actions silently no-op. Chrome-only blur may preventDefault; leave buttons/menus alone and keep selection via each control's own mousedown handler.
 - **Attachment upload success is a page-write result, not an asset-write result (SN-272).** `POST /api/assets` can succeed while the page HTML remains unchanged. PDF toolbar/drop flows must keep **Uploading...** active until the reliable shell's serialized page save returns the chip URL; if persistence fails, preserve the inserted draft and expose the returned vault-relative asset path so the orphan is recoverable. Do not make images wait on this PDF-specific durability acknowledgement.
-- **Live tree refresh must not rehydrate over an in-flight attach (SN-283).** Closing a file picker fires window `focus` � `refreshVaultTreeFromLive`, whose `skipCache` tree fetch can return after the PDF chip was inserted and durably saved. The refresh fences on a draft epoch (bumped by `updateDraft`/`hydrateDraft`) plus `lastSavedSnapshot` and discards the payload if either changed or auto-refresh is no longer safe; otherwise the stale page rehydrates and the queued save writes pre-attach HTML over the chip. Attaches are serialized per editor, and attachment persistence never replaces a draft that already contains the asset URL with the insert-time snapshot.
+- **Live tree refresh must not rehydrate over an in-flight attach (SN-283).** Closing a file picker fires window `focus` � `refreshVaultTreeFromLive`, whose `skipCache` tree fetch can return after the PDF chip was inserted and durably saved. The refresh fences on a draft epoch (bumped by `updateDraft`/`hydrateDraft`) plus `lastSavedSnapshot` and discards the payload if either changed or auto-refresh is no longer safe; otherwise the stale page rehydrates and the queued save writes pre-attach HTML over the chip. Attaches are serialized per editor, and attachment persistence never replaces a draft that already contains the asset URL with the insert-time snapshot.
 - **Page TOC height changes must remap text-page ink (SN-220).** Inserting/updating/removing a top-of-page TOC changes prose height. Measure the TOC `offsetHeight` delta and call `AnnotationLayer.applyVerticalRemap`; on refuse, revert the HTML mutation so ink stays aligned. Do not treat TOC as a collapse-style disable-only guard — owners expect the TOC to land when remap is safe.
 - **A capture-phase `pointerdown` handler that acts immediately breaks touch scrolling over its target (SN-233).** The TOC jump used to fire on `pointerdown`, so any finger-down on a TOC entry navigated before a scroll gesture could be recognized — dragging over the contents block always jumped instead of scrolling. `preventDefault()` on `pointerdown` is still needed (and safe) to stop hash/legacy `<a>` navigation, but the actual side effect must wait for `pointerup`, guarded by a small movement slop and cancelled on `pointercancel`. When adding a new capture-phase `pointerdown` listener that triggers navigation/mutation on a touch surface, default to this deferred pattern rather than acting inline — `onMouseDown`/`onClick` (used by the SN-231 back-to-top control) do not have this problem since the browser only synthesizes them after a stationary touch release. **Do not assume `preventDefault()` on `pointerdown` suppresses the trailing `click`** — per the Pointer Events spec it only suppresses *compatibility mouse events* (`mousedown`/`mouseup`/`mousemove`/…); `click`, `auxclick`, and `contextmenu` are not compatibility mouse events and still fire. A first pass at this fix assumed otherwise, leaving `click` unguarded — a short drag too small to trigger native scroll recognition (no `pointercancel`, slop-cancelled) still let the trailing `click` jump anyway, reproducing the original bug. The deferred-`pointerdown` handler must arm a `suppressNextClick` flag on every handled `pointerdown` (jumped, slop-cancelled, or `pointercancel`-cancelled) and `click` must consume+clear it instead of jumping, while still keeping its own `preventDefault`/`stopImmediatePropagation` for app-shell safety.
 - **Immersive PDF blank/gray pages (SN-148).** Three failure modes look identical (page count OK, empty frames). (1) `fontFallback: null` leaves Helvetica-style PDFs without embedded fonts unpainted — self-host Noto Sans under `/pdf-fonts/latin` (`scripts/sync-pdf-fonts.mjs`) and pass ANSI/DEFAULT fallback into `usePdfiumEngine`. (2) React StrictMode + `usePdfiumEngine` destroys the native engine while document state still says `loaded` — keep `reactStrictMode: false` until EmbedPDF offers a StrictMode-safe lifecycle. (3) Full-page `RenderLayer` at fit-width × device DPR silently fails on large mobile docs (e.g. 600+ pp) — use scale-1 DPR-capped `RenderLayer` plus `TilingLayer` (`@embedpdf/plugin-tiling`). Do not drop tiling when fixing fonts. E2E must assert painted `<img>` nodes; page-frame visibility alone is insufficient.
@@ -1271,7 +1272,7 @@ The immersive layer order is defined by design-system tokens: `--z-pdf-reader` (
 
 ## 9. Capture Flow
 
-**Plain English:** The Capture button (or the "+" in the mobile tab bar) opens a quick-entry modal where you can paste or type content. It saves immediately to your Inbox — a special section that the app creates automatically if it doesn't exist yet. You can also capture to a specific section if you know where you want it.
+**Plain English:** The Capture button (or the "+" in the mobile tab bar) opens a quick-entry modal where you can paste or type content. It saves to your Inbox — a special section that the app creates automatically if it doesn't exist yet — or to a specific section. Closing the modal keeps the unfinished title, content, and destination; reopening it or reloading the app restores that draft until you choose **Discard draft** or a save is confirmed. A failed save keeps the draft, explains why, and offers **Retry save**. After success the app reports **Saved** when it also opens the new page, or **Saved but could not open** when navigation fails.
 
 **API endpoint:** `POST /api/capture`
 
@@ -1295,10 +1296,13 @@ The `Inbox` section name is the constant `INBOX_SECTION_NAME = "Inbox"` in `page
   content?: string,                 // Markdown body (optional)
   notebookPath?: string,            // when destination=inbox, constrains which notebook's Inbox
   sectionPath?: string,             // required when destination=page
+  captureId?: string,               // UUID; stable across Quick Capture retries (SN-286)
 }
 ```
 
-The page is created first (empty), then body content is saved separately. This ensures the page record exists even if a content write fails.
+Legacy callers (no `captureId`): the page is created first (empty), then body content is saved separately.
+
+**Draft and retry identity (SN-286):** The browser keeps one Quick Capture draft in local storage (`smart-notes-quick-capture-draft-v1`, `src/lib/quick-capture-draft.ts`) including a UUID capture ID. Dismissal leaves it intact; only explicit discard or a confirmed API success removes it. Every retry resends the same ID. For ID-bearing requests the server writes the complete page to a temp file and publishes it with an exclusive hard link (falling back to an exclusive `wx` create on filesystems without hard links), stamping `capture_id` in frontmatter. A replay first scans the vault tree for that `capture_id` — so a retry after an uncertain response finds the original page even if the user changed destination — and returns or updates it instead of creating a duplicate. Navigation to the saved page happens after the draft is cleared, so an open failure can never trigger a duplicate save.
 
 ### Cloudflare email ingress (SN-215, SN-212)
 

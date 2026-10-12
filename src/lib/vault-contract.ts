@@ -125,6 +125,7 @@ export interface RenameSectionPayload {
 }
 
 export interface CapturePayload {
+  captureId?: string;
   destination: "inbox" | "page";
   content: string;
   title?: string;

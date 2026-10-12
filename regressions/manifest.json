@@ -4501,6 +4501,31 @@
       "whenToRun": "Pre-merge when touching src/lib/jupyter-inline-ai.ts, the inline overlay in src/components/jupyter-notebook-view.tsx, the fast-lane settings section of src/components/ai-sidebar.tsx, or src/lib/jupyter-focus.ts's dismiss/apply-answer/keybinding message contracts.",
       "failureMeaning": "A failure here means a bare caret click may reopen the overlay, selection or explicit Alt+Right-click actions may be missing, comment-only actions may appear on the wrong trigger, plain right-click may steal JupyterLab's menu, passive selection/scroll events may discard an in-flight cell rewrite, the append chord may replace rather than preserve the comment, or an inline result may route to the wrong surface or undo boundary.",
       "maintenanceNotes": "SN-264 made bare caret focus quiet and moved comment actions behind explicit Alt+Right-click while retaining selection and append-chord behavior. SN-265 protects notebook-routed streaming/apply and sticky Retry states from passive selection-clear and scroll dismissal."
+    },
+    {
+      "id": "unit-sn-286-quick-capture",
+      "name": "Quick Capture draft and retry identity",
+      "description": "Jest: retained and discarded drafts plus duplicate-safe capture API retries.",
+      "intent": "A failed or uncertain Quick Capture save must retain input and reuse one page on retry.",
+      "whenToRun": "Pre-merge when changing Quick Capture draft state or POST /api/capture.",
+      "failureMeaning": "Drafts may be lost or a retry may create duplicate pages.",
+      "appType": "node",
+      "command": "npm test -- tests/quick-capture-draft.test.ts tests/api-notebook-workflow-route.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "node", "capture", "targeted"],
+      "feature": "capture",
+      "testType": "integration",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-286",
+      "addedAt": "2026-10-11",
+      "sourceFiles": [
+        { "path": "tests/quick-capture-draft.test.ts" },
+        { "path": "tests/api-notebook-workflow-route.test.ts" }
+      ]
     }
   ]
 }

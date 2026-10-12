@@ -14,6 +14,7 @@ export async function POST(request: Request) {
       content?: string;
       notebookPath?: string;
       sectionPath?: string;
+      captureId?: string;
     };
     const page = await capturePage(body);
     emitVaultSideEffects({ treeChanged: true });
