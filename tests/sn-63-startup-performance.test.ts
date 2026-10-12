@@ -47,6 +47,22 @@ describe("SN-63 startup performance wiring", () => {
     expect(serverSrc).toContain("cache for fast preview restart");
   });
 
+  it("keeps Syncfusion Spreadsheet Material3 CSS off the global startup sheet (SN-291)", () => {
+    const globalsCss = fs.readFileSync(path.join(process.cwd(), "src/app/globals.css"), "utf8");
+    const spreadsheetCss = fs.readFileSync(
+      path.join(process.cwd(), "src/styles/syncfusion-spreadsheet.css"),
+      "utf8"
+    );
+    const spreadsheetViewSrc = fs.readFileSync(
+      path.join(process.cwd(), "src/components/spreadsheet-page-view.tsx"),
+      "utf8"
+    );
+    expect(globalsCss).not.toMatch(/@import\s+["']@syncfusion\//);
+    expect(spreadsheetCss).toContain('@import "@syncfusion/ej2-react-spreadsheet/styles/material3.css"');
+    expect(spreadsheetViewSrc).toContain('import "@/styles/syncfusion-spreadsheet.css"');
+    expect(shellSrc).toContain('import("@/components/spreadsheet-page-view")');
+  });
+
   it("keeps development and E2E compile output out of production .next", () => {
     expect(serverSrc).toContain('process.env.SMART_NOTES_NEXT_DIST_DIR = ".next-dev"');
     expect(serverSrc).toContain('SMART_NOTES_SKIP_SW_GENERATE !== "1"');

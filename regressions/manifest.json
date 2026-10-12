@@ -3829,11 +3829,11 @@
     {
       "id": "unit-sn-63-startup-performance",
       "name": "Sn 63 Startup Performance",
-      "description": "Jest: tests/sn-63-startup-performance.test.ts",
+      "description": "Jest: tests/sn-63-startup-performance.test.ts (includes SN-291 Syncfusion CSS off globals)",
       "appType": "node",
       "command": "npm test -- tests/sn-63-startup-performance.test.ts",
       "timeoutMs": 120000,
-      "enabled": false,
+      "enabled": true,
       "tags": [
         "unit",
         "node",
