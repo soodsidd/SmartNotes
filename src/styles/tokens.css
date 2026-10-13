@@ -70,6 +70,9 @@
   --desktop-tree-indent-step: 10px;
   --editor-table-cell-min-width: 4em;
   --editor-table-cell-min-height: 2.25em;
+  --editor-table-expanded-max-width: 1200px;
+  --table-ribbon-font-size: 0.875rem;
+  --table-ribbon-stats-font-size: 0.6875rem;
   /* Z-index scale — reader < paper notes dock < companion rail < companion overlay < inline Jupyter AI */
   --z-pdf-reader: 300;
   --z-paper-notes: 320;

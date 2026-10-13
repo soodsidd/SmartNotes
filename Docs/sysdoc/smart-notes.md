@@ -887,6 +887,7 @@ The reliable shell also has an in-place refresh-note path. The top-bar sync icon
 | TaskList + TaskItem | `- [ ]` checkboxes, nested |
 | Table + TableRow + TableCell + TableHeader | Full table editing; inserted via the Insert table submenu (SN-299) |
 | TableActiveCell | Decoration-only `.activeCell` teal outline on the cell holding the selection (SN-299) |
+| TableRibbonSupport | Per-table `gridMode`/`dataMode`/`expanded` attrs, cell `align`, grid-mode cell keys, Data-mode `numericCell` decorations, TSV copy/paste for cell selections (SN-278) |
 | Link | Clickable links (open-on-click disabled; links open on command+click) |
 | Placeholder | Greyed placeholder text when empty |
 | Mathematics | KaTeX math rendering. Inline: `$...$`, block: `$$...$$`. **Alt+=** opens inline compose at the caret with live KaTeX preview (SN-111); **`\frac` + Space** opens a fraction template and **`a/b` + Space** expands to `\frac{a}{b}`. Editing an *existing* equation — inline **or** block — arrows into it (NodeSelection) or clicks it to open the same caret-anchored compose editor at that equation (`data-math-kind` = `inline`\|`block`); the top-of-page dialog is never used for edits (SN-158). Commit (**Enter**) calls `updateInlineMath`/`updateBlockMath` at the node position so the node keeps its inline/block type with no duplicate; **Escape** cancels; the caret returns to the side it was approached from (`resumePos`). Block preview renders in KaTeX `displayMode`. **Alt+Shift++** opens the block-equation dialog for *inserting* a new block equation (`insertBlockMath`); the dialog is insert-only. |
@@ -974,6 +975,28 @@ The fork has two toolbar buttons (outline, paper) before the grid button. On mai
 **Grid styling:** `.editor-content` table rules in `globals.css` use `--border` for grid lines, `--secondary` for `th`, and the `--editor-table-cell-min-width` / `--editor-table-cell-min-height` tokens so empty cells stay clickable. The active-cell outline comes from the `TableActiveCell` ProseMirror plugin in `rich-text-editor-config.ts`, which decorates the cell containing the selection head with `.activeCell` (inset 2px `--accent`). It is a decoration only and is never serialized. Wide-table local scrolling (SN-178) is unchanged.
 
 **Assumption:** the photos do not show the Insert menu on mobile; the same submenu opens there with 44px touch targets. The table ribbon and stats are SN-278.
+
+### Table ribbon and selection stats (SN-278)
+
+**Plain English:** When the caret is in a table cell (main flow or a floating text box), a ribbon appears under the format bar, as in fork photo #16: **Rows · Columns · Cells · Select · Grid mode · Data mode · Format · Layout · Data · Expand table**. Below it a status line shows `Count: N | Numbers: N | Sum: x | Average: x | Min: x | Max: x` for the selected cells. Leaving the table hides it. There are no formulas: a cell is a number only when its text is a plain number.
+
+**Ribbon:** `TableRibbon` in `src/components/table-ribbon.tsx` mounts after the desktop format bar (`table-ribbon`) and the mobile one (`table-ribbon-mobile`, 44px targets, scrolls sideways). It reads editor state with `useEditorState` and renders nothing unless `getTableContext` finds a cell at the selection and the editor is editable. Text tabs are Base UI dropdowns (`-tab-<id>`, menu `-menu-<id>`, items `-cmd-<id>`); the three pills are `aria-pressed` buttons (`-mode-gridMode|dataMode|expanded`). Commands that cannot run are disabled. The ribbon sits in the page flow under the format bar, so showing or hiding it shifts the page. That change waits until the pointer is released, so a mouse or touch drag never moves under the pointer (SN-245). The editor scroll area then scrolls by the ribbon height to keep the content still, but never so far that the active cell goes under the ribbon. Hiding or unmounting the ribbon (for example, entering draw mode) reverses that scroll.
+
+| Tab | Commands |
+|---|---|
+| Rows | Insert row above/below, Move row up/down, Delete row |
+| Columns | Insert column left/right, Move column left/right, Wider/Narrower column (±40px `colwidth`, min 48), Auto width, Delete column |
+| Cells | Merge cells, Split cell, Toggle header cell, Clear contents |
+| Select | Select cell / row / column / table (a `CellSelection`) |
+| Format | Bold, Italic, Strikethrough, Align left/center/right (`data-align` on the cell), Clear formatting |
+| Layout | Header row, Header column, Fit columns to width (clears all widths), Delete table |
+| Data | Sort A→Z / Z→A by the active column (header rows stay on top; numbers before text, blanks last), Copy as tab-separated, Paste tab-separated |
+
+**Modes (pills):** stored per table as `data-grid-mode`, `data-data-mode`, `data-expanded` on `<table>`, so they persist in page HTML. `ScrollableTableView` mirrors them onto `.tableWrapper` for CSS. **Grid mode:** Up/Down and Enter/Shift+Enter move cell to cell; Left/Right move cells at the text edge; Shift+arrows grow a cell selection. **Data mode:** cells holding a number get a `numericCell` decoration (right-aligned unless the cell has its own alignment) and the table uses tabular figures. **Expand table:** the wrapper's max width rises from the main-flow column to `--editor-table-expanded-max-width`. Inside a floating box the table can extend past the box edge. Local horizontal scrolling (SN-178) still applies.
+
+**Stats and clipboard:** `src/lib/table-ribbon.ts` holds all of the logic. `parseCellNumber` accepts `1,234.5`, `$12`, `-3`, `(7)`, `.5` and `45%` (0.45), and rejects anything else, including `=…`. Count is every selected cell, blanks included (photo #16 shows `Count: 1` for an empty cell). Numbers, Sum, Average, Min and Max use numeric cells only and show `-` when there are none. When the selection is a `CellSelection`, the `TableRibbonSupport` extension makes plain-text copy tab-separated. Pasting tab-separated plain text with no HTML table writes from the selection's top-left cell, adds rows and columns as needed, and selects the pasted block. HTML table paste stays with prosemirror-tables. Reordering, sorting and TSV paste are disabled when the table has merged cells.
+
+**Assumptions (photos are silent):** the tab contents above are the proposal from the brief chat. The fork ribbon is not Syncfusion's spreadsheet ribbon (Syncfusion's tabs are File/Home/Insert/Formulas/Data/View), so this is built on TipTap tables. Row height has no resize control because TipTap rows size to their content; "resize" means column width. Mode pills are per table, not per device.
 
 ### Spellcheck preference (SN-130)
 
