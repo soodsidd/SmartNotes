@@ -9483,15 +9483,18 @@ function EditorPanel({
   }, [isDrawMode, openPdfReader, readOnly]);
 
   const handleAnnotationModeChange = React.useCallback(
-    async (nextMode: "edit" | "draw") => {
+    (nextMode: "edit" | "draw") => {
       if (annotationMode === "draw" && nextMode === "edit") {
-        try {
-          const layerRef = annotationLayerRef;
-          if (layerRef && typeof layerRef !== "function" && layerRef.current) {
-            await layerRef.current.flush();
-          }
-        } catch {
-          // keep in-memory ink visible even if flush fails
+        // SN-245: start the ink save but never gate the mode switch on it.
+        // Awaiting the network PUT kept the editor non-editable with
+        // `user-select: none` for seconds (or indefinitely on a stalled
+        // connection), which broke click-and-drag selection after drawing.
+        // The layer stays mounted (read-only) in edit mode, so the save completes.
+        const layerRef = annotationLayerRef;
+        if (layerRef && typeof layerRef !== "function" && layerRef.current) {
+          void layerRef.current.flush().catch(() => {
+            // keep in-memory ink visible even if flush fails
+          });
         }
       }
       setAnnotationMode(nextMode);
