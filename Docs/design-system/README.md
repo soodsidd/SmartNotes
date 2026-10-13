@@ -1,5 +1,20 @@
 # Smart Notes Design System
 
+## Table ribbon and selection stats (SN-278)
+
+Fork photo #16 shows a bordered ribbon card under the format bar. It reuses
+`--surface`, `--border`, `--radius-md` (card), `--radius-sm` (tabs and pills),
+`--secondary` (hover), `--secondary-foreground` (labels and the stats line),
+`--foreground`, `--ring` (focus) and `--font-sans`. Grid mode, Data mode and
+Expand table are outlined pills. When pressed they take an `--accent` border
+over a 12% `--accent` tint, the same tint used for selected cells. New tokens:
+`--table-ribbon-font-size: 0.875rem` (tab and pill labels),
+`--table-ribbon-stats-font-size: 0.6875rem` (the
+`Count | Numbers | Sum | Average | Min | Max` line, tabular figures), and
+`--editor-table-expanded-max-width: 1200px` (Expand table). Mobile tabs and
+pills use the 44px touch target. In Data mode, number cells are right-aligned
+with tabular figures.
+
 ## Insert table and grid (SN-299)
 
 The Insert table side submenu reuses `--popover`, `--input`, `--background`,

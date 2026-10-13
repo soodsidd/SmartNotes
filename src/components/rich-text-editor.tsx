@@ -95,6 +95,7 @@ import {
 } from "@/lib/floating-text-box";
 import { cn } from "@/lib/utils";
 import { MAX_INSERT_TABLE_DIMENSION, tableCellCount, tableDimension } from "@/lib/table-insert";
+import { TableRibbon } from "@/components/table-ribbon";
 import { resolvePdfAttachmentTarget, type PdfAttachmentTarget } from "@/lib/pdf-attachment";
 import type { PageContentExport } from "@/lib/page-export";
 import { computePageFrameHeight } from "@/lib/page-frame";
@@ -2123,6 +2124,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         </div>
         ) : null}
 
+        {/* SN-278: table ribbon + selection stats while a table cell is active */}
+        {!readOnly && !hideFormatToolbar && annotationMode !== "draw" ? <TableRibbon editor={editor} /> : null}
+
         {/* Format bar — mobile (Clarity condensed) */}
         {!readOnly && !hideFormatToolbar && annotationMode !== "draw" ? (
         <div
@@ -2167,6 +2171,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           <MobileFontSheet editor={editor} open={fontSheetOpen} onOpenChange={setFontSheetOpen} />
         </div>
         ) : null}
+        {!readOnly && !hideFormatToolbar && annotationMode !== "draw" ? <TableRibbon editor={editor} mobile /> : null}
 
         {!readOnly && !hideFormatToolbar && annotationMode === "draw" ? (
           <div

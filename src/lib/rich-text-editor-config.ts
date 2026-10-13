@@ -24,6 +24,7 @@ import { FileAttachment } from "./file-attachment-extension";
 import { PaperReference } from "./paper-reference-extension";
 import { HeadingWithAnchorId, PageToc } from "@/lib/page-toc";
 import { FloatingTextBox } from "./floating-text-box-extension";
+import { TABLE_MODE_ATTRS, TableRibbonSupport, type TableModeAttr } from "./table-ribbon";
 import {
   describeAssetUploadFailure,
   readFileForUpload,
@@ -36,6 +37,21 @@ class ScrollableTableView extends TableView {
     this.dom.setAttribute("role", "region");
     this.dom.setAttribute("aria-label", "Table scroll area");
     this.dom.setAttribute("data-table-scroll", "true");
+    this.syncModes(node);
+  }
+
+  update(node: ProseMirrorNode) {
+    const updated = super.update(node);
+    if (updated) this.syncModes(node);
+    return updated;
+  }
+
+  /** SN-278: mirror per-table ribbon modes onto the scroll wrapper for CSS. */
+  private syncModes(node: ProseMirrorNode) {
+    for (const [attr, dataAttr] of Object.entries(TABLE_MODE_ATTRS) as [TableModeAttr, string][]) {
+      if (node.attrs[attr]) this.dom.setAttribute(dataAttr, "true");
+      else this.dom.removeAttribute(dataAttr);
+    }
   }
 }
 
@@ -123,6 +139,7 @@ export function createEditorExtensions(
     TableCell,
     TableHeader,
     TableActiveCell,
+    TableRibbonSupport,
     Link.configure({
       openOnClick: false,
       HTMLAttributes: { class: "editor-link" },
