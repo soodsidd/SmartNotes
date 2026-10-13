@@ -17,6 +17,7 @@ import {
   Heading2,
   Heading3,
   Highlighter,
+  FileBadge,
   Image as ImageIcon,
   Italic,
   Link as LinkIcon,
@@ -151,7 +152,8 @@ export interface EditorSectionContext {
 export interface RichTextEditorHandle {
   insertMarkdown: (markdown: string) => boolean;
   /** `avoidDocStart` appends instead of inserting above the page title on an untouched page. */
-  insertHtml: (html: string, options?: { avoidDocStart?: boolean }) => boolean;
+  insertHtml: (html: string, options?: { avoidDocStart?: boolean; at?: number }) => boolean;
+  getSelectionPosition: () => number | null;
   insertText: (text: string) => boolean;
   swapContent: (html: string) => boolean;
   getExportSnapshot: () => PageContentExport | null;
@@ -1926,12 +1928,19 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           const json = parseMarkdownToTiptapJson(markdown);
           return editor.chain().focus().insertContent(json).run();
         },
-        insertHtml(html: string, options?: { avoidDocStart?: boolean }) {
+        insertHtml(html: string, options?: { avoidDocStart?: boolean; at?: number }) {
           if (!editor) return false;
+          if (options?.at != null) {
+            const at = Math.max(1, Math.min(options.at, editor.state.doc.content.size));
+            return editor.chain().focus().insertContentAt(at, html).run();
+          }
           if (options?.avoidDocStart && editor.state.selection.from <= 1) {
             return editor.chain().focus("end").insertContent(html).run();
           }
           return editor.chain().focus().insertContent(html).run();
+        },
+        getSelectionPosition() {
+          return editor?.state.selection.from ?? null;
         },
         insertText(text: string) {
           if (!editor) return false;
@@ -3205,22 +3214,6 @@ function InsertOverflowDropdown({
         <ChevronDown className="size-3 shrink-0 opacity-60" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        {/* SN-230: refresh lives here now that the format-bar control toggles. */}
-        <DropdownMenuItemWithIcon
-          icon={<ListTree className="size-3.5" />}
-          label={pageTocPresent ? "Refresh contents" : "Table of contents"}
-          testId={mobile ? "toolbar-page-toc-overflow-mobile" : "toolbar-page-toc-overflow"}
-          onSelect={() => onUpsertPageToc?.()}
-        />
-        {pageTocPresent ? (
-          <DropdownMenuItemWithIcon
-            icon={<Minus className="size-3.5" />}
-            label="Remove contents"
-            testId={mobile ? "toolbar-page-toc-remove-mobile" : "toolbar-page-toc-remove"}
-            onSelect={() => onRemovePageToc?.()}
-          />
-        ) : null}
-        <DropdownMenuSeparator />
         <DropdownMenuItemWithIcon
           icon={<Minus className="size-3.5" />}
           label="Horizontal rule"
@@ -3256,7 +3249,7 @@ function InsertOverflowDropdown({
           onSelect={onInsertAttachment}
         />
         {onAttachPaper && <DropdownMenuItemWithIcon
-          icon={<FileText className="size-3.5" />}
+          icon={<FileBadge className="size-3.5 text-paper" />}
           label="Attach paper…"
           testId={mobile ? "toolbar-attach-paper-mobile" : "toolbar-attach-paper"}
           onSelect={onAttachPaper}
