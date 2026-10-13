@@ -81,7 +81,7 @@ export function PaperAttachDialog({ open, onOpenChange, tree, vaultName, onAttac
             <label className="text-xs text-muted-foreground">PDF (optional)<Input type="file" accept="application/pdf,.pdf" onChange={(event) => setSelectedPdf(event.target.files?.[0] ?? null)} /></label>
             <p className="text-xs text-muted-foreground">Stored once in the selected notebook and browsed in the central Bibliography. Notebook shortcuts show referenced papers only. Ordinary PDF attachments stay unchanged.</p>
             {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-            <Button type="submit" className="justify-self-start" disabled={pending || !title.trim() || !selectedHome}>{pending ? "Creating…" : "Create and attach"}</Button>
+            <Button type="submit" className="justify-self-start" disabled={pending || !selectedHome}>{pending ? "Creating…" : "Create and attach"}</Button>
           </form>}
         </div>
       </div>
