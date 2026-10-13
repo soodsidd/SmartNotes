@@ -49,6 +49,88 @@ function renderCompanion(
 }
 
 describe("Companion composer local draft", () => {
+  it("shows pinned tuples and switches only while the composer is idle", () => {
+    const onPinnedCompanionModelSelect = jest.fn();
+    const pin = { providerId: "codex", model: "gpt-6-sol", effort: "high" };
+    const view = renderCompanion({
+      providers: [{ id: "codex", name: "Codex", models: ["gpt-6-sol"] }],
+      activeProviderId: "codex",
+      activeModelLabel: pin.model,
+      activeEffort: pin.effort,
+      pinnedCompanionModels: [pin],
+      onPinnedCompanionModelSelect,
+    });
+    const chip = screen.getByTestId("ai-pinned-model") as HTMLButtonElement;
+    expect(chip.textContent).toBe("gpt-6-sol · high");
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(chip);
+    expect(onPinnedCompanionModelSelect).toHaveBeenCalledWith(pin);
+    view.rerender(<AiSidebar {...view.props} isTurnActive />);
+    expect((screen.getByTestId("ai-pinned-model") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("blocks a fourth pin with a visible max 3 hint", async () => {
+    const onTogglePinnedCompanionModel = jest.fn();
+    renderCompanion({
+      providers: [{ id: "codex", name: "Codex", models: ["gpt-6-sol", "gpt-6"] }],
+      activeProviderId: "codex",
+      activeModelLabel: "gpt-6",
+      activeEffort: "high",
+      onModelChange: jest.fn(),
+      pinnedCompanionModels: [
+        { providerId: "ghcopilot", model: "auto", effort: "high" },
+        { providerId: "claude", model: "claude-opus-5-5", effort: "" },
+        { providerId: "codex", model: "gpt-6-sol", effort: "high" },
+      ],
+      onTogglePinnedCompanionModel,
+    });
+    fireEvent.click(screen.getByTestId("ai-composer-provider-switcher"));
+    const toggle = await screen.findByTestId("ai-pin-toggle");
+    expect(toggle.getAttribute("aria-disabled") ?? toggle.getAttribute("data-disabled")).not.toBeNull();
+    expect(screen.getByTestId("ai-pin-limit-hint").textContent).toBe("Max 3 pinned. Unpin one to add another.");
+    fireEvent.click(toggle);
+    expect(onTogglePinnedCompanionModel).not.toHaveBeenCalled();
+    expect(screen.getAllByTestId("ai-pinned-model")).toHaveLength(3);
+  });
+
+  it("filters provider catalog IDs in the editable model combobox", async () => {
+    renderCompanion({
+      providers: [{ id: "ghcopilot", name: "GitHub Copilot CLI", models: ["auto", "claude-opus-5.5", "gpt-6-sol"] }],
+      activeProviderId: "ghcopilot",
+      activeProviderLabel: "GitHub Copilot CLI",
+      activeModelLabel: "auto",
+      activeEffort: "high",
+      onModelChange: jest.fn(),
+      onTogglePinnedCompanionModel: jest.fn(),
+    });
+    fireEvent.click(screen.getByTestId("ai-composer-provider-switcher"));
+    expect(await screen.findByTestId("ai-pin-toggle")).toHaveProperty("textContent", "Pin auto (max 3)");
+    fireEvent.change(screen.getByTestId("ai-model-combobox"), { target: { value: "OPUS" } });
+    expect(screen.getByRole("menuitemradio", { name: "claude-opus-5.5" })).toBeTruthy();
+    expect(screen.queryByRole("menuitemradio", { name: "gpt-6-sol" })).toBeNull();
+  });
+
+  it("discards the typed filter on Escape but still commits free-text on Enter", async () => {
+    const onModelChange = jest.fn();
+    renderCompanion({
+      providers: [{ id: "ghcopilot", name: "GitHub Copilot CLI", models: ["gpt-5.6", "gpt-4.1"] }],
+      activeProviderId: "ghcopilot",
+      activeProviderLabel: "GitHub Copilot CLI",
+      activeModelLabel: "gpt-5.6",
+      onModelChange,
+    });
+    fireEvent.click(screen.getByTestId("ai-composer-provider-switcher"));
+    const combobox = await screen.findByTestId("ai-model-combobox");
+    fireEvent.change(combobox, { target: { value: "4." } });
+    fireEvent.keyDown(combobox, { key: "Escape" });
+    fireEvent.blur(combobox);
+    expect(onModelChange).not.toHaveBeenCalled();
+
+    fireEvent.change(combobox, { target: { value: "auto" } });
+    fireEvent.keyDown(combobox, { key: "Enter" });
+    expect(onModelChange).toHaveBeenCalledWith("ghcopilot", "auto");
+  });
+
   it.each([false, true])("switches provider and model from the %s composer footer", async (mobile) => {
     const onProviderChange = jest.fn();
     const onModelChange = jest.fn();

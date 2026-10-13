@@ -29,6 +29,21 @@ const { resolveSandbox, claudeSandboxArgs, codexExecArgs, cursorHeadlessArgs } =
 const { createTraceLogger } = require('./trace-log');
 const { createProviderCatalog } = require('./provider-catalog');
 
+function normalizePinnedCompanionModels(value) {
+  if (!Array.isArray(value)) return [];
+  const pins = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' ||
+        typeof entry.providerId !== 'string' || typeof entry.model !== 'string' || typeof entry.effort !== 'string') continue;
+    const pin = { providerId: entry.providerId.trim(), model: entry.model.trim(), effort: entry.effort.trim() };
+    if (!pin.providerId || !pin.model || pins.some((existing) =>
+      existing.providerId === pin.providerId && existing.model === pin.model && existing.effort === pin.effort)) continue;
+    pins.push(pin);
+    if (pins.length === 3) break;
+  }
+  return pins;
+}
+
 // pdf-parse (v2) is used for server-side text extraction from PDF attachments.
 // Loaded lazily so the module still starts if the package is absent.
 let _PdfParser = null;
@@ -964,6 +979,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
 
   function buildPublicConfig(stored = readStoredConfig()) {
     const publicConfig = { ...(stored && typeof stored === 'object' ? stored : {}) };
+    publicConfig.pinnedCompanionModels = normalizePinnedCompanionModels(publicConfig.pinnedCompanionModels);
     const project = resolveSelectedProject(publicConfig.projectId, publicConfig);
     if (project) {
       publicConfig.projectId = project.id;
@@ -1001,6 +1017,9 @@ function createChatModule(httpServer, io, userConfig = {}) {
     if (typeof data.codexEffort === 'string')    current.codexEffort = data.codexEffort.trim();
     if (typeof data.cursorModel === 'string')    current.cursorModel = data.cursorModel.trim();
     if (typeof data.cursorEffort === 'string')   current.cursorEffort = data.cursorEffort.trim();
+    if (Array.isArray(data.pinnedCompanionModels) && data.pinnedCompanionModels.length <= 3) {
+      current.pinnedCompanionModels = normalizePinnedCompanionModels(data.pinnedCompanionModels);
+    }
     if (typeof data.codexCommand === 'string')   current.codexCommand = data.codexCommand.trim();
     if (typeof data.projectId === 'string') {
       const selectedProject = getProjectById(data.projectId);

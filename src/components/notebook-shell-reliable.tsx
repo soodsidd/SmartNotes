@@ -238,6 +238,9 @@ import {
   resolveProviderEffort,
   getSectionMarkdown,
   resolveAiProviderSelection,
+  normalizePinnedCompanionModels,
+  togglePinnedCompanionModel,
+  type PinnedCompanionModel,
   companionScopeFromKey,
   resolveCompanionThreadAddress,
   resolveSubtreeRootPath,
@@ -566,6 +569,7 @@ interface ChatProvidersResponse {
 }
 
 interface ChatSettingsResponse {
+  pinnedCompanionModels?: PinnedCompanionModel[];
   model?: string;
   claudeModel?: string;
   ghcopilotModel?: string;
@@ -865,6 +869,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [aiActiveProviderId, setAiActiveProviderId] = React.useState("");
   const [aiActiveModel, setAiActiveModel] = React.useState("");
   const [aiActiveEffort, setAiActiveEffort] = React.useState("");
+  const [pinnedCompanionModels, setPinnedCompanionModels] = React.useState<PinnedCompanionModel[]>([]);
   const [fastLaneProviderId, setFastLaneProviderId] = React.useState("claude");
   const [fastLaneModel, setFastLaneModel] = React.useState("haiku");
   const [aiVerboseEnabled, setAiVerboseEnabled] = React.useState(true);
@@ -2386,6 +2391,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         }
 
         aiStoredSettingsRef.current = settingsPayload;
+        setPinnedCompanionModels(normalizePinnedCompanionModels(settingsPayload.pinnedCompanionModels));
         setAiProviders(providersPayload.providers ?? []);
         const selection = resolveAiProviderSelection(
           providersPayload.providers ?? [],
@@ -2439,6 +2445,52 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     },
     []
   );
+
+  const handleTogglePinnedCompanionModel = React.useCallback(async (pin: PinnedCompanionModel) => {
+    const previous = pinnedCompanionModels;
+    const next = togglePinnedCompanionModel(previous, pin);
+    if (next === previous) return;
+    setPinnedCompanionModels(next);
+    try {
+      const response = await fetch("/api/chat/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinnedCompanionModels: next }),
+      });
+      if (!response.ok) throw new Error("Could not save pinned models");
+      aiStoredSettingsRef.current.pinnedCompanionModels = next;
+    } catch {
+      setPinnedCompanionModels(previous);
+    }
+  }, [pinnedCompanionModels]);
+
+  const handlePinnedCompanionModelSelect = React.useCallback(async (pin: PinnedCompanionModel) => {
+    const body: Record<string, string> = { defaultProvider: pin.providerId };
+    if (pin.providerId === "claude") body.claudeModel = pin.model;
+    else if (pin.providerId === "ghcopilot") body.ghcopilotModel = pin.model;
+    else if (pin.providerId === "codex") body.codexModel = pin.model;
+    else if (pin.providerId === "cursor") body.cursorModel = pin.model;
+    if (pin.providerId === "ghcopilot") body.ghcopilotEffort = pin.effort;
+    else if (pin.providerId === "codex") body.codexEffort = pin.effort;
+    else if (pin.providerId === "cursor") body.cursorEffort = pin.effort;
+    try {
+      const response = await fetch("/api/chat/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error("Could not select pinned model");
+      Object.assign(aiStoredSettingsRef.current, body);
+      aiActiveProviderIdRef.current = pin.providerId;
+      aiActiveModelRef.current = pin.model;
+      aiActiveEffortRef.current = pin.effort;
+      setAiActiveProviderId(pin.providerId);
+      setAiActiveModel(pin.model);
+      setAiActiveEffort(pin.effort);
+    } catch {
+      // Keep the last working selection when settings cannot be saved.
+    }
+  }, []);
 
   const persistAiEffortSetting = React.useCallback(
     async (providerId: string, effort: string) => {
@@ -6061,6 +6113,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     activeProviderLabel: aiProviderLabel,
     activeModelLabel: aiActiveModel,
     activeEffort: aiActiveEffort,
+    pinnedCompanionModels,
+    onTogglePinnedCompanionModel: handleTogglePinnedCompanionModel,
+    onPinnedCompanionModelSelect: handlePinnedCompanionModelSelect,
     assistantLabel: aiAssistantLabel,
     messages: displayedAiMessages,
     composerResetKey: aiComposerResetKey,

@@ -21,6 +21,10 @@ import {
   getAiScopeOptions,
   getAiScopeTokenLabel,
   getAiProviderModelOptions,
+  filterAiProviderModels,
+  normalizePinnedCompanionModels,
+  samePinnedCompanionModel,
+  togglePinnedCompanionModel,
   getSectionMarkdown,
   getSectionOffsets,
   isParentContextScopeAvailable,
@@ -68,6 +72,32 @@ import {
   hasUnsavedLocalDraftChanges,
   shouldBlockPendingPageReload,
 } from "../src/lib/page-reload";
+
+describe("pinned Companion model helpers", () => {
+  const auto = { providerId: "ghcopilot", model: "auto", effort: "high" };
+  const opus = { providerId: "ghcopilot", model: "claude-opus-5.5", effort: "high" };
+  const sol = { providerId: "codex", model: "gpt-6-sol", effort: "high" };
+
+  it("uses provider, model, and effort as the complete pin identity", () => {
+    expect(samePinnedCompanionModel(auto, { ...auto, effort: "low" })).toBe(false);
+    expect(samePinnedCompanionModel(auto, { ...auto, providerId: "cursor" })).toBe(false);
+    expect(samePinnedCompanionModel(auto, { ...auto, model: "gpt-6-sol" })).toBe(false);
+    expect(togglePinnedCompanionModel([auto], auto)).toEqual([]);
+    expect(togglePinnedCompanionModel([auto], { ...auto, effort: "low" })).toHaveLength(2);
+  });
+
+  it("blocks a fourth pin without replacing any existing pin", () => {
+    expect(togglePinnedCompanionModel([auto, opus, sol], { ...sol, effort: "low" }))
+      .toEqual([auto, opus, sol]);
+    expect(normalizePinnedCompanionModels([auto, auto, opus, sol, { ...sol, effort: "low" }]))
+      .toEqual([auto, opus, sol]);
+  });
+
+  it("filters canonical model IDs without changing their order", () => {
+    expect(filterAiProviderModels(["auto", "claude-opus-5.5", "gpt-6-sol", "claude-sonnet-5"], "CLAUDE"))
+      .toEqual(["claude-opus-5.5", "claude-sonnet-5"]);
+  });
+});
 
 // ─── estimateTokenCount ───────────────────────────────────────────────────────
 
