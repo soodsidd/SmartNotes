@@ -1,0 +1,10 @@
+GET / -> 200
+footer after free-text auto: Copilot (copilot CLI) · auto
+chips after pinning: ["auto","claude-opus-5-5","gpt-6-sol · high"]
+footer after auto chip: Copilot (copilot CLI) · auto
+pin toggle: Pin auto (max 3) checked=true
+filtered '4.': ["Claude (claude CLI)","Codex (codex CLI)","Copilot (copilot CLI)","Cursor (agent CLI)","gpt-4.1","claude-opus-4.7","claude-sonnet-4.6","claude-sonnet-4.5","claude-haiku-4.5","Low","Medium","High"]
+4th toggle disabled=true hint=Max 3 pinned. Unpin one to add another.
+chips after 4th attempt: ["auto","claude-opus-5-5","gpt-6-sol · high"]
+chips after reload: ["auto","claude-opus-5-5","gpt-6-sol · high"]
+console errors: 0
