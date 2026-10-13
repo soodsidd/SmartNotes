@@ -3,7 +3,7 @@
     {
       "name": "Smart Notes",
       "kind": "app",
-      "command": "cmd /c \"set SMART_NOTES_VAULT=C:\\Projects\\smart-notes\\vault&& npm run start:stable\"",
+      "command": "cmd /c \"set SMART_NOTES_VAULT=C:\\Projects\\smart-notes\\vault&& node gateway-start.js\"",
       "workingDirectory": ".",
       "port": 3002,
       "url": "http://localhost:3002",
