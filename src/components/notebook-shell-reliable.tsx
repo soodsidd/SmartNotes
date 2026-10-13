@@ -4068,6 +4068,16 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     [applySelection, dismissGhostVersions, flushSave, replaceTreePage, snapshotLeavingPage, tree]
   );
 
+  React.useEffect(() => {
+    if (paperInline) return;
+    const openRequestedPaper = (event: Event) => {
+      const path = (event as CustomEvent<unknown>).detail;
+      if (typeof path === "string" && isBibliographyPath(path)) void openPage(path);
+    };
+    window.addEventListener("paper-open-request", openRequestedPaper);
+    return () => window.removeEventListener("paper-open-request", openRequestedPaper);
+  }, [openPage, paperInline]);
+
   // SN-205: host handler for a mini-app's `smartNotesApp.openPage(pagePath)`.
   // Only a canonical, existing vault-relative page is accepted; navigation reuses
   // the ordinary page-selection leave/save flow (`openPage`). External/absolute/

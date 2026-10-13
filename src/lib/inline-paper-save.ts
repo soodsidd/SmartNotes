@@ -1,4 +1,11 @@
 /** Same-origin frames run the standard page save pipeline; closing awaits it. */
+const inlineEditors = new Set<() => Promise<boolean>>();
+
+export function registerInlinePaperEditor(flush: () => Promise<boolean>): () => void {
+  inlineEditors.add(flush);
+  return () => { inlineEditors.delete(flush); };
+}
+
 export function flushPaperFrame(frame: HTMLIFrameElement): Promise<boolean> {
   const requestId = crypto.randomUUID();
   return new Promise((resolve) => {
@@ -15,5 +22,5 @@ export function flushPaperFrame(frame: HTMLIFrameElement): Promise<boolean> {
 
 export async function flushInlinePapers(): Promise<boolean> {
   const frames = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe[data-paper-editor]"));
-  return (await Promise.all(frames.map(flushPaperFrame))).every(Boolean);
+  return (await Promise.all([...frames.map(flushPaperFrame), ...Array.from(inlineEditors, (flush) => flush())])).every(Boolean);
 }

@@ -5,10 +5,7 @@
 Bibliography, virtual paper rows, reference controls, and ownership breadcrumbs
 reuse `--surface`, `--secondary`, `--border`, `--foreground`, `--muted-foreground`,
 `--accent`, `--ring`, standard Button/Input controls, existing tree indent/density,
-and 44px mobile touch targets. The sole new metric is
-`--paper-reference-frame-height: 640px`: a bounded, full-width standard editor
-inside the document flow with its own scrolling, on desktop and mobile.
-The inline frame preserves all existing text-page features; it is not a popup.
+and 44px mobile touch targets. The inline panel stays in document flow.
 
 ## Bibliography v2 tree and paper page (SN-292)
 
@@ -32,6 +29,15 @@ Fork photos #2, #3 and #4. The Insert menu's paper glyph reuses SN-292's
 the grid and expanded Create a paper form share one scroll area so the form
 follows the cards in document flow. The form button uses the standard primary
 Button at intrinsic width. No new design values were introduced.
+
+## Paper chip and inline panel (SN-294)
+
+Fork photos #5 and #6. The rounded chip uses `--accent` for its teal-grey
+border, `--secondary` for its fill, and SN-292's `--paper` for the PAPER badge.
+The expanded panel uses `--accent` for its left rule, `--surface` for the body,
+`--foreground` for the title, `--muted-foreground` for helper and footer text,
+and the standard primary and ghost Buttons. Spacing and typography use the
+existing Tailwind scale. No new color or metric token was introduced.
 
 ## Paper reading shell (SN-281)
 
