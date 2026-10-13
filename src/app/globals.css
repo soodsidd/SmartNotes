@@ -1101,9 +1101,9 @@ body.page-print-active .floating-text-box__resize { display: none; }
 }
 .pdf-reader[data-paper-shell="true"] { top: var(--desktop-chrome-height); }
 .pdf-reader[data-paper-shell="true"] [data-testid="pdf-reader-close"] { display: none; }
-@media (min-width: 680px) {
-  .pdf-reader[data-paper-shell="true"] [data-testid="pdf-reader-paper-notes-toggle"] { display: none; }
-}
+/* Keep the paper-notes toggle visible at every width — landscape phones often
+   land in split mode (≥680px) where the dock has no other hide control, and
+   hiding the toolbar toggle left notes permanently stuck open. */
 
 /* iOS and other fullscreen-limited browsers still receive the immersive
    chrome-hide half of performance mode. The reader is portaled beside main. */

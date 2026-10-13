@@ -145,23 +145,25 @@ export function PaperNotesDock({
           onKeyDown={handleResizeKey}
         />
       ) : null}
-      {layout.mode === "overlay" ? <div className="paper-notes-dock__bar">
-        <div className="paper-notes-dock__heading">
-          <span className="paper-notes-dock__eyebrow">Paper notes · Bibliography</span>
-          <span className="paper-notes-dock__title" title={title}>{title}</span>
+      {layout.mode !== "hidden" ? (
+        <div className="paper-notes-dock__bar">
+          <div className="paper-notes-dock__heading">
+            <span className="paper-notes-dock__eyebrow">Paper notes · Bibliography</span>
+            <span className="paper-notes-dock__title" title={title}>{title}</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="paper-notes-dock__control"
+            aria-label={layout.mode === "overlay" ? "Back to PDF" : "Hide paper notes"}
+            title={layout.mode === "overlay" ? "Back to PDF" : "Hide paper notes"}
+            data-testid="paper-notes-hide"
+            onClick={onHide}
+          >
+            <PanelRightClose className="size-4" aria-hidden="true" />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="paper-notes-dock__control"
-          aria-label={layout.mode === "overlay" ? "Back to PDF" : "Hide paper notes"}
-          title={layout.mode === "overlay" ? "Back to PDF" : "Hide paper notes"}
-          data-testid="paper-notes-hide"
-          onClick={onHide}
-        >
-          <PanelRightClose className="size-4" aria-hidden="true" />
-        </Button>
-      </div> : null}
+      ) : null}
       {error ? (
         <p role="alert" className="paper-notes-dock__error" data-testid="paper-notes-error">
           {error}

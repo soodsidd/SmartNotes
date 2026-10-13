@@ -2290,6 +2290,23 @@ function ReaderSurface({
     }
   }, [zoom]);
 
+  /** Paper shell: Maximize first collapses notes so FitWidth runs on the full frame. */
+  const maximizeReadingArea = React.useCallback(() => {
+    if (notesPanel?.open) {
+      notesPanel.onToggle();
+      window.requestAnimationFrame(() => fitWidth());
+      return;
+    }
+    fitWidth();
+  }, [fitWidth, notesPanel]);
+
+  const togglePerformanceMode = React.useCallback(() => {
+    // Fullscreen/chrome-hide feels broken while notes steal half the landscape
+    // frame — collapse notes when entering performance mode.
+    if (!performanceMode && notesPanel?.open) notesPanel.onToggle();
+    onPerformanceModeChange((current) => !current);
+  }, [notesPanel, onPerformanceModeChange, performanceMode]);
+
   // EmbedPDF selects/deselects annotations on pointerdown, before the click
   // that would toggle reader chrome. Remember whether a comment dish was open
   // when the tap began so neither opening a comment nor dismissing one also
@@ -2678,8 +2695,9 @@ function ReaderSurface({
             type="button"
             className="pdf-reader__control pdf-reader__control--hide-narrow"
             data-testid="pdf-reader-fit-width"
-            aria-label="Fit width"
-            onClick={fitWidth}
+            aria-label={notesPanel?.open ? "Maximize PDF (hide notes)" : "Fit width"}
+            title={notesPanel?.open ? "Hide paper notes and fit the PDF to width" : "Fit width"}
+            onClick={maximizeReadingArea}
           >
             <Maximize2 className="size-4" aria-hidden="true" />
           </button>
@@ -2715,7 +2733,7 @@ function ReaderSurface({
             aria-label={performanceMode ? "Exit performance mode" : "Enter performance mode"}
             aria-pressed={performanceMode}
             title={performanceMode ? "Exit fullscreen and allow screen sleep" : "Fullscreen and keep screen awake"}
-            onClick={() => onPerformanceModeChange((current) => !current)}
+            onClick={togglePerformanceMode}
           >
             <Presentation className="size-5" aria-hidden="true" />
           </button>
@@ -2878,7 +2896,11 @@ function ReaderSurface({
               <DropdownMenuCheckboxItem
                 checked={performanceMode}
                 data-testid="pdf-reader-more-performance"
-                onCheckedChange={(next) => onPerformanceModeChange(Boolean(next))}
+                onCheckedChange={(next) => {
+                  const enable = Boolean(next);
+                  if (enable && notesPanel?.open) notesPanel.onToggle();
+                  onPerformanceModeChange(enable);
+                }}
               >
                 <Presentation className="size-4" aria-hidden="true" />
                 Performance mode

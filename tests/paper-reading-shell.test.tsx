@@ -189,6 +189,18 @@ describe("PaperNotesDock", () => {
     expect(onHide).toHaveBeenCalled();
   });
 
+  it("offers Hide paper notes on the wide split dock (landscape phones land here)", () => {
+    const { onHide } = renderDock({ mode: "split", readerInsetRight: 400, notesWidth: 400 });
+    fireEvent.click(screen.getByRole("button", { name: "Hide paper notes" }));
+    expect(onHide).toHaveBeenCalled();
+  });
+
+  it("keeps the PDF toolbar notes toggle visible while the paper shell is open", () => {
+    expect(GLOBALS_SOURCE).not.toMatch(
+      /\.pdf-reader\[data-paper-shell="true"\]\s*\[data-testid="pdf-reader-paper-notes-toggle"\]\s*\{\s*display:\s*none/
+    );
+  });
+
   it("waits for the host save before loading the notes frame", () => {
     renderDock({ mode: "split", readerInsetRight: 480, notesWidth: 480 }, { frameReady: false });
     expect(screen.queryByTestId("paper-notes-frame")).toBeNull();
