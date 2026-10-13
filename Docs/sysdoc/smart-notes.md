@@ -885,7 +885,8 @@ The reliable shell also has an in-place refresh-note path. The top-bar sync icon
 | HeadingWithAnchorId | H1–H3 with persisted `id` attrs for TOC section anchors (SN-220) |
 | PageToc | Single top-of-page table-of-contents atom (`nav[data-page-toc]`); generate/refresh/remove via format bar (SN-220) |
 | TaskList + TaskItem | `- [ ]` checkboxes, nested |
-| Table + TableRow + TableCell + TableHeader | Full table editing |
+| Table + TableRow + TableCell + TableHeader | Full table editing; inserted via the Insert table submenu (SN-299) |
+| TableActiveCell | Decoration-only `.activeCell` teal outline on the cell holding the selection (SN-299) |
 | Link | Clickable links (open-on-click disabled; links open on command+click) |
 | Placeholder | Greyed placeholder text when empty |
 | Mathematics | KaTeX math rendering. Inline: `$...$`, block: `$$...$$`. **Alt+=** opens inline compose at the caret with live KaTeX preview (SN-111); **`\frac` + Space** opens a fraction template and **`a/b` + Space** expands to `\frac{a}{b}`. Editing an *existing* equation — inline **or** block — arrows into it (NodeSelection) or clicks it to open the same caret-anchored compose editor at that equation (`data-math-kind` = `inline`\|`block`); the top-of-page dialog is never used for edits (SN-158). Commit (**Enter**) calls `updateInlineMath`/`updateBlockMath` at the node position so the node keeps its inline/block type with no duplicate; **Escape** cancels; the caret returns to the side it was approached from (`resumePos`). Block preview renders in KaTeX `displayMode`. **Alt+Shift++** opens the block-equation dialog for *inserting* a new block equation (`insertBlockMath`); the dialog is insert-only. |
@@ -963,6 +964,16 @@ The fork has two toolbar buttons (outline, paper) before the grid button. On mai
 **Rendering:** `pageLinesBackgroundStyle()` returns only `background-*` properties: CSS `linear-gradient`s keyed on the `--page-line-*` / `--page-rule-*` / `--page-grid-*` tokens (documented in `docs/design-system/README.md`). They are applied inline to `editor-content-frame`, so the lines scroll and zoom with the content and never affect layout. The frame also exposes `data-page-lines` / `data-page-line-color` for tests. The margin line sits at `--page-rule-margin-inset`, inside the frame's left padding.
 
 **Lessons:** a global unlayered `button { font: inherit }` beats Tailwind's layered text utilities on `<button>` elements. Put text-size classes on an inner `<span>`, as the toolbar dropdowns do.
+
+### Tables and Insert table (SN-299)
+
+**Plain English:** Insert → **Insert table ›** opens a small side panel (fork photo #15) where you pick rows, columns, and whether the first row is a header, see the live cell count, then press **Insert table**. The grid (fork photo #16) has light lines, a shaded header row, and a teal outline on the cell you are typing in. Tables work in the main page flow and inside floating text boxes, and they persist through reload like any other page HTML.
+
+**Submenu:** `InsertOverflowDropdown` in `src/components/rich-text-editor.tsx` renders a `DropdownMenuSub` (`toolbar-table` / `toolbar-table-mobile`, options panel `-options`) with `Rows` [3], `Columns` [3], a checked `Header row` checkbox, an `aria-live` `N cells` count, and the primary `Insert table` button (`-rows`, `-columns`, `-header`, `-count`, `-insert` test ids). Inputs stop keydown propagation (except Escape) so Base UI menu typeahead does not steal digits. `src/lib/table-insert.ts` validates dimensions as whole numbers 1–`MAX_INSERT_TABLE_DIMENSION` (50); an invalid value yields `0 cells` and disables the button. Insert runs `insertTable({ rows, cols, withHeaderRow })` at the current selection, so a caret inside a floating text box inserts into that box.
+
+**Grid styling:** `.editor-content` table rules in `globals.css` use `--border` for grid lines, `--secondary` for `th`, and the `--editor-table-cell-min-width` / `--editor-table-cell-min-height` tokens so empty cells stay clickable. The active-cell outline comes from the `TableActiveCell` ProseMirror plugin in `rich-text-editor-config.ts`, which decorates the cell containing the selection head with `.activeCell` (inset 2px `--accent`). It is a decoration only and is never serialized. Wide-table local scrolling (SN-178) is unchanged.
+
+**Assumption:** the photos do not show the Insert menu on mobile; the same submenu opens there with 44px touch targets. The table ribbon and stats are SN-278.
 
 ### Spellcheck preference (SN-130)
 
