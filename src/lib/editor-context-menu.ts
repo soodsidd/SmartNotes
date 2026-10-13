@@ -47,13 +47,15 @@ export function buildEditorContextMenuActions(
     onPaste: () => void;
     onSelectAll: () => void;
     onOpenLink: () => void;
+    canPromotePdf?: boolean;
+    onPromotePdf?: () => void;
   }
 ): EditorContextMenuAction[] {
   const run = (fn: () => void) => () => {
     fn();
   };
 
-  return [
+  const actions: EditorContextMenuAction[] = [
     {
       id: "copy",
       label: "Copy",
@@ -170,4 +172,20 @@ export function buildEditorContextMenuActions(
       }),
     },
   ];
+
+  if (options.onPromotePdf) {
+    actions.push({
+      id: "promotePdf",
+      label: "Promote to paper",
+      testId: "ctx-promote-pdf",
+      disabled: !options.canPromotePdf,
+      hint: !options.canPromotePdf ? "Right-click a PDF chip" : undefined,
+      run: run(() => {
+        if (!options.canPromotePdf) return;
+        options.onPromotePdf?.();
+      }),
+    });
+  }
+
+  return actions;
 }

@@ -56,6 +56,7 @@ const ALLOWED_TOOLS = new Set([
   // network-less sandbox can still attach a paper PDF through this bridge.
   "paper_list",
   "paper_create",
+  "paper_create_from_pdf",
   "paper_reference_add",
   "paper_remove",
   "paper_attach_pdf",

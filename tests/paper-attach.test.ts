@@ -1,4 +1,11 @@
-import { createPaperAndAttach, filterAndSortPapers, paperHasPdf, type PaperEntry } from "@/lib/paper-attach";
+import {
+  createPaperAndAttach,
+  defaultPaperTitleFromPdfName,
+  filterAndSortPapers,
+  listPagePdfChips,
+  paperHasPdf,
+  type PaperEntry,
+} from "@/lib/paper-attach";
 
 const entry = (title: string, options: { pdf?: boolean; ref?: string; source?: string; updated?: string } = {}): PaperEntry => ({
   id: title,
@@ -56,5 +63,38 @@ describe("Attach paper picker", () => {
     });
     expect(result.pdfError).toBe(true);
     expect(insert).toHaveBeenCalledWith("id");
+  });
+
+  it("promotes a chosen page PDF through the shared primitive without a File upload", async () => {
+    const promote = jest.fn(async () => ({ id: "promoted", created: true }));
+    const insert = jest.fn(() => true);
+    const result = await createPaperAndAttach({
+      title: "From page",
+      homeNotebookPath: "Research",
+      sourceLink: "",
+      pdf: null,
+      pagePdfHref: "/vault/Research/Articles/page.assets/doc.pdf",
+      referenceFromPath: "Research/Articles/page.html",
+      replaceChip: true,
+    }, {
+      create: async () => { throw new Error("should not create via REST"); },
+      attachPdf: async () => { throw new Error("should not upload"); },
+      promotePagePdf: promote,
+      refresh: async () => {},
+      insertReference: insert,
+    });
+    expect(result).toEqual({ pdfError: false, promoted: true });
+    expect(promote).toHaveBeenCalledWith({
+      href: "/vault/Research/Articles/page.assets/doc.pdf",
+      title: "From page",
+      homeNotebookPath: "Research",
+      referenceFromPath: "Research/Articles/page.html",
+      replaceChip: true,
+    });
+    expect(insert).not.toHaveBeenCalled();
+    expect(defaultPaperTitleFromPdfName("doc.pdf")).toBe("doc");
+    expect(listPagePdfChips('<span data-file-type="pdf" href="/vault/a.pdf"><span class="file-attachment-name" data-href="/vault/a.pdf">a.pdf</span></span>')).toEqual([
+      { href: "/vault/a.pdf", fileName: "a.pdf" },
+    ]);
   });
 });

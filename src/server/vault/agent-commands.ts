@@ -57,7 +57,7 @@ import {
   readVaultPdfPages,
 } from "./companion-context";
 import { readSpreadsheetWorkbook, writeSpreadsheetWorkbook } from "./spreadsheet";
-import { addPaperReference, attachPdfToPaper, createPaperForCompanion, listPapers, removePaper } from "./paper-tools";
+import { addPaperReference, attachPdfToPaper, createPaperForCompanion, createPaperFromVaultPdf, listPapers, removePaper } from "./paper-tools";
 import {
   applyCellWrites,
   listWorksheets,
@@ -1601,6 +1601,39 @@ async function runPaperCommand(action: string, args: Record<string, unknown>): P
       };
     }
 
+    case "create_from_pdf": {
+      const sourcePath = optionalString(args.sourcePath) || undefined;
+      const href = optionalString(args.href) || undefined;
+      if (!sourcePath && !href) {
+        throw new VaultError("INVALID_INPUT", 'Pass "sourcePath" or "href" for the vault PDF.', 400);
+      }
+      const result = await createPaperFromVaultPdf({
+        sourcePath,
+        href,
+        title: optionalString(args.title) || undefined,
+        homeNotebookPath: optionalString(args.homeNotebookPath) || undefined,
+        referenceFromPath: optionalString(args.referenceFromPath) || undefined,
+        replaceChip: optionalBoolean(args.replaceChip) === true,
+      });
+      return {
+        ok: true,
+        group: "paper",
+        action,
+        data: {
+          paper: result.paper,
+          created: result.created,
+          referencedFrom: result.referencedFrom?.path ?? null,
+          replacedChip: result.replacedChip,
+          attachment: result.attachment,
+        },
+        treeChanged: true,
+        // Referring page body changes (reference chip and optional PDF chip removal).
+        fileUpdated: result.referencedFrom
+          ? { path: result.referencedFrom.path, content: result.referencedFrom.body }
+          : undefined,
+      };
+    }
+
     default:
       throw new VaultError("UNKNOWN_COMMAND", `Unknown paper command: ${action}`, 400);
   }
@@ -1825,7 +1858,7 @@ export function listVaultCommands() {
     log: ["get", "put", "query", "render", "asset_put"],
     spreadsheet: ["list_sheets", "read_range", "write_cells", "summarize"],
     design: ["render"],
-    paper: ["list", "create", "reference_add", "remove", "attach_pdf"],
+    paper: ["list", "create", "reference_add", "remove", "attach_pdf", "create_from_pdf"],
     app: ["template_list", "template_get", "inventory_list", "inventory_get", "query", "create", "update"],
   };
 }

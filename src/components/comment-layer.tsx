@@ -16,11 +16,13 @@ export interface EditorContextMenuProps {
   canAddComment: boolean;
   canCopy: boolean;
   canPaste: boolean;
+  canPromotePdf?: boolean;
   onAddComment: () => void;
   onCopy: () => void;
   onPaste: () => void;
   onSelectAll: () => void;
   onOpenLink: () => void;
+  onPromotePdf?: () => void;
   onClose: () => void;
 }
 
@@ -31,11 +33,13 @@ const CONTEXT_MENU_GROUPS = [
   ["bullet", "ordered", "task"],
   ["link"],
   ["comment"],
+  ["promotePdf"],
 ] as const;
 
 const MOBILE_CONTEXT_MENU_GROUPS = [
   ["copy", "paste", "selectAll"],
   ["comment"],
+  ["promotePdf"],
 ] as const;
 
 export function EditorContextMenu({
@@ -46,11 +50,13 @@ export function EditorContextMenu({
   canAddComment,
   canCopy,
   canPaste,
+  canPromotePdf,
   onAddComment,
   onCopy,
   onPaste,
   onSelectAll,
   onOpenLink,
+  onPromotePdf,
   onClose,
 }: EditorContextMenuProps) {
   const menuRef = React.useRef<HTMLDivElement>(null);
@@ -60,13 +66,15 @@ export function EditorContextMenu({
         canAddComment,
         canCopy,
         canPaste,
+        canPromotePdf,
         onAddComment,
         onCopy,
         onPaste,
         onSelectAll,
         onOpenLink,
+        onPromotePdf,
       }),
-    [canAddComment, canCopy, canPaste, editor, onAddComment, onCopy, onPaste, onSelectAll, onOpenLink]
+    [canAddComment, canCopy, canPaste, canPromotePdf, editor, onAddComment, onCopy, onPaste, onSelectAll, onOpenLink, onPromotePdf]
   );
   const groups = mobile ? MOBILE_CONTEXT_MENU_GROUPS : CONTEXT_MENU_GROUPS;
   const actionMap = React.useMemo(

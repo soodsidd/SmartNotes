@@ -65,7 +65,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor, type EditorSectionContext, type RichTextEditorHandle } from "@/components/rich-text-editor";
 import { Bibliography, NotebookBibliographyShortcut, PaperChildRow } from "@/components/bibliography";
 import { PaperAttachDialog } from "@/components/paper-attach-dialog";
-import { createPaperAndAttach, type CreatePaperInput } from "@/lib/paper-attach";
+import { PromotePdfDialog } from "@/components/promote-pdf-dialog";
+import {
+  createPaperAndAttach,
+  listPagePdfChips,
+  promoteVaultPdfViaApi,
+  type CreatePaperInput,
+} from "@/lib/paper-attach";
 import { BIBLIOGRAPHY_PATH, isBibliographyPath, paperBackTarget, paperHomeNotebook, paperReferenceHtml } from "@/lib/papers";
 import { flushInlinePapers, flushPaperFrame } from "@/lib/inline-paper-save";
 import { PaperNotesDock } from "@/components/paper-notes-dock";
@@ -713,6 +719,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const paperDock = paperInline && searchParams?.get("paperDock") === "1";
   const [paperReturnPath, setPaperReturnPath] = React.useState<string | null>(null);
   const [paperAttachOpen, setPaperAttachOpen] = React.useState(false);
+  const [promotePdfTarget, setPromotePdfTarget] = React.useState<PdfAttachmentTarget | null>(null);
   // SN-292 (#7): last ordinary page shown, so Back to topic returns where the user came from.
   const [paperTopicPath, setPaperTopicPath] = React.useState<string | null>(null);
   const searchKey = searchParams?.toString() ?? "";
@@ -4404,9 +4411,49 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     return true;
   }, []);
 
+  const reloadActivePageAfterPromote = React.useCallback(async () => {
+    const path = activePagePathRef.current;
+    await loadTree({ pagePath: path }, { skipCache: true, draftSnapshot: currentDraftSnapshot() });
+    if (!path) return;
+    const page = await fetchVaultPage(path);
+    updateDraft({ content: page.content, title: page.title });
+    setExpandedPages((expanded) => new Set([...expanded, path]));
+  }, [currentDraftSnapshot, loadTree, updateDraft]);
+
+  const promotePdfToPaper = React.useCallback(async (input: {
+    href: string;
+    title: string;
+    homeNotebookPath: string;
+    replaceChip?: boolean;
+  }) => {
+    const referenceFromPath = activePagePathRef.current;
+    if (!referenceFromPath || isBibliographyPath(referenceFromPath)) {
+      throw new Error("Open a normal page that owns the PDF before promoting it.");
+    }
+    if (!(await flushInlinePapers()) || !(await flushSaveRef.current())) {
+      throw new Error("Save the current notes before promoting a PDF.");
+    }
+    const result = await promoteVaultPdfViaApi(
+      {
+        href: input.href,
+        title: input.title,
+        homeNotebookPath: input.homeNotebookPath,
+        referenceFromPath,
+        replaceChip: input.replaceChip === true,
+      },
+      vaultWriteFetch
+    );
+    await reloadActivePageAfterPromote();
+    toast.success(result.created ? "Paper created from PDF." : "Attached existing paper for this PDF.");
+    return result;
+  }, [reloadActivePageAfterPromote]);
+
   const createAndAttachPaper = React.useCallback(async (input: CreatePaperInput) => {
     if (!(await flushInlinePapers()) || !(await flushSaveRef.current())) throw new Error("Save the current notes before creating a paper.");
-    const { pdfError } = await createPaperAndAttach(input, {
+    const referenceFromPath = activePagePathRef.current ?? undefined;
+    const { pdfError } = await createPaperAndAttach(
+      { ...input, referenceFromPath: input.pagePdfHref ? referenceFromPath : input.referenceFromPath },
+      {
       create: async (paperInput) => {
         const response = await vaultWriteFetch("/api/papers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(paperInput) });
         if (!response.ok) throw new Error(await readErrorMessage(response, "Could not create paper."));
@@ -4423,11 +4470,18 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         const save = await vaultWriteFetch("/api/page", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: paper.path, title: paper.title, content: body }) });
         if (!save.ok) throw new Error("PDF attachment save failed.");
       },
-      refresh: () => loadTree({ pagePath: activePagePathRef.current }, { skipCache: true, draftSnapshot: currentDraftSnapshot() }),
+      promotePagePdf: async (promoteInput) => {
+        if (!promoteInput.referenceFromPath) throw new Error("Promoting a page PDF requires the current page path.");
+        return promoteVaultPdfViaApi(promoteInput, vaultWriteFetch);
+      },
+      refresh: async () => {
+        if (input.pagePdfHref) await reloadActivePageAfterPromote();
+        else await loadTree({ pagePath: activePagePathRef.current }, { skipCache: true, draftSnapshot: currentDraftSnapshot() });
+      },
       insertReference: attachPaperToCurrentPage,
     });
     if (pdfError) toast.error("Paper attached, but its PDF could not be saved. Add the PDF from the paper page.");
-  }, [attachPaperToCurrentPage, currentDraftSnapshot, loadTree]);
+  }, [attachPaperToCurrentPage, currentDraftSnapshot, loadTree, reloadActivePageAfterPromote]);
 
   const handleSidebarNestPage = React.useCallback(
     async (pagePath: string, parentId: string | null) => {
@@ -6637,6 +6691,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 onTitleChange={(title) => updateDraft({ title })}
                 onContentChange={(content) => updateDraft({ content })}
                 onAttachPaper={!paperInline && !isBibliographyPath(draft.path) && !activeVersionPreview ? () => { paperCaretRef.current = editorRef.current?.getSelectionPosition() ?? null; setPaperAttachOpen(true); } : undefined}
+                onPromotePdf={!paperInline && !isBibliographyPath(draft.path) && !activeVersionPreview ? (target) => setPromotePdfTarget(target) : undefined}
                 onPersistAttachment={persistEditorAttachment}
                 onSelectionContextChange={setAiSectionContext}
                 onPdfAttachmentOpen={openPdfReader}
@@ -6733,7 +6788,33 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         </div>
       </div>
 
-      <PaperAttachDialog open={paperAttachOpen} onOpenChange={setPaperAttachOpen} tree={tree} vaultName={vaultRoot.split(/[\\/]/).filter(Boolean).pop() || "Bibliography"} onAttach={attachPaperToCurrentPage} onCreate={createAndAttachPaper} />
+      <PaperAttachDialog
+        open={paperAttachOpen}
+        onOpenChange={setPaperAttachOpen}
+        tree={tree}
+        vaultName={vaultRoot.split(/[\\/]/).filter(Boolean).pop() || "Bibliography"}
+        pagePdfChips={draft && !isBibliographyPath(draft.path) ? listPagePdfChips(draft.content) : []}
+        defaultHomeNotebookPath={activeNotebookPath ?? ""}
+        onAttach={attachPaperToCurrentPage}
+        onCreate={createAndAttachPaper}
+      />
+      {promotePdfTarget ? (
+        <PromotePdfDialog
+          open
+          onOpenChange={(open) => { if (!open) setPromotePdfTarget(null); }}
+          tree={tree}
+          fileName={promotePdfTarget.fileName}
+          href={promotePdfTarget.href}
+          defaultHomeNotebookPath={activeNotebookPath ?? ""}
+          onConfirm={async (input) => {
+            await promotePdfToPaper(input);
+            setPromotePdfTarget(null);
+            if (pdfReaderOpen && pdfReader?.href === input.href) {
+              await closePdfReader();
+            }
+          }}
+        />
+      ) : null}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent side="left" className="w-[92vw] max-w-[360px] border-r border-border bg-[color:var(--rail)] p-0">
           <SheetHeader className="border-b border-border px-4 py-4">
@@ -6847,6 +6928,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           insetRight={paperShellPath ? paperLayout.readerInsetRight : 0}
           modal={!paperShellPath || paperLayout.mode !== "split"}
           notesPanel={paperShellPath ? { open: paperLayout.mode !== "hidden", onToggle: togglePaperNotes } : undefined}
+          onSaveAsPaper={
+            !paperShellPath && draft && !isBibliographyPath(draft.path)
+              ? () => setPromotePdfTarget({ href: pdfReader.href, fileName: pdfReader.fileName })
+              : undefined
+          }
         />
       ) : null}
 
@@ -9218,6 +9304,7 @@ function EditorPanel({
   onTitleChange,
   onContentChange,
   onAttachPaper,
+  onPromotePdf,
   onPersistAttachment,
   onSelectionContextChange,
   onPdfAttachmentOpen,
@@ -9234,6 +9321,7 @@ function EditorPanel({
   onTitleChange: (title: string) => void;
   onContentChange: (content: string) => void;
   onAttachPaper?: () => void;
+  onPromotePdf?: (target: PdfAttachmentTarget) => void;
   onPersistAttachment: (input: {
     pagePath: string;
     html: string;
@@ -9445,6 +9533,7 @@ function EditorPanel({
         }
         onChange={handleContentChange}
         onAttachPaper={onAttachPaper}
+        onPromotePdf={onPromotePdf}
         onPersistAttachment={onPersistAttachment}
         onSelectionContextChange={onSelectionContextChange}
         placeholder="Start writing..."
