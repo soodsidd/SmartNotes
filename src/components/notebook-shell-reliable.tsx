@@ -764,10 +764,13 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
   const [workspaceSession, setWorkspaceSession] = React.useState<JupyterSessionView | null>(null);
   // Embedded paper frames share the tab's sessionStorage; only the top shell restores a reader.
-  const restoredPdfReader = React.useMemo(() => (paperInline ? null : readActivePdfReaderSession()), []);
-  const [pdfReaderState, setPdfReaderState] = React.useState(
-    createRetainedPdfReaderState(restoredPdfReader)
-  );
+  // Restore after mount so SSR HTML and the first client render match (React #418/#422).
+  const [pdfReaderState, setPdfReaderState] = React.useState(() => createRetainedPdfReaderState(null));
+  React.useEffect(() => {
+    if (paperInline) return;
+    const restored = readActivePdfReaderSession();
+    if (restored) setPdfReaderState(createRetainedPdfReaderState(restored));
+  }, [paperInline]);
   const pdfReader = pdfReaderState.target;
   const pdfReaderOpen = pdfReaderState.open;
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
@@ -922,22 +925,21 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     notesOpen: paperNotesOpen,
     overlayOpen: paperNotesOverlayOpen,
   });
-  const closePdfReader = React.useCallback(() => {
-    void (async () => {
+  const closePdfReader = React.useCallback(async (): Promise<boolean> => {
       const frame = paperFrameRef.current;
       if (frame?.contentWindow && liveFramesRef.current.has(frame.contentWindow)) {
         // Same save handshake as SN-279 inline frames: never discard dock edits.
         setPaperShellError(null);
         if (!(await flushPaperFrame(frame))) {
           setPaperShellError("Paper notes could not be saved. The reader stays open — retry closing.");
-          return;
+          return false;
         }
       }
       writeActivePdfReaderSession(null);
       // Keep exactly one loaded EmbedPDF tree hidden for same-tab same-PDF
       // resume. Opening a different href changes the keyed host and disposes it.
       setPdfReaderState(closeRetainedPdfReader);
-    })();
+      return true;
   }, []);
   const handlePdfReaderPageChange = React.useCallback((page: number, pageCount?: number) => {
     setPdfReaderState((current) => {
@@ -1466,12 +1468,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   const aiScopeOptions = React.useMemo(
     () =>
-      getAiScopeOptions({
+      paperShellPath ? getAiScopeOptions({ hasSections: false, hasPageChildren: false, hasParentContext: false }) : getAiScopeOptions({
         hasSections: Boolean(draft?.sectionPath),
         hasPageChildren: hasPageTreeScope,
         hasParentContext: isParentContextScopeAvailable(aiParentInfo),
       }),
-    [aiParentInfo, draft?.sectionPath, hasPageTreeScope]
+    [aiParentInfo, draft?.sectionPath, hasPageTreeScope, paperShellPath]
   );
 
   const aiScopeLabel = getAiScopeLabel({
@@ -1502,15 +1504,15 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const companionThreadAddress = React.useMemo(
     () =>
       resolveCompanionThreadAddress({
-        scope: aiScope,
+        scope: paperShellPath ? "whole" : aiScope,
         activePath: activeProjectWorkspace
           ? workspaceSession?.capability ?? ""
-          : draft?.path ?? "",
+          : paperShellPath ?? draft?.path ?? "",
         sectionPath: draft?.sectionPath,
         sectionHeading: aiScope === "section" ? aiSection?.heading : null,
         subtreeRootPath: companionSubtreeRootPath,
       }),
-    [aiScope, draft?.path, draft?.sectionPath, aiSection?.heading, companionSubtreeRootPath, activeProjectWorkspace, workspaceSession?.capability]
+    [aiScope, draft?.path, draft?.sectionPath, aiSection?.heading, companionSubtreeRootPath, activeProjectWorkspace, workspaceSession?.capability, paperShellPath]
   );
   // storePath = where the thread physically lives (shared identity); scopeKey =
   // key within that store. Every page under a shared scope resolves to the same
@@ -5280,7 +5282,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
     const userMessageId = retryIdentity?.userMessageId ?? `user-${Date.now()}`;
     const assistantMessageId = retryIdentity?.assistantMessageId ?? `assistant-${Date.now()}`;
-    let pageContext = buildAiPageContext({
+    let pageContext = paperShellPath ? "" : buildAiPageContext({
       scope: aiScope,
       pageContent: draft.content,
       sectionMarkdown: aiSectionMarkdown,
@@ -5299,8 +5301,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     }
     const turnJupyterFocus = jupyterFocusForPage(activeJupyterFocus, draft.path, draft.noteType);
     const operatingContext = buildSmartNotesOperatingContext({
-      title: draft.title,
-      path: draft.path,
+      title: paperShellPath
+        ? treeRef.current.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH)?.pages.find((page) => page.path === paperShellPath)?.title ?? draft.title
+        : draft.title,
+      path: paperShellPath ?? draft.path,
       noteType: draft.noteType,
       vaultRoot,
       resolvedDiskPath: resolvedDiskPath || null,
@@ -5312,7 +5316,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       notebookPath: draft.notebookPath,
       sectionName: draft.sectionName,
       sectionPath: draft.sectionPath,
-      scopeLabel: aiScopeLabel,
+      scopeLabel: paperShellPath ? "Paper" : aiScopeLabel,
       designLinked: Boolean(draft.designLinked),
       sourceMissing: Boolean(draft.sourceMissing),
       activePdfHref: pdfReaderOpen ? pdfReader?.href : undefined,
@@ -5400,7 +5404,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           // companion-context route intentionally remains note-only.
           throw new Error("__DEEP_WORK_CONTEXT_ALREADY_ATTACHED__");
         }
-        pageContext = await fetchCompanionPageContext(draft.path, pageContext, {
+        pageContext = await fetchCompanionPageContext(paperShellPath ?? draft.path, pageContext, {
           activePdfHref: pdfReaderOpen ? pdfReader?.href : undefined,
           activePdfFileName: pdfReaderOpen ? pdfReader?.fileName : undefined,
           pdfPage: pdfReaderOpen ? pdfReader?.page : undefined,
@@ -5520,7 +5524,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         revokeComposerAttachmentUrls(attachments);
       }
     }
-  }, [aiActiveModel, aiActiveProviderId, aiAssistantLabel, aiPageTreeContext, aiParentContextMarkdown, aiScope, aiScopeLabel, aiSectionMarkdown, clearCompanionActiveTurnPointer, draft, pdfReader, pdfReaderOpen, persistCompanionActiveTurn, activeProjectWorkspace, reattachOrReconcileTurn, setAiFailedSend, updateAiMessage, vaultRoot, workspaceSession]);
+  }, [aiActiveModel, aiActiveProviderId, aiAssistantLabel, aiPageTreeContext, aiParentContextMarkdown, aiScope, aiScopeLabel, aiSectionMarkdown, clearCompanionActiveTurnPointer, draft, pdfReader, pdfReaderOpen, paperShellPath, persistCompanionActiveTurn, activeProjectWorkspace, reattachOrReconcileTurn, setAiFailedSend, updateAiMessage, vaultRoot, workspaceSession]);
 
   // SN-287: Retry re-sends the failed prompt/attachments under the original
   // turn identity (see AiFailedSendRecord). Never runs while a turn is live.
@@ -6154,9 +6158,13 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     );
   }
 
+  const paperShellTitle = paperShellPath
+    ? tree.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH)?.pages.find((page) => page.path === paperShellPath)?.title ?? draft?.title ?? "Paper"
+    : null;
   // One shared prop bundle and one AiSidebar element serve every shell presentation.
   const companionProps = {
-    pageTitle: draft?.title ?? "No note selected",
+    pageTitle: paperShellTitle ?? draft?.title ?? "No note selected",
+    contextPdfName: paperShellPath ? pdfReader?.fileName : undefined,
     scopeLabel: aiScopeLabel,
     tokenLabel: aiTokenLabel,
     activeScope: aiScope,
@@ -6212,7 +6220,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
 
   return (
-    <main className="h-screen overflow-hidden bg-background text-foreground" data-testid="app-shell" data-paper-inline={paperInline ? "true" : undefined}>
+    <main className="h-screen overflow-hidden bg-background text-foreground" data-testid="app-shell" data-paper-inline={paperInline ? "true" : undefined} data-paper-dock={paperDock ? "true" : undefined}>
       <input
         ref={docxImportInputRef}
         type="file"
@@ -6705,7 +6713,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               // Over the immersive reader the rail is position:fixed, but it still
               // uses the same persisted width + clamps as the notebook companion so
               // width carries between presentations (SN-161).
-              style={{ width: aiSidebarWidth }}
+              style={{ width: paperShellPath && paperLayout.mode === "split"
+                ? Math.max(paperLayout.notesWidth ?? 0, Math.round(viewportWidth * 0.55))
+                : aiSidebarWidth }}
               data-testid={companionOverReader ? "pdf-reader-ai-sidebar" : "ai-sidebar-rail"}
               aria-label={companionOverReader ? "Smart Notes AI" : undefined}
             >
@@ -6840,10 +6850,24 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         />
       ) : null}
 
+      {paperShellPath && pdfReaderOpen ? (
+        <div className="paper-reading-topbar" data-testid="paper-reading-topbar">
+          <button type="button" data-testid="paper-reading-back" onClick={() => void (async () => {
+            if (!(await closePdfReader())) return;
+            if (draft?.path !== paperShellPath) return;
+            const topic = paperBackTarget({ paperPath: paperShellPath, tree, referringPath: paperReturnPath, previousPath: paperTopicPath });
+            if (topic) { setPaperReturnPath(null); await openPage(topic); }
+          })()}>Back to topic</button>
+          <button type="button" data-testid="paper-reading-companion" aria-pressed={aiOpen} onClick={() => setAiOpen((current) => !current)}>
+            <Sparkles className="size-3.5" aria-hidden="true" /> Companion
+          </button>
+        </div>
+      ) : null}
+
       {paperShellPath && (paperDockActivated || paperShellError) ? (
         <PaperNotesDock
           paperPath={paperShellPath}
-          title={tree.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH)?.pages.find((page) => page.path === paperShellPath)?.title ?? "Paper"}
+          title={paperShellTitle ?? "Paper"}
           // A failed save keeps the notes visible so the error and editor are reachable.
           layout={paperShellError && paperLayout.mode === "hidden"
             ? paperShellLayout({ viewportWidth, notesWidth: paperNotesWidth, notesOpen: true, overlayOpen: true })

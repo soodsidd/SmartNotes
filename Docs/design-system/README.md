@@ -53,6 +53,19 @@ minimum `320px`, PDF minimum `360px`, keyboard resize step `24px`. Below a
 `680px` viewport (both minimums) the dock becomes a full-width layer over the
 PDF, opened from the reader's Notes toggle and dismissed with Back to PDF.
 
+## Bibliography PDF split and Companion overlay (SN-295)
+
+Fork photos #8 and #9 place the shared **Back to topic** / **Companion** bar
+above the PDF controls and the paper editor toolbar. The embedded dock hides
+only its duplicate app header and ownership strip; its standard editor toolbar
+and page remain intact. The split bar, reader, and notes use existing
+`--surface`, `--secondary`, `--border`, `--foreground`, `--ring`, and
+`--desktop-chrome-height` tokens. The Companion PDF pill reuses the existing
+scope chip and `--accent` dot. On a wide paper split the fixed Companion rail
+covers at least the notes width and targets 55% of the viewport, matching #9;
+the reader inset continues to depend only on the saved splitter width. No new
+color, spacing, or typography token was added.
+
 This folder is the tracked UI reference set for Smart Notes.
 
 **System:** Clarity v1.0 — cool neutral grays, teal accent, all-sans Hanken Grotesk typography.

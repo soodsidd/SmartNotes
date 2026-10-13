@@ -127,9 +127,11 @@ title: Seed
       await fs.mkdir(assets, { recursive: true });
       await fs.writeFile(path.join(assets, "main.pdf"), "mock pdf");
       await fs.writeFile(path.join(assets, "supplement.pdf"), "mock pdf");
+      await fs.writeFile(path.join(assets, "appendix.pdf"), "mock pdf");
+      const longNote = `Paper note ${"x".repeat(20_000)} END OF NOTES`;
       await fs.writeFile(
         path.join(vaultRoot, ".bibliography", `${id}.html`),
-        `---\ntitle: Attention Is All You Need\npaper_id: ${id}\n---\n<p>Key claim: attention suffices.</p>` +
+        `---\ntitle: Attention Is All You Need\npaper_id: ${id}\n---\n<p>Key claim: attention suffices.</p><p>${longNote}</p>` +
           `<a href="/vault/.bibliography/${id}.assets/main.pdf">main.pdf</a>` +
           `<a href="/vault/.bibliography/${id}.assets/supplement.pdf">supplement.pdf</a>`,
         "utf8"
@@ -156,6 +158,8 @@ title: Seed
       expect(context.pageContext).toContain("Key claim: attention suffices.");
       expect(context.pageContext).toContain(`main.pdf — .bibliography/${id}.assets/main.pdf (open in reader, page 3 of 9)`);
       expect(context.pageContext).toContain(`supplement.pdf — .bibliography/${id}.assets/supplement.pdf`);
+      expect(context.pageContext).toContain(`appendix.pdf — .bibliography/${id}.assets/appendix.pdf`);
+      expect(context.pageContext).toContain("END OF NOTES");
       expect(context.pageContext).toContain("pdf_read_pages");
       expect(context.pageContext).toContain("Scaled dot-product attention on page three.");
       expect(context.pageContext).not.toContain("WHOLE DOCUMENT TEXT MUST NOT BE READ");
@@ -168,6 +172,16 @@ title: Seed
       });
       expect(own.pageContext).toContain("the current page context above is this paper's notes");
       expect(own.pageContext.match(/Key claim: attention suffices\./g)).toHaveLength(1);
+
+      // Paper reading shell: the paper is the path but the base context is empty.
+      const shell = await buildCompanionPageContext({
+        path: `.bibliography/${id}.html`,
+        basePageContext: "",
+        paperPath: `.bibliography/${id}.html`,
+      });
+      expect(shell.pageContext).toContain("### Paper notes");
+      expect(shell.pageContext).toContain("END OF NOTES");
+      expect(shell.pageContext.match(/Key claim: attention suffices\./g)).toHaveLength(1);
     });
   });
 

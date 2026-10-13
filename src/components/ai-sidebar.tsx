@@ -610,6 +610,8 @@ function AiSettingsDialog({
 }
 interface AiConversationProps {
   pageTitle: string;
+  /** The PDF in the foreground of a paper reading shell. */
+  contextPdfName?: string;
   scopeLabel: string;
   tokenLabel: string;
   activeScope: AiScope;
@@ -1415,6 +1417,7 @@ function AssistantMessageRow({
 
 function AiConversation({
   pageTitle,
+  contextPdfName,
   scopeLabel,
   tokenLabel,
   activeScope,
@@ -1797,14 +1800,18 @@ function AiConversation({
           </>
         ) : (
           <>
-            <AiScopeControl
+            {contextPdfName ? <span
+              className={cn(SIDEBAR_SCOPE_CHIP_CLASS, "max-w-[min(100%,11rem)] truncate")}
+              title={`PDF: ${contextPdfName}`}
+              data-testid="paper-companion-pdf-context"
+            ><span className="size-1.5 shrink-0 rounded-full bg-[color:var(--accent)]" /><span className="truncate">PDF: {contextPdfName}</span></span> : <AiScopeControl
               scopeLabel={scopeLabel}
               tokenLabel={tokenLabel}
               scopeOptions={scopeOptions}
               activeScope={activeScope}
               onScopeChange={onScopeChange}
               positionerClassName={floatingLayerZ}
-            />
+            />}
             <CompanionKeepToggle checked={keepConversation} onChange={onKeepConversationChange} />
             <CompanionDensityMenu density={density} onDensityChange={updateDensity} positionerClassName={floatingLayerZ} />
             <button

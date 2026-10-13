@@ -145,7 +145,7 @@ export function PaperNotesDock({
           onKeyDown={handleResizeKey}
         />
       ) : null}
-      <div className="paper-notes-dock__bar">
+      {layout.mode === "overlay" ? <div className="paper-notes-dock__bar">
         <div className="paper-notes-dock__heading">
           <span className="paper-notes-dock__eyebrow">Paper notes · Bibliography</span>
           <span className="paper-notes-dock__title" title={title}>{title}</span>
@@ -161,7 +161,7 @@ export function PaperNotesDock({
         >
           <PanelRightClose className="size-4" aria-hidden="true" />
         </Button>
-      </div>
+      </div> : null}
       {error ? (
         <p role="alert" className="paper-notes-dock__error" data-testid="paper-notes-error">
           {error}

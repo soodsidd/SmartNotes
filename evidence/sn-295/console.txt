@@ -1,0 +1,15 @@
+PASS top bar reads "Back to topic · Companion"
+PASS notes pane shows the editor toolbar
+PASS PDF frame abuts the notes pane
+PASS drag stores the splitter width (560)
+PASS PDF frame and notes follow the splitter
+PASS PDF frame is not resized or displaced by Companion
+PASS Companion covers the notes pane on the right
+PASS header reads Smart Notes AI / Discussing · deviation
+PASS context pill reads PDF: Catalogue(Final).pdf
+PASS closing Companion restores the plain split
+PASS splitter width is remembered after reload
+PASS zero console errors (0)
+
+Console errors:
+(none)
