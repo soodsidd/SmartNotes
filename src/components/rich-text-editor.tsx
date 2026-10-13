@@ -87,6 +87,7 @@ import {
   resolveBackToTopPlacement,
   scrollEditorToAnchor,
   scrollEditorToPageToc,
+  stripLegacyPageTocIfPresent,
 } from "@/lib/page-toc";
 import {
   EDITOR_MAIN_FLOW_WIDTH,
@@ -1471,39 +1472,40 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       return [baseRule, collapsedRules].filter(Boolean).join("\n");
     }, [collapseScopeId, headingChevronControls]);
 
-    // ── Sync content from outside ────────────────────────────────────────────
-    React.useEffect(() => {
-      if (!editor) return;
-      if (content === lastEmittedRef.current) return;
-      lastEmittedRef.current = content;
-      setEditorHtmlSilent(editor, content);
-
-      // Strip legacy inserted pageToc nodes on open (owner: remove top-of-page TOC).
-      if (readOnly || !documentHasPageToc(editor.state.doc)) return;
-      const frame = window.requestAnimationFrame(() => {
-        if (!documentHasPageToc(editor.state.doc)) return;
-        const tocHeight = measurePageTocHeight(editor.view.dom as HTMLElement);
-        removePageToc(editor);
-        const html = editor.getHTML();
-        lastEmittedRef.current = html;
-        onChange(html);
-        if (tocHeight > 0) {
-          const remap = annotationLayerRef?.current?.applyVerticalRemap(-tocHeight);
-          if (remap?.ok && typeof drawableBottom === "number" && Number.isFinite(drawableBottom)) {
-            onDrawableBottomChange?.(Math.max(0, Math.ceil(drawableBottom - tocHeight)));
-          }
+    const persistStrippedLegacyToc = React.useCallback(() => {
+      if (!editor || readOnly) return false;
+      // Synchronous so SN-55 swapContent and first mount both clear TOC before paint.
+      const result = stripLegacyPageTocIfPresent(editor);
+      if (!result.stripped) return false;
+      lastEmittedRef.current = result.html;
+      onChange(result.html);
+      if (result.tocHeight > 0) {
+        const remap = annotationLayerRef?.current?.applyVerticalRemap(-result.tocHeight);
+        if (remap?.ok && typeof drawableBottom === "number" && Number.isFinite(drawableBottom)) {
+          onDrawableBottomChange?.(Math.max(0, Math.ceil(drawableBottom - result.tocHeight)));
         }
-      });
-      return () => window.cancelAnimationFrame(frame);
+      }
+      return true;
     }, [
       annotationLayerRef,
-      content,
       drawableBottom,
       editor,
       onChange,
       onDrawableBottomChange,
       readOnly,
     ]);
+
+    // ── Sync content from outside ────────────────────────────────────────────
+    React.useEffect(() => {
+      if (!editor) return;
+      if (content !== lastEmittedRef.current) {
+        lastEmittedRef.current = content;
+        setEditorHtmlSilent(editor, content);
+      }
+      // Always attempt strip: initial mount sets lastEmitted === content with TOC,
+      // and the early equality return previously skipped the strip entirely.
+      persistStrippedLegacyToc();
+    }, [content, editor, persistStrippedLegacyToc]);
 
     React.useEffect(() => {
       if (!editor) return;
@@ -1991,6 +1993,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           if (!editor) return false;
           lastEmittedRef.current = html;
           setEditorHtmlSilent(editor, html);
+          // SN-55 page swaps bypass the content-prop effect; strip legacy TOC here too.
+          persistStrippedLegacyToc();
           onSelectionContextChange?.(resolveSectionContext(editor));
           return true;
         },
@@ -2017,7 +2021,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           setScrollTop(scrollArea.scrollTop);
         },
       }),
-      [editor, onSelectionContextChange, drawableBottom, viewportHeight]
+      [drawableBottom, editor, onSelectionContextChange, persistStrippedLegacyToc, viewportHeight]
     );
 
     // ── Render ───────────────────────────────────────────────────────────────

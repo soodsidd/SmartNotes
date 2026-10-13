@@ -3,7 +3,7 @@
 import { Editor } from "@tiptap/core";
 import { createEditorExtensions } from "@/lib/rich-text-editor-config";
 import { buildPageOutline, outlineBranchKeys, outlineDefaultExpandedKeys } from "@/lib/page-outline";
-import { documentHasPageToc, removePageToc } from "@/lib/page-toc";
+import { documentHasPageToc, removePageToc, stripLegacyPageTocIfPresent } from "@/lib/page-toc";
 
 function makeEditor(content: string) {
   const element = document.createElement("div");
@@ -40,5 +40,25 @@ describe("page outline", () => {
     expect(editor.getHTML()).not.toContain("data-page-toc");
     expect(buildPageOutline(editor.state.doc)[0].children[0].title).toBe("Child");
     editor.destroy();
+  });
+
+  it("stripLegacyPageTocIfPresent removes TOC and returns cleaned HTML for open/swap", () => {
+    const withToc = makeEditor(
+      '<nav data-page-toc="true" class="page-toc" aria-label="Table of contents"><p class="page-toc-title">Contents</p></nav><h1>Existing</h1><h2>Child</h2>'
+    );
+    const stripped = stripLegacyPageTocIfPresent(withToc);
+    expect(stripped.stripped).toBe(true);
+    expect(stripped.html).not.toContain("data-page-toc");
+    expect(stripped.html).toContain("Existing");
+    expect(documentHasPageToc(withToc.state.doc)).toBe(false);
+
+    const clean = makeEditor("<h1>Only heading</h1>");
+    expect(stripLegacyPageTocIfPresent(clean)).toEqual({
+      stripped: false,
+      html: clean.getHTML(),
+      tocHeight: 0,
+    });
+    withToc.destroy();
+    clean.destroy();
   });
 });

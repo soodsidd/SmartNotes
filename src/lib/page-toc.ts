@@ -203,6 +203,23 @@ export function removePageToc(editor: Editor): PageTocMutationResult {
 }
 
 /**
+ * Strip a legacy inserted pageToc from the live editor (open / swap paths).
+ * Measures height before delete so callers can vertically remap ink.
+ */
+export function stripLegacyPageTocIfPresent(editor: Editor): {
+  stripped: boolean;
+  html: string;
+  tocHeight: number;
+} {
+  if (!documentHasPageToc(editor.state.doc)) {
+    return { stripped: false, html: editor.getHTML(), tocHeight: 0 };
+  }
+  const tocHeight = measurePageTocHeight(editor.view.dom as HTMLElement);
+  removePageToc(editor);
+  return { stripped: true, html: editor.getHTML(), tocHeight };
+}
+
+/**
  * Toggle the page TOC (SN-230): insert when absent, remove when present.
  * Callers still route this through the ink vertical-remap guard so a remove can
  * never leave ink misaligned.
