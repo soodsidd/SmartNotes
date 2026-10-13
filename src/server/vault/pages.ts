@@ -16,6 +16,7 @@ import {
   unregisterPortableNotebook,
 } from "./notebook-registry";
 import { applyKeyNoteFlag, isKeyNoteFlag } from "@/lib/key-note";
+import { applyPageLinesMetadata, normalizePageLines } from "@/lib/page-lines";
 import type { FrontmatterData, FrontmatterValue, NoteType, VaultNotebook, VaultPageDocument, VaultPageSummary } from "./types";
 import { deletePageVersions, movePageVersions } from "./versions";
 import { SPREADSHEET_SIDECAR_EXTENSION, writeSpreadsheetWorkbook } from "./spreadsheet";
@@ -1584,6 +1585,8 @@ export interface CreatePageInput {
   title: string;
   noteType?: NoteType;
   parentId?: string | null;
+  /** SN-297: initial page lines for new text pages (browser default). */
+  pageLines?: unknown;
 }
 
 export interface ImportDocxPageInput {
@@ -1706,13 +1709,17 @@ export async function createPage(input: CreatePageInput) {
   const now = new Date().toISOString();
   const relativePath = toVaultRelativePath(path.posix.join(containerRelativePath, fileName));
   const noteType: NoteType = input.noteType ?? "text";
-  const metadata: FrontmatterData = {
+  const baseMetadata: FrontmatterData = {
     title,
     created: now,
     updated: now,
     ...(noteType !== "text" ? { note_type: noteType } : {}),
     ...(parentId ? { parent_id: parentId } : {}),
   };
+  const metadata: FrontmatterData =
+    noteType === "text" && input.pageLines
+      ? applyPageLinesMetadata(baseMetadata, normalizePageLines(input.pageLines))
+      : baseMetadata;
   const serialized = serializeFrontmatterDocument(metadata, "");
   await writeAtomically(path.join(containerAbsolutePath, fileName), serialized);
 
@@ -1917,6 +1924,36 @@ export async function setPageKeyNote(input: SetPageKeyNoteInput) {
       updated: now,
     },
     input.keyNote
+  );
+  const serialized = serializeFrontmatterDocument(nextMetadata, page.body);
+  await writeAtomically(absolutePath, serialized);
+  invalidateVaultCache();
+  return buildPageDocument(relativePath, serialized);
+}
+
+export interface SetPageLinesInput {
+  path: string;
+  pageLines: unknown;
+}
+
+/**
+ * SN-297: store the page's rule / grid line background in frontmatter.
+ * Only metadata changes; the HTML body is written back byte-for-byte.
+ */
+export async function setPageLines(input: SetPageLinesInput) {
+  const { absolutePath, relativePath } = resolveVaultPath(input.path, "page");
+  const existingLink = await readDesignLinkSidecar(absolutePath);
+  if (existingLink) {
+    throw new VaultError("INVALID_INPUT", "Page lines are available for text pages only.", 400);
+  }
+  const page = await readPageDocument(input.path);
+  const noteType = page.metadata.note_type;
+  if (typeof noteType === "string" && noteType !== "text") {
+    throw new VaultError("INVALID_INPUT", "Page lines are available for text pages only.", 400);
+  }
+  const nextMetadata = applyPageLinesMetadata(
+    { ...page.metadata, updated: new Date().toISOString() },
+    normalizePageLines(input.pageLines)
   );
   const serialized = serializeFrontmatterDocument(nextMetadata, page.body);
   await writeAtomically(absolutePath, serialized);

@@ -184,3 +184,24 @@ Reuses existing Clarity tokens only; no new color, spacing, radius, or type valu
 Quick Capture follows the approved Screen 6 hierarchy: the content area comes first and receives focus, while title and routing fields follow. The current notebook and Inbox or selected section are shown as a text summary before Save. The saved state keeps Open as a separate action.
 
 The dialog reuses `Dialog`, `Textarea`, `Input`, `Button`, and existing select styles. Surfaces and focus use `--background`, `--foreground`, `--muted-foreground`, `--border`, `--input`, and `--ring`. Layout uses the existing `gap-2`, `gap-4`, `sm:grid-cols-2`, `text-base`, and `min-h-[260px]` values from the previous Capture modal. Mobile actions and selects use the established `min-h-11` / `h-11` 44px touch target, and selects use `text-base` until the `sm` breakpoint. No new color, spacing, or typography values were introduced.
+
+## Page rule and grid lines (SN-297)
+
+OneNote-style lines are a CSS background on the editor content frame (`[data-testid=editor-content-frame]`). They are not document content: they never change text layout and are never copied or exported. SN-297 adds these tokens to `src/styles/tokens.css`. They are page-paper values, not app chrome, so they do not reuse `--border` or `--chart-*`.
+
+| Token | Light | Dark | Use |
+|-------|-------|------|-----|
+| `--page-line-light-blue` | `oklch(0.86 0.045 230)` | `oklch(0.38 0.045 230)` | Rule Line Color swatch 1 (default) |
+| `--page-line-blue` | `oklch(0.78 0.08 250)` | `oklch(0.42 0.08 250)` | Swatch 2 |
+| `--page-line-green` | `oklch(0.84 0.07 150)` | `oklch(0.40 0.06 150)` | Swatch 3 |
+| `--page-line-lavender` | `oklch(0.85 0.06 305)` | `oklch(0.40 0.06 305)` | Swatch 4 |
+| `--page-line-grey` | `oklch(0.84 0.005 260)` | `oklch(0.36 0.005 260)` | Swatch 5 |
+| `--page-line-margin` | `oklch(0.70 0.16 25)` | `oklch(0.50 0.14 25)` | Red margin line on the "college ruled with margin" preset |
+
+| Token | Value | Use |
+|-------|-------|-----|
+| `--page-rule-narrow` / `--page-rule-college` / `--page-rule-wide` | `20px` / `28px` / `36px` | Ruled line pitch (the margin preset uses college) |
+| `--page-rule-margin-inset` | `8px` below 768px, `18px` at md+ | Margin line x-offset, kept inside the frame's left padding so it never crosses text |
+| `--page-grid-small` / `-medium` / `-large` / `-xlarge` | `12px` / `20px` / `32px` / `48px` | Grid cell size |
+
+Popover chrome (photo #14) reuses existing tokens: the popup uses `--popover`, `--border`, and `shadow-md`. Section labels use `text-xs` with `--muted-foreground`. The selected tile has a 2px `--accent` border, and the selected swatch has a 2px `--accent` ring. Focus rings use `--ring`. The footer switch uses `--accent` (on) or `--secondary` (off). On mobile, the footer toggle row keeps the established `min-h-11` 44px target.

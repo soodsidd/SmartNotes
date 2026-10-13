@@ -124,6 +124,8 @@ import {
   EditorContextMenu,
 } from "@/components/comment-layer";
 import { AnnotationDrawToolbar } from "@/components/annotation-draw-toolbar";
+import { PageLinesPopover } from "@/components/page-lines-popover";
+import { DEFAULT_PAGE_LINES, pageLinesBackgroundStyle, type PageLinesSetting } from "@/lib/page-lines";
 import { shouldOpenEditorContextMenu } from "@/lib/editor-context-menu";
 import { useSpellcheckEnabled } from "@/components/spellcheck-provider";
 import {
@@ -205,6 +207,10 @@ interface RichTextEditorProps {
     html: string;
     assetUrl: string;
   }) => Promise<boolean>;
+  /** SN-297: per-page rule / grid line background (from page frontmatter). */
+  pageLines?: PageLinesSetting;
+  /** Called when the user picks lines in the toolbar popover. Caller persists. */
+  onPageLinesChange?: (next: PageLinesSetting) => void;
 }
 
 interface HeadingChevronControl extends CollapsibleHeadingSection {
@@ -334,6 +340,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       onPdfAttachmentOpen,
       onAttachPaper,
       onPersistAttachment,
+      pageLines = DEFAULT_PAGE_LINES,
+      onPageLinesChange,
     },
     ref
   ) {
@@ -2020,6 +2028,12 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           data-testid="format-bar"
           onPointerDownCapture={(e) => handleFormatBarChromePointerDown(editor, e)}
         >
+          {onPageLinesChange ? (
+            <>
+              <PageLinesPopover value={pageLines} onChange={onPageLinesChange} />
+              <ToolbarSep />
+            </>
+          ) : null}
           <AaStyleDropdown editor={editor} />
           <ToolbarSep />
           <ToolbarBtn onClick={() => editor?.chain().focus().toggleBold().run()} active={editor?.isActive("bold") ?? false} title="Bold (Ctrl+B)" testId="toolbar-bold"><Bold className="size-4" /></ToolbarBtn>
@@ -2072,6 +2086,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           data-testid="format-bar-mobile"
           onPointerDownCapture={(e) => handleFormatBarChromePointerDown(editor, e)}
         >
+          {onPageLinesChange ? (
+            <PageLinesPopover value={pageLines} onChange={onPageLinesChange} mobile />
+          ) : null}
           <AaStyleDropdown editor={editor} mobile onOpenFontSheet={() => setFontSheetOpen(true)} />
           <ToolbarBtn onClick={() => editor?.chain().focus().toggleBold().run()} active={editor?.isActive("bold") ?? false} title="Bold (Ctrl+B)" testId="toolbar-bold-mobile"><Bold className="size-4" /></ToolbarBtn>
           <ToolbarBtn onClick={() => editor?.chain().focus().toggleItalic().run()} active={editor?.isActive("italic") ?? false} title="Italic (Ctrl+I)" testId="toolbar-italic-mobile"><Italic className="size-4" /></ToolbarBtn>
@@ -2488,9 +2505,12 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                 ...(pageFrameHeight > 0 && workspaceZoom === EDITOR_ZOOM_DEFAULT
                   ? { minHeight: pageFrameHeight }
                   : undefined),
+                ...pageLinesBackgroundStyle(pageLines),
                 ...editorZoomSurfaceStyle(workspaceZoom, workspacePan),
               }}
               data-testid="editor-content-frame"
+              data-page-lines={pageLines.style === "none" ? undefined : pageLines.style}
+              data-page-line-color={pageLines.style === "none" ? undefined : pageLines.color}
               data-heading-collapse-scope={collapseScopeId}
               data-editor-zoom={workspaceZoom === EDITOR_ZOOM_DEFAULT ? undefined : workspaceZoom}
             >

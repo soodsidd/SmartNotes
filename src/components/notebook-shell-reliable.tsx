@@ -353,6 +353,13 @@ import { cn } from "@/lib/utils";
 import type { PageComment } from "@/lib/comment-types";
 import { isPageKeyNote, keyNoteMenuLabel } from "@/lib/key-note";
 import {
+  PAGE_LINES_METADATA_KEY,
+  applyPageLinesMetadata,
+  pageLinesForNewPage,
+  pageLinesFromMetadata,
+  type PageLinesSetting,
+} from "@/lib/page-lines";
+import {
   reorderNotebookPaths,
   type NotebookGroup,
 } from "@/lib/notebook-sidebar-organization";
@@ -4430,6 +4437,36 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     [loadTree]
   );
 
+  // SN-297: rule / grid lines live in page frontmatter. Optimistic local
+  // update, then flush any pending autosave before the metadata PATCH so the
+  // server's read-modify-write never races an in-flight body PUT.
+  const handlePageLinesChange = React.useCallback(
+    async (next: PageLinesSetting) => {
+      const path = activePagePathRef.current;
+      const current = draftRef.current;
+      if (!path || !current || current.path !== path) return;
+      const previousMetadata = current.metadata;
+      const applyMetadata = (metadata: Record<string, unknown> | undefined) =>
+        applyPageLinesMetadata({ ...(metadata ?? {}) }, next) as PageDraft["metadata"];
+      setDraft((d) => (d && d.path === path ? { ...d, metadata: applyMetadata(d.metadata) } : d));
+      try {
+        await flushSaveRef.current();
+        const page = await setVaultPageLines(path, next);
+        const stored = page.metadata?.[PAGE_LINES_METADATA_KEY];
+        syncTreePage(path, (treePage) => {
+          const metadata: Record<string, unknown> = { ...(treePage.metadata ?? {}) };
+          if (stored === undefined) delete metadata[PAGE_LINES_METADATA_KEY];
+          else metadata[PAGE_LINES_METADATA_KEY] = stored;
+          return { ...treePage, metadata };
+        });
+      } catch (error) {
+        setDraft((d) => (d && d.path === path ? { ...d, metadata: previousMetadata } : d));
+        toast.error(error instanceof Error ? error.message : "Failed to update page lines.");
+      }
+    },
+    [syncTreePage]
+  );
+
   const [pageOrderOverrides, setPageOrderOverrides] = React.useState<Map<string, string[]>>(new Map());
 
   const treeWithOverrides = React.useMemo(() => {
@@ -6617,6 +6654,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   } catch {
                     // non-fatal — comments will re-sync on next page load
                   }
+                }}
+                onPageLinesChange={(next) => {
+                  if (activeVersionPreview) return;
+                  void handlePageLinesChange(next);
                 }}
               />
               )
@@ -9148,6 +9189,7 @@ function EditorPanel({
   onPdfAttachmentOpen,
   onAnnotationSaveStatusChange,
   onCommentsChange,
+  onPageLinesChange,
 }: {
   draft: PageDraft;
   editorRef: React.RefObject<RichTextEditorHandle | null>;
@@ -9167,6 +9209,7 @@ function EditorPanel({
   onPdfAttachmentOpen?: (target: PdfAttachmentTarget) => void;
   onAnnotationSaveStatusChange?: (status: "idle" | "saving" | "saved" | "error") => void;
   onCommentsChange?: (comments: PageComment[]) => void;
+  onPageLinesChange?: (next: PageLinesSetting) => void;
 }) {
   const [annotationMode, setAnnotationMode] = React.useState<"edit" | "draw">("edit");
   const [annotationHistory, setAnnotationHistory] = React.useState({
@@ -9289,6 +9332,11 @@ function EditorPanel({
     [draft.path, draft.metadata]
   );
 
+  const pageLines = React.useMemo(
+    () => pageLinesFromMetadata(draft.metadata),
+    [draft.metadata]
+  );
+
   React.useLayoutEffect(() => {
     if (previewContent !== undefined || previewAnnotationsJson !== undefined) {
       displayedPathRef.current = draft.path;
@@ -9373,6 +9421,8 @@ function EditorPanel({
         className="min-h-0 flex-1"
         initialComments={readOnly ? [] : initialComments}
         onCommentsChange={readOnly ? undefined : onCommentsChange}
+        pageLines={pageLines}
+        onPageLinesChange={readOnly ? undefined : onPageLinesChange}
       />
       {localPdfReader ? (
         <ImmersivePdfReader
@@ -9937,10 +9987,12 @@ async function fetchVaultPage(pagePath: string): Promise<ApiPageDocument> {
 }
 
 async function createVaultPage(payload: CreatePagePayload) {
+  // SN-297: "Always create pages with these lines" — per-browser default.
+  const pageLines = payload.pageLines ?? pageLinesForNewPage(payload.noteType);
   const response = await vaultWriteFetch("/api/page", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(pageLines ? { ...payload, pageLines } : payload),
   });
 
   if (!response.ok) {
@@ -10090,6 +10142,21 @@ async function nestVaultPage(pagePath: string, parentId: string | null) {
 
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, "Failed to nest page."));
+  }
+
+  const body = (await response.json()) as { page: ApiPageDocument };
+  return body.page;
+}
+
+async function setVaultPageLines(pagePath: string, pageLines: PageLinesSetting) {
+  const response = await vaultWriteFetch("/api/page", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "pageLines", path: pagePath, pageLines }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Failed to update page lines."));
   }
 
   const body = (await response.json()) as { page: ApiPageDocument };
