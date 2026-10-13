@@ -8,5 +8,10 @@ PASS Refresh fetches the current canonical body
 PASS stale inline save is rejected with 409
 PASS paper keeps the newer content (no stale overwrite)
 PASS second referring page file is byte-identical
+PASS second reference edit after Refresh saves (200)
+PASS canonical paper holds the second reference edit and keeps prior content
+PASS second referring page file is byte-identical after its inline edit
+PASS first referring page shows the second reference edit on reopen
+PASS first referring page file is still byte-identical
 PASS chip title opens the full paper page
 No page or console errors.

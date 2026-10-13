@@ -54,6 +54,15 @@ describe("SN-294 inline paper save safety", () => {
     expect((await readPage(second.path)).body).toBe(secondBody);
     await expect(saveInlinePaper(secondView, "<p>Stale overwrite</p>")).rejects.toThrow(/changed elsewhere/i);
     expect((await readPage(paper.path)).body).toBe(edited);
+
+    // Second reference after Refresh: its edit persists on top of the first one.
+    const secondRefreshed = await loadInlinePaper(id);
+    const both = `${edited}<p>Edited from the second reference</p>`;
+    expect((await saveInlinePaper(secondRefreshed, both)).body).toBe(both);
+    expect((await readPage(paper.path)).body).toBe(both);
+    expect((await loadInlinePaper(id)).body).toBe(both); // first reference Refresh/reopen
+    expect((await readPage(first.path)).body).toBe(firstBody);
+    expect((await readPage(second.path)).body).toBe(secondBody);
   });
   it("rejects stale or malformed conditional writes without touching any file", async () => {
     const paper = await createPaper("Guarded", "Research");

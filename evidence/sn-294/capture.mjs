@@ -96,6 +96,32 @@ await page.screenshot({ path: path.join(output, '06-stale-conflict.png') });
 await panel().getByRole('button', { name: 'Cancel', exact: true }).click();
 errors.splice(0, errors.length, ...errors.filter((e) => !/409 \(Conflict\)/.test(e))); // the expected conflict response
 
+// Second reference, after Refresh: a fresh edit persists to the paper and shows at the first reference.
+await panel().getByRole('button', { name: 'Refresh', exact: true }).click();
+await panel().getByText('Newer external content').waitFor({ timeout: 10000 });
+await panel().getByRole('button', { name: 'Edit', exact: true }).click();
+await panel().locator('.ProseMirror[contenteditable="true"]').click();
+await page.keyboard.press('Control+End');
+await page.keyboard.press('Enter');
+const secondPut = page.waitForResponse((r) => r.url().includes('/api/page') && r.request().method() === 'PUT', { timeout: 15000 });
+await page.keyboard.type('Second reference edit');
+check((await secondPut).status() === 200, 'second reference edit after Refresh saves (200)');
+await page.waitForFunction(() => !document.querySelector('[data-testid="inline-paper-notes"]')?.textContent?.includes('Saving…'));
+await page.waitForTimeout(1500);
+const afterSecond = await fs.readFile(paperFile, 'utf8');
+check(afterSecond.includes('Second reference edit') && afterSecond.includes('Newer external content'), 'canonical paper holds the second reference edit and keeps prior content');
+check(await fs.readFile(otherFile, 'utf8') === otherBefore, 'second referring page file is byte-identical after its inline edit');
+await page.screenshot({ path: path.join(output, '06-second-reference-saved.png') });
+await panel().getByRole('button', { name: 'Collapse', exact: true }).click();
+await panel().waitFor({ state: 'detached' });
+await open('General/Precision Engineering/Test.html');
+await expand();
+await panel().getByText('Second reference edit').waitFor({ timeout: 10000 });
+check(true, 'first referring page shows the second reference edit on reopen');
+check(await fs.readFile(testFile, 'utf8') === testBefore, 'first referring page file is still byte-identical');
+await panel().getByRole('button', { name: 'Collapse', exact: true }).click();
+await panel().waitFor({ state: 'detached' });
+
 // Clicking the chip title opens the full paper page.
 await page.locator('.paper-reference').getByRole('button', { name: 'deviation', exact: true }).click();
 await page.getByText('Bibliography · shared paper page').waitFor({ timeout: 15000 });
