@@ -41,7 +41,7 @@ describe("SN-282 companion paper tools", () => {
 
   it("registers the paper tools on the existing agent vault surface", () => {
     const names = VAULT_TOOL_DEFINITIONS.filter((definition) => definition.group === "paper").map((definition) => definition.name);
-    expect(names).toEqual(["paper_list", "paper_create", "paper_reference_add", "paper_remove", "paper_attach_pdf"]);
+    expect(names).toEqual(["paper_list", "paper_create", "paper_reference_add", "paper_remove", "paper_attach_pdf", "paper_create_from_pdf"]);
   });
 
   it("creates a canonical paper from an article, references it once, and finds it by title", async () => {

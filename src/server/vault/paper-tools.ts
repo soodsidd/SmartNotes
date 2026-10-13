@@ -1,11 +1,13 @@
 /**
- * SN-282: Companion paper tools. Every mutation goes through the same vault
- * primitives as the UI (createPaper, savePage, uploadPageAsset, deletePage) so
- * Bibliography ownership, snapshots, and attachment durability stay identical.
+ * SN-282 / SN-302: Companion paper tools. Every mutation goes through the same
+ * vault primitives as the UI (createPaper, savePage, uploadPageAsset, deletePage)
+ * so Bibliography ownership, snapshots, and attachment durability stay identical.
  */
 import dns from "node:dns/promises";
+import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
+import * as cheerio from "cheerio";
 import {
   BIBLIOGRAPHY_PATH,
   PAPER_ID_PATTERN,
@@ -20,6 +22,8 @@ import { VaultError } from "./errors";
 import { appendHtmlBlock } from "./page-format";
 import { createPaper, deletePage, readPage, readVaultTree, savePage } from "./pages";
 import { uploadPageAsset } from "./assets";
+import { findEmbeddedPdfReferences } from "./companion-context";
+import { resolveVaultPath, toVaultRelativePath } from "./paths";
 import { snapshotPageContent } from "./versions";
 
 export const PAPER_PDF_DOWNLOAD_LIMITS = {
@@ -267,5 +271,201 @@ export async function attachPdfToPaper(
   return {
     page: saved,
     attachment: { href: asset.url, path: asset.path, fileName: asset.fileName, bytes: download.buffer.length, sourceUrl: download.url },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// SN-302: Promote an existing vault PDF to a Bibliography paper
+// ---------------------------------------------------------------------------
+
+function decodeVaultSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/** Normalize a vault-relative path or `/vault/...` href to a vault-relative `.pdf` path. */
+export function normalizeVaultPdfSource(sourcePathOrHref: string): string {
+  const raw = sourcePathOrHref.trim();
+  if (!raw) {
+    throw new VaultError("INVALID_INPUT", "Pass sourcePath or href for a vault PDF.", 400);
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    throw new VaultError(
+      "INVALID_URL",
+      "paper_create_from_pdf accepts a vault PDF path/href, not a web URL. Use paper_attach_pdf for http(s) downloads.",
+      400
+    );
+  }
+  const cleaned = raw.replace(/\\/g, "/").split("#")[0]!.split("?")[0]!.trim();
+  const withoutVault = cleaned.startsWith("/vault/")
+    ? cleaned.slice("/vault/".length)
+    : cleaned.replace(/^\/+/, "");
+  const relative = toVaultRelativePath(withoutVault.split("/").map(decodeVaultSegment).join("/"));
+  if (!relative || !relative.toLowerCase().endsWith(".pdf")) {
+    throw new VaultError("NOT_A_PDF", `"${sourcePathOrHref}" is not a vault PDF path or /vault/… href.`, 400);
+  }
+  return relative;
+}
+
+export function titleFromPdfFileName(fileName: string): string {
+  const base = path.posix.basename(fileName.trim() || "paper.pdf");
+  const withoutExt = base.replace(/\.pdf$/i, "").trim();
+  return withoutExt || "Untitled paper";
+}
+
+function hrefMatchNeedles(sourcePathOrHref: string): string[] {
+  const relative = normalizeVaultPdfSource(sourcePathOrHref);
+  const encoded = relative.split("/").map(encodeURIComponent).join("/");
+  return [relative, `/vault/${relative}`, `/vault/${encoded}`, encoded];
+}
+
+function hrefMatchesSource(href: string, needles: string[]): boolean {
+  const cleaned = href.trim().replace(/\\/g, "/").split("#")[0]!.split("?")[0]!;
+  const decoded = decodeVaultSegment(cleaned);
+  return needles.some((needle) => cleaned === needle || decoded === needle || cleaned.endsWith(needle) || decoded.endsWith(needle));
+}
+
+/** Remove PDF attachment chips that point at the given vault asset; empty wrapper paragraphs go too. */
+export function removePdfAttachmentChip(html: string, sourcePathOrHref: string): string {
+  const needles = hrefMatchNeedles(sourcePathOrHref);
+  const $ = cheerio.load(html, undefined, false);
+  $("[data-file-type='pdf']").each((_index, element) => {
+    const node = $(element);
+    const href =
+      node.attr("href") ||
+      node.find("[data-href]").attr("data-href") ||
+      node.find("a").attr("href") ||
+      "";
+    if (!hrefMatchesSource(href, needles)) return;
+    const parent = node.parent();
+    node.remove();
+    if (parent.is("p") && !parent.text().trim() && parent.children().length === 0) {
+      parent.remove();
+    }
+  });
+  return $.root().html() ?? html;
+}
+
+async function readVaultPdfBytes(sourcePath: string) {
+  const resolved = resolveVaultPath(sourcePath, "section");
+  const stat = await fs.stat(resolved.absolutePath).catch(() => null);
+  if (!stat?.isFile()) {
+    throw new VaultError("PDF_UNAVAILABLE", `Vault PDF not found: ${sourcePath}`, 404);
+  }
+  const buffer = await fs.readFile(resolved.absolutePath);
+  if (buffer.subarray(0, 1024).indexOf("%PDF-") === -1) {
+    throw new VaultError("NOT_A_PDF", `"${sourcePath}" is not a PDF file.`, 422);
+  }
+  return { buffer, absolutePath: resolved.absolutePath, fileName: path.posix.basename(sourcePath) };
+}
+
+/**
+ * Find a Bibliography paper that already owns/links this exact vault PDF asset.
+ * Prefer paper-asset ownership, then paper_source provenance, then embedded chips.
+ */
+export async function findPaperForVaultPdf(sourcePathOrHref: string) {
+  const sourcePath = normalizeVaultPdfSource(sourcePathOrHref);
+  const assetOwner = sourcePath.match(/^\.bibliography\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.assets\//i);
+  if (assetOwner) {
+    const paper = await readPage(paperPath(assetOwner[1]!));
+    return { id: String(paper.metadata.paper_id), path: paper.path, title: paper.title, page: paper };
+  }
+
+  const pages = await allPages();
+  for (const page of pages) {
+    if (!isBibliographyPath(page.path)) continue;
+    const source = typeof page.metadata?.paper_source === "string" ? page.metadata.paper_source.trim() : "";
+    if (source && !/^https?:\/\//i.test(source)) {
+      try {
+        if (normalizeVaultPdfSource(source) === sourcePath) {
+          return { id: String(page.metadata?.paper_id ?? ""), path: page.path, title: page.title, page };
+        }
+      } catch {
+        // Non-vault paper_source values (titles, DOIs without scheme) are ignored for ownership.
+      }
+    }
+    const refs = findEmbeddedPdfReferences(page.path, page.content);
+    if (refs.some((ref) => ref.href === sourcePath)) {
+      return { id: String(page.metadata?.paper_id ?? ""), path: page.path, title: page.title, page };
+    }
+  }
+  return null;
+}
+
+async function removeChipFromReferringPage(pagePath: string, sourcePath: string) {
+  const page = await readPage(pagePath);
+  const nextBody = removePdfAttachmentChip(page.body, sourcePath);
+  if (nextBody === page.body) return { page, replaced: false };
+  await snapshotPageContent(page.path);
+  const saved = await savePage({ path: page.path, title: page.title, body: nextBody });
+  return { page: saved, replaced: true };
+}
+
+/**
+ * Shared promote primitive (UI + Companion): create (or reuse) a paper, copy the
+ * vault PDF onto it as a page asset by default, insert a paper chip on the source
+ * page, and optionally remove the original PDF chip.
+ */
+export async function createPaperFromVaultPdf(input: {
+  sourcePath?: string;
+  href?: string;
+  title?: string;
+  homeNotebookPath?: string;
+  referenceFromPath?: string;
+  replaceChip?: boolean;
+}) {
+  const sourcePath = normalizeVaultPdfSource(input.sourcePath || input.href || "");
+  const referenceFromPath = input.referenceFromPath?.trim() || undefined;
+  const replaceChip = input.replaceChip === true;
+
+  const existing = await findPaperForVaultPdf(sourcePath);
+  if (existing) {
+    const reference = referenceFromPath ? await addPaperReference(referenceFromPath, existing.path) : null;
+    const removed = replaceChip && referenceFromPath
+      ? await removeChipFromReferringPage(referenceFromPath, sourcePath)
+      : { page: reference?.page ?? null, replaced: false };
+    return {
+      paper: { id: existing.id, path: existing.path, title: existing.title },
+      created: false,
+      referencedFrom: removed.page ?? reference?.page ?? null,
+      replacedChip: removed.replaced,
+      attachment: null as null,
+    };
+  }
+
+  const { tree } = await readVaultTree({ skipCache: true });
+  const home =
+    input.homeNotebookPath?.trim() ||
+    tree.find((notebook) => referenceFromPath?.startsWith(`${notebook.path}/`))?.path;
+  if (!home) {
+    throw new VaultError("INVALID_NOTEBOOK", "Choose a home notebook for this paper.", 400);
+  }
+
+  const pdf = await readVaultPdfBytes(sourcePath);
+  const title = (input.title?.trim() || titleFromPdfFileName(pdf.fileName)).trim();
+  const paper = await createPaper(title, home, sourcePath);
+  const asset = await uploadPageAsset(paper.path, pdf.fileName, pdf.buffer);
+  const paperPage = await readPage(paper.path);
+  await snapshotPageContent(paperPage.path);
+  const savedPaper = await savePage({
+    path: paperPage.path,
+    title: paperPage.title,
+    body: appendToPaperBody(paperPage.body, pdfAttachmentChipHtml(asset.url, asset.fileName)),
+  });
+
+  const reference = referenceFromPath ? await addPaperReference(referenceFromPath, savedPaper.path) : null;
+  const removed = replaceChip && referenceFromPath
+    ? await removeChipFromReferringPage(referenceFromPath, sourcePath)
+    : { page: reference?.page ?? null, replaced: false };
+
+  return {
+    paper: { id: String(savedPaper.metadata.paper_id), path: savedPaper.path, title: savedPaper.title },
+    created: true,
+    referencedFrom: removed.page ?? reference?.page ?? null,
+    replacedChip: removed.replaced,
+    attachment: { href: asset.url, path: asset.path, fileName: asset.fileName, bytes: pdf.buffer.length, sourcePath },
   };
 }

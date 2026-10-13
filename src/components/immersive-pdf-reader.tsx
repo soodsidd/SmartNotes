@@ -60,6 +60,7 @@ import {
   Eraser,
   ExternalLink,
   ChevronDown,
+  FileBadge,
   Hand,
   Highlighter,
   ListTree,
@@ -449,6 +450,8 @@ export interface ImmersivePdfReaderProps {
   modal?: boolean;
   /** SN-281: toolbar toggle for the paper notes dock. */
   notesPanel?: PaperNotesToggle;
+  /** SN-302: promote this vault PDF into a Bibliography paper (hidden in paper shell). */
+  onSaveAsPaper?: () => void;
 }
 
 export interface PaperNotesToggle {
@@ -458,6 +461,7 @@ export interface PaperNotesToggle {
 
 /** Context keeps the notes toggle out of the session/gate/surface prop chain. */
 const PaperNotesToggleContext = React.createContext<PaperNotesToggle | null>(null);
+const SaveAsPaperContext = React.createContext<(() => void) | null>(null);
 
 /** Phone / tablet: prefer cheaper WASM paint (DPR 1, smaller tiles, buffer 1). */
 function isCoarsePointerClient(): boolean {
@@ -543,6 +547,7 @@ export default function ImmersivePdfReader({
   insetRight = 0,
   modal = true,
   notesPanel,
+  onSaveAsPaper,
 }: ImmersivePdfReaderProps): React.ReactElement | null {
   const { engine, isLoading, error, fontsReady } = usePdfiumEngineWhenFontsReady();
   // Run PDFium on the main thread (SN-148). Worker blob: origin cannot fetch
@@ -749,6 +754,7 @@ export default function ImmersivePdfReader({
       }
     >
       <PaperNotesToggleContext.Provider value={open ? notesPanel ?? null : null}>
+      <SaveAsPaperContext.Provider value={open && !notesPanel ? onSaveAsPaper ?? null : null}>
       {error || pdfFetchError ? (
         <ReaderMessage
           title={title}
@@ -785,6 +791,7 @@ export default function ImmersivePdfReader({
           onPerformanceModeChange={performanceMode.setEnabled}
         />
       )}
+      </SaveAsPaperContext.Provider>
       </PaperNotesToggleContext.Provider>
     </div>
   );
@@ -1494,6 +1501,7 @@ function ReaderSurface({
   onPerformanceModeChange,
 }: ReaderSurfaceProps) {
   const notesPanel = React.useContext(PaperNotesToggleContext);
+  const onSaveAsPaper = React.useContext(SaveAsPaperContext);
   const { state: scrollState, provides: scroll } = useScroll(documentId);
   const { provides: scrollCap } = useScrollCapability();
   const { state: zoomState, provides: zoom } = useZoom(documentId);
@@ -2759,6 +2767,18 @@ function ReaderSurface({
               onClick={notesPanel.onToggle}
             >
               <NotebookPen className="size-5" aria-hidden="true" />
+            </button>
+          ) : null}
+          {onSaveAsPaper ? (
+            <button
+              type="button"
+              className="pdf-reader__control"
+              data-testid="pdf-reader-save-as-paper"
+              aria-label="Save as paper"
+              title="Promote this PDF into a Bibliography paper"
+              onClick={onSaveAsPaper}
+            >
+              <FileBadge className="size-5" aria-hidden="true" />
             </button>
           ) : null}
           {onToggleCompanion ? (

@@ -202,6 +202,8 @@ interface RichTextEditorProps {
   onDrawableBottomChange?: (value: number) => void;
   onPdfAttachmentOpen?: (target: PdfAttachmentTarget) => void;
   onAttachPaper?: () => void;
+  /** SN-302: promote a PDF chip on this page into a Bibliography paper. */
+  onPromotePdf?: (target: PdfAttachmentTarget) => void;
   onPersistAttachment?: (input: {
     pagePath: string;
     html: string;
@@ -339,6 +341,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       onDrawableBottomChange,
       onPdfAttachmentOpen,
       onAttachPaper,
+      onPromotePdf,
       onPersistAttachment,
       pageLines = DEFAULT_PAGE_LINES,
       onPageLinesChange,
@@ -422,6 +425,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       selectionFrom: number;
       selectionTo: number;
       mobile?: boolean;
+      pdfTarget?: PdfAttachmentTarget | null;
     } | null>(null);
     const [composerPending, setComposerPending] = React.useState<{
       from: number;
@@ -923,7 +927,15 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       });
 
       const { from, to } = editor.state.selection;
-      setContextMenu({ x: e.clientX, y: e.clientY, selectionFrom: from, selectionTo: to, mobile: isMobile });
+      const pdfTarget = resolvePdfAttachmentTarget(e.target as Element | null);
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        selectionFrom: from,
+        selectionTo: to,
+        mobile: isMobile,
+        pdfTarget,
+      });
     }
 
     function beginComposer(from: number, to: number) {
@@ -2740,11 +2752,17 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             canAddComment={hasCommentableText}
             canCopy={canCopyText}
             canPaste={canPasteFromClipboard}
+            canPromotePdf={Boolean(onPromotePdf && contextMenu.pdfTarget)}
             onAddComment={openComposer}
             onCopy={copySelectedText}
             onPaste={pasteFromClipboard}
             onSelectAll={selectAllText}
             onOpenLink={openLinkDialog}
+            onPromotePdf={
+              onPromotePdf && contextMenu.pdfTarget
+                ? () => onPromotePdf(contextMenu.pdfTarget!)
+                : undefined
+            }
             onClose={() => setContextMenu(null)}
           />
         )}
