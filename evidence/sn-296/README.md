@@ -1,0 +1,7 @@
+# SN-296 photo evidence
+
+- `11-side-by-side.png` compares the empty, focused floating text box with fork photo #11. `16-side-by-side.png` compares a 3×3 table inside a box on the Bibliography paper page with photo #16. The uncropped 1440×900 browser captures are `11-empty-box.png` and `16-table-box.png`.
+- `seed-fixture.mjs` writes an isolated worktree vault and state; `capture.mjs` drives Chromium against a worktree-local preview and records browser checks in `console.txt`; `compare.py` builds the two labelled comparison images from the source photos in the primary repo.
+- All 9 browser checks passed, including focus in the empty box, table cell selection, visible Move/Delete and resize controls, exact Move tooltip title, and zero page/console errors. The preview returned HTTP 200 on an automatically picked non-production port. The AV sidecar and production runtime were untouched.
+- Chromium's headless screenshot does not render the operating system's native `title` tooltip. The exact `Drag to move; arrow keys to nudge` title is asserted in `console.txt`. Photo #16 also shows the table ribbon and selection statistics owned by SN-278; those controls are not present in this branch, so the comparison intentionally shows the current table UI without them.
+- The preview uses `NODE_ENV=production node server.js` with `SMART_NOTES_VAULT` and `SMART_NOTES_STATE_DIR` set to the isolated fixture folders. Its local server is left running for review.

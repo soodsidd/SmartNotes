@@ -926,6 +926,11 @@ Standard browser shortcuts apply (Cmd/Ctrl+B for bold, etc.) plus:
 - Font family and size apply to the highlighted selection only. Clear formatting uses `unsetFontFamily()` / `unsetFontSize()`.
 - Font family is stored as CSS variable references so the four app-loaded fonts resolve correctly in-app while still falling back gracefully outside.
 
+
+### Floating text boxes (SN-296)
+
+Text pages can contain free-positioned rich text boxes above the page canvas. Click empty canvas beside or below the main text, or choose Insert > Text box. Each box has an always-visible outline, a Move and Delete tab, and a bottom-right resize handle. Drag Move or focus it and use arrow keys to nudge; drag the corner to resize. Height expands when content needs more space. The main format bar and paste/upload path work inside a box because floatingTextBox is a block node in the same TipTap document. Geometry is stored as x, y, width, and minimum height HTML attributes; nested paragraphs, images, and tables remain in the same page HTML and the existing page draft autosave. The box is absolutely positioned relative to the editor prose surface, so it does not reflow ordinary page text. Search, Companion, page export, and print receive the box content as part of that HTML. The implementation is in src/lib/floating-text-box-extension.ts and src/components/rich-text-editor.tsx.
+
 ### Page rule and grid lines (SN-297)
 
 **Plain English:** Like OneNote, a text page can show ruled notebook lines or graph-paper grid lines behind the writing. Pick them from the grid button in the editor toolbar. The lines are only a backdrop. They never move your text, are never copied or exported, and are not part of the page's saved HTML. Each page remembers its own choice, so it looks the same after a reload or on another device. A switch at the bottom of the popover, "Always create pages with these lines", makes new text pages in this browser start with the same lines. That default is stored only in this browser.
