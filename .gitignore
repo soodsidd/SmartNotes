@@ -2,6 +2,7 @@ node_modules/
 .next/
 .next-dev/
 .next-e2e/
+.next-sn298/
 .turbo/
 *.tsbuildinfo
 .env.local
