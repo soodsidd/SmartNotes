@@ -5769,6 +5769,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     const cleanup = () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", cleanup);
+      window.removeEventListener("pointercancel", cleanup);
       if (frame) {
         window.cancelAnimationFrame(frame);
         frame = 0;
@@ -5786,6 +5787,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     document.body.style.userSelect = "none";
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", cleanup, { once: true });
+    window.addEventListener("pointercancel", cleanup, { once: true });
   }, []);
 
   const handleTreeSidebarResizeStart = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -5823,6 +5825,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     const cleanup = () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", cleanup);
+      window.removeEventListener("pointercancel", cleanup);
       if (frame) {
         window.cancelAnimationFrame(frame);
         frame = 0;
@@ -5840,6 +5843,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     document.body.style.userSelect = "none";
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", cleanup, { once: true });
+    window.addEventListener("pointercancel", cleanup, { once: true });
   }, []);
 
   React.useEffect(() => {

@@ -1731,6 +1731,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           const cleanup = () => {
             window.removeEventListener("pointermove", handlePointerMove);
             window.removeEventListener("pointerup", cleanup);
+            window.removeEventListener("pointercancel", cleanup);
             isPanningRef.current = false;
             setWorkspacePanning(false);
             scrollPanCleanupRef.current = null;
@@ -1740,6 +1741,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           scrollPanCleanupRef.current = cleanup;
           window.addEventListener("pointermove", handlePointerMove);
           window.addEventListener("pointerup", cleanup, { once: true });
+          window.addEventListener("pointercancel", cleanup, { once: true });
           return;
         }
 
@@ -2377,7 +2379,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
         {/* BubbleMenu — selection toolbar */}
         {!readOnly && !isDrawMode && editor && !composerPending && !contextMenu && (
-          <BubbleMenu editor={editor} updateDelay={100} className="bubble-menu">
+          <BubbleMenu editor={editor} updateDelay={100} className="bubble-menu md:hidden">
             <div className="bubble-toolbar" data-testid="bubble-menu">
               <BubbleBtn
                 onClick={() => editor.chain().focus().toggleBold().run()}
