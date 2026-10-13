@@ -1,5 +1,16 @@
 # Smart Notes Design System
 
+## Insert table and grid (SN-299)
+
+The Insert table side submenu reuses `--popover`, `--input`, `--background`,
+`--foreground`, `--primary`, `--primary-foreground`, `--muted-foreground`, and
+`--ring`. The editable grid uses `--border` for its light rules, `--secondary`
+for the header row, and `--accent` for the active cell outline in both the main
+flow and floating text boxes. `--editor-table-cell-min-width: 4em` and
+`--editor-table-cell-min-height: 2.25em` keep empty cells readable without
+changing the existing table scroll behavior. Submenu controls use the established
+44px mobile target and compact desktop input/button sizing.
+
 ## Floating text boxes (SN-296)
 
 Fork photos #11 and #16 show a faint outlined box on the text page canvas with a

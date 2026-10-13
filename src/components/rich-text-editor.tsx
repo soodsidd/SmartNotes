@@ -94,6 +94,7 @@ import {
   pruneEmptyFloatingTextBoxes,
 } from "@/lib/floating-text-box";
 import { cn } from "@/lib/utils";
+import { MAX_INSERT_TABLE_DIMENSION, tableCellCount, tableDimension } from "@/lib/table-insert";
 import { resolvePdfAttachmentTarget, type PdfAttachmentTarget } from "@/lib/pdf-attachment";
 import type { PageContentExport } from "@/lib/page-export";
 import { computePageFrameHeight } from "@/lib/page-frame";
@@ -3267,8 +3268,23 @@ function InsertOverflowDropdown({
   canUndo?: boolean;
   canRedo?: boolean;
 }) {
+  const [open, setOpen] = React.useState(false);
+  const [rows, setRows] = React.useState("3");
+  const [columns, setColumns] = React.useState("3");
+  const [headerRow, setHeaderRow] = React.useState(true);
+  const cellCount = tableCellCount(rows, columns);
+  const tableId = mobile ? "toolbar-table-mobile" : "toolbar-table";
+
+  function insertTable() {
+    const rowCount = tableDimension(rows);
+    const columnCount = tableDimension(columns);
+    if (!editor || !rowCount || !columnCount) return;
+    editor.chain().focus().insertTable({ rows: rowCount, cols: columnCount, withHeaderRow: headerRow }).run();
+    setOpen(false);
+  }
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         className="toolbar-btn toolbar-btn--wide"
         title="Insert"
@@ -3325,14 +3341,30 @@ function InsertOverflowDropdown({
           testId={mobile ? "toolbar-attach-paper-mobile" : "toolbar-attach-paper"}
           onSelect={onAttachPaper}
         />}
-        <DropdownMenuItemWithIcon
-          icon={<TableIcon className="size-3.5" />}
-          label="Insert table"
-          testId={mobile ? "toolbar-table-mobile" : "toolbar-table"}
-          onSelect={() =>
-            editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-          }
-        />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="gap-2" data-testid={tableId}>
+            <TableIcon className="size-3.5 text-muted-foreground" />
+            <span>Insert table</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-56 p-3" data-testid={`${tableId}-options`}>
+            <div className="grid gap-2 text-sm" onKeyDown={(event) => { if (event.key !== "Escape") event.stopPropagation(); }}>
+              <label className="grid gap-1" htmlFor={`${tableId}-rows`}>
+                <span>Rows</span>
+                <input id={`${tableId}-rows`} data-testid={`${tableId}-rows`} type="number" inputMode="numeric" min="1" max={MAX_INSERT_TABLE_DIMENSION} step="1" value={rows} onChange={(event) => setRows(event.target.value)} className="h-11 w-full rounded-md border border-input bg-background px-2 text-base text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-8 sm:text-sm" />
+              </label>
+              <label className="grid gap-1" htmlFor={`${tableId}-columns`}>
+                <span>Columns</span>
+                <input id={`${tableId}-columns`} data-testid={`${tableId}-columns`} type="number" inputMode="numeric" min="1" max={MAX_INSERT_TABLE_DIMENSION} step="1" value={columns} onChange={(event) => setColumns(event.target.value)} className="h-11 w-full rounded-md border border-input bg-background px-2 text-base text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-8 sm:text-sm" />
+              </label>
+              <label className="flex min-h-11 flex-col items-center justify-center gap-1 text-xs" htmlFor={`${tableId}-header`}>
+                <input id={`${tableId}-header`} data-testid={`${tableId}-header`} type="checkbox" checked={headerRow} onChange={(event) => setHeaderRow(event.target.checked)} className="accent-primary" />
+                <span>Header row</span>
+              </label>
+              <span className="text-xs text-muted-foreground" aria-live="polite" data-testid={`${tableId}-count`}>{cellCount} cells</span>
+              <button type="button" disabled={!cellCount} onClick={insertTable} data-testid={`${tableId}-insert`} className="min-h-11 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50 sm:min-h-8">Insert table</button>
+            </div>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
         <DropdownMenuSeparator />
         <DropdownMenuItemWithIcon
           icon={<Calendar className="size-3.5" />}
