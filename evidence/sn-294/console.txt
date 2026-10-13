@@ -1,0 +1,12 @@
+PASS expanded panel is read-only before Edit
+PASS autosave sends a conditional PUT with the loaded revision
+PASS canonical paper file holds the inline edit
+PASS referring page file is byte-identical after the inline edit
+PASS Collapse restores the plain chip
+PASS second referring page shows the edit on reopen
+PASS Refresh fetches the current canonical body
+PASS stale inline save is rejected with 409
+PASS paper keeps the newer content (no stale overwrite)
+PASS second referring page file is byte-identical
+PASS chip title opens the full paper page
+No page or console errors.

@@ -749,9 +749,39 @@ export interface SavePageInput {
   path: string;
   title: string;
   body: string;
+  /** Inline paper edits must be based on the exact canonical file that was opened. */
+  expectedPaperRevision?: string;
+}
+
+const pageWriteLocks = new Map<string, Promise<void>>();
+
+export async function readPaperSnapshot(pagePath: string) {
+  if (!isBibliographyPath(pagePath)) throw new VaultError("INVALID_PATH", "A paper path is required.", 400);
+  const { source } = await readPageSource(pagePath);
+  const { relativePath } = resolveVaultPath(pagePath, "page");
+  return {
+    page: buildPageDocument(relativePath, source),
+    revision: `sha256:${crypto.createHash("sha256").update(source).digest("hex")}`,
+  };
 }
 
 export async function savePage(input: SavePageInput) {
+  const { absolutePath } = resolveVaultPath(input.path, "page");
+  const previous = pageWriteLocks.get(absolutePath) ?? Promise.resolve();
+  let release!: () => void;
+  const turn = new Promise<void>((resolve) => { release = resolve; });
+  const tail = previous.then(() => turn);
+  pageWriteLocks.set(absolutePath, tail);
+  await previous;
+  try {
+    return await savePageUnlocked(input);
+  } finally {
+    release();
+    if (pageWriteLocks.get(absolutePath) === tail) pageWriteLocks.delete(absolutePath);
+  }
+}
+
+async function savePageUnlocked(input: SavePageInput) {
   const { absolutePath, relativePath } = resolveVaultPath(input.path, "page");
   const existingLink = await readDesignLinkSidecar(absolutePath);
   const now = new Date().toISOString();
@@ -772,6 +802,15 @@ export async function savePage(input: SavePageInput) {
   }
 
   const { source } = await readPageSource(input.path);
+  if (input.expectedPaperRevision !== undefined) {
+    if (!isBibliographyPath(relativePath) || !/^sha256:[a-f0-9]{64}$/.test(input.expectedPaperRevision)) {
+      throw new VaultError("INVALID_PAPER_REVISION", "A valid paper revision is required.", 400);
+    }
+    const currentRevision = `sha256:${crypto.createHash("sha256").update(source).digest("hex")}`;
+    if (currentRevision !== input.expectedPaperRevision) {
+      throw new VaultError("PAPER_CONFLICT", "This paper changed elsewhere. Refresh before editing again.", 409);
+    }
+  }
   const page = buildPageDocument(relativePath, source);
 
   const nextMetadata: FrontmatterData = {

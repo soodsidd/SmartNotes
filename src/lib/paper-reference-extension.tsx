@@ -3,70 +3,175 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { Node, mergeAttributes } from "@tiptap/core";
-import { Plugin } from "@tiptap/pm/state";
-import { BookOpen, ChevronDown, ChevronRight, X } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { EditorContent, useEditor } from "@tiptap/react";
+import { Plugin, Selection } from "@tiptap/pm/state";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { PAPER_ID_PATTERN, paperPath } from "./papers";
-import { flushPaperFrame } from "./inline-paper-save";
+import { registerInlinePaperEditor } from "./inline-paper-save";
+import { createEditorExtensions } from "./rich-text-editor-config";
+import { loadInlinePaper, saveInlinePaper, type InlinePaperSnapshot } from "./inline-paper";
+
+// The inline editor is nested inside the referring page's editor. Native caret
+// movement (Ctrl+End, arrows past the paper's edges) can carry focus into the
+// referring page, where further typing would edit that page instead of the
+// paper. Only a pointer gesture may move focus out of an inline paper editor.
+let lastPointerDownAt = 0;
+if (typeof document !== "undefined") {
+  document.addEventListener("pointerdown", () => { lastPointerDownAt = Date.now(); }, true);
+}
+
+/** True when an enclosing (referring) editor takes focus from an editing inline paper without a pointer gesture. */
+export function isInlinePaperFocusEscape(inner: Element, target: EventTarget | null, related: EventTarget | null, now = Date.now(), pointerDownAt = lastPointerDownAt): boolean {
+  if (now - pointerDownAt < 600 || !(target instanceof Element) || !target.classList.contains("ProseMirror")) return false;
+  if (target === inner || inner.contains(target) || !target.contains(inner)) return false;
+  return related === null || (related instanceof globalThis.Node && inner.contains(related));
+}
+
+const CARET_KEYS: Record<string, -1 | 1> = { ArrowUp: -1, ArrowLeft: -1, PageUp: -1, ArrowDown: 1, ArrowRight: 1, PageDown: 1 };
 
 function PaperReferenceView({ id, editable, onRemove }: { id: string; editable: boolean; onRemove: () => void }) {
   const valid = PAPER_ID_PATTERN.test(id);
-  const [title, setTitle] = React.useState("Paper");
+  const [snapshot, setSnapshot] = React.useState<InlinePaperSnapshot | null>(null);
+  const snapshotRef = React.useRef<InlinePaperSnapshot | null>(null);
   const [status, setStatus] = React.useState<"loading" | "ready" | "error">("loading");
   const [open, setOpen] = React.useState(false);
-  const [closing, setClosing] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [dirty, setDirty] = React.useState(false);
+  const [edits, setEdits] = React.useState(0);
+  const dirtyRef = React.useRef(false);
+  const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
-  const [attempt, setAttempt] = React.useState(0);
-  const frame = React.useRef<HTMLIFrameElement>(null);
+  const saveInFlight = React.useRef<Promise<boolean> | null>(null);
   const trigger = React.useRef<HTMLButtonElement>(null);
-  const href = valid ? `/?page=${encodeURIComponent(paperPath(id))}` : "";
+  const extensions = React.useMemo(() => createEditorExtensions(), []);
+  const editor = useEditor({
+    extensions,
+    content: "<p></p>",
+    editable: false,
+    immediatelyRender: false,
+    editorProps: {
+      handleKeyDown: (view, event) => {
+        const direction = CARET_KEYS[event.key];
+        if (direction && !event.shiftKey) {
+          // Keep the caret inside the paper at its first/last block edges.
+          const { selection, doc } = view.state;
+          const edge = direction < 0 ? selection.$from.index(0) === 0 : selection.$to.index(0) === doc.childCount - 1;
+          const dir = event.key === "ArrowUp" || event.key === "PageUp" ? "up" : event.key === "ArrowDown" || event.key === "PageDown" ? "down" : direction < 0 ? "left" : "right";
+          if (edge && (event.key.startsWith("Page") || view.endOfTextblock(dir))) { event.preventDefault(); return true; }
+          return false;
+        }
+        if (!(event.ctrlKey || event.metaKey) || (event.key !== "Home" && event.key !== "End")) return false;
+        const selection = event.key === "Home" ? Selection.atStart(view.state.doc) : Selection.atEnd(view.state.doc);
+        view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
+        return true;
+      },
+    },
+    onUpdate: () => { dirtyRef.current = true; setDirty(true); setEdits((count) => count + 1); },
+  });
+
+  const refresh = React.useCallback(async () => {
+    if (!valid) { setStatus("error"); return; }
+    setStatus("loading"); setError("");
+    try {
+      const next = await loadInlinePaper(id);
+      editor?.commands.setContent(next.body, { emitUpdate: false });
+      snapshotRef.current = next; setSnapshot(next); dirtyRef.current = false; setDirty(false); setStatus("ready");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Paper unavailable.");
+      setStatus("error");
+    }
+  }, [editor, id, valid]);
 
   React.useEffect(() => {
-    let cancelled = false;
-    const read = async () => {
-      try {
-        if (!valid) throw new Error("Invalid identity");
-        const response = await fetch(`/api/page?path=${encodeURIComponent(paperPath(id))}`, { cache: "no-store" });
-        if (!response.ok) throw new Error("Paper unavailable");
-        const { page } = await response.json();
-        if (!cancelled) { setTitle(page.title); setStatus("ready"); }
-      } catch { if (!cancelled) setStatus("error"); }
+    if (!editor) return;
+    void refresh();
+  }, [editor, refresh]);
+
+  // emitUpdate=false: entering Edit must not mark the paper dirty or write it.
+  React.useEffect(() => { editor?.setEditable(editing, false); }, [editor, editing]);
+
+  React.useEffect(() => {
+    if (!editor || !editing) return;
+    const dom = editor.view.dom;
+    const onFocusIn = (event: FocusEvent) => {
+      if (isInlinePaperFocusEscape(dom, event.target, event.relatedTarget)) editor.commands.focus();
     };
-    void read();
-    const update = () => { void read(); };
-    window.addEventListener("paper-updated", update);
-    return () => { cancelled = true; window.removeEventListener("paper-updated", update); };
-  }, [id, valid, attempt]);
+    document.addEventListener("focusin", onFocusIn, true);
+    return () => document.removeEventListener("focusin", onFocusIn, true);
+  }, [editor, editing]);
+
+  const save = React.useCallback(async (): Promise<boolean> => {
+    if (saveInFlight.current) return saveInFlight.current;
+    if (!editing || !dirtyRef.current) return true;
+    if (!snapshotRef.current || !editor) return false;
+    const attempt = (async () => {
+      setBusy(true); setError("");
+      try {
+        let verified = snapshotRef.current!;
+        while (editor.getHTML() !== verified.body) {
+          const body = editor.getHTML();
+          verified = await saveInlinePaper(verified, body);
+        }
+        snapshotRef.current = verified; setSnapshot(verified);
+        dirtyRef.current = false;
+        setDirty(false);
+        window.dispatchEvent(new Event("paper-updated"));
+        return true;
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Paper changes could not be saved.");
+        return false;
+      } finally { setBusy(false); }
+    })();
+    saveInFlight.current = attempt;
+    try { return await attempt; } finally { saveInFlight.current = null; }
+  }, [editing, editor]);
+
+  React.useEffect(() => registerInlinePaperEditor(save), [save]);
+
+  // Live editing: debounce through the same conditional, verified save. Any
+  // error (conflict, unverified write) halts autosave until the user acts.
+  React.useEffect(() => {
+    if (!editing || !dirty || busy || error) return;
+    const timer = window.setTimeout(() => { void save(); }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [busy, dirty, editing, edits, error, save]);
 
   const close = async (remove = false) => {
-    setClosing(true); setError("");
-    if (frame.current && !(await flushPaperFrame(frame.current))) {
-      setClosing(false); setError("Paper changes could not be saved. Keep this editor open and retry."); return;
-    }
-    // Clear the DOM deletion guard before the explicit, save-acknowledged delete.
-    frame.current?.removeAttribute("data-paper-editor");
-    setOpen(false); setClosing(false);
+    if (!(await save())) return;
+    if (remove) trigger.current?.closest(".paper-reference")?.querySelector("[data-paper-editor]")?.removeAttribute("data-paper-editor");
+    setEditing(false); setOpen(false);
     if (remove) onRemove(); else trigger.current?.focus();
   };
 
+  const openFullPaper = async () => {
+    if (!(await save())) return;
+    window.dispatchEvent(new CustomEvent("paper-open-request", { detail: paperPath(id) }));
+  };
+
   return <>
-    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-secondary p-2">
-      <button type="button" ref={trigger} className={cn(buttonVariants({ variant: "ghost" }), "h-auto min-h-11 min-w-0 flex-1 justify-start gap-2 whitespace-normal text-left")} aria-expanded={open} disabled={status !== "ready" || closing || !editable} onClick={() => {
-        if (open) void close(); else setOpen(true);
-      }}>
-        {open ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}<BookOpen className="size-4 shrink-0 text-accent" />
-        <span className="min-w-0 break-words">{status === "loading" ? "Loading paper…" : status === "error" ? "Paper unavailable" : title}<span className="block text-xs text-muted-foreground">Bibliography · shared canonical notes</span></span>
+    <div className="group inline-flex max-w-full items-center rounded-full border border-accent/50 bg-secondary/30 text-sm text-foreground">
+      <button type="button" ref={trigger} className="flex size-8 shrink-0 items-center justify-center rounded-l-full hover:bg-secondary focus-visible:outline-ring" aria-label={`${open ? "Collapse" : "Expand"} paper ${snapshot?.title ?? "reference"}`} aria-expanded={open} disabled={busy} onClick={() => { if (open) void close(); else { setOpen(true); void refresh(); } }}>
+        {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
       </button>
-      {status === "error" && <Button variant="outline" onClick={() => { setStatus("loading"); setAttempt(attempt + 1); }}>Retry</Button>}
-      {editable && <Button variant="ghost" size="icon" className="size-11" aria-label={`Remove reference to ${title}`} disabled={closing} onClick={() => void close(true)}><X className="size-4" /></Button>}
+      <span className="rounded-sm bg-paper px-1 text-xs font-bold text-primary-foreground">PAPER</span>
+      <button type="button" className="min-w-0 truncate px-2 py-1 text-left hover:underline focus-visible:outline-ring" disabled={status !== "ready" || busy} onClick={() => void openFullPaper()}>{snapshot?.title ?? (status === "error" ? "Paper unavailable" : "Loading paper…")}</button>
+      {editable && <button type="button" className="mr-1 flex size-6 items-center justify-center rounded-full text-muted-foreground opacity-0 hover:bg-secondary focus:opacity-100 group-hover:opacity-100" aria-label={`Remove reference to ${snapshot?.title ?? "paper"}`} disabled={busy} onClick={() => void close(true)}><X className="size-3" /></button>}
     </div>
-    {open && <div className="rounded-b-md border border-t-0 border-border bg-surface p-2" data-testid="inline-paper-notes">
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
-        <p className="min-w-0 break-words text-xs text-muted-foreground">Referring page / Bibliography / {title} · Edits are shared everywhere</p>
-        <Button variant="outline" className="min-h-11" disabled={closing} onClick={() => void close()}>{closing ? "Saving…" : "Back to referring page"}</Button>
+    {open && <div className="mt-2 border-l-4 border-accent bg-surface py-3 pl-4 pr-3" data-testid="inline-paper-notes" data-paper-editor={id}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div><h3 className="font-bold">{snapshot?.title ?? "Paper"}</h3><p className="text-xs text-muted-foreground">Shared paper notes · {editing ? "editing" : "read-only"}</p></div>
+        <div className="flex items-center gap-2">
+          {editing ? <><Button size="sm" disabled={busy || !dirty} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button><Button variant="ghost" size="sm" disabled={busy} onClick={() => { editor?.commands.setContent(snapshot?.body ?? "", { emitUpdate: false }); dirtyRef.current = false; setDirty(false); setEditing(false); setError(""); }}>Cancel</Button></> : <Button size="sm" disabled={status !== "ready" || busy} onClick={() => setEditing(true)}>Edit</Button>}
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void close()}>Collapse</Button>
+        </div>
       </div>
-      <iframe ref={frame} src={`${href}&paperInline=1`} title={`Shared paper notes: ${title}`} className="paper-reference-frame" data-paper-editor={id} />
+      {status === "ready" && <EditorContent editor={editor} className="editor-content my-6 min-h-20" />}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span>PDF and ink remain in the full paper view.</span>
+        <button type="button" className="hover:underline" disabled={busy} onClick={() => { if (dirty) { setError("Save or Cancel your edits before refreshing."); return; } void refresh(); }}>Refresh</button>
+        <button type="button" className="hover:underline" disabled={busy} onClick={() => void openFullPaper()}>Open full paper</button>
+      </div>
     </div>}
     {error && <p role="alert" className="p-2 text-sm text-destructive">{error}</p>}
   </>;
@@ -125,7 +230,7 @@ export const PaperReference = Node.create({
       state.doc.descendants((node) => { if (node.type.name === "paperReference") previousIds.set(node.attrs.paperId, (previousIds.get(node.attrs.paperId) ?? 0) + 1); });
       let safe = true;
       state.doc.descendants((node) => {
-        if (node.type.name === "paperReference" && (nextIds.get(node.attrs.paperId) ?? 0) < (previousIds.get(node.attrs.paperId) ?? 0) && PAPER_ID_PATTERN.test(node.attrs.paperId) && this.editor.view.dom.querySelector(`iframe[data-paper-editor="${node.attrs.paperId}"]`)) safe = false;
+        if (node.type.name === "paperReference" && (nextIds.get(node.attrs.paperId) ?? 0) < (previousIds.get(node.attrs.paperId) ?? 0) && PAPER_ID_PATTERN.test(node.attrs.paperId) && this.editor.view.dom.querySelector(`[data-paper-editor="${node.attrs.paperId}"]`)) safe = false;
       });
       return safe;
     } })];

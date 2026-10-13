@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createPage, deletePage, movePage, nestPage, readPage, renamePage, savePage, setPageKeyNote, toApiPageDocument } from "@/server/vault/pages";
+import { createPage, deletePage, movePage, nestPage, readPage, readPaperSnapshot, renamePage, savePage, setPageKeyNote, toApiPageDocument } from "@/server/vault/pages";
+import { isBibliographyPath } from "@/lib/papers";
 import { toErrorResponse, VaultError } from "@/server/vault/errors";
 import { emitVaultSideEffects } from "@/server/vault/socket-events";
 
@@ -14,7 +15,12 @@ function searchParamPath(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    const page = await readPage(searchParamPath(request));
+    const pagePath = searchParamPath(request);
+    if (isBibliographyPath(pagePath)) {
+      const snapshot = await readPaperSnapshot(pagePath);
+      return NextResponse.json({ page: toApiPageDocument(snapshot.page), revision: snapshot.revision });
+    }
+    const page = await readPage(pagePath);
     return NextResponse.json({ page: toApiPageDocument(page) });
   } catch (error) {
     const response = toErrorResponse(error);
@@ -70,11 +76,13 @@ export async function PUT(request: Request) {
       content?: string;
       originSocketId?: string;
       originClientId?: string;
+      expectedPaperRevision?: string;
     };
     const page = await savePage({
       path: body.path ?? "",
       title: body.title ?? "",
       body: body.content ?? body.body ?? "",
+      expectedPaperRevision: body.expectedPaperRevision,
     });
     const fileUpdated: { path: string; content: string; originSocketId?: string; originClientId?: string } = {
       path: page.path,
@@ -89,7 +97,8 @@ export async function PUT(request: Request) {
     emitVaultSideEffects({
       fileUpdated,
     });
-    return NextResponse.json({ page: toApiPageDocument(page) });
+    const revision = body.expectedPaperRevision ? (await readPaperSnapshot(page.path)).revision : undefined;
+    return NextResponse.json({ page: toApiPageDocument(page), ...(revision ? { revision } : {}) });
   } catch (error) {
     const response = toErrorResponse(error);
     return NextResponse.json(response.body, { status: response.status });
