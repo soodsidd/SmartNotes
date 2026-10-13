@@ -354,13 +354,14 @@ Returns the full page document including body content and metadata.
 
 Creates a new page at a notebook root, in a real vault section, or as a child of an existing page. The same endpoint creates text, ink, Jupyter, and log page stubs; Jupyter creation also seeds the sibling `.jupyter/notebook.ipynb` working folder, and log creation seeds sibling `.log.json` (rows) and `.form.json` (JSON Forms script) sidecars (see [§18](#18-log-pages-form-backed-logging)).
 
-**Body:** `{ notebookPath?: string, sectionPath?: string, title?: string, noteType?: "text" | "ink" | "jupyter", parentId?: string | null }`
+**Body:** `{ notebookPath?: string, sectionPath?: string, title?: string, noteType?: "text" | "ink" | "jupyter", parentId?: string | null, pageLines?: { style, color } | null }`
 
 - Pass `notebookPath` with no `sectionPath` to create a true notebook-root page at `Notebook/Page.html`; the response reports `sectionPath: null` and the page appears in `notebook.pages`.
 - Pass `sectionPath` to create a top-level page in that section.
 - Pass `parentId` to create a child page in the same physical container as the parent. A child under `Notebook/Parent.html` is created at `Notebook/Child.html`; a child under `Notebook/Section/Parent.html` is created at `Notebook/Section/Child.html`.
 - The server validates that the parent exists, that any supplied target path matches the parent container, and that the two-level nesting cap is not exceeded.
 - The server appends a numeric suffix (`-2`, `-3`, ...) when the target filename already exists.
+- `pageLines` (SN-297) stamps `page_lines` frontmatter on new **text** pages only and is ignored for other note types. The shell's `createVaultPage` sends it automatically when this browser's "Always create pages with these lines" default is on.
 
 **Response:** `{ page: ApiPageDocument }` (201). Root pages return `sectionPath: null` and `sectionName: null`; section pages return their section metadata.
 
@@ -375,12 +376,13 @@ When a reliable-shell autosave calls this route, it includes the current Socket.
 
 ### PATCH /api/page
 
-Renames, moves, nests, or marks a page as a key note.
+Renames, moves, nests, marks a page as a key note, or sets its rule/grid lines.
 
 - Rename: `{ path: string, title: string }` (default action)
 - Move: `{ action: "move", path: string, sectionPath: string }`
 - Nest: `{ action: "nest", path: string, parentId: string | null }` writes `parent_id` frontmatter (clears it when `parentId` is null). Linked designs cannot be nested.
 - Key note (SN-229): `{ action: "keyNote", path: string, keyNote: boolean }` writes `key_note: true` to page frontmatter, or to `.design-link.json` for linked designs. Unmarking omits the key. Never injects vault frontmatter into linked HTML. Emits `vault_updated` so other sessions refresh the tree.
+- Page lines (SN-297): `{ action: "pageLines", path: string, pageLines: { style, color } }` writes the `page_lines` frontmatter map (see [Page rule and grid lines](#page-rule-and-grid-lines-sn-297)). Unknown values normalize to the default. The default (`none` + `light-blue`) omits the key. The HTML body is written back unchanged. Text pages only: ink, log, Jupyter, app, spreadsheet, and linked design pages return 400 `INVALID_INPUT`. Emits `vault_updated`.
 
 **Note:** `action: "previewAttachment"`, `"copyAttachment"`, and `"aiSpliceCommit"` are explicitly rejected with `UNSUPPORTED_ACTION` — these were from a legacy shell and are disabled in Smart Notes. AI edits the Markdown directly on disk.
 
@@ -894,6 +896,26 @@ Standard browser shortcuts apply (Cmd/Ctrl+B for bold, etc.) plus:
 - **Camera capture (SN-140):** In plain terms, on phones and tablets the insert menu offers a **Take photo** action that opens the device camera; on desktop it stays hidden so you only ever see the normal file picker. Technically, both the desktop and mobile insert overflows render a **Take photo** item (`toolbar-camera` / `toolbar-camera-mobile`) next to **Insert image**, but only when `supportsNativeCameraCapture()` (`src/lib/camera-capture.ts`) is true - it requires the HTML `capture` attribute plus a `(pointer: coarse)` primary pointer, and is resolved in a mount effect so SSR/desktop never render a camera-only path. The action clicks a hidden `<input type="file" accept="image/*" capture="environment">` (`data-testid="camera-capture-input"`) whose files flow through the same `handleAssetFiles` -> `uploadEditorAsset` pipeline as any other image, so captured photos POST to `/api/assets` and insert as normal `image` nodes. Cancellation (no file chosen), unsupported types, and upload errors are handled by that shared path with a toast and leave the current draft untouched.
 - Font family and size apply to the highlighted selection only. Clear formatting uses `unsetFontFamily()` / `unsetFontSize()`.
 - Font family is stored as CSS variable references so the four app-loaded fonts resolve correctly in-app while still falling back gracefully outside.
+
+### Page rule and grid lines (SN-297)
+
+**Plain English:** Like OneNote, a text page can show ruled notebook lines or graph-paper grid lines behind the writing. Pick them from the grid button in the editor toolbar. The lines are only a backdrop. They never move your text, are never copied or exported, and are not part of the page's saved HTML. Each page remembers its own choice, so it looks the same after a reload or on another device. A switch at the bottom of the popover, "Always create pages with these lines", makes new text pages in this browser start with the same lines. That default is stored only in this browser.
+
+**Popover (fork photo #14):** `PageLinesPopover` (`src/components/page-lines-popover.tsx`, Base UI Popover) sits at the start of the desktop and mobile format bars (`toolbar-page-lines` / `toolbar-page-lines-mobile`). It is labelled "Rule and grid lines" and uses the Lucide `Grid3x3` icon. It shows teal active state while the page has lines. Sections, in order:
+- **Rule Lines**: None plus narrow, college, wide, and college-with-red-margin
+- **Grid Lines**: small to very large
+- **Rule Line Color**: light blue (default), blue, green, lavender, grey
+- **Footer**: the `role="switch"` row "Always create pages with these lines" / "New text pages in this browser only."
+
+The fork has two toolbar buttons (outline, paper) before the grid button. On main the grid button leads the bar; those buttons land with their own stories.
+
+**Model (`src/lib/page-lines.ts`):** One exclusive `style` (`none | rule-* | grid-*`) plus a `color`. They persist in page frontmatter as `page_lines: { style, color }` through `PATCH /api/page` `action: "pageLines"`. The default is omitted from frontmatter. `savePage` spreads existing metadata, so autosaves keep the key. The shell (`handlePageLinesChange`) updates `draft.metadata` optimistically. It then awaits `flushSaveRef` before the PATCH, so the server's read-modify-write never races an in-flight body PUT, and rolls back with a toast on failure.
+
+**Browser default:** stored in `localStorage["smart-notes:new-page-lines"]` (normalized JSON; the key is absent when the toggle is off). While the toggle is on, later picks in the popover update the default. `createVaultPage` adds `pageLines` to `POST /api/page` for text pages only (`pageLinesForNewPage`). Quick Capture and DOCX import do not apply it.
+
+**Rendering:** `pageLinesBackgroundStyle()` returns only `background-*` properties: CSS `linear-gradient`s keyed on the `--page-line-*` / `--page-rule-*` / `--page-grid-*` tokens (documented in `docs/design-system/README.md`). They are applied inline to `editor-content-frame`, so the lines scroll and zoom with the content and never affect layout. The frame also exposes `data-page-lines` / `data-page-line-color` for tests. The margin line sits at `--page-rule-margin-inset`, inside the frame's left padding.
+
+**Lessons:** a global unlayered `button { font: inherit }` beats Tailwind's layered text utilities on `<button>` elements. Put text-size classes on an inner `<span>`, as the toolbar dropdowns do.
 
 ### Spellcheck preference (SN-130)
 

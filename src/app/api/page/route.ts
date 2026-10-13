@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createPage, deletePage, movePage, nestPage, readPage, renamePage, savePage, setPageKeyNote, toApiPageDocument } from "@/server/vault/pages";
+import { createPage, deletePage, movePage, nestPage, readPage, renamePage, savePage, setPageKeyNote, setPageLines, toApiPageDocument } from "@/server/vault/pages";
 import { toErrorResponse, VaultError } from "@/server/vault/errors";
 import { emitVaultSideEffects } from "@/server/vault/socket-events";
 
@@ -30,6 +30,7 @@ export async function POST(request: Request) {
       title?: string;
       noteType?: string;
       parentId?: string | null;
+      pageLines?: unknown;
     };
     const noteType =
       body.noteType === "ink"
@@ -51,6 +52,7 @@ export async function POST(request: Request) {
       title: body.title ?? "Untitled page",
       noteType,
       parentId: body.parentId !== undefined ? body.parentId : null,
+      pageLines: body.pageLines ?? null,
     });
     emitVaultSideEffects({ treeChanged: true });
     return NextResponse.json({ page: toApiPageDocument(page) }, { status: 201 });
@@ -129,6 +131,19 @@ export async function PATCH(request: Request) {
       const page = await setPageKeyNote({
         path: keyNoteBody.path ?? "",
         keyNote: keyNoteBody.keyNote,
+      });
+      emitVaultSideEffects({ treeChanged: true });
+      return NextResponse.json({ page: toApiPageDocument(page) });
+    }
+
+    if (body.action === "pageLines") {
+      const linesBody = body as { action: "pageLines"; path?: string; pageLines?: unknown };
+      if (!linesBody.pageLines || typeof linesBody.pageLines !== "object") {
+        throw new VaultError("INVALID_INPUT", '"pageLines" must be an object.', 400);
+      }
+      const page = await setPageLines({
+        path: linesBody.path ?? "",
+        pageLines: linesBody.pageLines,
       });
       emitVaultSideEffects({ treeChanged: true });
       return NextResponse.json({ page: toApiPageDocument(page) });

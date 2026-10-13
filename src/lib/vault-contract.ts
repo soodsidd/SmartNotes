@@ -34,6 +34,13 @@ export interface KeyNotePagePayload {
   keyNote: boolean;
 }
 
+/** SN-297: per-page rule / grid line background stored in frontmatter. */
+export interface PageLinesPagePayload {
+  action: "pageLines";
+  path: string;
+  pageLines: { style: string; color: string };
+}
+
 export interface ReorderPagesPayload {
   sectionPath: string;
   orderedIds: string[];
@@ -91,6 +98,8 @@ export interface CreatePagePayload {
   title?: string;
   noteType?: NoteType;
   parentId?: string | null;
+  /** SN-297: per-browser "Always create pages with these lines" default (text pages only). */
+  pageLines?: { style: string; color: string } | null;
 }
 
 export interface RenamePagePayload {
