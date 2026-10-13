@@ -717,6 +717,8 @@ function ProviderSettingsMenu({
   const activeModels = getAiProviderModelOptions(activeProvider?.models, activeModelLabel);
   const [draftModel, setDraftModel] = React.useState(activeModelLabel);
   const [isFiltering, setIsFiltering] = React.useState(false);
+  // Escape closes the menu (and blurs the input); the typed filter must not become the model.
+  const discardDraftOnBlurRef = React.useRef(false);
   const modelListId = React.useId();
   const pinLimitHintId = React.useId();
   const currentPin = { providerId: activeProviderId ?? "", model: activeModelLabel, effort: activeEffort ?? "" };
@@ -797,13 +799,26 @@ function ProviderSettingsMenu({
         <div className="relative px-2 pb-1 pt-2" onPointerDown={(event) => event.stopPropagation()}>
           <Input
             value={draftModel}
-            onChange={(event) => { setDraftModel(event.target.value); setIsFiltering(true); }}
+            onChange={(event) => {
+              discardDraftOnBlurRef.current = false;
+              setDraftModel(event.target.value);
+              setIsFiltering(true);
+            }}
             onBlur={(event) => {
               if (event.currentTarget.closest('[role="menu"]')?.contains(event.relatedTarget)) return;
+              if (discardDraftOnBlurRef.current) {
+                discardDraftOnBlurRef.current = false;
+                return;
+              }
               commitDraftModel();
             }}
             onKeyDown={(event) => {
               event.stopPropagation();
+              if (event.key === "Escape") {
+                discardDraftOnBlurRef.current = true;
+                setDraftModel(activeModelLabel);
+                setIsFiltering(false);
+              }
               if (event.key === "Enter") {
                 event.preventDefault();
                 commitDraftModel();

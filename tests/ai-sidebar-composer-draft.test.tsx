@@ -110,6 +110,27 @@ describe("Companion composer local draft", () => {
     expect(screen.queryByRole("menuitemradio", { name: "gpt-6-sol" })).toBeNull();
   });
 
+  it("discards the typed filter on Escape but still commits free-text on Enter", async () => {
+    const onModelChange = jest.fn();
+    renderCompanion({
+      providers: [{ id: "ghcopilot", name: "GitHub Copilot CLI", models: ["gpt-5.6", "gpt-4.1"] }],
+      activeProviderId: "ghcopilot",
+      activeProviderLabel: "GitHub Copilot CLI",
+      activeModelLabel: "gpt-5.6",
+      onModelChange,
+    });
+    fireEvent.click(screen.getByTestId("ai-composer-provider-switcher"));
+    const combobox = await screen.findByTestId("ai-model-combobox");
+    fireEvent.change(combobox, { target: { value: "4." } });
+    fireEvent.keyDown(combobox, { key: "Escape" });
+    fireEvent.blur(combobox);
+    expect(onModelChange).not.toHaveBeenCalled();
+
+    fireEvent.change(combobox, { target: { value: "auto" } });
+    fireEvent.keyDown(combobox, { key: "Enter" });
+    expect(onModelChange).toHaveBeenCalledWith("ghcopilot", "auto");
+  });
+
   it.each([false, true])("switches provider and model from the %s composer footer", async (mobile) => {
     const onProviderChange = jest.fn();
     const onModelChange = jest.fn();
