@@ -4701,6 +4701,28 @@
           "path": "e2e/sn-281-paper-reading-shell.spec.ts"
         }
       ]
+    },
+    {
+      "id": "unit-sn-296-floating-text-box",
+      "name": "Floating text box persistence and geometry",
+      "description": "Jest checks box move and resize limits and HTML reload with rich text, an image, and a table.",
+      "intent": "Protects text box content and placement from loss during page save and reload.",
+      "whenToRun": "Pre-merge when changing the text page canvas, rich text schema, or floating text boxes.",
+      "failureMeaning": "A text box may move unexpectedly or lose content, geometry, images, or tables after reload.",
+      "appType": "node",
+      "command": "npm test -- tests/floating-text-box.test.ts",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": ["unit", "editor", "floating-text-box", "targeted"],
+      "feature": "editor",
+      "testType": "integration",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-296",
+      "addedAt": "2026-10-12",
+      "sourceFiles": [{ "path": "tests/floating-text-box.test.ts" }]
     }
   ]
 }

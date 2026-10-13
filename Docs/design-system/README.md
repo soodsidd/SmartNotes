@@ -1,5 +1,14 @@
 # Smart Notes Design System
 
+## Floating text boxes (SN-296)
+
+Fork photos #11 and #16 show a faint outlined box on the text page canvas with a
+small Move and Delete tab above its top-left corner and a square resize handle
+at the bottom-right. The box uses the existing `--surface`, `--border`,
+`--foreground`, and `--muted-foreground` tokens. Its tab uses the existing 11px
+compact control type and the editor content retains the page typography. No new
+color, spacing, or typography token was introduced.
+
 ## Shared paper notes (SN-279)
 
 Bibliography, virtual paper rows, reference controls, and ownership breadcrumbs

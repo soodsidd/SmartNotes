@@ -21,6 +21,7 @@ import { CommentExtension } from "./comment-plugin";
 import { FileAttachment } from "./file-attachment-extension";
 import { PaperReference } from "./paper-reference-extension";
 import { HeadingWithAnchorId, PageToc } from "@/lib/page-toc";
+import { FloatingTextBox } from "./floating-text-box-extension";
 import {
   describeAssetUploadFailure,
   readFileForUpload,
@@ -89,6 +90,7 @@ export function createEditorExtensions(
     }),
     HeadingWithAnchorId.configure({ levels: [1, 2, 3] }),
     PageToc,
+    FloatingTextBox,
     FormattingShortcuts,
     TaskList,
     TaskItem.configure({ nested: true }),

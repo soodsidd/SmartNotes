@@ -91,6 +91,15 @@ body {
 
 .editor-content > :first-child { margin-top: 0; }
 
+.editor-content [data-type="floating-text-box"] {
+  z-index: 3;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  padding: 7px 9px;
+}
+.editor-content [data-floating-box-content] > :first-child { margin-top: 0; }
+.editor-content [data-floating-box-content] > :last-child { margin-bottom: 0; }
+
 .exported-page__content.editor-content > h1:first-child {
   display: none;
 }

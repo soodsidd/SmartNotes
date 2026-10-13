@@ -331,6 +331,56 @@ select {
   width: 100%;
 }
 
+.editor-content.ProseMirror { position: relative; }
+
+.editor-content .floating-text-box {
+  position: absolute;
+  z-index: 20;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 7px 9px;
+  overflow: visible;
+}
+.floating-text-box__controls {
+  position: absolute;
+  left: -1px;
+  bottom: 100%;
+  display: flex;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  background: var(--surface);
+  font-size: 11px;
+  line-height: 18px;
+}
+.floating-text-box__controls button {
+  border: 0;
+  background: transparent;
+  padding: 0 5px;
+  color: var(--muted-foreground);
+}
+.floating-text-box__controls button:hover,
+.floating-text-box__controls button:focus-visible { color: var(--foreground); }
+.floating-text-box__move { cursor: move; touch-action: none; }
+.floating-text-box__resize {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.floating-text-box__content > :first-child { margin-top: 0; }
+.floating-text-box__content > :last-child { margin-bottom: 0; }
+.editor-readonly .floating-text-box__controls,
+.editor-readonly .floating-text-box__resize,
+body.page-print-active .floating-text-box__controls,
+body.page-print-active .floating-text-box__resize { display: none; }
+
 /* Reading density overrides — applied via data-density on <html> */
 [data-density="compact"] .editor-content {
   font-size: var(--editor-density-compact);

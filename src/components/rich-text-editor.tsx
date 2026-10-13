@@ -610,6 +610,30 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
     function handleEditorClick(e: React.MouseEvent) {
       if (readOnly || isDrawMode) return;
+      if (editor && e.target instanceof HTMLElement && !e.target.closest('[data-type="floating-text-box"]')) {
+        const proseMirror = editor.view.dom as HTMLElement;
+        const rect = proseMirror.getBoundingClientRect();
+        const lastFlow = Array.from(proseMirror.children).filter((child) =>
+          !(child as HTMLElement).matches('[data-type="floating-text-box"]')
+        ).at(-1) as HTMLElement | undefined;
+        const flowBlock = e.target.closest("p, h1, h2, h3, ul, ol, blockquote, pre");
+        const textRange = flowBlock ? document.createRange() : null;
+        if (flowBlock && textRange) textRange.selectNodeContents(flowBlock);
+        const textRight = textRange
+          ? Math.max(...Array.from(textRange.getClientRects(), (item) => item.right), rect.left)
+          : rect.left;
+        const clickedEmpty = e.target === proseMirror || e.target === contentSizerRef.current ||
+          e.target === scrollAreaRef.current || e.target === e.currentTarget ||
+          Boolean(flowBlock?.parentElement === proseMirror && e.clientX > textRight + 20);
+        // Empty canvas beside or beneath the flow creates a OneNote-style box.
+        if (clickedEmpty && (e.clientX > rect.left + rect.width * 0.45 ||
+            e.clientY > (lastFlow?.getBoundingClientRect().bottom ?? rect.top) + 20)) {
+          const scale = rect.width / proseMirror.offsetWidth || 1;
+          insertFloatingBox(Math.max(0, (e.clientX - rect.left) / scale),
+            Math.max(0, (e.clientY - rect.top) / scale));
+          return;
+        }
+      }
       const isWrapperTapTarget =
         e.target === e.currentTarget ||
         e.target === contentSizerRef.current ||
@@ -1202,6 +1226,20 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       immediatelyRender: false,
     });
 
+    function insertFloatingBox(x?: number, y?: number) {
+      if (!editor || readOnly || isDrawMode) return;
+      const position = editor.state.doc.content.size;
+      const proseMirror = editor.view.dom as HTMLElement;
+      const fallbackX = Math.min(proseMirror.clientWidth * 0.45, 420);
+      const fallbackY = (scrollAreaRef.current?.scrollTop ?? 0) + 140;
+      const inserted = editor.commands.insertContentAt(position, {
+        type: "floatingTextBox",
+        attrs: { x: Math.round(x ?? fallbackX), y: Math.round(y ?? fallbackY), width: 360, height: 48 },
+        content: [{ type: "paragraph" }],
+      });
+      if (inserted) editor.chain().focus().setTextSelection(position + 2).run();
+    }
+
     React.useEffect(() => {
       if (!editor?.view?.dom) return;
       editor.view.dom.setAttribute("spellcheck", spellcheckEnabled ? "true" : "false");
@@ -1588,7 +1626,11 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       syncTextHeight();
       const observer = new ResizeObserver(syncTextHeight);
       observer.observe(proseMirror);
-      return () => observer.disconnect();
+      editor.on("update", syncTextHeight);
+      return () => {
+        observer.disconnect();
+        editor.off("update", syncTextHeight);
+      };
     }, [editor, content]);
 
     React.useEffect(() => {
@@ -2089,6 +2131,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           <ToolbarSep />
           <InsertOverflowDropdown
             editor={editor}
+            onInsertTextBox={() => insertFloatingBox()}
             onInsertImage={() => fileInputRef.current?.click()}
             onTakePhoto={cameraCaptureSupported ? () => cameraInputRef.current?.click() : undefined}
             onInsertAttachment={() => attachmentInputRef.current?.click()}
@@ -2137,6 +2180,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           </ToolbarBtn>
           <InsertOverflowDropdown
             editor={editor}
+            onInsertTextBox={() => insertFloatingBox()}
             mobile
             onInsertImage={() => fileInputRef.current?.click()}
             onTakePhoto={cameraCaptureSupported ? () => cameraInputRef.current?.click() : undefined}
@@ -3219,6 +3263,7 @@ function ListStyleDropdown({
 function InsertOverflowDropdown({
   editor,
   mobile = false,
+  onInsertTextBox,
   onInsertImage,
   onTakePhoto,
   onInsertAttachment,
@@ -3236,6 +3281,7 @@ function InsertOverflowDropdown({
 }: {
   editor: import("@tiptap/react").Editor | null;
   mobile?: boolean;
+  onInsertTextBox: () => void;
   onInsertImage: () => void;
   /** Provided only on capture-capable mobile/tablet browsers (SN-140). */
   onTakePhoto?: () => void;
@@ -3278,6 +3324,12 @@ function InsertOverflowDropdown({
           onSelect={() => editor?.chain().focus().toggleHighlight().run()}
         />
         <DropdownMenuSeparator />
+        <DropdownMenuItemWithIcon
+          icon={<Type className="size-3.5" />}
+          label="Text box"
+          testId={mobile ? "toolbar-text-box-mobile" : "toolbar-text-box"}
+          onSelect={onInsertTextBox}
+        />
         <DropdownMenuItemWithIcon
           icon={<ImageIcon className="size-3.5" />}
           label="Insert image"
