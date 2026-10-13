@@ -43,8 +43,6 @@ export const COMPANION_CONTEXT_LIMITS = {
   maxHighlightQuoteChars: 280,
   /** Bound on how many distinct pages get positioned-text extraction for quotes. */
   maxHighlightQuotePages: 20,
-  /** SN-281: paper notes included when the open paper is not the current page. */
-  maxPaperNotesChars: 20_000,
 } as const;
 
 async function getPdfParser(): Promise<PdfParserConstructor | null> {
@@ -705,15 +703,11 @@ export function formatOpenPaperContext(input: {
   }
   if (input.notesHtml !== undefined && input.notesHtml !== null) {
     const notes = input.notesHtml.trim();
-    const max = COMPANION_CONTEXT_LIMITS.maxPaperNotesChars;
     lines.push("", "### Paper notes");
     if (!notes) {
       lines.push("[The paper's notes are empty.]");
     } else {
-      lines.push("```html", notes.slice(0, max), "```");
-      if (notes.length > max) {
-        lines.push(`[Paper notes truncated: showing ${max} of ${notes.length} characters. Use page_get on ${input.path} for the rest.]`);
-      }
+      lines.push("```html", notes, "```");
     }
   } else {
     lines.push("", "Paper notes: the current page context above is this paper's notes.");
@@ -780,14 +774,21 @@ export async function buildCompanionPageContext(input: {
     if (paperPath) {
       const activeHref =
         input.activePdfHref ? normalizePdfHref(page.path, input.activePdfHref) : null;
-      const pdfs = findEmbeddedPdfReferences(page.path, page.body);
+      const linkedPdfs = findEmbeddedPdfReferences(page.path, page.body);
+      const assetPaths = await listPaperAttachments(page.path, linkedPdfs.map((pdf) => pdf.href));
+      const pdfs = [
+        ...linkedPdfs,
+        ...assetPaths.filter((asset) => asset.toLowerCase().endsWith(".pdf"))
+          .map((href) => ({ href, name: path.posix.basename(href) })),
+      ];
       blocks.push(formatOpenPaperContext({
         path: page.path,
         title: page.title,
         paperId: typeof page.metadata.paper_id === "string" ? page.metadata.paper_id : null,
-        notesHtml: page.path === input.path ? undefined : page.body,
+        // Inline the notes unless the base context is already this paper's own page.
+        notesHtml: page.path === input.path && base ? undefined : page.body,
         pdfs,
-        attachments: await listPaperAttachments(page.path, pdfs.map((pdf) => pdf.href)),
+        attachments: assetPaths.filter((asset) => !asset.toLowerCase().endsWith(".pdf")),
         activePdfHref: activeHref,
         currentPage: input.pdfPage,
         pageCount: input.pdfPageCount,
