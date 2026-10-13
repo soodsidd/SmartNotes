@@ -33,3 +33,8 @@ export function outlineBranchKeys(entries: PageOutlineEntry[]): number[] {
     entry.children.length ? [entry.key, ...outlineBranchKeys(entry.children)] : []
   );
 }
+
+/** Keys to expand so the outline shows one level below the roots (sections under H1). */
+export function outlineDefaultExpandedKeys(entries: PageOutlineEntry[]): number[] {
+  return entries.filter((entry) => entry.children.length > 0).map((entry) => entry.key);
+}

@@ -381,7 +381,23 @@ select {
   width: 100%;
 }
 
-.editor-content.ProseMirror { position: relative; }
+.editor-content.ProseMirror { position: relative; min-width: 100%; }
+
+/* Main body column — floating boxes live on the canvas outside this frame. */
+.editor-content.ProseMirror > :not([data-type="floating-text-box"]) {
+  max-width: var(--editor-main-flow-width, 672px);
+}
+
+.editor-main-flow-outline {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  pointer-events: none;
+  border: 1px solid var(--border);
+  background: transparent;
+}
 
 .editor-content .floating-text-box {
   position: absolute;

@@ -52,20 +52,23 @@ test("empty outline matches the navigation pane and never inserts a TOC", async 
   await expect(pane).toHaveCount(0);
 });
 
-test("outline opens collapsed, expands, and navigates without changing saved TOC", async ({ page }, testInfo) => {
+test("outline opens one level deep, strips legacy TOC, and navigates", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const slug = "sn298-headings";
   const filler = Array.from({ length: 20 }, (_, i) => `<p>Paragraph ${i}: ${"long page content ".repeat(12)}</p>`).join("\n");
   seed(slug, `<nav data-page-toc="true"><p>Contents</p><ul><li><button data-toc-target="first">First</button></li></ul></nav><h1 id="first">First</h1><h2>Second</h2>${filler}<h3>Third</h3><h1>Last</h1>`);
   await openPage(page, slug);
   await expect(page.locator(".editor-content h3")).toContainText("Third");
-  const before = await page.locator(".editor-content nav[data-page-toc]").evaluate((element) => element.innerHTML);
+  // Legacy inserted TOC is removed on open.
+  await expect.poll(async () => page.locator(".editor-content nav[data-page-toc]").count()).toBe(0);
   await outlineToggle(page).click();
   const pane = page.getByTestId("page-outline-pane");
   await expect(pane.getByRole("button", { name: "First", exact: true })).toBeVisible();
-  await expect(pane.getByRole("button", { name: "Second", exact: true })).toHaveCount(0);
-  await pane.getByRole("button", { name: "Expand First" }).click();
+  // Default shows one level below roots (sections), not only H1s.
   await expect(pane.getByRole("button", { name: "Second", exact: true })).toBeVisible();
+  await expect(pane.getByRole("button", { name: "Third", exact: true })).toHaveCount(0);
+  await pane.getByRole("button", { name: "Expand Second" }).click();
+  await expect(pane.getByRole("button", { name: "Third", exact: true })).toBeVisible();
   await pane.getByRole("button", { name: "Collapse all" }).click();
   await expect(pane.getByRole("button", { name: "Second", exact: true })).toHaveCount(0);
   await pane.getByRole("button", { name: "Expand all" }).click();
@@ -75,5 +78,5 @@ test("outline opens collapsed, expands, and navigates without changing saved TOC
   await pane.getByRole("button", { name: "Third", exact: true }).click();
   await expect(pane).toHaveCount(0);
   await expect.poll(async () => page.locator(".editor-scroll-area").evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-  expect(await page.locator(".editor-content nav[data-page-toc]").evaluate((element) => element.innerHTML)).toBe(before);
+  await expect(page.locator(".editor-content nav[data-page-toc]")).toHaveCount(0);
 });

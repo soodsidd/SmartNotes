@@ -4,7 +4,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { ChevronsDownUp, ChevronsUpDown, ChevronRight, X } from "lucide-react";
-import { buildPageOutline, outlineBranchKeys, type PageOutlineEntry } from "@/lib/page-outline";
+import { buildPageOutline, outlineBranchKeys, outlineDefaultExpandedKeys, type PageOutlineEntry } from "@/lib/page-outline";
 
 interface PageOutlinePaneProps {
   editor: Editor;
@@ -15,7 +15,8 @@ interface PageOutlinePaneProps {
 
 export function PageOutlinePane({ editor, scrollContainer, onClose, onNavigate }: PageOutlinePaneProps) {
   const [entries, setEntries] = React.useState(() => buildPageOutline(editor.state.doc));
-  const [expanded, setExpanded] = React.useState<number[]>([]);
+  // Open showing one level below roots (H2 sections under H1), not just top headings.
+  const [expanded, setExpanded] = React.useState(() => outlineDefaultExpandedKeys(buildPageOutline(editor.state.doc)));
   const paneRef = React.useRef<HTMLElement>(null);
   const previousFocus = React.useRef<HTMLElement | null>(null);
 

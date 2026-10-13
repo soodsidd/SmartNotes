@@ -82,10 +82,16 @@ import {
   isWithinTocTapSlop,
   measureHeadingTextAnchor,
   measureOffsetOrigin,
+  measurePageTocHeight,
+  removePageToc,
   resolveBackToTopPlacement,
   scrollEditorToAnchor,
   scrollEditorToPageToc,
 } from "@/lib/page-toc";
+import {
+  EDITOR_MAIN_FLOW_WIDTH,
+  pruneEmptyFloatingTextBoxes,
+} from "@/lib/floating-text-box";
 import { cn } from "@/lib/utils";
 import { resolvePdfAttachmentTarget, type PdfAttachmentTarget } from "@/lib/pdf-attachment";
 import type { PageContentExport } from "@/lib/page-export";
@@ -345,6 +351,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     }, []);
     const isDrawMode = annotationMode === "draw" && !readOnly;
     const [textHeight, setTextHeight] = React.useState(0);
+    const [mainFlowHeight, setMainFlowHeight] = React.useState(0);
     const [viewportHeight, setViewportHeight] = React.useState(0);
     const [scrollTop, setScrollTop] = React.useState(0);
     // In capture mode the editor is rendered in an unbounded (non-scrolling)
@@ -599,6 +606,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       if (editor && e.target instanceof HTMLElement && !e.target.closest('[data-type="floating-text-box"]')) {
         const proseMirror = editor.view.dom as HTMLElement;
         const rect = proseMirror.getBoundingClientRect();
+        const scale = rect.width / proseMirror.offsetWidth || 1;
+        const mainFlowRight = rect.left + EDITOR_MAIN_FLOW_WIDTH * scale;
         const lastFlow = Array.from(proseMirror.children).filter((child) =>
           !(child as HTMLElement).matches('[data-type="floating-text-box"]')
         ).at(-1) as HTMLElement | undefined;
@@ -611,10 +620,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         const clickedEmpty = e.target === proseMirror || e.target === contentSizerRef.current ||
           e.target === scrollAreaRef.current || e.target === e.currentTarget ||
           Boolean(flowBlock?.parentElement === proseMirror && e.clientX > textRight + 20);
-        // Empty canvas beside or beneath the flow creates a OneNote-style box.
-        if (clickedEmpty && (e.clientX > rect.left + rect.width * 0.45 ||
+        // Empty canvas beside or beneath the main flow creates a OneNote-style box.
+        if (clickedEmpty && (e.clientX > mainFlowRight + 8 ||
             e.clientY > (lastFlow?.getBoundingClientRect().bottom ?? rect.top) + 20)) {
-          const scale = rect.width / proseMirror.offsetWidth || 1;
           insertFloatingBox(Math.max(0, (e.clientX - rect.left) / scale),
             Math.max(0, (e.clientY - rect.top) / scale));
           return;
@@ -1206,8 +1214,13 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         if (selection instanceof TextSelection && selection.empty) {
           lastTextSelectionRef.current = selection.from;
         }
+        // Empty floating boxes auto-delete when the caret leaves them.
+        if (!readOnly) pruneEmptyFloatingTextBoxes(ed);
         onSelectionContextChange?.(resolveSectionContext(ed));
         enterMathEditFromSelection(ed);
+      },
+      onBlur({ editor: ed }) {
+        if (!readOnly) pruneEmptyFloatingTextBoxes(ed);
       },
       immediatelyRender: false,
     });
@@ -1215,8 +1228,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     function insertFloatingBox(x?: number, y?: number) {
       if (!editor || readOnly || isDrawMode) return;
       const position = editor.state.doc.content.size;
-      const proseMirror = editor.view.dom as HTMLElement;
-      const fallbackX = Math.min(proseMirror.clientWidth * 0.45, 420);
+      const fallbackX = EDITOR_MAIN_FLOW_WIDTH + 24;
       const fallbackY = (scrollAreaRef.current?.scrollTop ?? 0) + 140;
       const inserted = editor.commands.insertContentAt(position, {
         type: "floatingTextBox",
@@ -1465,7 +1477,33 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       if (content === lastEmittedRef.current) return;
       lastEmittedRef.current = content;
       setEditorHtmlSilent(editor, content);
-    }, [editor, content]);
+
+      // Strip legacy inserted pageToc nodes on open (owner: remove top-of-page TOC).
+      if (readOnly || !documentHasPageToc(editor.state.doc)) return;
+      const frame = window.requestAnimationFrame(() => {
+        if (!documentHasPageToc(editor.state.doc)) return;
+        const tocHeight = measurePageTocHeight(editor.view.dom as HTMLElement);
+        removePageToc(editor);
+        const html = editor.getHTML();
+        lastEmittedRef.current = html;
+        onChange(html);
+        if (tocHeight > 0) {
+          const remap = annotationLayerRef?.current?.applyVerticalRemap(-tocHeight);
+          if (remap?.ok && typeof drawableBottom === "number" && Number.isFinite(drawableBottom)) {
+            onDrawableBottomChange?.(Math.max(0, Math.ceil(drawableBottom - tocHeight)));
+          }
+        }
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }, [
+      annotationLayerRef,
+      content,
+      drawableBottom,
+      editor,
+      onChange,
+      onDrawableBottomChange,
+      readOnly,
+    ]);
 
     React.useEffect(() => {
       if (!editor) return;
@@ -1542,10 +1580,23 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
     React.useEffect(() => {
       if (!editor) return;
-      const proseMirror = editor.view.dom;
+      const proseMirror = editor.view.dom as HTMLElement;
 
       const syncTextHeight = () => {
         setTextHeight(Math.max(proseMirror.scrollHeight, proseMirror.offsetHeight));
+        const flowChildren = Array.from(proseMirror.children).filter(
+          (child) => !(child as HTMLElement).matches('[data-type="floating-text-box"]')
+        ) as HTMLElement[];
+        if (flowChildren.length === 0) {
+          setMainFlowHeight(Math.max(proseMirror.clientHeight, 240));
+          return;
+        }
+        const top = flowChildren[0].offsetTop;
+        const bottom = flowChildren.reduce(
+          (max, child) => Math.max(max, child.offsetTop + child.offsetHeight),
+          top
+        );
+        setMainFlowHeight(Math.max(bottom - top + 16, 240));
       };
 
       syncTextHeight();
@@ -2484,6 +2535,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                   : undefined),
                 ...pageLinesBackgroundStyle(pageLines),
                 ...editorZoomSurfaceStyle(workspaceZoom, workspacePan),
+                ["--editor-main-flow-width" as string]: `${EDITOR_MAIN_FLOW_WIDTH}px`,
               }}
               data-testid="editor-content-frame"
               data-page-lines={pageLines.style === "none" ? undefined : pageLines.style}
@@ -2492,6 +2544,16 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
               data-editor-zoom={workspaceZoom === EDITOR_ZOOM_DEFAULT ? undefined : workspaceZoom}
             >
               {collapsedHeadingCss ? <style>{collapsedHeadingCss}</style> : null}
+              {/* Non-movable main-flow outline — same faint border language as floating boxes. */}
+              <div
+                className="editor-main-flow-outline"
+                data-testid="editor-main-flow-outline"
+                aria-hidden="true"
+                style={{
+                  width: EDITOR_MAIN_FLOW_WIDTH,
+                  height: Math.max(mainFlowHeight, textHeight, 240),
+                }}
+              />
               <EditorContent
                 editor={editor}
                 className={cn(

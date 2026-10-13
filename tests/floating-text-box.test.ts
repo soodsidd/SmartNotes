@@ -1,7 +1,13 @@
 /** @jest-environment jsdom */
 import { Editor } from "@tiptap/core";
 import { createEditorExtensions, insertUploadedEditorAsset, setEditorHtmlSilent } from "@/lib/rich-text-editor-config";
-import { moveFloatingBox, resizeFloatingBox } from "@/lib/floating-text-box";
+import {
+  EDITOR_MAIN_FLOW_WIDTH,
+  isFloatingTextBoxEmpty,
+  moveFloatingBox,
+  pruneEmptyFloatingTextBoxes,
+  resizeFloatingBox,
+} from "@/lib/floating-text-box";
 
 function editor(content = "<p>Main flow</p>") {
   return new Editor({ element: document.createElement("div"), extensions: createEditorExtensions(), content });
@@ -73,6 +79,34 @@ describe("floating text boxes", () => {
     expect(pageDraft).toContain("/vault/notes/pasted.png");
     instance.destroy();
     reloaded.destroy();
+  });
+
+  test("empty boxes prune when the caret leaves; filled boxes stay", () => {
+    const instance = editor(
+      '<p>Main</p><div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p></p></div></div>'
+    );
+    let boxPos = -1;
+    instance.state.doc.descendants((node, pos) => {
+      if (node.type.name === "floatingTextBox") {
+        boxPos = pos;
+        expect(isFloatingTextBoxEmpty(node)).toBe(true);
+      }
+    });
+    instance.commands.setTextSelection(boxPos + 2);
+    expect(pruneEmptyFloatingTextBoxes(instance)).toBe(0);
+    instance.commands.setTextSelection(1);
+    expect(pruneEmptyFloatingTextBoxes(instance)).toBe(1);
+    expect(instance.getHTML()).not.toContain('data-type="floating-text-box"');
+
+    const filled = editor(
+      '<p>Main</p><div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Keep me</p></div></div>'
+    );
+    filled.commands.setTextSelection(1);
+    expect(pruneEmptyFloatingTextBoxes(filled)).toBe(0);
+    expect(filled.getHTML()).toContain("Keep me");
+    expect(EDITOR_MAIN_FLOW_WIDTH).toBe(672);
+    instance.destroy();
+    filled.destroy();
   });
 
   test("Move and corner drag persist their geometry in page HTML", () => {

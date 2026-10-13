@@ -932,7 +932,17 @@ Standard browser shortcuts apply (Cmd/Ctrl+B for bold, etc.) plus:
 
 ### Floating text boxes (SN-296)
 
-Text pages can contain free-positioned rich text boxes above the page canvas. Click empty canvas beside or below the main text, or choose Insert > Text box. Each box has an always-visible outline, a Move and Delete tab, and a bottom-right resize handle. Drag Move or focus it and use arrow keys to nudge; drag the corner to resize. Height expands when content needs more space. The main format bar and paste/upload path work inside a box because floatingTextBox is a block node in the same TipTap document. Geometry is stored as x, y, width, and minimum height HTML attributes; nested paragraphs, images, and tables remain in the same page HTML and the existing page draft autosave. The box is absolutely positioned relative to the editor prose surface, so it does not reflow ordinary page text. Search, Companion, page export, and print receive the box content as part of that HTML. The implementation is in src/lib/floating-text-box-extension.ts and src/components/rich-text-editor.tsx.
+**Plain English:** Text pages support OneNote-style free-positioned rich text boxes on a canvas beside a visible main editor frame.
+
+**Main flow frame:** The primary typed column is a fixed-width frame (`EDITOR_MAIN_FLOW_WIDTH` = 672px) drawn with the same faint 1px border language as floating boxes. It is not movable or resizable — it only shows the extents of the main editor so floating boxes can be placed clearly outside it. Ordinary ProseMirror blocks are constrained to that width; floating boxes stay absolutely positioned on the wider canvas.
+
+**Create / edit:** Click empty canvas beside or below the main frame, or choose Insert → Text box. Each box has an always-visible outline, a Move and Delete tab, and a bottom-right resize handle. Drag Move or focus it and use arrow keys to nudge; drag the corner to resize. Height expands when content needs more space.
+
+**Empty auto-delete:** Leaving an empty newly created box (click away / blur / caret leaves) removes it automatically. Boxes that contain typed text, images, tables, or other atoms are kept. Focusing Move/Delete/resize chrome does not count as leaving the box.
+
+**Persistence:** Geometry is stored as x, y, width, and minimum height HTML attributes; nested paragraphs, images, and tables remain in the same page HTML and the existing page draft autosave. The box does not reflow ordinary page text. Search, Companion, page export, and print receive the box content as part of that HTML.
+
+**Implementation:** `src/lib/floating-text-box.ts`, `src/lib/floating-text-box-extension.ts`, `src/components/rich-text-editor.tsx`, styles in `src/app/globals.css`. Unit coverage: `tests/floating-text-box.test.ts`.
 
 ### Page rule and grid lines (SN-297)
 
@@ -986,16 +996,16 @@ The fork has two toolbar buttons (outline, paper) before the grid button. On mai
 
 ### Page TOC (SN-220)
 
-**Plain English:** The leftmost format-bar ListTree button opens a Word-style Page outline pane instead of inserting a table of contents into the note. The pane lists live Heading 1–3 text, opens with top-level branches collapsed, and lets the reader expand sections or jump to a heading. The old contents blocks already saved in pages remain untouched.
+**Plain English:** The leftmost format-bar ListTree button opens a Word-style Page outline pane instead of inserting a table of contents into the note. The pane lists live Heading 1–3 text, opens showing one level below the roots (sections under main headings), and lets the reader expand deeper or jump to a heading. Legacy inserted `pageToc` blocks are stripped when a page opens.
 
-**Behavior (SN-298):**
+**Behavior (SN-298 + follow-up polish):**
 - The outline button is first in the desktop and mobile text toolbars and uses the existing teal active-button style while the pane is open. It toggles the pane; the pane also closes with ✕, the backdrop, or Escape.
 - A roughly 300px pane overlays the left side below the app header. The rest of the app is dimmed and blurred. Its header order is Page outline, Collapse all, Expand all, close. The empty copy is exactly: "No headings yet. Use Heading 1, 2, or 3 to build this outline."
-- The tree reads the current TipTap document without editing it. H1–H3 entries nest under the nearest preceding heading of a lower level. Branches start collapsed every time the pane opens; per-node chevrons and header controls expand or collapse the tree. An entry scrolls the editor to the heading and closes the pane. Keyboard focus stays in the open pane and returns to the prior control on close.
-- No toolbar or Insert-menu action now creates or refreshes a `pageToc` node. The `PageToc` extension remains registered so old `nav[data-page-toc]` HTML parses and saves intact. Its existing entry-click and back-to-top behavior remains for saved pages. No ink vertical remap is needed because opening the outline does not change document height.
-- The tree builder is `src/lib/page-outline.ts`; the pane is `src/components/page-outline-pane.tsx`; toolbar wiring is in `src/components/rich-text-editor.tsx`. Styling is in `src/app/globals.css`. Unit coverage is `tests/page-outline.test.ts`; desktop/mobile workflow coverage is `e2e/sn-298-page-outline.spec.ts`. The former insert/remove workflow in `e2e/sn-230-toc-toggle.spec.ts` is superseded in the regression catalog.
+- The tree reads the current TipTap document without editing it. H1–H3 entries nest under the nearest preceding heading of a lower level. On open, root branches with children are expanded so the default view shows sections (one level below), not only top headings. Deeper levels stay collapsed until expanded. Per-node chevrons and header controls expand or collapse the tree. An entry scrolls the editor to the heading and closes the pane. Keyboard focus stays in the open pane and returns to the prior control on close.
+- No toolbar or Insert-menu action creates or refreshes a `pageToc` node. When a page with a saved `nav[data-page-toc]` loads, the editor removes that node, emits the cleaned HTML through the normal draft save path, and applies `annotationLayer.applyVerticalRemap(-tocHeight)` so page-space ink stays aligned.
+- The tree builder is `src/lib/page-outline.ts` (`outlineDefaultExpandedKeys`); the pane is `src/components/page-outline-pane.tsx`; toolbar and strip-on-open wiring are in `src/components/rich-text-editor.tsx`. Styling is in `src/app/globals.css`. Unit coverage is `tests/page-outline.test.ts`; desktop/mobile workflow coverage is `e2e/sn-298-page-outline.spec.ts`. The former insert/remove workflow in `e2e/sn-230-toc-toggle.spec.ts` remains superseded in the regression catalog.
 
-**Legacy TOC (SN-220–SN-233):** The old `src/lib/page-toc.ts` helpers and node parser remain for saved content. A saved TOC still has stable heading anchors and in-page navigation; its heading back-to-top chrome still appears while that node is present. Legacy TOC touch navigation defers a jump until pointer-up and suppresses the following click, so dragging the page does not jump. Back-to-top placement uses the last rendered heading line and the content-sizer offset, with a 44px coarse-pointer target. The legacy ink remap helpers remain for historic TOC transforms and refuse unsafe shape moves, but the UI no longer invokes those transforms.
+**Legacy helpers (SN-220–SN-233):** `src/lib/page-toc.ts` still parses historic TOC HTML and owns remove/measure helpers used by the strip-on-open path. Back-to-top chrome only appears while a TOC node is still present mid-session before strip completes. Legacy ink remap helpers remain the implementation behind `AnnotationLayerHandle.applyVerticalRemap`.
 
 ### Text-page annotations (SN-38)
 
