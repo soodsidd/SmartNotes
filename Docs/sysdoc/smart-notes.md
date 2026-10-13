@@ -854,6 +854,8 @@ The reliable shell also has an in-place refresh-note path. The top-bar sync icon
 
 **Evidence.** `tests/papers.test.ts` covers identity through renames/moves, home notebook ownership and rename follow, legacy home fallback, referenced-only shortcuts, child-row create/remove, and Back to topic resolution. `evidence/sn-292/` holds desktop screenshots side by side with fork photos #7, #12 and #17.
 
+**Attach paper picker (SN-293, fork photos #2–#4).** Insert → Attach paper… opens a searchable two-column catalogue with Referenced in, PDF availability, References, and Sort filters plus a filtered/total count. Paper cards show PDF availability, the active vault name, source, referrers, and an Attach paper action. The Create a paper section follows the cards in the same scroll flow, keeping it clear of the grid when expanded. Creating validates title and home notebook, calls POST /api/papers with optional source, optionally uploads a PDF into the new paper using the ordinary asset/page APIs, refreshes the tree, and inserts a paper-reference chip at the caret captured before the modal opened. A PDF upload failure leaves the canonical paper and reference in place and shows an error toast. The picker uses existing design tokens, including --paper for its Insert-menu glyph.
+
 ### Lessons Learned
 
 - Each chip node view owns its own React root (`createRoot`) rather than a Tiptap `ReactNodeViewRenderer` portal; portals are bound to the `EditorContent` instance, and shell re-renders could orphan a live chip (stale DOM, lost state).

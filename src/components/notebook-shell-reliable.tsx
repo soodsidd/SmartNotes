@@ -65,6 +65,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor, type EditorSectionContext, type RichTextEditorHandle } from "@/components/rich-text-editor";
 import { Bibliography, NotebookBibliographyShortcut, PaperChildRow } from "@/components/bibliography";
 import { PaperAttachDialog } from "@/components/paper-attach-dialog";
+import { createPaperAndAttach, type CreatePaperInput } from "@/lib/paper-attach";
 import { BIBLIOGRAPHY_PATH, isBibliographyPath, paperBackTarget, paperHomeNotebook, paperReferenceHtml } from "@/lib/papers";
 import { flushInlinePapers, flushPaperFrame } from "@/lib/inline-paper-save";
 import { PaperNotesDock } from "@/components/paper-notes-dock";
@@ -1012,6 +1013,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const flushSaveRef = React.useRef<() => Promise<boolean>>(async () => true);
   const draftEpochRef = React.useRef(0);
   const editorRef = React.useRef<RichTextEditorHandle | null>(null);
+  const paperCaretRef = React.useRef<number | null>(null);
   const docxImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const pagePackageImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const socketRef = React.useRef<Socket | null>(null);
@@ -4371,36 +4373,40 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     void openPage(pagePath);
   }, [openPage]);
 
-  const attachPaperToCurrentPage = React.useCallback((id: string) => {
+  const attachPaperToCurrentPage = React.useCallback((id: string): boolean => {
     const current = draftRef.current;
-    if (!current || isBibliographyPath(current.path) || !editorRef.current?.insertHtml(paperReferenceHtml(id), { avoidDocStart: true })) {
+    const at = paperCaretRef.current;
+    if (!current || isBibliographyPath(current.path) || !editorRef.current?.insertHtml(paperReferenceHtml(id), { avoidDocStart: true, at: at && at > 1 ? at : undefined })) {
       toast.error("Could not attach paper to this page.");
-      return;
+      return false;
     }
+    paperCaretRef.current = null;
     setExpandedPages((expanded) => new Set([...expanded, current.path]));
+    return true;
   }, []);
 
-  const createAndAttachPaper = React.useCallback(async (input: { title: string; homeNotebookPath: string; sourceLink: string; pdf: File | null }) => {
+  const createAndAttachPaper = React.useCallback(async (input: CreatePaperInput) => {
     if (!(await flushInlinePapers()) || !(await flushSaveRef.current())) throw new Error("Save the current notes before creating a paper.");
-    if (input.pdf && input.pdf.type !== "application/pdf" && !/\.pdf$/i.test(input.pdf.name)) throw new Error("Choose a PDF file.");
-    const response = await vaultWriteFetch("/api/papers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
-    if (!response.ok) throw new Error(await readErrorMessage(response, "Could not create paper."));
-    const { page } = await response.json();
-    let pdfError = false;
-    if (input.pdf) {
-      try {
-        const form = new FormData(); form.set("file", input.pdf);
-        const upload = await vaultWriteFetch(`/api/assets?path=${encodeURIComponent(page.path)}`, { method: "POST", body: form });
+    const { pdfError } = await createPaperAndAttach(input, {
+      create: async (paperInput) => {
+        const response = await vaultWriteFetch("/api/papers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(paperInput) });
+        if (!response.ok) throw new Error(await readErrorMessage(response, "Could not create paper."));
+        const { page } = await response.json();
+        return { id: String(page.metadata.paper_id), path: page.path as string, title: page.title as string };
+      },
+      attachPdf: async (paper, pdf) => {
+        const form = new FormData(); form.set("file", pdf);
+        const upload = await vaultWriteFetch(`/api/assets?path=${encodeURIComponent(paper.path)}`, { method: "POST", body: form });
         if (!upload.ok) throw new Error("PDF upload failed.");
         const { asset } = await upload.json();
         const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const body = `<p><span data-file-attachment="" data-file-type="pdf" class="file-attachment-chip file-attachment-chip--pdf" contenteditable="false"><span class="file-attachment-icon" aria-hidden="true">PDF</span><span class="file-attachment-name" data-href="${escape(asset.url)}">${escape(input.pdf.name)}</span></span></p>`;
-        const save = await vaultWriteFetch("/api/page", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: page.path, title: page.title, content: body }) });
+        const body = `<p><span data-file-attachment="" data-file-type="pdf" class="file-attachment-chip file-attachment-chip--pdf" contenteditable="false"><span class="file-attachment-icon" aria-hidden="true">PDF</span><span class="file-attachment-name" data-href="${escape(asset.url)}">${escape(pdf.name)}</span></span></p>`;
+        const save = await vaultWriteFetch("/api/page", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: paper.path, title: paper.title, content: body }) });
         if (!save.ok) throw new Error("PDF attachment save failed.");
-      } catch { pdfError = true; }
-    }
-    await loadTree({ pagePath: activePagePathRef.current }, { skipCache: true, draftSnapshot: currentDraftSnapshot() });
-    attachPaperToCurrentPage(String(page.metadata.paper_id));
+      },
+      refresh: () => loadTree({ pagePath: activePagePathRef.current }, { skipCache: true, draftSnapshot: currentDraftSnapshot() }),
+      insertReference: attachPaperToCurrentPage,
+    });
     if (pdfError) toast.error("Paper attached, but its PDF could not be saved. Add the PDF from the paper page.");
   }, [attachPaperToCurrentPage, currentDraftSnapshot, loadTree]);
 
@@ -6575,7 +6581,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 previewAnnotationsJson={activeVersionPreview?.annotationsContent ?? undefined}
                 onTitleChange={(title) => updateDraft({ title })}
                 onContentChange={(content) => updateDraft({ content })}
-                onAttachPaper={!paperInline && !isBibliographyPath(draft.path) && !activeVersionPreview ? () => setPaperAttachOpen(true) : undefined}
+                onAttachPaper={!paperInline && !isBibliographyPath(draft.path) && !activeVersionPreview ? () => { paperCaretRef.current = editorRef.current?.getSelectionPosition() ?? null; setPaperAttachOpen(true); } : undefined}
                 onPersistAttachment={persistEditorAttachment}
                 onSelectionContextChange={setAiSectionContext}
                 onPdfAttachmentOpen={openPdfReader}
@@ -6666,7 +6672,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         </div>
       </div>
 
-      <PaperAttachDialog open={paperAttachOpen} onOpenChange={setPaperAttachOpen} tree={tree} onAttach={attachPaperToCurrentPage} onCreate={createAndAttachPaper} />
+      <PaperAttachDialog open={paperAttachOpen} onOpenChange={setPaperAttachOpen} tree={tree} vaultName={vaultRoot.split(/[\\/]/).filter(Boolean).pop() || "Bibliography"} onAttach={attachPaperToCurrentPage} onCreate={createAndAttachPaper} />
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent side="left" className="w-[92vw] max-w-[360px] border-r border-border bg-[color:var(--rail)] p-0">
           <SheetHeader className="border-b border-border px-4 py-4">

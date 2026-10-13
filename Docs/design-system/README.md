@@ -23,6 +23,16 @@ overrides utilities placed on a `<button>`. The paper page context bar
 (**Back to topic** · "Bibliography · shared paper page") is `text-xs`
 `--muted-foreground` on `--surface`, left-aligned with the editor toolbar.
 
+## Attach paper dialog (SN-293)
+
+Fork photos #2, #3 and #4. The Insert menu's paper glyph reuses SN-292's
+`--paper` token. The dialog uses the existing `Dialog`, `Input`, `Button`,
+`--surface`, `--border`, `--foreground`, `--muted-foreground`, `--ring`, and
+`--accent` patterns. Its search and filters precede a two-column card grid;
+the grid and expanded Create a paper form share one scroll area so the form
+follows the cards in document flow. The form button uses the standard primary
+Button at intrinsic width. No new design values were introduced.
+
 ## Paper reading shell (SN-281)
 
 Opening a paper's PDF shows three layers: PDF reader | paper notes dock |
