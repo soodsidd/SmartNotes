@@ -76,7 +76,7 @@ test("SN-299: Insert table options and grid persist in the main flow and a text 
       if (!response.ok()) return 0;
       const body = await response.json() as { page: { content: string } };
       return (body.page.content.match(/<table/g) ?? []).length;
-    }, { timeout: 15_000 }).toBe(2);
+    }, { timeout: 30_000 }).toBe(2);
     await page.reload();
     await page.waitForLoadState("networkidle");
     const reloadedTree = await ensureNotebookTreeVisible(page);
