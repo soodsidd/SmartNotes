@@ -1,0 +1,12 @@
+PASS photo #11 empty box has the 360 × 48 default geometry
+PASS photo #11 controls read Move and Delete
+PASS photo #11 resize handle is visible
+PASS photo #11 caret can focus inside the box
+PASS photo #16 box contains a 3 × 3 table
+PASS Move tooltip matches photo #16
+PASS photo #16 paper context bar is visible
+PASS photo #16 table cell receives the editor selection
+PASS zero page or console errors (0)
+
+Console errors:
+(none)
