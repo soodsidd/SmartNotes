@@ -194,10 +194,11 @@ const ImmersivePdfReader = dynamic(
   companionAnswerReady?: boolean;
   companionWorking?: boolean;
   onToggleCompanion?: () => void;
-  onPageChange?: (page: number) => void;
+  onPageChange?: (page: number, pageCount?: number) => void;
   insetRight?: number;
   modal?: boolean;
   notesPanel?: { open: boolean; onToggle: () => void };
+  onSaveAsPaper?: () => void;
 }>;
 import {
   getVersionsControlLabel,
