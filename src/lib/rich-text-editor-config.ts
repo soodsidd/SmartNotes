@@ -9,6 +9,8 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Plugin } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorMathematics } from "./editor-mathematics";
@@ -36,6 +38,28 @@ class ScrollableTableView extends TableView {
     this.dom.setAttribute("data-table-scroll", "true");
   }
 }
+
+const TableActiveCell = Extension.create({
+  name: "tableActiveCell",
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      props: {
+        decorations(state) {
+          const { $from } = state.selection;
+          for (let depth = $from.depth; depth > 0; depth--) {
+            const name = $from.node(depth).type.name;
+            if (name === "tableCell" || name === "tableHeader") {
+              return DecorationSet.create(state.doc, [
+                Decoration.node($from.before(depth), $from.after(depth), { class: "activeCell" }),
+              ]);
+            }
+          }
+          return null;
+        },
+      },
+    })];
+  },
+});
 
 export const FormattingShortcuts = Extension.create({
   name: "formattingShortcuts",
@@ -98,6 +122,7 @@ export function createEditorExtensions(
     TableRow,
     TableCell,
     TableHeader,
+    TableActiveCell,
     Link.configure({
       openOnClick: false,
       HTMLAttributes: { class: "editor-link" },

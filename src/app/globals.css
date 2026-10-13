@@ -733,13 +733,20 @@ body.page-print-active .floating-text-box__resize { display: none; }
   border: 1px solid var(--border);
   padding: 0.4em 0.75em;
   text-align: left;
+  min-width: var(--editor-table-cell-min-width);
+  height: var(--editor-table-cell-min-height);
+  vertical-align: top;
 }
 .editor-content th {
-  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  background: var(--secondary);
   font-weight: 600;
   font-family: var(--font-sans);
   font-size: 0.8em;
   letter-spacing: 0.03em;
+}
+.editor-content .tableWrapper .activeCell {
+  position: relative;
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .editor-content .selectedCell:after {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
