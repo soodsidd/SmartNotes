@@ -1,12 +1,13 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { paperReferenceIds } from "@/lib/papers";
+import { paperReferenceHtml, paperReferenceIds } from "@/lib/papers";
 import { defaultPaperTitleFromPdfName, listPagePdfChips } from "@/lib/paper-attach";
 import { executeVaultTool, VAULT_TOOL_DEFINITIONS } from "@/server/vault/agent-tools";
 import { createPage, invalidateVaultTreeCache, readPage, savePage } from "@/server/vault/pages";
 import {
   createPaperFromVaultPdf,
+  insertPaperReferenceAtPdf,
   normalizeVaultPdfSource,
   pdfAttachmentChipHtml,
   removePdfAttachmentChip,
@@ -68,13 +69,14 @@ describe("SN-302 promote vault PDF to paper", () => {
     expect(chips).toEqual([{ href: "/vault/Research/Articles/page.assets/doc.pdf", fileName: "doc.pdf" }]);
   });
 
-  it("copies the vault PDF onto a new paper, inserts a paper chip, and keeps the original by default", async () => {
+  it("copies the vault PDF onto a new paper, inserts a paper chip in place, and keeps the original by default", async () => {
     const article = await createPage({ sectionPath: "Research/Articles", title: "Article" });
     const asset = await uploadPageAsset(article.path, "attention.pdf", PDF_BYTES);
+    const pdfChip = pdfAttachmentChipHtml(asset.url, asset.fileName);
     await savePage({
       path: article.path,
       title: article.title,
-      body: `<p>Intro</p>${pdfAttachmentChipHtml(asset.url, asset.fileName)}`,
+      body: `<p>Intro</p>${pdfChip}<p>Outro</p>`,
     });
 
     const result = await createPaperFromVaultPdf({
@@ -97,9 +99,15 @@ describe("SN-302 promote vault PDF to paper", () => {
     expect(articleBody).toContain('data-file-type="pdf"');
     expect(articleBody).toContain(asset.url);
     expect(result.replacedChip).toBe(false);
+    // Paper chip sits at the PDF location (before the original chip), not appended after Outro.
+    expect(articleBody.indexOf("data-type=\"paper-reference\"")).toBeGreaterThan(articleBody.indexOf("<p>Intro</p>"));
+    expect(articleBody.indexOf("data-type=\"paper-reference\"")).toBeLessThan(articleBody.indexOf('data-file-type="pdf"'));
+    expect(articleBody.indexOf('data-file-type="pdf"')).toBeLessThan(articleBody.indexOf("<p>Outro</p>"));
+    expect(articleBody.endsWith("<p>Outro</p>") || articleBody.includes("<p>Outro</p>")).toBe(true);
+    expect(articleBody.lastIndexOf("data-type=\"paper-reference\"")).toBeLessThan(articleBody.indexOf("<p>Outro</p>"));
   });
 
-  it("optionally removes the original PDF chip when replaceChip is true", async () => {
+  it("optionally replaces the original PDF chip in place when replaceChip is true", async () => {
     const article = await createPage({ sectionPath: "Research/Articles", title: "Replace" });
     const asset = await uploadPageAsset(article.path, "drop.pdf", PDF_BYTES);
     await savePage({
@@ -122,6 +130,8 @@ describe("SN-302 promote vault PDF to paper", () => {
     expect(body).not.toContain('data-file-type="pdf"');
     expect(paperReferenceIds(body)).toEqual([result.paper.id]);
     expect(await fs.readFile(path.join(root, asset.path))).toEqual(PDF_BYTES);
+    expect(body.indexOf("data-type=\"paper-reference\"")).toBeGreaterThan(body.indexOf("<p>Keep</p>"));
+    expect(body.indexOf("data-type=\"paper-reference\"")).toBeLessThan(body.indexOf("<p>Tail</p>"));
   });
 
   it("attaches an existing paper when that exact vault PDF asset is already on a paper", async () => {
@@ -166,5 +176,19 @@ describe("SN-302 promote vault PDF to paper", () => {
     const drop = pdfAttachmentChipHtml("/vault/a.assets/drop.pdf", "drop.pdf");
     const html = `<p>Intro</p>${keep}${drop}<p>Outro</p>`;
     expect(removePdfAttachmentChip(html, "a.assets/drop.pdf")).toBe(`<p>Intro</p>${keep}<p>Outro</p>`);
+  });
+
+  it("insertPaperReferenceAtPdf places the chip at the PDF, not at the document end", () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const pdf = pdfAttachmentChipHtml("/vault/a.assets/mid.pdf", "mid.pdf");
+    const html = `<p>Intro</p>${pdf}<p>Outro</p>`;
+    const kept = insertPaperReferenceAtPdf(html, "a.assets/mid.pdf", id);
+    expect(kept.atPdf).toBe(true);
+    expect(kept.replaced).toBe(false);
+    expect(kept.html).toBe(`<p>Intro</p>${paperReferenceHtml(id)}${pdf}<p>Outro</p>`);
+
+    const swapped = insertPaperReferenceAtPdf(html, "a.assets/mid.pdf", id, { replaceChip: true });
+    expect(swapped.replaced).toBe(true);
+    expect(swapped.html).toBe(`<p>Intro</p>${paperReferenceHtml(id)}<p>Outro</p>`);
   });
 });

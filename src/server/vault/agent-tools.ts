@@ -867,7 +867,7 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
   {
     name: "paper_create_from_pdf",
     description:
-      "Promote an existing vault PDF into a Bibliography paper: create the paper (title defaults from the filename), COPY the PDF bytes onto the paper as a page asset, and optionally insert a paper reference chip on the source page. If that exact vault PDF asset is already on a paper, references the existing paper instead of duplicating. Pass replaceChip=true to remove the original PDF chip after promoting. Use paper_attach_pdf for web URLs.",
+      "Promote an existing vault PDF into a Bibliography paper: create the paper (title defaults from the filename), COPY the PDF bytes onto the paper as a page asset, and insert a paper reference chip at the PDF's location on the source page (not at the end). If that exact vault PDF asset is already on a paper, references the existing paper instead of duplicating. Pass replaceChip=true to replace the original PDF chip in place. Use paper_attach_pdf for web URLs.",
     group: "paper",
     action: "create_from_pdf",
     parameters: {

@@ -349,6 +349,67 @@ export function removePdfAttachmentChip(html: string, sourcePathOrHref: string):
   return $.root().html() ?? html;
 }
 
+/**
+ * Insert (or replace-in-place) a paper reference at the matching PDF chip.
+ * Default keeps the PDF and places the paper chip immediately before it;
+ * `replaceChip` swaps the PDF chip (or its sole wrapping `<p>`) for the paper chip.
+ * Falls back to appending only when the PDF chip is not found in the HTML.
+ */
+export function insertPaperReferenceAtPdf(
+  html: string,
+  sourcePathOrHref: string,
+  paperId: string,
+  options: { replaceChip?: boolean } = {}
+): { html: string; inserted: boolean; replaced: boolean; atPdf: boolean } {
+  const id = paperId.trim().toLowerCase();
+  paperPath(id);
+  const already = paperReferenceIds(html).includes(id);
+  const replaceChip = options.replaceChip === true;
+
+  if (already && !replaceChip) {
+    return { html, inserted: false, replaced: false, atPdf: false };
+  }
+  if (already && replaceChip) {
+    const next = removePdfAttachmentChip(html, sourcePathOrHref);
+    return { html: next, inserted: false, replaced: next !== html, atPdf: next !== html };
+  }
+
+  const needles = hrefMatchNeedles(sourcePathOrHref);
+  const $ = cheerio.load(html, undefined, false);
+  const refHtml = paperReferenceHtml(id);
+  let found = false;
+  let replaced = false;
+
+  $("[data-file-type='pdf']").each((_index, element) => {
+    if (found) return;
+    const node = $(element);
+    const href =
+      node.attr("href") ||
+      node.find("[data-href]").attr("data-href") ||
+      node.find("a").attr("href") ||
+      "";
+    if (!hrefMatchesSource(href, needles)) return;
+    found = true;
+    const parent = node.parent();
+    const soleChildParagraph = parent.is("p") && parent.children().length === 1;
+    if (replaceChip) {
+      if (soleChildParagraph) parent.replaceWith(refHtml);
+      else node.replaceWith(refHtml);
+      replaced = true;
+    } else if (soleChildParagraph) {
+      parent.before(refHtml);
+    } else {
+      node.before(refHtml);
+    }
+  });
+
+  if (!found) {
+    const appended = appendToPaperBody(html, refHtml);
+    return { html: appended, inserted: appended !== html, replaced: false, atPdf: false };
+  }
+  return { html: $.root().html() ?? html, inserted: true, replaced, atPdf: true };
+}
+
 async function readVaultPdfBytes(sourcePath: string) {
   const resolved = resolveVaultPath(sourcePath, "section");
   const stat = await fs.stat(resolved.absolutePath).catch(() => null);
@@ -395,19 +456,28 @@ export async function findPaperForVaultPdf(sourcePathOrHref: string) {
   return null;
 }
 
-async function removeChipFromReferringPage(pagePath: string, sourcePath: string) {
+/** Place the paper chip at the PDF's location on the referring page (SN-302 in-place). */
+async function referencePaperAtPdf(
+  pagePath: string,
+  sourcePath: string,
+  paperId: string,
+  replaceChip: boolean
+) {
   const page = await readPage(pagePath);
-  const nextBody = removePdfAttachmentChip(page.body, sourcePath);
-  if (nextBody === page.body) return { page, replaced: false };
+  const next = insertPaperReferenceAtPdf(page.body, sourcePath, paperId, { replaceChip });
+  if (next.html === page.body) {
+    return { page, inserted: next.inserted, replaced: next.replaced, atPdf: next.atPdf };
+  }
   await snapshotPageContent(page.path);
-  const saved = await savePage({ path: page.path, title: page.title, body: nextBody });
-  return { page: saved, replaced: true };
+  const saved = await savePage({ path: page.path, title: page.title, body: next.html });
+  return { page: saved, inserted: next.inserted, replaced: next.replaced, atPdf: next.atPdf };
 }
 
 /**
  * Shared promote primitive (UI + Companion): create (or reuse) a paper, copy the
  * vault PDF onto it as a page asset by default, insert a paper chip on the source
- * page, and optionally remove the original PDF chip.
+ * page at the PDF's location (not appended at the end), and optionally remove the
+ * original PDF chip in place.
  */
 export async function createPaperFromVaultPdf(input: {
   sourcePath?: string;
@@ -423,15 +493,14 @@ export async function createPaperFromVaultPdf(input: {
 
   const existing = await findPaperForVaultPdf(sourcePath);
   if (existing) {
-    const reference = referenceFromPath ? await addPaperReference(referenceFromPath, existing.path) : null;
-    const removed = replaceChip && referenceFromPath
-      ? await removeChipFromReferringPage(referenceFromPath, sourcePath)
-      : { page: reference?.page ?? null, replaced: false };
+    const referenced = referenceFromPath
+      ? await referencePaperAtPdf(referenceFromPath, sourcePath, existing.id, replaceChip)
+      : null;
     return {
       paper: { id: existing.id, path: existing.path, title: existing.title },
       created: false,
-      referencedFrom: removed.page ?? reference?.page ?? null,
-      replacedChip: removed.replaced,
+      referencedFrom: referenced?.page ?? null,
+      replacedChip: referenced?.replaced ?? false,
       attachment: null as null,
     };
   }
@@ -456,16 +525,16 @@ export async function createPaperFromVaultPdf(input: {
     body: appendToPaperBody(paperPage.body, pdfAttachmentChipHtml(asset.url, asset.fileName)),
   });
 
-  const reference = referenceFromPath ? await addPaperReference(referenceFromPath, savedPaper.path) : null;
-  const removed = replaceChip && referenceFromPath
-    ? await removeChipFromReferringPage(referenceFromPath, sourcePath)
-    : { page: reference?.page ?? null, replaced: false };
+  const paperId = String(savedPaper.metadata.paper_id);
+  const referenced = referenceFromPath
+    ? await referencePaperAtPdf(referenceFromPath, sourcePath, paperId, replaceChip)
+    : null;
 
   return {
-    paper: { id: String(savedPaper.metadata.paper_id), path: savedPaper.path, title: savedPaper.title },
+    paper: { id: paperId, path: savedPaper.path, title: savedPaper.title },
     created: true,
-    referencedFrom: removed.page ?? reference?.page ?? null,
-    replacedChip: removed.replaced,
+    referencedFrom: referenced?.page ?? null,
+    replacedChip: referenced?.replaced ?? false,
     attachment: { href: asset.url, path: asset.path, fileName: asset.fileName, bytes: pdf.buffer.length, sourcePath },
   };
 }

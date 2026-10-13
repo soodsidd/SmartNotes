@@ -159,6 +159,9 @@ export interface RichTextEditorHandle {
   insertText: (text: string) => boolean;
   swapContent: (html: string) => boolean;
   getExportSnapshot: () => PageContentExport | null;
+  /** Editor scroll viewport (`.editor-scroll-area`) — used by Back to topic restore. */
+  getScrollTop: () => number;
+  setScrollTop: (scrollTop: number) => void;
 }
 
 interface RichTextEditorProps {
@@ -1985,6 +1988,15 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
               drawableBottom,
             }),
           };
+        },
+        getScrollTop() {
+          return scrollAreaRef.current?.scrollTop ?? 0;
+        },
+        setScrollTop(next: number) {
+          const scrollArea = scrollAreaRef.current;
+          if (!scrollArea || !Number.isFinite(next)) return;
+          scrollArea.scrollTop = Math.max(0, next);
+          setScrollTop(scrollArea.scrollTop);
         },
       }),
       [editor, onSelectionContextChange, drawableBottom, viewportHeight]

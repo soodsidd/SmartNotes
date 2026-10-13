@@ -73,6 +73,11 @@ import {
   type CreatePaperInput,
 } from "@/lib/paper-attach";
 import { BIBLIOGRAPHY_PATH, isBibliographyPath, paperBackTarget, paperHomeNotebook, paperReferenceHtml } from "@/lib/papers";
+import {
+  capturePaperReturnScroll,
+  resolvePaperReturnScroll,
+  type PaperReturnScroll,
+} from "@/lib/paper-return-scroll";
 import { flushInlinePapers, flushPaperFrame } from "@/lib/inline-paper-save";
 import { PaperNotesDock } from "@/components/paper-notes-dock";
 import {
@@ -723,6 +728,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [promotePdfTarget, setPromotePdfTarget] = React.useState<PdfAttachmentTarget | null>(null);
   // SN-292 (#7): last ordinary page shown, so Back to topic returns where the user came from.
   const [paperTopicPath, setPaperTopicPath] = React.useState<string | null>(null);
+  // SN-302: restore the referring page's editor scroll after Back to topic.
+  const paperReturnScrollRef = React.useRef<PaperReturnScroll | null>(null);
+  const pendingPaperReturnScrollRef = React.useRef<PaperReturnScroll | null>(null);
   const searchKey = searchParams?.toString() ?? "";
   const linkedProjectWorkspace = React.useMemo(
     () => parseDeepWorkDescriptor(new URLSearchParams(searchKey)),
@@ -4078,15 +4086,32 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     [applySelection, dismissGhostVersions, flushSave, replaceTreePage, snapshotLeavingPage, tree]
   );
 
+  const rememberPaperReturnScroll = React.useCallback((referringPath: string | null | undefined) => {
+    if (!referringPath || isBibliographyPath(referringPath)) {
+      paperReturnScrollRef.current = null;
+      return;
+    }
+    paperReturnScrollRef.current = capturePaperReturnScroll(
+      referringPath,
+      editorRef.current?.getScrollTop() ?? 0
+    );
+  }, []);
+
   React.useEffect(() => {
     if (paperInline) return;
     const openRequestedPaper = (event: Event) => {
       const path = (event as CustomEvent<unknown>).detail;
-      if (typeof path === "string" && isBibliographyPath(path)) void openPage(path);
+      if (typeof path !== "string" || !isBibliographyPath(path)) return;
+      const referring = activePagePathRef.current;
+      if (referring && !isBibliographyPath(referring)) {
+        setPaperReturnPath(referring);
+        rememberPaperReturnScroll(referring);
+      }
+      void openPage(path);
     };
     window.addEventListener("paper-open-request", openRequestedPaper);
     return () => window.removeEventListener("paper-open-request", openRequestedPaper);
-  }, [openPage, paperInline]);
+  }, [openPage, paperInline, rememberPaperReturnScroll]);
 
   // SN-205: host handler for a mini-app's `smartNotesApp.openPage(pagePath)`.
   // Only a canonical, existing vault-relative page is accepted; navigation reuses
@@ -4390,15 +4415,41 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   const handleSidebarOpenPage = React.useCallback((pagePath: string) => {
     setPaperReturnPath(null);
+    paperReturnScrollRef.current = null;
+    pendingPaperReturnScrollRef.current = null;
     void openPage(pagePath);
   }, [openPage]);
 
   const handleOpenPaperChild = React.useCallback((pagePath: string, parentPath: string) => {
     setPaperReturnPath(parentPath);
+    rememberPaperReturnScroll(parentPath);
     // SN-292 (#17): keep the referring page open so its paper child row stays visible.
     setExpandedPages((expanded) => expanded.has(parentPath) ? expanded : new Set([...expanded, parentPath]));
     void openPage(pagePath);
+  }, [openPage, rememberPaperReturnScroll]);
+
+  const goBackToTopic = React.useCallback((topic: string) => {
+    pendingPaperReturnScrollRef.current =
+      paperReturnScrollRef.current?.path === topic ? paperReturnScrollRef.current : null;
+    setPaperReturnPath(null);
+    void openPage(topic);
   }, [openPage]);
+
+  // After Back to topic lands on the referring page, restore the saved editor scroll.
+  React.useEffect(() => {
+    const pending = pendingPaperReturnScrollRef.current;
+    const top = resolvePaperReturnScroll(pending, activePagePath);
+    if (top == null || !draft || draft.path !== activePagePath) return;
+    pendingPaperReturnScrollRef.current = null;
+    const apply = () => editorRef.current?.setScrollTop(top);
+    apply();
+    const raf = window.requestAnimationFrame(apply);
+    const timer = window.setTimeout(apply, 50);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, [activePagePath, draft]);
 
   const attachPaperToCurrentPage = React.useCallback((id: string): boolean => {
     const current = draftRef.current;
@@ -6521,7 +6572,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               // SN-292 (#7): context bar under the standard header.
               const topic = paperBackTarget({ paperPath: draft.path, tree, referringPath: paperReturnPath, previousPath: paperTopicPath });
               return <div className="flex min-h-9 flex-wrap items-center gap-x-5 gap-y-1 bg-surface px-4 py-1.5 text-xs text-muted-foreground xl:pl-10" data-testid="paper-ownership">
-                <button type="button" className="min-h-11 rounded-sm hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:no-underline disabled:opacity-60 xl:min-h-0" disabled={!topic} onClick={() => { if (!topic) return; setPaperReturnPath(null); void openPage(topic); }} data-testid="paper-back-to-topic">Back to topic</button>
+                <button type="button" className="min-h-11 rounded-sm hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:no-underline disabled:opacity-60 xl:min-h-0" disabled={!topic} onClick={() => { if (!topic) return; goBackToTopic(topic); }} data-testid="paper-back-to-topic">Back to topic</button>
                 <span>Bibliography · shared paper page</span>
               </div>;
             })()}
@@ -6943,7 +6994,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             if (!(await closePdfReader())) return;
             if (draft?.path !== paperShellPath) return;
             const topic = paperBackTarget({ paperPath: paperShellPath, tree, referringPath: paperReturnPath, previousPath: paperTopicPath });
-            if (topic) { setPaperReturnPath(null); await openPage(topic); }
+            if (topic) goBackToTopic(topic);
           })()}>Back to topic</button>
           <button type="button" data-testid="paper-reading-companion" aria-pressed={aiOpen} onClick={() => setAiOpen((current) => !current)}>
             <Sparkles className="size-3.5" aria-hidden="true" /> Companion
