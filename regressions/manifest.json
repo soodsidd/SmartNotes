@@ -4325,8 +4325,8 @@
     },
     {
       "id": "unit-page-toc",
-      "name": "Page TOC toggle, refresh and back-to-top placement",
-      "description": "Jest: tests/page-toc.test.ts — TOC insert/refresh/remove/toggle transforms, stable heading anchors, ink vertical-remap guards, and back-to-top placement clamping.",
+      "name": "Legacy page TOC preservation helpers",
+      "description": "Jest: tests/page-toc.test.ts — legacy TOC transforms, stable heading anchors, ink vertical-remap guards, and back-to-top placement clamping for saved pages.",
       "appType": "node",
       "command": "npm test -- tests/page-toc.test.ts",
       "timeoutMs": 120000,
@@ -4354,46 +4354,69 @@
           "path": "src/lib/page-toc.ts"
         }
       ],
-      "intent": "Locks the pure TOC transforms (toggle vs refresh) and the back-to-top placement math so heading chrome cannot drift back into the gutter or onto the collapse gutter.",
-      "whenToRun": "Pre-merge when touching src/lib/page-toc.ts, TOC toolbar wiring, or heading back-to-top chrome placement."
+      "intent": "Keeps already-saved TOC nodes readable and preserves their heading back-to-top chrome.",
+      "whenToRun": "Pre-merge when touching legacy TOC parsing, heading anchors, or back-to-top placement."
     },
     {
-      "id": "e2e-sn-230-toc-toggle",
-      "name": "SN-230/SN-231 TOC toggle + back-to-top placement",
-      "description": "Playwright desktop/mobile: e2e/sn-230-toc-toggle.spec.ts — format-bar TOC control inserts then removes, Insert-menu refresh keeps a single block, chevron hugs the heading line with a 44px touch target, and toggle-off returns ink to its original Y.",
+      "id": "unit-sn-298-page-outline",
+      "name": "SN-298 page outline tree and saved TOC preservation",
+      "description": "Jest: tests/page-outline.test.ts — H1–H3 nesting, branch keys, and read-only extraction when a saved pageToc node exists.",
+      "appType": "node",
+      "command": "npm test -- tests/page-outline.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "node", "editor", "outline", "targeted"],
+      "feature": "editor",
+      "addedBy": "SN-298",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedAt": "2026-10-12",
+      "sourceFiles": [
+        { "path": "tests/page-outline.test.ts" },
+        { "path": "src/lib/page-outline.ts" }
+      ],
+      "intent": "Locks live heading nesting without modifying legacy saved TOC content.",
+      "whenToRun": "Pre-merge when changing the page outline data model."
+    },
+    {
+      "id": "e2e-sn-298-page-outline",
+      "name": "SN-298 page outline navigation pane",
+      "description": "Playwright desktop/mobile: e2e/sn-298-page-outline.spec.ts — empty and populated panes, collapse and expand, heading navigation, and saved TOC preservation.",
       "appType": "browser",
-      "command": "npm run test:e2e -- e2e/sn-230-toc-toggle.spec.ts --project=desktop --project=mobile",
+      "command": "npm run test:e2e -- e2e/sn-298-page-outline.spec.ts --project=desktop --project=mobile",
       "timeoutMs": 300000,
       "enabled": true,
       "tags": [
         "e2e",
         "browser",
         "editor",
-        "toc",
-        "ink",
+        "outline",
         "targeted"
       ],
       "feature": "editor",
-      "addedBy": "SN-230",
+      "addedBy": "SN-298",
       "testType": "e2e",
       "suite": "targeted",
       "risk": "medium",
       "cost": "slow",
       "lifecycle": "pre-merge",
-      "addedAt": "2026-08-20",
+      "addedAt": "2026-10-12",
       "sourceFiles": [
         {
-          "path": "e2e/sn-230-toc-toggle.spec.ts"
+          "path": "e2e/sn-298-page-outline.spec.ts"
         },
         {
           "path": "src/components/rich-text-editor.tsx"
         },
         {
-          "path": "src/components/annotation-layer.tsx"
+          "path": "src/components/page-outline-pane.tsx"
         }
       ],
-      "intent": "Guards the toggle contract end-to-end plus the ink vertical remap on TOC insert/remove, which silently no-opped while the edit-mode canvas was readonly.",
-      "whenToRun": "Pre-merge when changing the TOC toolbar controls, heading back-to-top chrome, or AnnotationLayer.applyVerticalRemap."
+      "intent": "Guards Word-style outline behavior and keeps old saved TOC blocks intact while new pages avoid TOC insertion.",
+      "whenToRun": "Pre-merge when changing the outline pane, toolbar toggle, or heading navigation."
     },
     {
       "id": "unit-sn-247-jupyter-fast-lane",

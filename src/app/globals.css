@@ -130,6 +130,56 @@ select {
 }
 
 /* ── Format bar ───────────────────────────────────────────────── */
+.page-outline-layer { position: fixed; inset: 44px 0 0; z-index: 80; }
+.page-outline-backdrop {
+  position: absolute; inset: 0; width: 100%; border: 0;
+  background: color-mix(in srgb, var(--background) 34%, transparent);
+  backdrop-filter: blur(5px); cursor: default;
+}
+.page-outline-pane {
+  position: relative; display: flex; flex-direction: column;
+  width: min(300px, calc(100vw - 32px)); height: 100%; overflow: hidden;
+  background: var(--background); border-right: 1px solid var(--border);
+  box-shadow: 4px 0 18px color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+  outline: none;
+}
+.page-outline-header {
+  display: flex; align-items: center; gap: 2px; min-height: 58px;
+  padding: 0 10px 0 14px; border-bottom: 1px solid var(--border);
+}
+.page-outline-title { flex: 1; font-size: 14px; font-weight: 500; }
+.page-outline-header-button, .page-outline-chevron {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 32px; height: 32px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--foreground); cursor: pointer;
+}
+.page-outline-header-button:hover, .page-outline-chevron:hover, .page-outline-entry:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.page-outline-pane button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.page-outline-empty {
+  margin: 28px 16px; color: var(--muted-foreground);
+  font-size: 14px; line-height: 1.65;
+}
+.page-outline-tree { min-height: 0; overflow: auto; padding: 12px 8px 24px 0; }
+.page-outline-tree ul { margin: 0; padding: 0; list-style: none; }
+.page-outline-row { display: flex; align-items: center; min-height: 40px; }
+.page-outline-chevron-spacer { display: block; flex: none; width: 32px; }
+.page-outline-chevron svg { transition: transform 120ms; }
+.page-outline-chevron-open { transform: rotate(90deg); }
+.page-outline-entry {
+  flex: 1; min-width: 0; padding: 8px 6px; border: 0;
+  border-radius: var(--radius-sm); background: transparent; color: inherit;
+  font-size: 14px; line-height: 1.35; text-align: left;
+  overflow-wrap: anywhere; cursor: pointer;
+}
+@media (min-width: 768px) { .page-outline-layer { top: 56px; } }
+@media (min-width: 1280px) { .page-outline-layer { top: var(--desktop-chrome-height); } }
+@media (pointer: coarse) {
+  .page-outline-header-button, .page-outline-chevron { width: 44px; height: 44px; }
+  .page-outline-row { min-height: 44px; }
+}
 .format-bar {
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);

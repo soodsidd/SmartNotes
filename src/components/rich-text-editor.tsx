@@ -53,6 +53,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { PageOutlinePane } from "@/components/page-outline-pane";
 import {
   assertEditorUploadPageAffinity,
   createEditorExtensions,
@@ -77,20 +78,13 @@ import {
   type CollapsibleHeadingSection,
 } from "@/lib/collapsible-headings";
 import {
-  annotationSceneHasInk,
-} from "@/lib/annotation-vertical-remap";
-import {
   documentHasPageToc,
   isWithinTocTapSlop,
   measureHeadingTextAnchor,
   measureOffsetOrigin,
-  measurePageTocHeight,
-  removePageToc,
   resolveBackToTopPlacement,
-  togglePageToc,
   scrollEditorToAnchor,
   scrollEditorToPageToc,
-  upsertPageToc,
 } from "@/lib/page-toc";
 import { cn } from "@/lib/utils";
 import { resolvePdfAttachmentTarget, type PdfAttachmentTarget } from "@/lib/pdf-attachment";
@@ -232,14 +226,6 @@ const MOBILE_EDITOR_FRAME_PADDING = "px-3 pb-8 pt-3 md:px-8 md:pb-10 md:pt-4 xl:
 /** Fixed viewport height used for headless ink capture (SN-122) to avoid the
  *  scroll-area measurement feedback loop in the non-scrolling render route. */
 const INK_CAPTURE_VIEWPORT_HEIGHT = 900;
-
-function waitForNextPaint(): Promise<void> {
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve());
-    });
-  });
-}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -1361,6 +1347,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     }, [readOnly, editor]);
 
     const [pageTocPresent, setPageTocPresent] = React.useState(false);
+    const [pageOutlineOpen, setPageOutlineOpen] = React.useState(false);
+
+    React.useEffect(() => setPageOutlineOpen(false), [pagePath]);
 
     React.useEffect(() => {
       if (!editor) {
@@ -1376,70 +1365,6 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         editor.off("update", syncTocPresence);
       };
     }, [editor]);
-
-    const applyTocMutationWithInkRemap = React.useCallback(
-      async (mutate: () => ReturnType<typeof upsertPageToc>) => {
-        if (!editor || readOnly || isDrawMode) return;
-
-        const editorRoot = editor.view.dom as HTMLElement;
-        const heightBefore = measurePageTocHeight(editorRoot);
-        const htmlBefore = editor.getHTML();
-        const sceneBefore = annotationScene ?? null;
-
-        const mutation = mutate();
-        if (!mutation.ok) {
-          toast.error(mutation.reason, { duration: 4000 });
-          return;
-        }
-        if (mutation.action === "noop") {
-          return;
-        }
-
-        await waitForNextPaint();
-        const heightAfter = measurePageTocHeight(editorRoot);
-        const deltaY = heightAfter - heightBefore;
-
-        if (deltaY === 0) {
-          return;
-        }
-
-        if (!annotationSceneHasInk(sceneBefore)) {
-          return;
-        }
-
-        const layer = annotationLayerRef?.current;
-        if (!layer) {
-          editor.commands.setContent(htmlBefore, { emitUpdate: true });
-          await waitForNextPaint();
-          toast.error("Cannot adjust ink safely: annotation layer is not ready.", {
-            duration: 5000,
-          });
-          return;
-        }
-
-        const remapped = layer.applyVerticalRemap(deltaY);
-        if (!remapped.ok) {
-          editor.commands.setContent(htmlBefore, { emitUpdate: true });
-          await waitForNextPaint();
-          toast.error(remapped.reason, { duration: 5000 });
-        }
-      },
-      [annotationLayerRef, annotationScene, editor, isDrawMode, readOnly]
-    );
-
-    const handleUpsertPageToc = React.useCallback(() => {
-      void applyTocMutationWithInkRemap(() => upsertPageToc(editor!));
-    }, [applyTocMutationWithInkRemap, editor]);
-
-    const handleRemovePageToc = React.useCallback(() => {
-      void applyTocMutationWithInkRemap(() => removePageToc(editor!));
-    }, [applyTocMutationWithInkRemap, editor]);
-
-    // SN-230: the format-bar control is a toggle - insert when absent, remove
-    // when present. Refresh stays on the explicit Insert-menu entry.
-    const handleTogglePageToc = React.useCallback(() => {
-      void applyTocMutationWithInkRemap(() => togglePageToc(editor!));
-    }, [applyTocMutationWithInkRemap, editor]);
 
     const handleBackToTop = React.useCallback(() => {
       if (!editor) return;
@@ -2013,6 +1938,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         data-print-region="page-content"
         onContextMenu={readOnly || isDrawMode ? undefined : handleContextMenu}
       >
+        {pageOutlineOpen && editor ? (
+          <PageOutlinePane editor={editor} scrollContainer={scrollAreaRef.current} onClose={() => setPageOutlineOpen(false)} onNavigate={() => updateCollapsedHeadingKeys(() => [])} />
+        ) : null}
         <div
           ref={editorColumnRef}
           className="flex min-h-0 min-w-0 flex-1 flex-col"
@@ -2052,6 +1980,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           data-testid="format-bar"
           onPointerDownCapture={(e) => handleFormatBarChromePointerDown(editor, e)}
         >
+          <ToolbarBtn onClick={() => setPageOutlineOpen((open) => !open)} active={pageOutlineOpen} title="Page outline" testId="toolbar-page-outline"><ListTree className="size-4" /></ToolbarBtn>
+          <ToolbarSep />
           {onPageLinesChange ? (
             <>
               <PageLinesPopover value={pageLines} onChange={onPageLinesChange} />
@@ -2078,14 +2008,6 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           <ListStyleDropdown editor={editor} />
           <ToolbarSep />
           <ToolbarBtn onClick={openLinkDialog} active={editor?.isActive("link") ?? false} title="Insert link (Ctrl+K)" testId="toolbar-link"><LinkIcon className="size-4" /></ToolbarBtn>
-          <ToolbarBtn
-            onClick={handleTogglePageToc}
-            active={pageTocPresent}
-            title={pageTocPresent ? "Remove table of contents" : "Insert table of contents"}
-            testId="toolbar-page-toc"
-          >
-            <ListTree className="size-4" />
-          </ToolbarBtn>
           <ToolbarSep />
           <InsertOverflowDropdown
             editor={editor}
@@ -2096,9 +2018,6 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             onOpenLink={openLinkDialog}
             onOpenMathInline={() => openMathDialog(false)}
             onOpenMathBlock={() => openMathDialog(true)}
-            pageTocPresent={pageTocPresent}
-            onUpsertPageToc={handleUpsertPageToc}
-            onRemovePageToc={handleRemovePageToc}
           />
         </div>
         ) : null}
@@ -2110,6 +2029,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           data-testid="format-bar-mobile"
           onPointerDownCapture={(e) => handleFormatBarChromePointerDown(editor, e)}
         >
+          <ToolbarBtn onClick={() => setPageOutlineOpen((open) => !open)} active={pageOutlineOpen} title="Page outline" testId="toolbar-page-outline-mobile"><ListTree className="size-4" /></ToolbarBtn>
           {onPageLinesChange ? (
             <PageLinesPopover value={pageLines} onChange={onPageLinesChange} mobile />
           ) : null}
@@ -2127,14 +2047,6 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           </ToolbarBtn>
           <ListStyleDropdown editor={editor} mobile />
           <ToolbarBtn onClick={openLinkDialog} active={editor?.isActive("link") ?? false} title="Insert link (Ctrl+K)" testId="toolbar-link-mobile"><LinkIcon className="size-4" /></ToolbarBtn>
-          <ToolbarBtn
-            onClick={handleTogglePageToc}
-            active={pageTocPresent}
-            title={pageTocPresent ? "Remove table of contents" : "Insert table of contents"}
-            testId="toolbar-page-toc-mobile"
-          >
-            <ListTree className="size-4" />
-          </ToolbarBtn>
           <InsertOverflowDropdown
             editor={editor}
             mobile
@@ -2149,9 +2061,6 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             onRedo={() => editor?.chain().focus().redo().run()}
             canUndo={editor?.can().undo() ?? false}
             canRedo={editor?.can().redo() ?? false}
-            pageTocPresent={pageTocPresent}
-            onUpsertPageToc={handleUpsertPageToc}
-            onRemovePageToc={handleRemovePageToc}
           />
           <MobileFontSheet editor={editor} open={fontSheetOpen} onOpenChange={setFontSheetOpen} />
         </div>
@@ -3230,9 +3139,6 @@ function InsertOverflowDropdown({
   onRedo,
   canUndo = false,
   canRedo = false,
-  pageTocPresent = false,
-  onUpsertPageToc,
-  onRemovePageToc,
 }: {
   editor: import("@tiptap/react").Editor | null;
   mobile?: boolean;
@@ -3248,9 +3154,6 @@ function InsertOverflowDropdown({
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
-  pageTocPresent?: boolean;
-  onUpsertPageToc?: () => void;
-  onRemovePageToc?: () => void;
 }) {
   return (
     <DropdownMenu>
