@@ -4,6 +4,7 @@ import * as React from "react";
 import { Download, MoonStar, RotateCw, ServerOff, Settings, Smartphone, SunMedium } from "lucide-react";
 import { BackupSettingsPanel } from "@/components/backup-settings-panel";
 import { IngestDestinationsSettingsPanel } from "@/components/ingest-destinations-settings-panel";
+import { ServerSettingsPanel } from "@/components/server-settings-panel";
 import { NotebookRegistryPanel } from "@/components/notebook-registry-panel";
 import type { PortableNotebookRecord } from "@/lib/api/notebook-registry";
 import { Button } from "@/components/ui/button";
@@ -32,13 +33,14 @@ import {
 } from "@/lib/api/jupyter";
 import { triggerForceReload } from "@/lib/sw-update";
 
-type SettingsTab = "general" | "notebooks" | "backups" | "ingest";
+type SettingsTab = "general" | "notebooks" | "backups" | "ingest" | "server";
 
 const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
   { id: "general", label: "General" },
   { id: "notebooks", label: "Notebooks" },
   { id: "backups", label: "Backups" },
   { id: "ingest", label: "Ingest" },
+  { id: "server", label: "Server" },
 ];
 
 export function AppSettingsDialog({
@@ -155,7 +157,9 @@ export function AppSettingsDialog({
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            {activeTab === "backups"
+            {activeTab === "server"
+              ? "Status and start/stop controls for the local Smart Notes server."
+              : activeTab === "backups"
               ? "Vault backup schedule, retention, and restore."
               : activeTab === "notebooks"
                 ? "Open external notebook directories alongside the primary vault."
@@ -199,6 +203,8 @@ export function AppSettingsDialog({
           />
         ) : activeTab === "ingest" ? (
           <IngestDestinationsSettingsPanel />
+        ) : activeTab === "server" ? (
+          <ServerSettingsPanel />
         ) : (
           <div className="space-y-5 pt-1">
             <section>

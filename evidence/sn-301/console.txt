@@ -1,0 +1,19 @@
+PASS tab order General · Notebooks · Backups · Ingest · Server
+PASS dialog subtitle matches spec §1
+PASS pill reads Running
+PASS rows Address · Reachable · Process · Uptime · Build
+PASS Build row phk80tUJOSAzN4ccpBdCm matches /api/version
+PASS Start is disabled while running
+PASS app port closed after Stop
+PASS Reachable reads No while stopped
+PASS Start is enabled while the app server is stopped
+PASS app port answers after Start
+PASS Start launched a new process (34208 → 25676)
+PASS Restart replaced the process (25676 → 28176)
+PASS Recent server log shows the supervisor tail (exit + startup banner lines)
+PASS zero page/console errors while the server was up (0)
+PASS mobile panel has no horizontal overflow (0px)
+PASS zero mobile page/console errors (0)
+
+Console errors (server-up windows):
+(none)

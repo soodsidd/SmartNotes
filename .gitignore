@@ -45,3 +45,6 @@ test-results/
 
 # Synced from @embedpdf/fonts-latin at predev/postbuild
 public/pdf-fonts/
+.smart-notes-server.log
+.e2e-vault-sn301/
+.e2e-state-sn301/
