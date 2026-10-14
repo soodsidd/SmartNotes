@@ -5007,6 +5007,53 @@
       "sourceFiles": [{ "path": "tests/recipes.test.ts" }, { "path": "src/server/vault/recipes.ts" }, { "path": "src/server/vault/page-copy.ts" }]
     },
     {
+      "id": "unit-job-inbox",
+      "name": "SN-306 Job Inbox records, intake routing, enrichment, and Promote",
+      "description": "Jest: tests/job-inbox.test.ts — LinkedIn JSON-LD/og enrichment and failure fallback, sourceKey dedupe, no-page intake via ingest type=job / share career-jobs / [Job] email with ordinary capture unchanged, status validation and postings delete rejection, companion job_inbox query/update, Promote page content, back-link, move-surviving application link, idempotency, Fit analysis child and missing-recipe warning, frame job-promote parsing, and template embedding.",
+      "intent": "Protects the Career application tracker from creating vault pages per posting, losing records, or breaking the posting↔application link.",
+      "whenToRun": "Pre-merge when changing job-inbox, App runtime mutations, /api/ingest, email inbound routing, recipes, or the App frame bridge.",
+      "failureMeaning": "Postings may be duplicated, lost, deleted, or turned into pages; ordinary capture may be misrouted; or Promote may break its application link.",
+      "appType": "node",
+      "command": "node node_modules/jest/bin/jest.js --runInBand tests/job-inbox.test.ts",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "app",
+        "ingest",
+        "email",
+        "recipes",
+        "companion",
+        "targeted"
+      ],
+      "feature": "app",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-306",
+      "addedAt": "2026-10-14",
+      "sourceFiles": [
+        {
+          "path": "tests/job-inbox.test.ts"
+        },
+        {
+          "path": "src/server/vault/job-inbox.ts"
+        },
+        {
+          "path": "src/server/vault/job-inbox-template.ts"
+        },
+        {
+          "path": "src/app/api/ingest/route.ts"
+        },
+        {
+          "path": "src/server/email-inbound.ts"
+        }
+      ]
+    },
+    {
       "id": "e2e-recipes",
       "name": "SN-305 recipe page-menu toggles and companion recipe tools",
       "description": "Playwright: e2e/sn-305-recipes.spec.ts — page menu marks/unmarks a recipe and notebook instructions, recipe_list/recipe_run via /api/agent/vault, and instructions appear only in the owning notebook's companion context.",

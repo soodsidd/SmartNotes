@@ -316,7 +316,7 @@ describe("maintained App template companion tools", () => {
       expect(catalog.ok).toBe(true);
       if (!catalog.ok) return;
       const names = ((catalog.result.data as { templates: Array<{ name: string }> }).templates).map((template) => template.name);
-      expect(names).toEqual(["Blank App", "Action Checklist", "Design Page", "Custom Log App"]);
+      expect(names).toEqual(["Blank App", "Action Checklist", "Design Page", "Custom Log App", "Job Inbox"]);
 
       const note = await createPage({ sectionPath: SECTION, title: "Plan" });
       await savePage({ path: note.path, title: note.title, body: "<p>First action</p><p>- Second action</p>" });

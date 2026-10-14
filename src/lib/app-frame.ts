@@ -69,14 +69,16 @@ export type AppFrameMessage =
       requestId: string;
       text: string;
       payload: unknown;
-    };
+    }
+  | { source: typeof APP_FRAME_MESSAGE_SOURCE; nonce: string; kind: "job-promote"; requestId: string; rowId: string; runFit: boolean }
+  | { source: typeof APP_FRAME_MESSAGE_SOURCE; nonce: string; kind: "job-open-application"; requestId: string; applicationId: string };
 
 /**
  * App-frame request kinds are the app→host messages that expect a bounded
  * `rpc-result` reply and are inflight-tracked by the host limiter. Fire-and-forget
  * telemetry kinds (height/heartbeat/navigation-attempt/runtime-unsupported) are not.
  */
-export const APP_FRAME_REQUEST_KINDS = ["rpc", "accept", "upsert", "open-page", "companion-send"] as const;
+export const APP_FRAME_REQUEST_KINDS = ["rpc", "accept", "upsert", "open-page", "companion-send", "job-promote", "job-open-application"] as const;
 
 export function isAppFrameRequestKind(kind: unknown): kind is (typeof APP_FRAME_REQUEST_KINDS)[number] {
   return typeof kind === "string" && (APP_FRAME_REQUEST_KINDS as readonly string[]).includes(kind);
@@ -326,6 +328,10 @@ function appBridgeScript(nonce: string, navigationApiAvailable: boolean): string
         return hostRequest('open-page', { pagePath }).then((data) => data);
       },
       // SN-203: two-way companion channel, deliberately separate from table data.
+      jobInbox: Object.freeze({
+        promote: (rowId, runFit = true) => hostRequest('job-promote', { rowId, runFit }),
+        openApplication: (applicationId) => hostRequest('job-open-application', { applicationId }),
+      }),
       companion
     })
   });
@@ -493,6 +499,18 @@ export function parseAppFrameMessage(value: unknown, expectedNonce: string): App
       text: candidate.text,
       payload: candidate.payload,
     };
+  }
+  if (candidate.kind === "job-promote") {
+    if (!hasExactKeys(["source", "nonce", "kind", "requestId", "rowId", "runFit"])) return null;
+    if (typeof candidate.requestId !== "string" || !/^q_[a-z0-9_]{1,110}$/.test(candidate.requestId)) return null;
+    if (typeof candidate.rowId !== "string" || !/^r_[A-Za-z0-9_-]{6,80}$/.test(candidate.rowId) || typeof candidate.runFit !== "boolean") return null;
+    return { source: APP_FRAME_MESSAGE_SOURCE, nonce: expectedNonce, kind: "job-promote", requestId: candidate.requestId, rowId: candidate.rowId, runFit: candidate.runFit };
+  }
+  if (candidate.kind === "job-open-application") {
+    if (!hasExactKeys(["source", "nonce", "kind", "requestId", "applicationId"])) return null;
+    if (typeof candidate.requestId !== "string" || !/^q_[a-z0-9_]{1,110}$/.test(candidate.requestId)) return null;
+    if (typeof candidate.applicationId !== "string" || !/^[0-9a-f-]{36}$/i.test(candidate.applicationId)) return null;
+    return { source: APP_FRAME_MESSAGE_SOURCE, nonce: expectedNonce, kind: "job-open-application", requestId: candidate.requestId, applicationId: candidate.applicationId };
   }
   if (candidate.kind !== "rpc" && candidate.kind !== "accept" && candidate.kind !== "upsert") return null;
   if (typeof candidate.requestId !== "string" || !/^q_[a-z0-9_]{1,110}$/.test(candidate.requestId)) return null;

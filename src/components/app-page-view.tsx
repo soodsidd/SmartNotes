@@ -21,7 +21,7 @@ import {
   type AppFrameRpcResponse,
 } from "@/lib/app-frame";
 import {
-  fetchAppBootstrap, fetchAppDataSnapshot, focusedAppUrl, reloadAppSource, runAppRpc,
+  fetchAppBootstrap, fetchAppDataSnapshot, focusedAppUrl, reloadAppSource, runAppRpc, promoteJobFromApp,
   runOwnerAppDataMutation, saveAppSource, setAppEnabled,
   type AppBootstrapResponse,
 } from "@/lib/api/app";
@@ -645,6 +645,32 @@ export function AppPageView({ pagePath, title, bodyHtml, onOpenSidebar, reloadRe
         return;
       }
       if (message.kind === "heartbeat") return;
+      if (message.kind === "job-promote") {
+        const token = bootstrap?.sessionToken;
+        const operation = token
+          ? promoteJobFromApp({ path: pagePath, sessionToken: token, rowId: message.rowId, runFit: message.runFit })
+          : Promise.reject(new Error("Promote requires a live App session."));
+        void operation.then((data) => {
+          iframeRef.current?.contentWindow?.postMessage(boundedRpcResponse({ source: "smart-notes-app-host", nonce, kind: "rpc-result", requestId: message.requestId, ok: true, data }), "*");
+        }).catch((error) => {
+          iframeRef.current?.contentWindow?.postMessage({ source: "smart-notes-app-host", nonce, kind: "rpc-result", requestId: message.requestId, ok: false, error: errorMessage(error).slice(0, 400) }, "*");
+        }).finally(() => limiter.finish(message.requestId));
+        return;
+      }
+      if (message.kind === "job-open-application") {
+        const handler = onOpenPageRef.current;
+        const operation = fetch(`/api/job-inbox/application?id=${encodeURIComponent(message.applicationId)}`, { cache: "no-store" })
+          .then(async (response) => {
+            if (!response.ok) throw new Error("Application page not found.");
+            return response.json() as Promise<{ path: string }>;
+          }).then(({ path }) => handler ? handler(path) : Promise.reject(new Error("Opening Smart Notes pages is not available here.")));
+        void operation.then((result) => {
+          iframeRef.current?.contentWindow?.postMessage({ source: "smart-notes-app-host", nonce, kind: "rpc-result", requestId: message.requestId, ok: Boolean(result.ok), ...(!result.ok ? { error: result.error ?? "Opening failed." } : { data: { opened: true } }) }, "*");
+        }).catch((error) => {
+          iframeRef.current?.contentWindow?.postMessage({ source: "smart-notes-app-host", nonce, kind: "rpc-result", requestId: message.requestId, ok: false, error: errorMessage(error).slice(0, 400) }, "*");
+        }).finally(() => limiter.finish(message.requestId));
+        return;
+      }
       if (outboxError && (message.kind === "rpc" || message.kind === "accept" || message.kind === "upsert")) {
         const response: AppFrameRpcResponse = {
           source: "smart-notes-app-host", nonce, kind: "rpc-result", requestId: message.requestId,

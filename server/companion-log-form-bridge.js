@@ -39,6 +39,7 @@ const ALLOWED_TOOLS = new Set([
   "app_template_list",
   "app_template_get",
   "app_query",
+  "job_inbox_query", "job_inbox_update",
   "app_create_from_template",
   "app_update",
   // SN-203 companion→app delivery tool (see note above).

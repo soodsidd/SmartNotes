@@ -18,6 +18,7 @@ import {
   toApiPageDocument,
 } from "@/server/vault/pages";
 import { fileNameFromTitle, resolveVaultPath, toVaultRelativePath } from "@/server/vault/paths";
+import { appendJobPosting } from "@/server/vault/job-inbox";
 
 export const MAX_RAW_EMAIL_BYTES = 5 * 1024 * 1024;
 export const EMAIL_ENVELOPE_FROM_HEADER = "x-smart-notes-envelope-from";
@@ -68,6 +69,12 @@ export interface EmailInboundResult {
   id: string;
   page: ReturnType<typeof toApiPageDocument>;
   reference: EmailReferenceSidecar;
+}
+
+export interface JobEmailInboundResult {
+  created: boolean;
+  posting: Awaited<ReturnType<typeof appendJobPosting>>["posting"];
+  appPath: string;
 }
 
 interface DedupeRecord {
@@ -607,7 +614,7 @@ export async function processInboundEmail(
   rawMime: Buffer,
   allowedSenders: Set<string>,
   envelopeSender: string
-): Promise<EmailInboundResult> {
+): Promise<EmailInboundResult | JobEmailInboundResult> {
   return withIngestLock(async () => {
     await recoverInterruptedTransactions();
 
@@ -639,6 +646,20 @@ export async function processInboundEmail(
         "MIME From must match the authenticated envelope sender.",
         403
       );
+    }
+
+    // Explicit subject routing leaves every ordinary email on its existing
+    // transactional page-capture path.
+    const jobSubject = /^\s*(?:\[Job\]|Job:)\s*(.+)$/i.exec(parsed.subject ?? "");
+    if (jobSubject) {
+      const { html, urlSource } = normalizedBody(parsed);
+      const messageId = normalizeMessageId(parsed.messageId);
+      const key = messageId ? `email:${messageId.toLowerCase()}` : `email:sha256:${sha256(rawMime)}`;
+      const result = await appendJobPosting({
+        title: jobSubject[1].trim(), content: html, sourceUrl: firstSafeHttpUrl(urlSource) ?? undefined,
+        source: "email", sourceKey: key, postedAt: receivedAt(parsed) ?? undefined,
+      });
+      return { created: result.created, posting: result.posting, appPath: result.pagePath };
     }
 
     const { html, urlSource } = normalizedBody(parsed);

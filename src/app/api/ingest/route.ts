@@ -6,6 +6,7 @@ import { resolveVaultPath } from "@/server/vault/paths";
 import { emitVaultSideEffects } from "@/server/vault/socket-events";
 import { authorizeIngestRequest, type IngestAuthMode } from "@/server/ingest-auth";
 import { resolveAllowlistedDestination } from "@/server/ingest-destinations";
+import { appendJobPosting } from "@/server/vault/job-inbox";
 
 const VALID_REFERENCE_TYPES = new Set<ReferenceType>(["article", "paper", "web"]);
 
@@ -24,7 +25,7 @@ interface NormalizedIngestPayload {
   title: string;
   sourceUrl: string;
   content: string;
-  type: ReferenceType;
+  type: ReferenceType | "job";
   author?: string;
   publishedDate?: string;
   tags: string[];
@@ -77,15 +78,15 @@ function normalizePayload(raw: IngestPayload): NormalizedIngestPayload {
   if (content === undefined) {
     throw new VaultError("INVALID_PAYLOAD", "\"content\" must be an HTML string.");
   }
-  if (!type || !VALID_REFERENCE_TYPES.has(type as ReferenceType)) {
-    throw new VaultError("INVALID_PAYLOAD", "\"type\" must be article, paper, or web.");
+  if (!type || (type !== "job" && !VALID_REFERENCE_TYPES.has(type as ReferenceType))) {
+    throw new VaultError("INVALID_PAYLOAD", "\"type\" must be article, paper, web, or job.");
   }
 
   return {
     title,
     sourceUrl,
     content,
-    type: type as ReferenceType,
+    type: type as ReferenceType | "job",
     author: trimString(raw.author),
     publishedDate: trimString(raw.publishedDate),
     tags: normalizeTags(raw.tags),
@@ -167,6 +168,17 @@ export async function POST(request: Request) {
   try {
     const authMode = authorizeIngestRequest(request);
     const payload = normalizePayload((await request.json().catch(() => ({}))) as IngestPayload);
+    // SN-306: explicit job intake appends an App-data record to the Career Job
+    // Inbox instead of creating a page. It never writes to a requested
+    // destination, so the page-destination allowlist does not apply.
+    if (payload.type === "job" || payload.destination?.id?.toLowerCase() === "career-jobs") {
+      const result = await appendJobPosting({
+        title: payload.title, sourceUrl: payload.sourceUrl, content: payload.content,
+        source: authMode === "same-origin" ? "share" : "ingest",
+        postedAt: payload.publishedDate,
+      });
+      return NextResponse.json({ posting: result.posting, appPath: result.pagePath, created: result.created }, { status: result.created ? 201 : 200 });
+    }
     const captureDestination = await resolveCaptureDestination(authMode, payload.destination);
     const page = await capturePage({
       ...captureDestination,
@@ -177,7 +189,7 @@ export async function POST(request: Request) {
       sourceUrl: payload.sourceUrl,
       author: payload.author,
       publishedDate: payload.publishedDate,
-      type: payload.type,
+      type: payload.type as ReferenceType,
       tags: payload.tags,
     });
     emitVaultSideEffects({ treeChanged: true });
