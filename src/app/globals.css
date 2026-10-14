@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "../styles/tokens.css";
+@import "../styles/inline-ai.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 /* Syncfusion Spreadsheet Material3 styles load with SpreadsheetPageView (SN-291). */

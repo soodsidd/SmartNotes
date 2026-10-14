@@ -1,4 +1,5 @@
 "use client";
+import { inlineAiFrameScript, parseInlineAiContext, type InlineAiContext } from "@/lib/inline-ai";
 
 import * as React from "react";
 import dynamic from "next/dynamic";
@@ -25,12 +26,14 @@ export interface UiRenderViewProps {
 const DESIGN_FRAME_MESSAGE_SOURCE = "smart-notes-design-frame";
 
 export type DesignFrameMessage =
+  | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "ask-companion"; x: number; y: number; context: InlineAiContext }
   | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "height"; height: number }
   | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "external-link"; href: string };
 
 function designFrameBridgeScript() {
   return `<script data-smart-notes-frame-bridge="true">
 (() => {
+  ${inlineAiFrameScript(DESIGN_FRAME_MESSAGE_SOURCE)}
   const source = ${JSON.stringify(DESIGN_FRAME_MESSAGE_SOURCE)};
   const postHeight = () => {
     const root = document.documentElement;
@@ -79,7 +82,7 @@ export function isDesignFrameMessage(value: unknown): value is DesignFrameMessag
   const candidate = value as Partial<DesignFrameMessage>;
   return (
     candidate.source === DESIGN_FRAME_MESSAGE_SOURCE &&
-    (candidate.kind === "height" || candidate.kind === "external-link")
+    (candidate.kind === "height" || candidate.kind === "external-link" || (candidate.kind === "ask-companion" && Number.isFinite(candidate.x) && Number.isFinite(candidate.y) && parseInlineAiContext(candidate.context)?.surface === "design"))
   );
 }
 

@@ -1,3 +1,4 @@
+import { inlineAiFrameScript, parseInlineAiContext, type InlineAiContext } from "@/lib/inline-ai";
 import type { AppRpcOperation } from "@/lib/app-contract";
 
 export const APP_FRAME_MESSAGE_SOURCE = "smart-notes-app-frame" as const;
@@ -14,6 +15,7 @@ export const APP_FRAME_MAX_PAGE_PATH_LENGTH = 1024;
 export const APP_FRAME_MAX_COMPANION_TEXT_LENGTH = 16_000;
 
 export type AppFrameMessage =
+  | { source: typeof APP_FRAME_MESSAGE_SOURCE; nonce: string; kind: "ask-companion"; x: number; y: number; context: InlineAiContext }
   | { source: typeof APP_FRAME_MESSAGE_SOURCE; nonce: string; kind: "height"; height: number }
   | { source: typeof APP_FRAME_MESSAGE_SOURCE; nonce: string; kind: "heartbeat" }
   | { source: typeof APP_FRAME_MESSAGE_SOURCE; nonce: string; kind: "navigation-attempt" }
@@ -212,6 +214,7 @@ function appBridgeScript(nonce: string, navigationApiAvailable: boolean): string
   return `<script data-smart-notes-app-bridge="true">
 (() => {
   'use strict';
+  ${inlineAiFrameScript(APP_FRAME_MESSAGE_SOURCE, nonce)}
   const source = ${JSON.stringify(APP_FRAME_MESSAGE_SOURCE)};
   const nonce = ${JSON.stringify(nonce)};
   const hostNavigationApiAvailable = ${JSON.stringify(navigationApiAvailable)};
@@ -431,6 +434,12 @@ export function parseAppFrameMessage(value: unknown, expectedNonce: string): App
     const keys = Object.keys(candidate);
     return keys.length === allowed.length && keys.every((key) => allowed.includes(key));
   };
+  if (candidate.kind === "ask-companion") {
+    if (!hasExactKeys(["source", "nonce", "kind", "x", "y", "context"])) return null;
+    const context = parseInlineAiContext(candidate.context);
+    if (!context || context.surface !== "app" || !Number.isFinite(candidate.x) || !Number.isFinite(candidate.y) || Math.abs(Number(candidate.x)) > 20000 || Math.abs(Number(candidate.y)) > 20000) return null;
+    return { source: APP_FRAME_MESSAGE_SOURCE, nonce: expectedNonce, kind: "ask-companion", x: Number(candidate.x), y: Number(candidate.y), context };
+  }
   if (candidate.kind === "height") {
     if (!hasExactKeys(["source", "nonce", "kind", "height"]) || !Number.isFinite(candidate.height)) return null;
     return {

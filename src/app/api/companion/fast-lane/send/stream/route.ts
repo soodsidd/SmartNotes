@@ -1,3 +1,4 @@
+import { parseInlineAiContext, inlineAiPrompt } from "@/lib/inline-ai";
 import { parseJupyterInlineContext, utf8ByteLength } from "@/lib/jupyter-focus";
 import { VaultError } from "@/server/vault/errors";
 import { sendJupyterFastLaneMessage } from "@/server/ai/jupyter-fast-lane";
@@ -12,6 +13,7 @@ interface StreamRequestBody {
   path?: string;
   message?: string;
   context?: unknown;
+  inlineContext?: unknown;
 }
 
 function sseEvent(name: string, data: unknown): string {
@@ -52,6 +54,13 @@ export async function POST(request: Request) {
     }
     if (utf8ByteLength(message) > FAST_LANE_MESSAGE_MAX_BYTES) {
       throw new VaultError("FAST_LANE_MESSAGE_TOO_LARGE", "Fast-lane message exceeds 16 KiB.", 413);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "inlineContext")) {
+      const inlineContext = parseInlineAiContext(body.inlineContext);
+      if (!inlineContext || body.context !== undefined || path.startsWith("dwc_") || !message.trim()) {
+        throw new VaultError("INVALID_INLINE_CONTEXT", "Captured text is malformed or oversized.");
+      }
+      message = inlineAiPrompt(message, inlineContext);
     }
     const hasContext = Object.prototype.hasOwnProperty.call(body, "context");
     context = hasContext ? parseJupyterInlineContext(body.context, path) : null;

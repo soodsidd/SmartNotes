@@ -50,6 +50,7 @@
  * PDF bytes are never mutated.
  */
 
+import { invokeInlineAi } from "@/lib/inline-ai";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import {
@@ -1509,6 +1510,16 @@ function ReaderSurface({
   const { provides: annotation } = useAnnotation(documentId);
   const { provides: interactionManager } = useInteractionManagerCapability();
   const { provides: selection } = useSelectionCapability();
+  const askPdf = React.useCallback(async (pageIndex: number, x: number, y: number, menu = true) => {
+    const doc = activeDocument?.document;
+    if (!doc || !retainedPdfiumEngine) return;
+    const [selected, pageText] = await Promise.all([
+      selection?.getSelectedText(documentId).toPromise().catch(() => []) ?? Promise.resolve([]),
+      retainedPdfiumEngine.extractText(doc, [pageIndex]).toPromise().catch(() => ""),
+    ]);
+    const text = selected.join("\n").trim().slice(0, 16000);
+    invokeInlineAi({ x, y, menu, context: { surface: "pdf", target: text ? "Selection" : "PDF page", text: text || pageText.slice(0, 16000), pageText: pageText.slice(0, 16000), tableText: "" } });
+  }, [activeDocument, documentId, selection]);
   const { provides: history } = useHistoryCapability();
   const { plugin: viewportPlugin } = useViewportPlugin();
   const { provides: viewportCap } = useViewportCapability();
@@ -3060,6 +3071,7 @@ function ReaderSurface({
               const pageLayers = (
                 <div
                   className="pdf-reader__page-frame"
+                  onContextMenu={event => { event.preventDefault(); void askPdf(pageIndex, event.clientX, event.clientY); }}
                   style={{ width, height }}
                 >
                   {/* Low-res full-page base so frames are never empty while
@@ -3087,6 +3099,12 @@ function ReaderSurface({
                   <SelectionLayer
                     documentId={documentId}
                     pageIndex={pageIndex}
+                    selectionMenu={({ selected, menuWrapperProps }) => selected ? <div {...menuWrapperProps}>
+                      <button className="inline-ai-menu-action" onPointerDown={event => event.stopPropagation()} onClick={event => {
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        void askPdf(pageIndex, rect.left, rect.bottom, false);
+                      }}>Ask Companion...</button>
+                    </div> : null}
                   />
                   <AnnotationLayer
                     documentId={documentId}
