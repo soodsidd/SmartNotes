@@ -8,6 +8,7 @@ import { VaultError } from "@/server/vault/errors";
 import { readPage } from "@/server/vault/pages";
 import { resolveVaultPath } from "@/server/vault/paths";
 import { issueRenderToken } from "@/server/vault/page-render-token";
+import { A4_WIDTH_PX, DESIGN_CONTENT_HEIGHT_EXPRESSION, measureDesignPages } from "@/lib/design-pagination";
 
 export interface PageRenderOptions {
   pagePath: string;
@@ -365,6 +366,49 @@ export async function renderUiToPng(options: UiRenderOptions): Promise<PageRende
     if (error instanceof VaultError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     throw new VaultError("RENDER_FAILED", `UI render failed: ${message}`, 502);
+  } finally {
+    await browser?.close().catch(() => undefined);
+  }
+}
+
+/** Print a raw design artifact at the same A4 width used by Preview guides. */
+export async function renderDesignToPdf(pagePath: string, bodyHtml?: string): Promise<{ pdf: Buffer; pages: number }> {
+  const source = await readPage(pagePath);
+  if (source.metadata.note_type !== "design") {
+    throw new VaultError("INVALID_INPUT", "PDF export requires a design page.", 400);
+  }
+  const html = bodyHtml ?? source.body;
+  if (typeof html !== "string" || html.length > 15_000_000) {
+    throw new VaultError("INVALID_INPUT", "Design HTML must be at most 15 MB.", 400);
+  }
+  const baseUrl = resolveRenderServerBaseUrl();
+  const base = `<base href="${baseUrl}/"><style>@page{size:A4;margin:0!important}</style>`;
+  const documentHtml = /<\/head>/i.test(html)
+    ? html.replace(/<\/head>/i, `${base}</head>`)
+    : /<html[\s>]/i.test(html)
+      ? html.replace(/<html([^>]*)>/i, `<html$1><head>${base}</head>`)
+      : `<!doctype html><html><head>${base}</head><body>${html}</body></html>`;
+  const { chromium } = await loadPlaywright();
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: Math.round(A4_WIDTH_PX), height: 900 } });
+    await page.emulateMedia({ media: "screen" });
+    await page.setContent(documentHtml, { waitUntil: "load", timeout: 60_000 });
+    await page.evaluate(() => document.fonts.ready);
+    const height = await page.evaluate<number>(DESIGN_CONTENT_HEIGHT_EXPRESSION);
+    const pages = measureDesignPages(height).pages;
+    const pdf = await page.pdf({
+      width: "210mm",
+      height: "297mm",
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      printBackground: true,
+      preferCSSPageSize: false,
+    });
+    return { pdf: Buffer.from(pdf), pages };
+  } catch (error) {
+    if (error instanceof VaultError) throw error;
+    throw new VaultError("RENDER_FAILED", `Design PDF export failed: ${error instanceof Error ? error.message : String(error)}`, 502);
   } finally {
     await browser?.close().catch(() => undefined);
   }

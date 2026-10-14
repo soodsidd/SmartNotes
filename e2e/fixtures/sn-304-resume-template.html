@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resume — {{ name }}</title>
+<style>
+@page { margin: 0.5in; }
+@media print {
+  body { font-size: 10pt; }
+  .page-break { page-break-before: always; }
+  a { color: #333 !important; }
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  color: #2d2d2d;
+  background: #f0f4f7;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.resume {
+  max-width: 8.5in;
+  margin: 1.5rem auto;
+  background: #fff;
+  box-shadow: 0 1px 12px rgba(0,0,0,0.06);
+  padding: 0;
+}
+
+/* ── Header ── */
+.header {
+  background: #fff;
+  padding: 2.2rem 2.5rem 1.6rem;
+  border-bottom: 3px solid #0d9488;
+  text-align: center;
+}
+.header h1 {
+  font-size: 2.1rem;
+  font-weight: 300;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #1a1a1a;
+  margin-bottom: 0.2rem;
+}
+.header .title {
+  font-size: 0.95rem;
+  color: #0d9488;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.9rem;
+}
+.contact {
+  display: flex;
+  justify-content: center;
+  gap: 1.8rem;
+  font-size: 0.82rem;
+  color: #777;
+  flex-wrap: wrap;
+}
+.contact span { white-space: nowrap; }
+.contact a { color: #0d9488; text-decoration: none; }
+
+/* ── Body ── */
+.body { padding: 1.8rem 2.5rem 2rem; }
+
+/* ── Section ── */
+.section { margin-bottom: 1.6rem; }
+.section:last-child { margin-bottom: 0; }
+
+.section-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #0d9488;
+  padding-bottom: 0.45rem;
+  margin-bottom: 0.85rem;
+  border-bottom: none;
+  position: relative;
+}
+.section-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 36px;
+  height: 2px;
+  background: #0d9488;
+}
+
+/* ── Profile ── */
+.profile-text {
+  font-size: 0.93rem;
+  color: #555;
+  line-height: 1.7;
+  max-width: 42em;
+}
+
+/* ── Skills ── */
+.skills-grid {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 0.3rem 1rem;
+  font-size: 0.87rem;
+}
+.skill-label {
+  font-weight: 600;
+  color: #0d9488;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.skill-value { color: #555; }
+
+/* ── Education ── */
+.education-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 2rem;
+  font-size: 0.9rem;
+}
+.edu-item .degree { font-weight: 600; color: #2d2d2d; }
+.edu-item .school { color: #777; font-size: 0.84rem; }
+
+/* ── Experience ── */
+.role { margin-bottom: 1.3rem; }
+.role:last-child { margin-bottom: 0; }
+.role-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 0.1rem;
+}
+.role-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.role-dates {
+  font-size: 0.78rem;
+  color: #aaa;
+  white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+.role-company {
+  font-size: 0.86rem;
+  color: #0d9488;
+  font-weight: 500;
+  margin-bottom: 0.4rem;
+}
+.role ul {
+  padding-left: 1.1rem;
+  font-size: 0.87rem;
+  color: #555;
+  list-style-type: none;
+}
+.role li {
+  margin-bottom: 0.3rem;
+  line-height: 1.55;
+  padding-left: 0.7rem;
+  position: relative;
+}
+.role li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #0d9488;
+}
+
+/* ── Patents ── */
+.patent-list {
+  list-style: none;
+  font-size: 0.87rem;
+  color: #555;
+}
+.patent-list li {
+  margin-bottom: 0.45rem;
+  padding-left: 1.2rem;
+  position: relative;
+}
+.patent-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 8px;
+  height: 2px;
+  background: #0d9488;
+}
+.patent-list em { font-style: italic; }
+
+/* ── Training ── */
+.training-list {
+  list-style: none;
+  font-size: 0.87rem;
+  color: #555;
+}
+.training-list li {
+  margin-bottom: 0.25rem;
+  padding-left: 1.2rem;
+  position: relative;
+}
+.training-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #c4c4c4;
+}
+
+/* ── Publications ── */
+.pub-list {
+  list-style: none;
+  font-size: 0.8rem;
+  color: #666;
+}
+.pub-list li {
+  margin-bottom: 0.45rem;
+  padding-left: 1rem;
+  text-indent: -1rem;
+  line-height: 1.5;
+}
+.pub-list em { font-style: italic; }
+.pub-list .author-highlight { font-weight: 600; color: #1a1a1a; }
+
+/* ── Awards ── */
+.awards-list {
+  list-style: none;
+  font-size: 0.87rem;
+  color: #555;
+}
+.awards-list li {
+  margin-bottom: 0.25rem;
+  padding-left: 1.2rem;
+  position: relative;
+}
+.awards-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 6px;
+  height: 6px;
+  background: #0d9488;
+  transform: rotate(45deg);
+}
+
+/* ── Divider ── */
+.divider {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 0.3rem 0;
+}
+
+</style>
+</head>
+<body>
+
+<div class="resume">
+
+  <!-- ═══════════ HEADER ═══════════ -->
+  <div class="header">
+    <h1>{{ name }}</h1>
+    <div class="title">{{ title }}</div>
+    <div class="contact">
+      <span>📍 {{ location }}</span>
+      <span>📞 {{ phone }}</span>
+      <span>✉️ <a href="mailto:{{ email }}">{{ email }}</a></span>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <!-- ─────────── PROFILE ─────────── -->
+    <div class="section">
+      <div class="section-title">Profile</div>
+      <p class="profile-text">{{ profile_paragraph }}</p>
+    </div>
+
+    <!-- ─────────── SKILLS ─────────── -->
+    <div class="section">
+      <div class="section-title">Skills</div>
+      <div class="skills-grid">
+        <span class="skill-label">{{ category }}</span>
+        <span class="skill-value">{{ comma-separated values }}</span>
+        <!-- repeat per category -->
+      </div>
+    </div>
+
+    <!-- ─────────── EDUCATION ─────────── -->
+    <div class="section">
+      <div class="section-title">Education</div>
+      <div class="education-grid">
+        <div class="edu-item">
+          <div class="degree">{{ degree }}</div>
+          <div class="school">{{ school }} — GPA: {{ gpa }}</div>
+        </div>
+        <!-- repeat per entry -->
+      </div>
+    </div>
+
+    <!-- ─────────── EXPERIENCE (ROLES) ─────────── -->
+    <div class="section">
+      <div class="section-title">Experience</div>
+
+      <div class="role">
+        <div class="role-header">
+          <span class="role-title">{{ role_title }}</span>
+          <span class="role-dates">{{ start }} – {{ end }}</span>
+        </div>
+        <div class="role-company">{{ company }} — {{ city }}</div>
+        <ul>
+          <li>{{ bullet }}</li>
+        </ul>
+      </div>
+      <!-- repeat per role -->
+    </div>
+
+    <!-- ─────────── PATENTS ─────────── -->
+    <div class="section">
+      <div class="section-title">Patents</div>
+      <ul class="patent-list">
+        <li>{{ authors }}, <em>{{ title }}</em>, {{ identifier }}</li>
+      </ul>
+    </div>
+
+    <!-- ─────────── TRAINING ─────────── -->
+    <div class="section">
+      <div class="section-title">Training</div>
+      <ul class="training-list">
+        <li>{{ training_item }}</li>
+      </ul>
+    </div>
+
+    <!-- ─────────── PUBLICATIONS ─────────── -->
+    <div class="section">
+      <div class="section-title">Publications</div>
+      <ul class="pub-list">
+        <li>{{ authors with <span class="author-highlight">Sood, S.</span> }}, {{ year }}, "{{ title }}," <em>{{ venue }}</em></li>
+      </ul>
+    </div>
+
+    <!-- ─────────── AWARDS ─────────── -->
+    <div class="section">
+      <div class="section-title">Awards</div>
+      <ul class="awards-list">
+        <li>{{ award }}</li>
+      </ul>
+    </div>
+
+    <!-- Optional: page break inside body if needed -->
+    <!-- <div class="page-break"></div> -->
+
+  </div><!-- .body -->
+</div><!-- .resume -->
+
+</body>
+</html>
+

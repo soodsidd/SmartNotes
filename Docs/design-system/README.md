@@ -15,6 +15,20 @@ over a 12% `--accent` tint, the same tint used for selected cells. New tokens:
 pills use the 44px touch target. In Data mode, number cells are right-aligned
 with tabular figures.
 
+## Design page editing, A4 guides and PDF export (SN-304)
+
+The design header adds an `A4 guides` toggle (pressed state uses `--surface` with
+`--foreground`), a `--muted-foreground` page-count status, a compact `Max pages`
+number input (`--input` border, `--background`, `--ring` focus) and an outline
+`Export PDF` Button. Editing uses a format toolbar row under the header: lucide
+icon-only buttons (bold, italic, underline, lists, link, undo, redo) with
+`aria-label`s, `--muted-foreground` icons and `--surface` hover. Page breaks are
+2px dashed `--accent` rules with a `Page N` chip in `--surface` /
+`--muted-foreground`; the over-limit warning reuses the `--destructive` text on a
+5% `--destructive` tint banner. With guides on, the frame is A4 width
+(210mm = 793.7px) and centered. All controls keep 44px mobile touch targets.
+No new tokens.
+
 ## Table context menu and icon ribbon (SN-308)
 
 Ribbon controls are icon-only (lucide) with tooltips and `aria-label`s, separated by 1px `--border` dividers. New tokens: `--table-ribbon-button-size: 28px` (desktop icon button) and `--table-ribbon-icon-size: 16px`. Mobile buttons keep the 44px touch target; the mobile stats chip is a pill using `--surface`, `--border`, and `--accent` when expanded. The table context menu reuses the editor context-menu styles; Delete table uses `--destructive` text with a 10% `--destructive` hover tint, matching the comment popover's destructive button.
