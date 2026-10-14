@@ -1,4 +1,5 @@
 "use client";
+import { invokeInlineAi } from "@/lib/inline-ai";
 
 import * as React from "react";
 import dynamic from "next/dynamic";
@@ -397,6 +398,10 @@ export function AppPageView({ pagePath, title, bodyHtml, onOpenSidebar, reloadRe
 
   const reloadRuntime = React.useCallback(async () => {
     setBusy(true);
+    // Keep the heartbeat watchdog from stopping the runtime while Reload is
+    // awaiting bootstrap — a second iframe onLoad (srcDoc refresh) can trigger
+    // reloadRuntime, and the async gap can exceed the 7s unresponsive threshold.
+    lastHeartbeatRef.current = Date.now();
     try {
       // Renew the host-only server session as well as the frame nonce so Reload
       // recovers cleanly after TTL expiry or server restart.
@@ -621,6 +626,11 @@ export function AppPageView({ pagePath, title, bodyHtml, onOpenSidebar, reloadRe
         return;
       }
       lastHeartbeatRef.current = Date.now();
+      if (message.kind === "ask-companion") {
+        const rect = iframeRef.current?.getBoundingClientRect();
+        if (rect) invokeInlineAi({ context: message.context, x: rect.left + message.x, y: rect.top + message.y, menu: true });
+        return;
+      }
       if (message.kind === "height") {
         setFrameHeight(Math.min(APP_FRAME_MAX_HEIGHT, Math.max(320, message.height)));
         return;

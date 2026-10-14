@@ -1,4 +1,5 @@
 "use client";
+import { InlineAiPopover } from "@/components/inline-ai-popover";
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
@@ -6338,6 +6339,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   return (
     <main className="h-screen overflow-hidden bg-background text-foreground" data-testid="app-shell" data-paper-inline={paperInline ? "true" : undefined} data-paper-dock={paperDock ? "true" : undefined}>
+      {draft?.path && <InlineAiPopover pagePath={draft.path} onContinue={handleJupyterAskInCompanion} />}
       <input
         ref={docxImportInputRef}
         type="file"

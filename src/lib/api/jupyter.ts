@@ -1,3 +1,4 @@
+import type { InlineAiContext } from "@/lib/inline-ai";
 import { ApiError } from "./pages";
 import type { JupyterFocusState } from "@/lib/jupyter-focus";
 
@@ -344,13 +345,13 @@ export async function sendJupyterFastLanePrompt(
 export async function streamJupyterFastLanePrompt(
   path: string,
   message: string,
-  context: JupyterFocusState,
+  context: JupyterFocusState | InlineAiContext,
   options?: { signal?: AbortSignal; onDelta?: (chunk: string, accumulated: string) => void }
 ): Promise<JupyterFastLaneResult> {
   const response = await fetch("/api/companion/fast-lane/send/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ path, message, context }),
+    body: JSON.stringify("surface" in context ? { path, message, inlineContext: context } : { path, message, context }),
     signal: options?.signal,
   });
 

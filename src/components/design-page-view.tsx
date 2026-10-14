@@ -1,4 +1,5 @@
 "use client";
+import { invokeInlineAi } from "@/lib/inline-ai";
 
 import * as React from "react";
 import dynamic from "next/dynamic";
@@ -127,6 +128,11 @@ export function DesignPageView({
   React.useEffect(() => {
     const handleMessage = (event: MessageEvent<unknown>) => {
       if (event.source !== iframeRef.current?.contentWindow || !isDesignFrameMessage(event.data)) {
+        return;
+      }
+      if (event.data.kind === "ask-companion") {
+        const rect = iframeRef.current?.getBoundingClientRect();
+        if (rect) invokeInlineAi({ context: event.data.context, x: rect.left + event.data.x, y: rect.top + event.data.y, menu: true });
         return;
       }
       if (

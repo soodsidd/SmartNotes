@@ -263,3 +263,10 @@ OneNote-style lines are a CSS background on the editor content frame (`[data-tes
 | `--page-grid-small` / `-medium` / `-large` / `-xlarge` | `12px` / `20px` / `32px` / `48px` | Grid cell size |
 
 Popover chrome (photo #14) reuses existing tokens: the popup uses `--popover`, `--border`, and `shadow-md`. Section labels use `text-xs` with `--muted-foreground`. The selected tile has a 2px `--accent` border, and the selected swatch has a 2px `--accent` ring. Focus rings use `--ring`. The footer switch uses `--accent` (on) or `--secondary` (off). On mobile, the footer toggle row keeps the established `min-h-11` 44px target.
+
+
+## Ask Companion popover (SN-303)
+
+The owner references are the two photos on the vault page Key docs/ask-ai-companion. The final editor menu row uses the teal Sparkles icon after a divider. Format and Turn into group existing text actions. The shared card uses --popover, --foreground, --secondary-foreground (readable helper/footer copy), --border, --input, --accent, --accent-foreground, --ring, --radius-xs/sm/md and --shadow-popover. It shares --z-jupyter-inline-ai so it sits above the PDF reader. Spacing and typography reuse the documented Tailwind scale (4/8/12/16px spacing; 11/12/13px compact text); mobile textarea text is 16px and buttons retain 44px touch targets. New layout metric: 22rem preferred card width, capped to viewport minus 16px, with viewport-bounded scrolling. Keyboard focus is contained while open; Escape closes and restores focus. Empty target, disabled empty prompt, streaming, long content, provider error/retry and page-navigation interruption are explicit states.
+
+The mobile selection bubble keeps controls on one line with horizontal scrolling and the established 44px touch targets; Ask Companion uses the existing `--accent` color.
