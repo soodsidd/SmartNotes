@@ -1671,6 +1671,8 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
 
   const lines = [
     "Smart Notes operating context:",
+    "Recipes are ordinary marked text pages. For requests such as run Fit analysis here (including Ask AI continuations), call recipe_list with the active path, then recipe_run with that target path and the recipe name. Read its instructions and target inputs, then fill the returned child page and copied children with page_write or the appropriate artifact tools. Ask for missing inputs; never fabricate. Do not stop after creating an empty artifact.",
+    "Author recipes in normal text pages and mark with recipe_mark or the page menu. Link a vault template using a normal link labelled Template (or rel=template); recipe_template frontmatter may also hold a canonical vault page path. notebook_instructions_set designates one text page per notebook.",
     `- Active note title: ${title}`,
     `- Vault root absolute path: ${normalizedVaultRoot || "(unknown)"}`,
     browserOrigin

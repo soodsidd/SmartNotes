@@ -1922,6 +1922,32 @@ export interface SetPageKeyNoteInput {
   keyNote: boolean;
 }
 
+/** Metadata-only writes share the body-save lock and preserve the latest body. */
+export async function updatePageMetadata(pagePath: string, patch: Record<string, FrontmatterValue | undefined>) {
+  const { absolutePath } = resolveVaultPath(pagePath, "page");
+  const previous = pageWriteLocks.get(absolutePath) ?? Promise.resolve();
+  let release!: () => void;
+  const turn = new Promise<void>((resolve) => { release = resolve; });
+  const tail = previous.then(() => turn);
+  pageWriteLocks.set(absolutePath, tail);
+  await previous;
+  try {
+    const page = await readPage(pagePath);
+    if (page.designLinked) throw new VaultError("INVALID_INPUT", "Linked designs cannot carry page roles.", 400);
+    const metadata = { ...page.metadata, updated: new Date().toISOString() } as FrontmatterData;
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) delete metadata[key];
+      else metadata[key] = value;
+    }
+    await writeAtomically(absolutePath, serializeFrontmatterDocument(metadata, page.body));
+    invalidateVaultCache();
+    return readPage(page.path);
+  } finally {
+    release();
+    if (pageWriteLocks.get(absolutePath) === tail) pageWriteLocks.delete(absolutePath);
+  }
+}
+
 export async function setPageKeyNote(input: SetPageKeyNoteInput) {
   const { absolutePath, relativePath } = resolveVaultPath(input.path, "page");
   const existingLink = await readDesignLinkSidecar(absolutePath);
