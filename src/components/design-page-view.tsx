@@ -3,7 +3,7 @@ import { invokeInlineAi } from "@/lib/inline-ai";
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { Menu, Pen, Eye, Code2, FolderOpen, Link2 } from "lucide-react";
+import { Menu, Pen, Eye, Code2, FolderOpen, Link2, Download, Bold, Italic, Underline, List, ListOrdered, Undo2, Redo2 } from "lucide-react";
 import type {
   AnnotationLayerHandle,
   AnnotationStrokeSize,
@@ -14,6 +14,8 @@ import type { TLDefaultColorStyle } from "tldraw";
 import { buildDesignSrcDoc, isDesignFrameMessage } from "@/components/ui-render-view";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { A4_WIDTH_PX, measureDesignPages } from "@/lib/design-pagination";
+import { applyDesignElementEdit, readDesignMaxPages, setDesignMaxPages } from "@/lib/design-html-edit";
 
 const AnnotationLayer = dynamic(
   () => import("@/components/annotation-layer").then((module) => module.AnnotationLayer),
@@ -91,6 +93,12 @@ export function DesignPageView({
   const [frameHeight, setFrameHeight] = React.useState(900);
   const [viewportHeight, setViewportHeight] = React.useState(900);
   const [body, setBody] = React.useState(bodyHtml);
+  const bodyRef = React.useRef(bodyHtml);
+  const [previewBody, setPreviewBody] = React.useState(bodyHtml);
+  const [pageLayout, setPageLayout] = React.useState(false);
+  const [pageMeasurement, setPageMeasurement] = React.useState(() => measureDesignPages(900));
+  const [exporting, setExporting] = React.useState(false);
+  const [exportError, setExportError] = React.useState<string | null>(null);
   const isEmptyArtifact = !body.trim();
   const sourceFileName = resolvedDiskPath?.split(/[\\/]/).filter(Boolean).at(-1);
   const [inkTool, setInkTool] = React.useState<AnnotationTool>("draw");
@@ -102,12 +110,15 @@ export function DesignPageView({
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
   const annotationLayerRef = React.useRef<AnnotationLayerHandle | null>(null);
 
-  const srcDoc = React.useMemo(() => buildDesignSrcDoc(body, tokenCss), [body, tokenCss]);
+  const srcDoc = React.useMemo(() => buildDesignSrcDoc(previewBody, tokenCss, editable), [previewBody, tokenCss, editable]);
+  const maxPages = readDesignMaxPages(body);
 
   React.useEffect(() => {
     setDrawMode(false);
     setTab("preview");
     setBody(bodyHtml);
+    bodyRef.current = bodyHtml;
+    setPreviewBody(bodyHtml);
     setInkTool("draw");
     setInkColor("black");
     setInkStroke("m");
@@ -142,13 +153,21 @@ export function DesignPageView({
       ) {
         const next = Math.max(event.data.height, 900);
         setFrameHeight((current) => (Math.abs(next - current) > 1 ? next : current));
+        setPageMeasurement(measureDesignPages(event.data.height));
+      } else if (event.data.kind === "edit") {
+        const next = applyDesignElementEdit(bodyRef.current, event.data.path, event.data.html, event.data.mode);
+        if (next !== null && next !== bodyRef.current) {
+          bodyRef.current = next;
+          setBody(next);
+          onBodyChange?.(next);
+        }
       } else if (event.data.kind === "external-link") {
         window.open(event.data.href, "_blank", "noopener,noreferrer");
       }
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  }, [onBodyChange]);
 
   React.useEffect(() => {
     const ref = annotationLayerRef;
@@ -175,6 +194,7 @@ export function DesignPageView({
   const handleSourceChange = React.useCallback(
     (next: string) => {
       setBody(next);
+      bodyRef.current = next;
       onBodyChange?.(next);
     },
     [onBodyChange]
@@ -191,10 +211,52 @@ export function DesignPageView({
         }
         setDrawMode(false);
       }
+      if (next === "preview") setPreviewBody(bodyRef.current);
       setTab(next);
     },
     [drawMode, tab]
   );
+
+  const format = React.useCallback((command: string, value?: string) => {
+    iframeRef.current?.contentWindow?.postMessage({ source: "smart-notes-design-frame", kind: "format", command, value }, "*");
+  }, []);
+
+  const changeMaxPages = React.useCallback((value: string) => {
+    const parsed = value === "" ? null : Number(value);
+    if (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > 100)) return;
+    const next = setDesignMaxPages(bodyRef.current, parsed);
+    bodyRef.current = next;
+    setBody(next);
+    onBodyChange?.(next);
+  }, [onBodyChange]);
+
+  const exportPdf = React.useCallback(async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const response = await fetch("/api/design/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: pagePath, bodyHtml: bodyRef.current }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error ?? "PDF export failed");
+      }
+      const pages = Number(response.headers.get("X-Design-Page-Count"));
+      if (Number.isFinite(pages) && pages > 0) setPageMeasurement((current) => ({ ...current, pages }));
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${title.trim() || "Design page"}.pdf`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExporting(false);
+    }
+  }, [pagePath, title]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="design-page-view">
@@ -281,7 +343,25 @@ export function DesignPageView({
             Annotate
           </button>
         ) : null}
+
+        {tab === "preview" && !sourceMissing ? (
+          <>
+            <button type="button" data-testid="design-page-layout" aria-pressed={pageLayout} onClick={() => setPageLayout((value) => !value)} className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-surface aria-pressed:text-foreground max-sm:min-h-11">A4 guides</button>
+            <span data-testid="design-page-count" className="text-xs text-muted-foreground" role="status">{pageLayout ? `${pageMeasurement.pages} ${pageMeasurement.pages === 1 ? "page" : "pages"}` : "A4 PDF"}</span>
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">Max pages <input aria-label="Maximum pages" data-testid="design-max-pages" type="number" min="1" max="100" value={maxPages ?? ""} onChange={(event) => changeMaxPages(event.target.value)} disabled={!editable} className="w-14 rounded border border-input bg-background px-1 py-1 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11" /></label>
+            <Button type="button" size="sm" variant="outline" data-testid="design-export-pdf" disabled={exporting} onClick={() => void exportPdf()} className="gap-1.5 max-sm:h-11"><Download className="size-3.5" />{exporting ? "Exporting…" : "Export PDF"}</Button>
+          </>
+        ) : null}
       </header>
+
+      {tab === "preview" && !drawMode && editable && !sourceMissing ? (
+        <div data-testid="design-format-toolbar" role="toolbar" aria-label="Design text formatting" className="flex flex-wrap items-center gap-1 border-b border-border px-3 py-1">
+          {([["bold", Bold, "Bold"], ["italic", Italic, "Italic"], ["underline", Underline, "Underline"], ["insertUnorderedList", List, "Bulleted list"], ["insertOrderedList", ListOrdered, "Numbered list"], ["undo", Undo2, "Undo"], ["redo", Redo2, "Redo"]] as const).map(([command, Icon, label]) => <button key={command} type="button" aria-label={label} title={label} onClick={() => format(command)} className="flex size-8 items-center justify-center rounded text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:size-11"><Icon className="size-4" /></button>)}
+          <button type="button" aria-label="Insert link" title="Insert link" onClick={() => { const href = window.prompt("Link URL"); if (href && /^(https?:\/\/|mailto:|#)/i.test(href)) format("createLink", href); }} className="flex size-8 items-center justify-center rounded text-muted-foreground hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:size-11"><Link2 className="size-4" /></button>
+        </div>
+      ) : null}
+      {pageLayout && maxPages !== null && pageMeasurement.pages > maxPages ? <div role="alert" data-testid="design-page-warning" className="border-b border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">{pageMeasurement.pages} A4 pages exceed the {maxPages}-page limit.</div> : null}
+      {exportError ? <div role="alert" className="border-b border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">{exportError}</div> : null}
 
       {sourceMissing ? (
         <div
@@ -386,7 +466,7 @@ export function DesignPageView({
         </div>
       ) : (
         <div ref={scrollRef} data-testid="design-scroll" className="relative min-h-0 flex-1 overflow-auto">
-          <div style={{ position: "relative", width: "100%", height: `${frameHeight}px` }}>
+          <div style={{ position: "relative", width: pageLayout ? `${A4_WIDTH_PX}px` : "100%", height: `${frameHeight}px`, margin: pageLayout ? "0 auto" : undefined }}>
             <iframe
               ref={iframeRef}
               title={title.trim() || "Design page"}
@@ -403,6 +483,7 @@ export function DesignPageView({
                 pointerEvents: drawMode ? "none" : "auto",
               }}
             />
+            {pageLayout ? pageMeasurement.boundaries.map((offset, index) => <div key={index} data-testid="design-page-break" aria-hidden="true" className="pointer-events-none absolute left-0 right-0 border-t-2 border-dashed border-accent" style={{ top: `${offset}px` }}><span className="absolute right-2 top-1 rounded bg-surface px-1 text-xs text-muted-foreground">Page {index + 2}</span></div>) : null}
             <div
               className={cn(
                 "absolute inset-0",

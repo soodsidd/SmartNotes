@@ -1,5 +1,6 @@
 "use client";
 import { inlineAiFrameScript, parseInlineAiContext, type InlineAiContext } from "@/lib/inline-ai";
+import { DESIGN_CONTENT_HEIGHT_EXPRESSION } from "@/lib/design-pagination";
 
 import * as React from "react";
 import dynamic from "next/dynamic";
@@ -28,22 +29,17 @@ const DESIGN_FRAME_MESSAGE_SOURCE = "smart-notes-design-frame";
 export type DesignFrameMessage =
   | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "ask-companion"; x: number; y: number; context: InlineAiContext }
   | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "height"; height: number }
+  | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "edit"; path: number[]; html: string; mode: "inner" | "outer" }
   | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "external-link"; href: string };
 
-function designFrameBridgeScript() {
+function designFrameBridgeScript(editable = false) {
   return `<script data-smart-notes-frame-bridge="true">
 (() => {
   ${inlineAiFrameScript(DESIGN_FRAME_MESSAGE_SOURCE)}
   const source = ${JSON.stringify(DESIGN_FRAME_MESSAGE_SOURCE)};
+  const editable = ${editable};
   const postHeight = () => {
-    const root = document.documentElement;
-    const body = document.body;
-    const height = Math.max(
-      root ? root.scrollHeight : 0,
-      root ? root.offsetHeight : 0,
-      body ? body.scrollHeight : 0,
-      body ? body.offsetHeight : 0
-    );
+    const height = ${DESIGN_CONTENT_HEIGHT_EXPRESSION};
     parent.postMessage({ source, kind: "height", height }, "*");
   };
 
@@ -59,6 +55,96 @@ function designFrameBridgeScript() {
       parent.postMessage({ source, kind: "external-link", href }, "*");
     }
   }, true);
+
+  if (editable) {
+    let active = null;
+    let activePath = null;
+    let savedRange = null;
+    let suppressInput = false;
+    const originalAttrs = new WeakMap();
+    const elementChildren = (node) => Array.from(node.children || []);
+    const pathFor = (node) => {
+      const path = [];
+      while (node && node !== document.body) {
+        const parentNode = node.parentElement;
+        if (!parentNode) return null;
+        path.unshift(elementChildren(parentNode).indexOf(node));
+        node = parentNode;
+      }
+      return node === document.body ? path : null;
+    };
+    const editTarget = (node) => {
+      if (!(node instanceof Element) || !document.body.contains(node)) return null;
+      if (node.closest('script,style,textarea,input,button,select,[contenteditable="false"]')) return null;
+      const block = node.closest('p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption');
+      if (block) return block;
+      let current = node;
+      while (current && current !== document.body) {
+        if (!current.querySelector('p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th') && current.textContent?.trim()) return current;
+        current = current.parentElement;
+      }
+      return null;
+    };
+    const restoreAttrs = (node, owner = node) => {
+      for (const [name, value] of Object.entries(originalAttrs.get(owner) || {})) {
+        if (value === null) node.removeAttribute(name); else node.setAttribute(name, value);
+      }
+    };
+    const sendEdit = (node = active, path = activePath, mode = 'inner') => {
+      if (!node || !path) return;
+      let html = node.innerHTML;
+      if (mode === 'outer') {
+        // Serialize without the editor's own contenteditable/spellcheck attributes.
+        const clone = node.cloneNode(true);
+        restoreAttrs(clone, node);
+        html = clone.outerHTML;
+      }
+      parent.postMessage({ source, kind: 'edit', path, html, mode }, '*');
+      postHeight();
+    };
+    document.addEventListener('pointerdown', (event) => {
+      const next = editTarget(event.target);
+      if (!next || next === active) return;
+      if (active) restoreAttrs(active);
+      active = next;
+      activePath = pathFor(next);
+      originalAttrs.set(next, { contenteditable: next.getAttribute('contenteditable'), spellcheck: next.getAttribute('spellcheck') });
+      active.setAttribute('contenteditable', 'true');
+      active.setAttribute('spellcheck', 'true');
+    }, true);
+    document.addEventListener('selectionchange', () => {
+      const selection = document.getSelection();
+      if (active && selection?.rangeCount && active.contains(selection.anchorNode)) savedRange = selection.getRangeAt(0).cloneRange();
+    });
+    document.addEventListener('input', (event) => {
+      if (!suppressInput && active && active.contains(event.target)) sendEdit();
+    });
+    window.addEventListener('message', (event) => {
+      if (event.source !== parent || event.data?.source !== source || event.data?.kind !== 'format' || !active) return;
+      const command = event.data.command;
+      if (!['bold','italic','underline','insertUnorderedList','insertOrderedList','undo','redo','createLink'].includes(command)) return;
+      active.focus();
+      const selection = document.getSelection();
+      if (savedRange && selection) { selection.removeAllRanges(); selection.addRange(savedRange); }
+      const beforePath = activePath;
+      const before = active;
+      const beforeParent = before.parentElement;
+      suppressInput = true;
+      document.execCommand(command, false, command === 'createLink' ? event.data.value : undefined);
+      suppressInput = false;
+      if (command === 'insertUnorderedList' || command === 'insertOrderedList') {
+        const next = beforeParent && beforePath ? elementChildren(beforeParent)[beforePath[beforePath.length - 1]] : null;
+        if (next) {
+          sendEdit(next, beforePath, 'outer');
+          restoreAttrs(before);
+          active = null;
+          activePath = null;
+        }
+      } else {
+        sendEdit();
+      }
+    });
+  }
 
   const start = () => {
     postHeight();
@@ -82,7 +168,7 @@ export function isDesignFrameMessage(value: unknown): value is DesignFrameMessag
   const candidate = value as Partial<DesignFrameMessage>;
   return (
     candidate.source === DESIGN_FRAME_MESSAGE_SOURCE &&
-    (candidate.kind === "height" || candidate.kind === "external-link" || (candidate.kind === "ask-companion" && Number.isFinite(candidate.x) && Number.isFinite(candidate.y) && parseInlineAiContext(candidate.context)?.surface === "design"))
+    (candidate.kind === "height" || candidate.kind === "external-link" || (candidate.kind === "edit" && Array.isArray(candidate.path) && typeof candidate.html === "string" && (candidate.mode === "inner" || candidate.mode === "outer")) || (candidate.kind === "ask-companion" && Number.isFinite(candidate.x) && Number.isFinite(candidate.y) && parseInlineAiContext(candidate.context)?.surface === "design"))
   );
 }
 
@@ -91,9 +177,9 @@ export function isDesignFrameMessage(value: unknown): value is DesignFrameMessag
  * is rendered verbatim; a fragment is wrapped in a minimal responsive shell.
  * Optional token CSS is injected into <head> so the artifact ports to the real app.
  */
-export function buildDesignSrcDoc(bodyHtml: string, tokenCss?: string): string {
+export function buildDesignSrcDoc(bodyHtml: string, tokenCss?: string, editable = false): string {
   const injected = tokenCss ? `<style data-av-tokens="true">${tokenCss}</style>` : "";
-  const bridge = designFrameBridgeScript();
+  const bridge = designFrameBridgeScript(editable);
   const hasHtmlShell = /<html[\s>]/i.test(bodyHtml);
   if (hasHtmlShell) {
     if (/<\/head>/i.test(bodyHtml)) {
