@@ -1,3 +1,4 @@
+import { listRecipes, runRecipe, setPageRole } from "./recipes";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -67,7 +68,7 @@ import {
   type SheetSelector,
 } from "@/lib/spreadsheet-cells";
 
-export type VaultCommandGroup = "page" | "notebook" | "section" | "comment" | "version" | "vault" | "pdf" | "jupyter" | "log" | "design" | "app" | "spreadsheet" | "paper";
+export type VaultCommandGroup = "page" | "notebook" | "section" | "comment" | "version" | "vault" | "pdf" | "jupyter" | "log" | "design" | "app" | "spreadsheet" | "paper" | "recipe";
 
 export interface VaultCommandRequest {
   group: VaultCommandGroup;
@@ -1788,6 +1789,12 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
   const args = request.args && typeof request.args === "object" ? request.args : {};
 
   switch (group) {
+    case "recipe": {
+      if (action === "list") return { ok: true, group, action, data: await listRecipes(requireString(args.path, "path")) };
+      if (action === "run") return { ok: true, group, action, treeChanged: true, data: await runRecipe(requireString(args.path, "path"), optionalString(args.name), optionalString(args.recipePath) || undefined) };
+      if (action === "mark" || action === "instructions") return { ok: true, group, action, treeChanged: true, data: await setPageRole(requireString(args.path, "path"), action === "mark" ? "recipe" : "notebook_instructions", requireBoolean(args.enabled, "enabled")) };
+      throw new VaultError("INVALID_INPUT", `Unknown recipe action: ${action}`, 400);
+    }
     case "page":
       return runPageCommand(action, args);
     case "notebook":
@@ -1821,6 +1828,7 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
 
 export function listVaultCommands() {
   return {
+    recipe: ["list", "run", "mark", "instructions"],
     page: [
       "create",
       "delete",

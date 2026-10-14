@@ -401,6 +401,8 @@ interface PageContextMenuState {
   pageTitle: string;
   noteType: NoteType;
   keyNote: boolean;
+  recipe?: boolean;
+  notebookInstructions?: boolean;
   notebookPath: string;
   notebookName: string;
   sectionPath?: string | null;
@@ -4544,9 +4546,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
 
   const handleSidebarSetPageKeyNote = React.useCallback(
-    async (pagePath: string, keyNote: boolean) => {
+    async (pagePath: string, keyNote: boolean, role?: "recipe" | "notebook_instructions") => {
       try {
-        await setVaultPageKeyNote(pagePath, keyNote);
+        if (role) {
+          const response = await vaultWriteFetch("/api/page", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: role, path: pagePath, enabled: keyNote }) });
+          if (!response.ok) throw new Error((await response.json()).error || "Could not update page role.");
+        } else await setVaultPageKeyNote(pagePath, keyNote);
         await loadTree({ pagePath: activePagePathRef.current });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Something went wrong. Please try again.");
@@ -5406,7 +5411,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       resolvedDiskPath = portableRoot;
     }
     const turnJupyterFocus = jupyterFocusForPage(activeJupyterFocus, draft.path, draft.noteType);
-    const operatingContext = buildSmartNotesOperatingContext({
+    let operatingContext = buildSmartNotesOperatingContext({
       title: paperShellPath
         ? treeRef.current.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH)?.pages.find((page) => page.path === paperShellPath)?.title ?? draft.title
         : draft.title,
@@ -5525,6 +5530,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             turnJupyterFocus?.workspacePath === "notebook.ipynb" && turnJupyterFocus.documentKind === "notebook"
               ? turnJupyterFocus.activeCellId ?? undefined
               : undefined,
+        }, (instructions) => {
+          operatingContext += `\n\nNotebook instructions apply only to this turn's active notebook; discard prior notebook policies.\n${instructions || "No notebook instructions designated."}`;
         });
       } catch (error) {
         if (error instanceof Error && error.message === "__DEEP_WORK_CONTEXT_ALREADY_ATTACHED__") {
@@ -7786,7 +7793,7 @@ export const Sidebar = React.memo(function Sidebar({
   onSelectSection: (path: string) => void;
   onOpenPage: (pagePath: string) => void;
   onNestPage: (pagePath: string, parentId: string | null) => Promise<void>;
-  onSetPageKeyNote: (pagePath: string, keyNote: boolean) => Promise<void>;
+  onSetPageKeyNote: (pagePath: string, keyNote: boolean, role?: "recipe" | "notebook_instructions") => Promise<void>;
   onReorderPages: (sectionPath: string, orderedIds: string[]) => Promise<void>;
   onApplyPageDrop: (
     sectionPath: string,
@@ -8211,6 +8218,8 @@ export const Sidebar = React.memo(function Sidebar({
                               pageTitle: node.page.title,
                               noteType: node.page.noteType,
                               keyNote: isPageKeyNote(node.page),
+                              recipe: node.page.metadata?.recipe === true,
+                              notebookInstructions: node.page.metadata?.notebook_instructions === true,
                               notebookPath: notebook.path,
                               notebookName: notebook.name,
                               sectionPath: null,
@@ -8477,6 +8486,15 @@ export const Sidebar = React.memo(function Sidebar({
                               >
                                 {keyNoteMenuLabel(isPageKeyNote(node.page))}
                               </DropdownMenuItem>
+                              {node.page.noteType === "text" && <>
+                                <DropdownMenuItem onClick={() => void onSetPageKeyNote(node.page.path, node.page.metadata?.recipe !== true, "recipe")}>
+                                  {node.page.metadata?.recipe === true ? "Unmark recipe" : "Mark as recipe"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => void onSetPageKeyNote(node.page.path, node.page.metadata?.notebook_instructions !== true, "notebook_instructions")}>
+                                  {node.page.metadata?.notebook_instructions === true ? "Unset notebook instructions" : "Use as notebook instructions"}
+                                </DropdownMenuItem>
+                              </>}
+
                               <DropdownMenuItem onClick={() => onRenamePage(node.page.path, node.page.title)}>
                                 Rename
                               </DropdownMenuItem>
@@ -8720,6 +8738,8 @@ export const Sidebar = React.memo(function Sidebar({
                                         pageTitle: node.page.title,
                                         noteType: node.page.noteType,
                                         keyNote: isPageKeyNote(node.page),
+                                        recipe: node.page.metadata?.recipe === true,
+                                        notebookInstructions: node.page.metadata?.notebook_instructions === true,
                                         notebookPath: notebook.path,
                                         notebookName: notebook.name,
                                         sectionPath: section.path,
@@ -8991,6 +9011,15 @@ export const Sidebar = React.memo(function Sidebar({
                                         >
                                           {keyNoteMenuLabel(isPageKeyNote(node.page))}
                                         </DropdownMenuItem>
+                                        {node.page.noteType === "text" && <>
+                                          <DropdownMenuItem onClick={() => void onSetPageKeyNote(node.page.path, node.page.metadata?.recipe !== true, "recipe")}>
+                                            {node.page.metadata?.recipe === true ? "Unmark recipe" : "Mark as recipe"}
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => void onSetPageKeyNote(node.page.path, node.page.metadata?.notebook_instructions !== true, "notebook_instructions")}>
+                                            {node.page.metadata?.notebook_instructions === true ? "Unset notebook instructions" : "Use as notebook instructions"}
+                                          </DropdownMenuItem>
+                                        </>}
+
                                         <DropdownMenuItem onClick={() => onRenamePage(node.page.path, node.page.title)}>
                                           Rename
                                         </DropdownMenuItem>
@@ -9195,6 +9224,16 @@ export const Sidebar = React.memo(function Sidebar({
           >
             {keyNoteMenuLabel(pageContextMenu.keyNote)}
           </button>
+          {pageContextMenu.noteType === "text" && <>
+            <button type="button" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+              onClick={() => { setPageContextMenu(null); void onSetPageKeyNote(pageContextMenu.pagePath, !pageContextMenu.recipe, "recipe"); }}>
+              {pageContextMenu.recipe ? "Unmark recipe" : "Mark as recipe"}
+            </button>
+            <button type="button" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+              onClick={() => { setPageContextMenu(null); void onSetPageKeyNote(pageContextMenu.pagePath, !pageContextMenu.notebookInstructions, "notebook_instructions"); }}>
+              {pageContextMenu.notebookInstructions ? "Unset notebook instructions" : "Use as notebook instructions"}
+            </button>
+          </>}
           <button
             type="button"
             className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"

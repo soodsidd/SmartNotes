@@ -18,6 +18,7 @@ const fsp = require("fs/promises");
 const path = require("path");
 
 const ALLOWED_TOOLS = new Set([
+  "recipe_list", "recipe_run", "recipe_mark", "notebook_instructions_set",
   "page_get",
   "page_write",
   // SN-222 shell-less page creation. Forwards to POST /api/agent/vault on the

@@ -1,3 +1,4 @@
+import { setPageRole } from "@/server/vault/recipes";
 import { NextResponse } from "next/server";
 import { createPage, deletePage, movePage, nestPage, readPage, readPaperSnapshot, renamePage, savePage, setPageKeyNote, setPageLines, toApiPageDocument } from "@/server/vault/pages";
 import { isBibliographyPath } from "@/lib/papers";
@@ -118,6 +119,13 @@ export async function PATCH(request: Request) {
       targetSectionPath?: string;
     };
 
+    if (body.action === "recipe" || body.action === "notebook_instructions") {
+      const enabled = (body as { enabled?: unknown }).enabled;
+      if (typeof enabled !== "boolean") throw new VaultError("INVALID_INPUT", '"enabled" must be a boolean.', 400);
+      const page = await setPageRole(body.path ?? "", body.action, enabled);
+      emitVaultSideEffects({ treeChanged: true });
+      return NextResponse.json({ page: toApiPageDocument(page) });
+    }
     if (body.action === "move") {
       const page = await movePage(body.path ?? "", body.sectionPath ?? body.targetSectionPath ?? "");
       emitVaultSideEffects({ treeChanged: true });

@@ -1,3 +1,4 @@
+import { notebookInstructions } from "./recipes";
 import fs from "node:fs/promises";
 import path from "node:path";
 import * as cheerio from "cheerio";
@@ -820,6 +821,7 @@ export async function buildCompanionPageContext(input: {
 
   return {
     pageContext: blocks.join("\n\n"),
+    notebookInstructions: await notebookInstructions(input.path),
   };
 }
 

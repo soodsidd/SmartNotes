@@ -92,7 +92,8 @@ export interface CompanionPageContextOptions {
 export async function fetchCompanionPageContext(
   path: string,
   basePageContext: string,
-  options: CompanionPageContextOptions = {}
+  options: CompanionPageContextOptions = {},
+  onInstructions?: (instructions: string) => void
 ): Promise<string> {
   const response = await fetch("/api/companion/context", {
     method: "POST",
@@ -100,6 +101,7 @@ export async function fetchCompanionPageContext(
     cache: "no-store",
     body: JSON.stringify({ path, basePageContext, ...options }),
   });
-  const data = await readJson<{ pageContext?: string }>(response);
+  const data = await readJson<{ pageContext?: string; notebookInstructions?: string }>(response);
+  onInstructions?.(data.notebookInstructions ?? "");
   return data.pageContext ?? basePageContext;
 }
