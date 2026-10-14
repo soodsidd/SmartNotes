@@ -398,6 +398,10 @@ export function AppPageView({ pagePath, title, bodyHtml, onOpenSidebar, reloadRe
 
   const reloadRuntime = React.useCallback(async () => {
     setBusy(true);
+    // Keep the heartbeat watchdog from stopping the runtime while Reload is
+    // awaiting bootstrap — a second iframe onLoad (srcDoc refresh) can trigger
+    // reloadRuntime, and the async gap can exceed the 7s unresponsive threshold.
+    lastHeartbeatRef.current = Date.now();
     try {
       // Renew the host-only server session as well as the frame nonce so Reload
       // recovers cleanly after TTL expiry or server restart.

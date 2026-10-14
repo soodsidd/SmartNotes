@@ -214,7 +214,6 @@ function appBridgeScript(nonce: string, navigationApiAvailable: boolean): string
   return `<script data-smart-notes-app-bridge="true">
 (() => {
   'use strict';
-  ${inlineAiFrameScript(APP_FRAME_MESSAGE_SOURCE, nonce)}
   const source = ${JSON.stringify(APP_FRAME_MESSAGE_SOURCE)};
   const nonce = ${JSON.stringify(nonce)};
   const hostNavigationApiAvailable = ${JSON.stringify(navigationApiAvailable)};
@@ -402,6 +401,9 @@ function appBridgeScript(nonce: string, navigationApiAvailable: boolean): string
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
   setInterval(() => post({ kind: 'heartbeat' }), 1000);
+  // Ask Companion is host-only UI: install after heartbeats so a shim fault cannot
+  // take down the App runtime watchdog.
+  try { ${inlineAiFrameScript(APP_FRAME_MESSAGE_SOURCE, nonce)} } catch {}
 })();
 </script>`;
 }

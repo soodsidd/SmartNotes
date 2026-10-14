@@ -1987,7 +1987,7 @@ The popover offers Explain/Summarize prompt chips, a free-text question, streame
 
 The App runtime shim uses the existing app-frame transport: the host checks the source window, current nonce, exact message keys, bounded coordinates/context and existing rate limiter before opening host UI. The frame receives no new vault, network, same-origin or host-DOM authority.
 
-Implementation: src/lib/inline-ai.ts, src/components/inline-ai-popover.tsx and the surface adapters. Targeted evidence: tests/inline-ai.test.ts, tests/inline-ai-route.test.ts and tests/inline-ai-popover.test.tsx. Visual and workflow validation remains required before owner inspection.
+Implementation: src/lib/inline-ai.ts, src/components/inline-ai-popover.tsx and the surface adapters. Targeted evidence: tests/inline-ai.test.ts, tests/inline-ai-route.test.ts and tests/inline-ai-popover.test.tsx. Desktop and mobile Playwright coverage in e2e/sn-303-ask-companion.spec.ts verifies text, design, App and PDF menus, inline answers, Companion handoff, the mobile text selection bubble and frame touch hold. Owner and implementation screenshots are in e2e/evidence/SN-303/.
 
 ## 18. Log Pages (Form-backed logging)
 

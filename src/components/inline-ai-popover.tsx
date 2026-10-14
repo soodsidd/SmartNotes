@@ -32,6 +32,13 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
     return () => { window.removeEventListener("smart-notes-ask-companion", open); abort.current?.abort(); };
   }, []);
   React.useEffect(close, [pagePath, close]);
+  // The one-row menu (frames, PDF) dismisses like a context menu; the open dialog stays put.
+  React.useEffect(() => {
+    if (!invocation?.menu) return;
+    const dismiss = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node)) close(); };
+    document.addEventListener("pointerdown", dismiss, true);
+    return () => document.removeEventListener("pointerdown", dismiss, true);
+  }, [invocation, close]);
   React.useLayoutEffect(() => {
     if (!invocation || !panel.current) return;
     const el = panel.current;

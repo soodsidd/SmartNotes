@@ -3103,7 +3103,7 @@ function ReaderSurface({
                       <button className="inline-ai-menu-action" onPointerDown={event => event.stopPropagation()} onClick={event => {
                         const rect = event.currentTarget.getBoundingClientRect();
                         void askPdf(pageIndex, rect.left, rect.bottom, false);
-                      }}>Ask Companion...</button>
+                      }}><Sparkles size={16} /> Ask Companion...</button>
                     </div> : null}
                   />
                   <AnnotationLayer

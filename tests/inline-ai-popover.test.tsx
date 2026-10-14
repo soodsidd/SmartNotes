@@ -53,3 +53,39 @@ it("keeps a failed question for retry", async () => {
   expect(screen.getByRole("textbox")).toHaveValue("Why?");
   expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
 });
+it("aborts an in-flight answer when closed by X or Escape and ignores late deltas", () => {
+  const signals: AbortSignal[] = [];
+  let late: ((chunk: string, text: string) => void) | undefined;
+  jest.mocked(streamJupyterFastLanePrompt).mockImplementation((_, __, ___, options) => {
+    signals.push(options!.signal!); late = options?.onDelta;
+    return new Promise(() => {});
+  });
+  render(<InlineAiPopover pagePath="Notes/page.html" onContinue={jest.fn()} />);
+  for (const dismiss of [() => fireEvent.click(screen.getByLabelText("Close Companion popover")), () => fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" })]) {
+    act(() => invokeInlineAi({ context, x: 10, y: 10 }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Why?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
+    expect(screen.getByRole("status")).toHaveTextContent("Thinking");
+    dismiss();
+    expect(signals[signals.length - 1].aborted).toBe(true);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  }
+  act(() => late?.("late", "late"));
+  act(() => invokeInlineAi({ context, x: 10, y: 10 }));
+  expect(screen.queryByText("late")).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox")).toHaveValue("");
+});
+it("opens the frame menu row first, dismisses it on outside pointerdown, and rejects malformed invocations", () => {
+  render(<InlineAiPopover pagePath="Notes/page.html" onContinue={jest.fn()} />);
+  act(() => invokeInlineAi({ context: { ...context, tools: true } as never, x: 1, y: 1 }));
+  expect(screen.queryByTestId("ask-companion-popover")).not.toBeInTheDocument();
+  act(() => invokeInlineAi({ context, x: 10, y: 10, menu: true }));
+  fireEvent.pointerDown(screen.getByRole("menuitem"));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Ask Companion/ }));
+  expect(screen.getByRole("dialog", { name: "Companion" })).toBeVisible();
+  fireEvent.pointerDown(document.body);
+  expect(screen.getByRole("dialog")).toBeVisible();
+  act(() => invokeInlineAi({ context, x: 10, y: 10, menu: true }));
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByTestId("ask-companion-popover")).not.toBeInTheDocument();
+});

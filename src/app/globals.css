@@ -283,6 +283,7 @@ select {
 }
 .bubble-btn {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   min-width: 28px;
@@ -296,6 +297,7 @@ select {
   font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
   transition: background 100ms;
 }
 .bubble-btn:hover {
@@ -313,10 +315,15 @@ select {
   background: transparent;
 }
 .bubble-sep {
+  flex-shrink: 0;
   width: 1px;
   height: 14px;
   background: var(--border);
   margin: 0 2px;
+}
+@media (pointer: coarse), (max-width: 767px) {
+  .bubble-toolbar .bubble-btn { min-width: 44px; height: 44px; }
+  .bubble-toolbar [data-testid="bubble-ask-companion"] { color: var(--accent); }
 }
 
 /* ── Link dialog ──────────────────────────────────────────────── */
