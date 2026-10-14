@@ -78,10 +78,18 @@ test("SN-278: table ribbon and selection stats appear for active cells and ribbo
     // Active cell in the floating text box: ribbon in fork order + empty-cell stats (#16).
     await editor.locator(".floating-text-box td").first().click();
     await expect(ribbon).toBeVisible();
-    await expect(ribbon.locator(".table-ribbon__tabs > *")).toHaveText([
+    // SN-308: icon-only controls; fork order is carried by accessible names.
+    const controls = ribbon.locator(".table-ribbon__tab, .table-ribbon__pill");
+    const names = await controls.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
+    expect(names).toEqual([
       "Rows", "Columns", "Cells", "Select", "Grid mode", "Data mode", "Format", "Layout", "Data", "Expand table",
     ]);
-    await expect(ribbon.locator(".table-ribbon__pill")).toHaveText(["Grid mode", "Data mode", "Expand table"]);
+    await expect(ribbon.locator(".table-ribbon__tab span, .table-ribbon__pill span")).toHaveCount(0);
+    if (mobile) {
+      // Stats collapse behind the Σ chip on mobile.
+      await expect(stats).toHaveCount(0);
+      await ribbon.getByTestId(`${ribbonId}-stats-toggle`).click();
+    }
     await expect(stats).toHaveText("Count: 1 | Numbers: 0 | Sum: - | Average: - | Min: - | Max: -");
     if (!mobile) {
       const shot = path.join(EVIDENCE_DIR, "desktop-ribbon-in-box.png");

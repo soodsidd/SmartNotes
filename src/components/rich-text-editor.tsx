@@ -96,6 +96,7 @@ import {
 import { cn } from "@/lib/utils";
 import { MAX_INSERT_TABLE_DIMENSION, tableCellCount, tableDimension } from "@/lib/table-insert";
 import { TableRibbon } from "@/components/table-ribbon";
+import { buildTableContextMenuGroups, focusClickedTableCell, tableMenuStateFor } from "@/lib/table-context-menu";
 import { resolvePdfAttachmentTarget, type PdfAttachmentTarget } from "@/lib/pdf-attachment";
 import type { PageContentExport } from "@/lib/page-export";
 import { computePageFrameHeight } from "@/lib/page-frame";
@@ -425,6 +426,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       selectionTo: number;
       mobile?: boolean;
       pdfTarget?: PdfAttachmentTarget | null;
+      /** SN-308: right-click landed in a table cell; show the table menu. */
+      inTable?: boolean;
     } | null>(null);
     const [composerPending, setComposerPending] = React.useState<{
       from: number;
@@ -950,6 +953,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         viewportWidth: typeof window !== "undefined" ? window.innerWidth : undefined,
       });
 
+      // SN-308: right-click does not move the selection; put it in the clicked cell first.
+      const inTable = focusClickedTableCell(editor, e.target as Element | null, e.clientX, e.clientY);
       const { from, to } = editor.state.selection;
       const pdfTarget = resolvePdfAttachmentTarget(e.target as Element | null);
       setContextMenu({
@@ -959,6 +964,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         selectionTo: to,
         mobile: isMobile,
         pdfTarget,
+        inTable,
       });
     }
 
@@ -2801,6 +2807,20 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
               onPromotePdf && contextMenu.pdfTarget
                 ? () => onPromotePdf(contextMenu.pdfTarget!)
                 : undefined
+            }
+            tableGroups={
+              contextMenu.inTable
+                ? (() => {
+                    const tableState = tableMenuStateFor(editor, hasCommentableText, canPasteFromClipboard);
+                    return tableState
+                      ? buildTableContextMenuGroups(editor, tableState, Boolean(contextMenu.mobile), {
+                          onCopy: copySelectedText,
+                          onPaste: pasteFromClipboard,
+                          onAddComment: openComposer,
+                        })
+                      : null;
+                  })()
+                : null
             }
             onClose={() => setContextMenu(null)}
           />

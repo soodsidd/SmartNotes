@@ -998,6 +998,16 @@ The fork has two toolbar buttons (outline, paper) before the grid button. On mai
 
 **Assumptions (photos are silent):** the tab contents above are the proposal from the brief chat. The fork ribbon is not Syncfusion's spreadsheet ribbon (Syncfusion's tabs are File/Home/Insert/Formulas/Data/View), so this is built on TipTap tables. Row height has no resize control because TipTap rows size to their content; "resize" means column width. Mode pills are per table, not per device.
 
+### Table context menu and icon ribbon (SN-308)
+
+**Plain English:** Right-click a table cell (long-press on mobile) to get a table menu built for the selection, including **Delete table** in red at the bottom (Ctrl+Z restores it). Outside tables the normal text menu is unchanged. The ribbon is now icons only (Rows, Columns, Cells, Select | Grid mode, Data mode | Format, Layout, Data | Expand table) with tooltips and accessible names; on mobile it is one compact row that scrolls sideways, and the stats line hides behind a **Σ** chip that shows the Sum (or Count) and expands to the full line.
+
+**Menu:** `src/lib/table-context-menu.ts`. `focusClickedTableCell` puts the caret in the right-clicked cell first, because right-click does not move the ProseMirror selection; a click inside an existing cell selection keeps it. `tableContextMenuLayout` (pure, unit-tested) picks the groups: clipboard (Copy, Paste, Paste as table cells), insert row/column, delete row/column (pluralised for multi-row/column selections), then items shown only when they apply (Merge cells, Split cell, Make/Remove header row in the first row), align (desktop), sort/clear, select row/column/table (desktop), Add comment, Delete table. Commands are the same ones the ribbon runs. `EditorContextMenu` (`comment-layer.tsx`) takes these as `tableGroups`, sets `data-menu-kind=table|text`, clamps itself inside the viewport, and scrolls when taller than the screen. SN-303 (Ask AI) should add its item to this same menu rather than a second one.
+
+**Ribbon visibility lesson:** the ribbon now sets `display:flex` in unlayered `globals.css`, which beats Tailwind v4 layered utilities, so `hidden md:block` / `md:hidden` stopped working. Desktop/mobile visibility is now media queries on `.table-ribbon--desktop` / `.table-ribbon--mobile`.
+
+**Evidence:** `tests/table-context-menu.test.ts` (layout rules, labels, live Delete table / Insert row, Σ chip text), `e2e/sn-308-table-context-menu.spec.ts` (desktop + mobile menu, Delete table persists, one-row mobile ribbon), and `e2e/sn-278-table-ribbon.spec.ts` updated to assert accessible names. Screenshots in `evidence/SN-308/`.
+
 ### Spellcheck preference (SN-130)
 
 **Plain English:** Some notes trip browser spelling underlines a lot (names, code-ish terms, shorthand). Settings → General has a **Spellcheck** switch so you can turn those underlines off on this device without changing the note itself.
