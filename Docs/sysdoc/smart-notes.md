@@ -379,13 +379,14 @@ When a reliable-shell autosave calls this route, it includes the current Socket.
 
 ### PATCH /api/page
 
-Renames, moves, nests, marks a page as a key note, or sets its rule/grid lines.
+Renames, moves, nests, marks a page as a key note or recipe / notebook instructions, or sets its rule/grid lines.
 
 - Rename: `{ path: string, title: string }` (default action)
 - Move: `{ action: "move", path: string, sectionPath: string }`
 - Nest: `{ action: "nest", path: string, parentId: string | null }` writes `parent_id` frontmatter (clears it when `parentId` is null). Linked designs cannot be nested.
 - Key note (SN-229): `{ action: "keyNote", path: string, keyNote: boolean }` writes `key_note: true` to page frontmatter, or to `.design-link.json` for linked designs. Unmarking omits the key. Never injects vault frontmatter into linked HTML. Emits `vault_updated` so other sessions refresh the tree.
 - Page lines (SN-297): `{ action: "pageLines", path: string, pageLines: { style, color } }` writes the `page_lines` frontmatter map (see [Page rule and grid lines](#page-rule-and-grid-lines-sn-297)). Unknown values normalize to the default. The default (`none` + `light-blue`) omits the key. The HTML body is written back unchanged. Text pages only: ink, log, Jupyter, app, spreadsheet, and linked design pages return 400 `INVALID_INPUT`. Emits `vault_updated`.
+- Recipe / notebook instructions (SN-305): `{ action: "recipe" | "notebook_instructions", path: string, enabled: boolean }` writes `recipe: true` or `notebook_instructions: true` to frontmatter (omitted when disabled) via `updatePageMetadata`, which shares the page body-save lock. Text pages only (others and linked designs return 400 `INVALID_INPUT`); non-boolean `enabled` returns 400. Designating notebook instructions clears the flag from any other page in the same notebook. Emits `vault_updated`. See [Recipe pages and notebook instructions](#recipe-pages-and-notebook-instructions-sn-305).
 
 **Note:** `action: "previewAttachment"`, `"copyAttachment"`, and `"aiSpliceCommit"` are explicitly rejected with `UNSUPPORTED_ACTION` — these were from a legacy shell and are disabled in Smart Notes. AI edits the Markdown directly on disk.
 
@@ -809,6 +810,23 @@ Key notes (SN-229) remain page metadata shown as a gem beside the title. See **K
 **Toggle errors.** Failed mark/unmark calls show a `sonner` error toast.
 
 **Tree chrome.** `VaultPageSummary.keyNote` is derived from frontmatter/sidecar. The tree renders Lucide `Gem` with `text-accent` after the type icon and before the title, including nested and pinned pages.
+
+### Recipe pages and notebook instructions (SN-305)
+
+**Plain English:** A recipe is an ordinary text page whose body says how to produce a recurring artifact (for example *Fit analysis* or *Tailored resume*). Asking the companion to "run Fit analysis here" creates a child page under the current page and fills it by following the recipe. A notebook can also designate one text page as its *instructions* page (for example "never fabricate; resumes max 2 pages"), which the companion follows only while the active page is in that notebook.
+
+**Marking.** The page ⋮ menu (desktop and mobile tree, plus the right-click menu) offers **Mark as recipe** / **Unmark recipe** and **Use as notebook instructions** / **Unset notebook instructions** on text pages only. These PATCH `/api/page` with `action: "recipe" | "notebook_instructions"` and store `recipe: true` / `notebook_instructions: true` in frontmatter (omitted when off). There is no other recipe UI. `setPageRole` (`src/server/vault/recipes.ts`) serializes role changes per notebook and keeps at most one instructions page per notebook by clearing the flag elsewhere.
+
+**Companion tools** (group `recipe`, also allowlisted in the companion bridge):
+- `recipe_list { path }`: marked text pages, current notebook first, then vault-wide.
+- `recipe_run { path, name | recipePath }`: resolves the name case-insensitively. A current-notebook match wins over other notebooks; multiple matches in the winning scope return `AMBIGUOUS_RECIPE` (pass `recipePath`). Creates a child of the target titled after the recipe and returns the recipe body as `instructions`, the created page and child paths, and a `nextStep` telling the companion to fill the pages without fabricating.
+- `recipe_mark` / `notebook_instructions_set { path, enabled }`: the same role toggles as the page menu.
+
+The operating context tells the companion to resolve "run <name> here" requests through these tools. Ask AI → Continue in companion (SN-303) reaches recipes through ordinary companion chat; there is no separate recipe entry point.
+
+**Templates.** A recipe may link a template page with a normal link labelled `Template` (or `rel="template"`). Accepted forms are `/vault/<path>`, `?page=` / `?path=` query links, and paths relative to the recipe. External URLs are rejected. `recipe_template` frontmatter may instead hold a vault path. When a template is linked, `copyPageTree` (`src/server/vault/page-copy.ts`) copies it and its descendants under the target. The copy includes page type, sidecars, and `.assets`, and rewrites links to copied pages and assets. Copies drop the `recipe`, `recipe_template`, `notebook_instructions`, and `comments` metadata. The copy is planned first and rejected with `DEPTH_CAP` before any page is created if the subtree would exceed the two-level nesting cap at the target. A mid-copy failure deletes only the pages that run created. `page-copy.ts` is the single shared subtree-copy helper; SN-99 page duplication should reuse it.
+
+**Notebook instructions scoping.** `buildCompanionPageContext` returns `notebookInstructions` resolved from the active page's notebook on every turn. The client appends it to that turn's operating context with an explicit "discard prior notebook policies" line, so switching notebooks never carries a policy over. Pages in other notebooks get an empty string. If hand-edited frontmatter leaves several instructions pages in one notebook, none are applied and the context carries a warning instead of failing.
 
 ### usePageDraft (autosave hook)
 
