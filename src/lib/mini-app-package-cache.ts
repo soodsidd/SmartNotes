@@ -241,8 +241,8 @@ export function queryMiniAppPackage(
   const table = value.tables.find((candidate) => candidate.id === tableId);
   if (!table) throw new Error("That table is not included in the Local App package.");
   if (!rawQuery || typeof rawQuery !== "object" || Array.isArray(rawQuery)) throw new Error("query must be an object.");
-  const query = rawQuery as { where?: unknown; limit?: unknown };
-  const unsupported = Object.keys(query).filter((key) => key !== "where" && key !== "limit");
+  const query = rawQuery as { where?: unknown; limit?: unknown; offset?: unknown };
+  const unsupported = Object.keys(query).filter((key) => key !== "where" && key !== "limit" && key !== "offset");
   if (unsupported.length) throw new Error(`Unsupported query keys: ${unsupported.join(", ")}`);
   const where = query.where === undefined ? {} : query.where;
   if (!where || typeof where !== "object" || Array.isArray(where)) throw new Error("query.where must be an object.");
@@ -251,9 +251,11 @@ export function queryMiniAppPackage(
   if (unknown.length) throw new Error(`Unknown query fields: ${unknown.join(", ")}`);
   const limit = query.limit === undefined ? 200 : Number(query.limit);
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("query.limit must be an integer from 1 to 200.");
+  const offset = query.offset === undefined ? 0 : Number(query.offset);
+  if (!Number.isInteger(offset) || offset < 0) throw new Error("query.offset must be a non-negative integer.");
   const rows = table.rows
     .filter((row) => Object.entries(where).every(([key, expected]) => Object.is(row.values[key], expected)))
-    .slice(0, limit);
+    .slice(offset, offset + limit);
   return { table: { id: table.id, name: table.name, kind: table.kind, schema: table.schema }, rows };
 }
 

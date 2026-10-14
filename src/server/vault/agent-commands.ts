@@ -52,6 +52,7 @@ import { getAppTemplate, listAppTemplates, APP_TEMPLATE_CATALOG_VERSION } from "
 import { getAppInventoryEntry, listAppInventory } from "./app-inventory";
 import { queryAppTableForCompanion, saveAppManifest, seedOwnedAppTable } from "./app-runtime";
 import { deliverCompanionAppMessage } from "./companion-app-channel";
+import { queryJobPostings, updateJobPosting } from "./job-inbox";
 import {
   readVaultPdfPage,
   readVaultPdfPageCount,
@@ -68,7 +69,7 @@ import {
   type SheetSelector,
 } from "@/lib/spreadsheet-cells";
 
-export type VaultCommandGroup = "page" | "notebook" | "section" | "comment" | "version" | "vault" | "pdf" | "jupyter" | "log" | "design" | "app" | "spreadsheet" | "paper" | "recipe";
+export type VaultCommandGroup = "page" | "notebook" | "section" | "comment" | "version" | "vault" | "pdf" | "jupyter" | "log" | "design" | "app" | "job_inbox" | "spreadsheet" | "paper" | "recipe";
 
 export interface VaultCommandRequest {
   group: VaultCommandGroup;
@@ -1819,6 +1820,10 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
       return runDesignCommand(action, args);
     case "app":
       return runAppCommand(action, args);
+    case "job_inbox":
+      if (action === "query") return { ok: true, group, action, data: await queryJobPostings(requireString(args.path, "path"), args.ids) };
+      if (action === "update") return { ok: true, group, action, data: { posting: await updateJobPosting(requireString(args.path, "path"), requireString(args.rowId, "rowId"), { status: args.status, notes: args.notes, score: args.score }) } };
+      throw new VaultError("UNKNOWN_COMMAND", `Unknown Job Inbox command: ${action}`, 400);
     case "paper":
       return runPaperCommand(action, args);
     default:
@@ -1828,6 +1833,7 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
 
 export function listVaultCommands() {
   return {
+    job_inbox: ["query", "update"],
     recipe: ["list", "run", "mark", "instructions"],
     page: [
       "create",

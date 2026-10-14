@@ -1,6 +1,7 @@
 import { normalizeAppManifest, type AppManifest } from "@/lib/app-contract";
 import type { NoteType } from "./types";
 import { VaultError } from "./errors";
+import { jobInboxManifest, jobInboxSource } from "./job-inbox-template";
 
 export const APP_TEMPLATE_CATALOG_VERSION = 1 as const;
 
@@ -77,6 +78,11 @@ const templates: AppTemplate[] = [
       ] } }],
     }),
   },
+  {
+    id: "job-inbox", version: 1, name: "Job Inbox", noteType: "app",
+    description: "Career postings, application status, saved triage views, and Promote.",
+    source: "", manifest: jobInboxManifest,
+  },
 ];
 
 export function listAppTemplates() {
@@ -89,5 +95,5 @@ export function getAppTemplate(id: unknown): AppTemplate {
   }
   const template = templates.find((candidate) => candidate.id === id);
   if (!template) throw new VaultError("APP_TEMPLATE_NOT_FOUND", `Unknown App template: ${id}`, 404);
-  return template;
+  return template.id === "job-inbox" ? { ...template, source: jobInboxSource() } : template;
 }

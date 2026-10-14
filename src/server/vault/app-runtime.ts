@@ -324,8 +324,8 @@ export async function queryAppTableForCompanion(
   if (!rawQuery || typeof rawQuery !== "object" || Array.isArray(rawQuery)) {
     throw new VaultError("INVALID_APP_QUERY", "query must be an object.", 400);
   }
-  const query = rawQuery as { where?: unknown; limit?: unknown };
-  const unsupported = Object.keys(query).filter((key) => key !== "where" && key !== "limit");
+  const query = rawQuery as { where?: unknown; limit?: unknown; offset?: unknown };
+  const unsupported = Object.keys(query).filter((key) => key !== "where" && key !== "limit" && key !== "offset");
   if (unsupported.length) throw new VaultError("INVALID_APP_QUERY", `Unsupported query keys: ${unsupported.join(", ")}`, 400);
   const page = await assertAppPage(pagePath);
   const attachment = await resolveAttachment(page.path, tableId);
@@ -338,9 +338,11 @@ export async function queryAppTableForCompanion(
   if (!Number.isInteger(limit) || limit < 1 || limit > APP_QUERY_MAX_ROWS) {
     throw new VaultError("INVALID_APP_QUERY", `query.limit must be an integer from 1 to ${APP_QUERY_MAX_ROWS}.`, 400);
   }
+  const offset = query.offset === undefined ? 0 : Number(query.offset);
+  if (!Number.isInteger(offset) || offset < 0) throw new VaultError("INVALID_APP_QUERY", "query.offset must be a non-negative integer.", 400);
   const rows = table.rows
     .filter((row) => Object.entries(where).every(([key, value]) => Object.is(row.values[key], value)))
-    .slice(0, limit);
+    .slice(offset, offset + limit);
   const response = { table: { id: attachment.id, name: attachment.name, kind: attachment.kind, schema: table.schema }, rows };
   if (new TextEncoder().encode(JSON.stringify(response)).byteLength > APP_RPC_MAX_RESPONSE_BYTES) {
     throw new VaultError("APP_QUERY_TOO_LARGE", "App query response exceeds 1 MiB. Use a narrower where filter or smaller limit.", 413);
@@ -371,10 +373,10 @@ export interface AppRpcInput {
   upsertKey?: unknown;
 }
 
-async function executeAppRpcUnlocked(input: AppRpcInput, ownerDataAccess = false): Promise<unknown> {
-  authenticateSession(input.path, input.sessionToken);
+async function executeAppRpcUnlocked(input: AppRpcInput, ownerDataAccess = false, serviceAccess = false): Promise<unknown> {
+  if (!serviceAccess) authenticateSession(input.path, input.sessionToken);
   const appManifest = await readAppManifest(input.path);
-  if (!ownerDataAccess && !appManifest.enabled) {
+  if (!ownerDataAccess && !serviceAccess && !appManifest.enabled) {
     throw new VaultError("APP_DISABLED", "This App is disabled. Enable it before accessing attached data.", 423);
   }
   if (!isAppRpcOperation(input.operation)) {
@@ -382,6 +384,9 @@ async function executeAppRpcUnlocked(input: AppRpcInput, ownerDataAccess = false
   }
   const operation: AppRpcOperation = input.operation;
   const attachment = await resolveAttachment(input.path, input.tableId);
+  if (appManifest.template?.id === "job-inbox" && attachment.id === "postings" && operation === "delete") {
+    throw new VaultError("JOB_RECORD_IMMUTABLE", "Job postings cannot be deleted; set a status instead.", 403);
+  }
   const current = await readAttachmentDocument(input.path, attachment);
 
   if (operation === "query") {
@@ -389,8 +394,8 @@ async function executeAppRpcUnlocked(input: AppRpcInput, ownerDataAccess = false
     if (!rawQuery || typeof rawQuery !== "object" || Array.isArray(rawQuery)) {
       throw new VaultError("INVALID_APP_QUERY", "query must be an object.", 400);
     }
-    const query = rawQuery as { where?: unknown; limit?: unknown };
-    const unsupportedQueryKeys = Object.keys(query).filter((key) => key !== "where" && key !== "limit");
+    const query = rawQuery as { where?: unknown; limit?: unknown; offset?: unknown };
+    const unsupportedQueryKeys = Object.keys(query).filter((key) => key !== "where" && key !== "limit" && key !== "offset");
     if (unsupportedQueryKeys.length > 0) {
       throw new VaultError("INVALID_APP_QUERY", `Unsupported query keys: ${unsupportedQueryKeys.join(", ")}`, 400);
     }
@@ -404,9 +409,11 @@ async function executeAppRpcUnlocked(input: AppRpcInput, ownerDataAccess = false
     if (!Number.isInteger(limit) || limit < 1 || limit > APP_QUERY_MAX_ROWS) {
       throw new VaultError("INVALID_APP_QUERY", `query.limit must be an integer from 1 to ${APP_QUERY_MAX_ROWS}.`, 400);
     }
+    const offset = query.offset === undefined ? 0 : Number(query.offset);
+    if (!Number.isInteger(offset) || offset < 0) throw new VaultError("INVALID_APP_QUERY", "query.offset must be a non-negative integer.", 400);
     const rows = current.rows.filter((row) =>
       Object.entries(where).every(([key, value]) => Object.is(row.values[key], value))
-    ).slice(0, limit);
+    ).slice(offset, offset + limit);
     const response = { table: { id: attachment.id, name: attachment.name, kind: attachment.kind, schema: current.schema }, rows };
     if (new TextEncoder().encode(JSON.stringify(response)).byteLength > APP_RPC_MAX_RESPONSE_BYTES) {
       throw new VaultError(
@@ -554,6 +561,14 @@ export async function executeOwnerAppDataMutation(input: AppRpcInput): Promise<u
     throw new VaultError("INVALID_APP_OPERATION", "Owner Data accepts add, update, or delete.", 400);
   }
   return withTableMutationLock(`app-runtime:${input.path}`, () => executeAppRpcUnlocked(input, true));
+}
+
+/** Trusted server-side intake and Promote mutations; callers must authorize the App template. */
+export async function executeServiceAppDataMutation(input: Omit<AppRpcInput, "sessionToken">): Promise<unknown> {
+  if (input.operation !== "add" && input.operation !== "update") {
+    throw new VaultError("INVALID_APP_OPERATION", "Service App data accepts add or update.", 400);
+  }
+  return withTableMutationLock(`app-runtime:${input.path}`, () => executeAppRpcUnlocked({ ...input, sessionToken: undefined }, false, true));
 }
 
 export async function setAppEnabled(pagePath: string, enabled: boolean): Promise<AppManifest> {
