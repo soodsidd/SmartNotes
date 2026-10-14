@@ -8,12 +8,16 @@ Fork photo #16 shows a bordered ribbon card under the format bar. It reuses
 `--foreground`, `--ring` (focus) and `--font-sans`. Grid mode, Data mode and
 Expand table are outlined pills. When pressed they take an `--accent` border
 over a 12% `--accent` tint, the same tint used for selected cells. New tokens:
-`--table-ribbon-font-size: 0.875rem` (tab and pill labels),
+`--table-ribbon-font-size` (retired in SN-308; controls are icon-only),
 `--table-ribbon-stats-font-size: 0.6875rem` (the
 `Count | Numbers | Sum | Average | Min | Max` line, tabular figures), and
 `--editor-table-expanded-max-width: 1200px` (Expand table). Mobile tabs and
 pills use the 44px touch target. In Data mode, number cells are right-aligned
 with tabular figures.
+
+## Table context menu and icon ribbon (SN-308)
+
+Ribbon controls are icon-only (lucide) with tooltips and `aria-label`s, separated by 1px `--border` dividers. New tokens: `--table-ribbon-button-size: 28px` (desktop icon button) and `--table-ribbon-icon-size: 16px`. Mobile buttons keep the 44px touch target; the mobile stats chip is a pill using `--surface`, `--border`, and `--accent` when expanded. The table context menu reuses the editor context-menu styles; Delete table uses `--destructive` text with a 10% `--destructive` hover tint, matching the comment popover's destructive button.
 
 ## Insert table and grid (SN-299)
 

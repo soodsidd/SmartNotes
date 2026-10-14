@@ -10,6 +10,21 @@ import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
 import { useEditorState } from "@tiptap/react";
 import {
+  ArrowDownUp,
+  ChevronDown,
+  Columns3,
+  Grid2x2,
+  Grid3x3,
+  Hash,
+  LayoutPanelTop,
+  type LucideIcon,
+  MoveHorizontal,
+  Rows3,
+  Sigma,
+  SquareDashedMousePointer,
+  Type,
+} from "lucide-react";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -96,10 +111,11 @@ async function pasteTsvFromClipboard(editor: Editor) {
   }
 }
 
-export const TABLE_RIBBON_TABS: { id: string; label: string; commands: RibbonCommand[] }[] = [
+export const TABLE_RIBBON_TABS: { id: string; label: string; icon: LucideIcon; commands: RibbonCommand[] }[] = [
   {
     id: "rows",
     label: "Rows",
+    icon: Rows3,
     commands: [
       chainCommand("row-insert-above", "Insert row above", "addRowBefore"),
       chainCommand("row-insert-below", "Insert row below", "addRowAfter"),
@@ -111,6 +127,7 @@ export const TABLE_RIBBON_TABS: { id: string; label: string; commands: RibbonCom
   {
     id: "columns",
     label: "Columns",
+    icon: Columns3,
     commands: [
       chainCommand("column-insert-left", "Insert column left", "addColumnBefore"),
       chainCommand("column-insert-right", "Insert column right", "addColumnAfter"),
@@ -125,6 +142,7 @@ export const TABLE_RIBBON_TABS: { id: string; label: string; commands: RibbonCom
   {
     id: "cells",
     label: "Cells",
+    icon: Grid2x2,
     commands: [
       chainCommand("cells-merge", "Merge cells", "mergeCells"),
       chainCommand("cells-split", "Split cell", "splitCell"),
@@ -135,6 +153,7 @@ export const TABLE_RIBBON_TABS: { id: string; label: string; commands: RibbonCom
   {
     id: "select",
     label: "Select",
+    icon: SquareDashedMousePointer,
     commands: [
       stateCommand("select-cell", "Select cell", selectCellsCommand("cell")),
       stateCommand("select-row", "Select row", selectCellsCommand("row")),
@@ -145,6 +164,7 @@ export const TABLE_RIBBON_TABS: { id: string; label: string; commands: RibbonCom
   {
     id: "format",
     label: "Format",
+    icon: Type,
     commands: [
       chainCommand("format-bold", "Bold", "toggleBold"),
       chainCommand("format-italic", "Italic", "toggleItalic"),
@@ -158,6 +178,7 @@ export const TABLE_RIBBON_TABS: { id: string; label: string; commands: RibbonCom
   {
     id: "layout",
     label: "Layout",
+    icon: LayoutPanelTop,
     commands: [
       chainCommand("layout-header-row", "Header row", "toggleHeaderRow"),
       chainCommand("layout-header-column", "Header column", "toggleHeaderColumn"),
@@ -168,6 +189,7 @@ export const TABLE_RIBBON_TABS: { id: string; label: string; commands: RibbonCom
   {
     id: "data",
     label: "Data",
+    icon: ArrowDownUp,
     commands: [
       stateCommand("data-sort-asc", "Sort A → Z", sortTableCommand("asc")),
       stateCommand("data-sort-desc", "Sort Z → A", sortTableCommand("desc")),
@@ -188,18 +210,25 @@ export const TABLE_RIBBON_TABS: { id: string; label: string; commands: RibbonCom
   },
 ];
 
-/** Fork photo #16 order: Rows · Columns · Cells · Select · Grid mode · Data mode · Format · Layout · Data · Expand table. */
-const RIBBON_ORDER: ({ tab: string } | { mode: TableModeAttr; label: string })[] = [
+/**
+ * Fork photo #16 order: Rows · Columns · Cells · Select · Grid mode · Data mode · Format · Layout · Data · Expand table.
+ * SN-308: icon-only controls with dividers between the structure, mode, format, and view groups.
+ */
+type RibbonEntry = { tab: string } | { mode: TableModeAttr; label: string; icon: LucideIcon } | { divider: string };
+const RIBBON_ORDER: RibbonEntry[] = [
   { tab: "rows" },
   { tab: "columns" },
   { tab: "cells" },
   { tab: "select" },
-  { mode: "gridMode", label: "Grid mode" },
-  { mode: "dataMode", label: "Data mode" },
+  { divider: "modes" },
+  { mode: "gridMode", label: "Grid mode", icon: Grid3x3 },
+  { mode: "dataMode", label: "Data mode", icon: Hash },
+  { divider: "format" },
   { tab: "format" },
   { tab: "layout" },
   { tab: "data" },
-  { mode: "expanded", label: "Expand table" },
+  { divider: "view" },
+  { mode: "expanded", label: "Expand table", icon: MoveHorizontal },
 ];
 
 const MODE_TITLES: Record<TableModeAttr, string> = {
@@ -208,15 +237,29 @@ const MODE_TITLES: Record<TableModeAttr, string> = {
   expanded: "Expand table: show this table wider than the page column",
 };
 
-function RibbonTab({ editor, tab, testPrefix }: { editor: Editor; tab: (typeof TABLE_RIBBON_TABS)[number]; testPrefix: string }) {
+function RibbonTab({
+  editor,
+  tab,
+  testPrefix,
+  mobile,
+}: {
+  editor: Editor;
+  tab: (typeof TABLE_RIBBON_TABS)[number];
+  testPrefix: string;
+  mobile: boolean;
+}) {
   const [open, setOpen] = React.useState(false);
+  const Icon = tab.icon;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         className="table-ribbon__tab"
         data-testid={`${testPrefix}-tab-${tab.id}`}
+        aria-label={tab.label}
+        title={tab.label}
       >
-        <span>{tab.label}</span>
+        <Icon aria-hidden="true" />
+        {mobile ? null : <ChevronDown className="table-ribbon__caret" aria-hidden="true" />}
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-52" data-testid={`${testPrefix}-menu-${tab.id}`} finalFocus={false}>
         {open ? tab.commands.map((command) => (
@@ -278,6 +321,7 @@ function editorScrollArea(editor: Editor): HTMLElement | null {
 }
 
 export function TableRibbon({ editor, mobile = false }: { editor: Editor | null; mobile?: boolean }) {
+  const [statsOpen, setStatsOpen] = React.useState(false);
   const view = useEditorState({
     editor,
     selector: ({ editor: current }) => {
@@ -331,7 +375,7 @@ export function TableRibbon({ editor, mobile = false }: { editor: Editor | null;
   const testPrefix = mobile ? "table-ribbon-mobile" : "table-ribbon";
   return (
     <div
-      className={mobile ? "table-ribbon table-ribbon--mobile md:hidden" : "table-ribbon hidden md:block"}
+      className={mobile ? "table-ribbon table-ribbon--mobile" : "table-ribbon table-ribbon--desktop"}
       ref={ribbonRef}
       data-testid={testPrefix}
       role="toolbar"
@@ -339,30 +383,59 @@ export function TableRibbon({ editor, mobile = false }: { editor: Editor | null;
     >
       <div className="table-ribbon__tabs">
         {RIBBON_ORDER.map((entry) => {
+          if ("divider" in entry) {
+            return <span key={`divider-${entry.divider}`} className="table-ribbon__divider" role="separator" aria-hidden="true" />;
+          }
           if ("tab" in entry) {
             const tab = TABLE_RIBBON_TABS.find((candidate) => candidate.id === entry.tab)!;
-            return <RibbonTab key={tab.id} editor={editor} tab={tab} testPrefix={testPrefix} />;
+            return <RibbonTab key={tab.id} editor={editor} tab={tab} testPrefix={testPrefix} mobile={mobile} />;
           }
           const modeOn = shown[entry.mode];
+          const Icon = entry.icon;
           return (
             <button
               key={entry.mode}
               type="button"
               className="table-ribbon__pill"
               aria-pressed={modeOn}
+              aria-label={entry.label}
               title={MODE_TITLES[entry.mode]}
               data-testid={`${testPrefix}-mode-${entry.mode}`}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => setTableModeCommand(entry.mode, !modeOn)(editor.state, editor.view.dispatch)}
             >
-              <span>{entry.label}</span>
+              <Icon aria-hidden="true" />
             </button>
           );
         })}
       </div>
-      <div className="table-ribbon__stats" data-testid={`${testPrefix}-stats`} aria-live="polite">
-        {shown.stats}
-      </div>
+      {mobile ? (
+        <button
+          type="button"
+          className="table-ribbon__stats-chip"
+          aria-expanded={statsOpen}
+          aria-label={statsOpen ? "Hide selection stats" : "Show selection stats"}
+          data-testid={`${testPrefix}-stats-toggle`}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => setStatsOpen((open) => !open)}
+        >
+          <Sigma aria-hidden="true" />
+          <span>{shortSum(shown.stats)}</span>
+        </button>
+      ) : null}
+      {!mobile || statsOpen ? (
+        <div className="table-ribbon__stats" data-testid={`${testPrefix}-stats`} aria-live="polite">
+          {shown.stats}
+        </div>
+      ) : null}
     </div>
   );
+}
+
+/** Compact chip text for the mobile Σ toggle: the selection's Sum, else its Count. */
+export function shortSum(stats: string): string {
+  const sum = /Sum:\s*([^|]+)/.exec(stats)?.[1]?.trim();
+  if (sum && sum !== "-") return sum;
+  const count = /Count:\s*([^|]+)/.exec(stats)?.[1]?.trim();
+  return count ?? "";
 }

@@ -777,43 +777,54 @@ body.page-print-active .floating-text-box__resize { display: none; }
 
 /* SN-278: table ribbon + selection stats (fork photo #16) */
 .table-ribbon {
+  display: flex;
   flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
   margin: 6px 12px 0;
-  padding: 4px 8px 6px;
+  padding: 3px 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
 }
 .table-ribbon__tabs {
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   overflow-x: auto;
   white-space: nowrap;
   scrollbar-width: none;
 }
 .table-ribbon__tabs::-webkit-scrollbar { display: none; }
+.table-ribbon__divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border);
+}
+/* SN-308: icon-only controls; names live in aria-label + tooltip. */
 .table-ribbon__tab,
 .table-ribbon__pill {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
-  min-height: 30px;
-  padding: 2px 10px;
+  justify-content: center;
+  gap: 1px;
+  min-width: var(--table-ribbon-button-size);
+  height: var(--table-ribbon-button-size);
+  padding: 0 4px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--secondary-foreground);
-  font-family: var(--font-sans);
-  font-size: var(--table-ribbon-font-size);
-  line-height: 1.2;
   cursor: pointer;
 }
-.table-ribbon__pill {
-  border-color: var(--border);
-  background: var(--surface);
-  box-shadow: 0 1px 1px color-mix(in srgb, var(--foreground) 4%, transparent);
-}
+.table-ribbon__tab svg,
+.table-ribbon__pill svg { width: var(--table-ribbon-icon-size); height: var(--table-ribbon-icon-size); }
+.table-ribbon__tab .table-ribbon__caret { width: 10px; height: 10px; opacity: 0.6; }
 .table-ribbon__tab:hover,
 .table-ribbon__tab[data-popup-open],
 .table-ribbon__pill:hover { background: var(--secondary); color: var(--foreground); }
@@ -823,9 +834,12 @@ body.page-print-active .floating-text-box__resize { display: none; }
   color: var(--foreground);
 }
 .table-ribbon__tab:focus-visible,
-.table-ribbon__pill:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.table-ribbon__pill:focus-visible,
+.table-ribbon__stats-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .table-ribbon__stats {
-  padding: 2px 10px 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0 4px;
   color: var(--secondary-foreground);
   font-family: var(--font-sans);
   font-size: var(--table-ribbon-stats-font-size);
@@ -834,8 +848,42 @@ body.page-print-active .floating-text-box__resize { display: none; }
   overflow-x: auto;
   scrollbar-width: none;
 }
+.table-ribbon__stats-chip {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+  height: var(--table-ribbon-button-size);
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--secondary-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--table-ribbon-stats-font-size);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.table-ribbon__stats-chip svg { width: 14px; height: 14px; }
+.table-ribbon__stats-chip[aria-expanded="true"] { border-color: var(--accent); color: var(--foreground); }
+/* Visibility is decided here, not by Tailwind md: utilities: these unlayered rules would override them. */
+@media (max-width: 767.98px) { .table-ribbon--desktop { display: none; } }
+@media (min-width: 768px) { .table-ribbon--mobile { display: none; } }
+.table-ribbon--mobile {
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 8px 0;
+  padding: 2px 4px;
+}
 .table-ribbon--mobile .table-ribbon__tab,
-.table-ribbon--mobile .table-ribbon__pill { min-height: 44px; }
+.table-ribbon--mobile .table-ribbon__pill { min-width: 44px; height: 44px; }
+.table-ribbon--mobile .table-ribbon__stats-chip { height: 36px; }
+/* Icons scroll sideways so the Σ chip stays on the same row. */
+.table-ribbon--mobile .table-ribbon__tabs { flex: 1 1 0; }
+.table-ribbon--mobile .table-ribbon__stats {
+  flex-basis: 100%;
+  padding: 0 6px 4px;
+}
 
 /* Link */
 .editor-link {
@@ -2379,6 +2427,15 @@ mark {
 }
 .editor-context-menu {
   min-width: 188px;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.comment-context-item--destructive {
+  color: var(--destructive);
+}
+.comment-context-item--destructive:hover {
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
 }
 .comment-context-hint {
   font-size: 11px;

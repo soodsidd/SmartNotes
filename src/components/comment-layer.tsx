@@ -4,7 +4,7 @@ import * as React from "react";
 import type { Editor } from "@tiptap/react";
 import { cn } from "@/lib/utils";
 import type { PageComment } from "@/lib/comment-types";
-import { buildEditorContextMenuActions } from "@/lib/editor-context-menu";
+import { buildEditorContextMenuActions, type EditorContextMenuAction } from "@/lib/editor-context-menu";
 
 // ─── Context menu ─────────────────────────────────────────────────────────────
 
@@ -23,6 +23,8 @@ export interface EditorContextMenuProps {
   onSelectAll: () => void;
   onOpenLink: () => void;
   onPromotePdf?: () => void;
+  /** SN-308: when set (right-click inside a table), these groups replace the text-editing groups. */
+  tableGroups?: EditorContextMenuAction[][] | null;
   onClose: () => void;
 }
 
@@ -57,9 +59,11 @@ export function EditorContextMenu({
   onSelectAll,
   onOpenLink,
   onPromotePdf,
+  tableGroups,
   onClose,
 }: EditorContextMenuProps) {
   const menuRef = React.useRef<HTMLDivElement>(null);
+  const [position, setPosition] = React.useState({ left: x, top: y });
   const actions = React.useMemo(
     () =>
       buildEditorContextMenuActions(editor, {
@@ -76,11 +80,29 @@ export function EditorContextMenu({
       }),
     [canAddComment, canCopy, canPaste, canPromotePdf, editor, onAddComment, onCopy, onPaste, onSelectAll, onOpenLink, onPromotePdf]
   );
-  const groups = mobile ? MOBILE_CONTEXT_MENU_GROUPS : CONTEXT_MENU_GROUPS;
   const actionMap = React.useMemo(
     () => new Map(actions.map((action) => [action.id, action])),
     [actions]
   );
+  const renderedGroups: EditorContextMenuAction[][] = React.useMemo(() => {
+    if (tableGroups && tableGroups.length > 0) return tableGroups;
+    const ids = mobile ? MOBILE_CONTEXT_MENU_GROUPS : CONTEXT_MENU_GROUPS;
+    return ids
+      .map((group) => group.map((id) => actionMap.get(id)).filter((a): a is EditorContextMenuAction => Boolean(a)))
+      .filter((group) => group.length > 0);
+  }, [actionMap, mobile, tableGroups]);
+
+  // Keep the whole menu on screen (long table menus, right-clicks near an edge).
+  React.useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const margin = 8;
+    const rect = menu.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(x, window.innerWidth - rect.width - margin));
+    const fitsBelow = y + rect.height + margin <= window.innerHeight;
+    const top = fitsBelow ? y : Math.max(margin, Math.min(y - rect.height, window.innerHeight - rect.height - margin));
+    setPosition((prev) => (prev.left === left && prev.top === top ? prev : { left, top }));
+  }, [x, y, renderedGroups]);
 
   React.useEffect(() => {
     function handlePointerDown(e: PointerEvent) {
@@ -104,15 +126,14 @@ export function EditorContextMenu({
       ref={menuRef}
       role="menu"
       className="comment-context-menu editor-context-menu"
-      style={{ left: x, top: y }}
+      style={{ left: position.left, top: position.top }}
       data-testid="editor-context-menu"
+      data-menu-kind={tableGroups && tableGroups.length > 0 ? "table" : "text"}
     >
-      {groups.map((group, groupIndex) => (
-        <React.Fragment key={group.join("-")}>
+      {renderedGroups.map((group, groupIndex) => (
+        <React.Fragment key={group.map((action) => action.id).join("-")}>
           {groupIndex > 0 ? <div className="comment-context-separator" role="separator" /> : null}
-          {group.map((actionId) => {
-            const action = actionMap.get(actionId);
-            if (!action) return null;
+          {group.map((action) => {
             return (
               <button
                 key={action.id}
@@ -121,7 +142,8 @@ export function EditorContextMenu({
                 className={cn(
                   "comment-context-item",
                   action.active && "comment-context-item--active",
-                  action.disabled && "comment-context-item--disabled"
+                  action.disabled && "comment-context-item--disabled",
+                  action.destructive && "comment-context-item--destructive"
                 )}
                 onClick={() => {
                   if (action.disabled) return;

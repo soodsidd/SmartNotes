@@ -7,6 +7,8 @@ export interface EditorContextMenuAction {
   disabled?: boolean;
   hint?: string;
   active?: boolean;
+  /** Destructive action (e.g. Delete table): rendered in the danger color. */
+  destructive?: boolean;
   run: () => void;
 }
 
