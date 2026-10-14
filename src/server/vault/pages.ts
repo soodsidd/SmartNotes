@@ -2438,90 +2438,155 @@ export async function movePage(pagePath: string, targetSectionPath: string) {
     throw new VaultError("SECTION_NOT_FOUND", `Target section not found: ${targetRelPath}`, 404);
   }
 
-  const fileName = path.basename(srcAbsPath);
-  const destAbsPath = path.join(targetAbsPath, fileName);
-  const destRelPath = toVaultRelativePath(path.posix.join(targetRelPath, fileName));
+  const sourceSectionPath = path.posix.dirname(srcRelPath);
+  const sourceSectionAbsPath = path.dirname(srcAbsPath);
+  const destRelPath = toVaultRelativePath(path.posix.join(targetRelPath, path.basename(srcAbsPath)));
 
   if (destRelPath === srcRelPath) {
     // Already in the target section, nothing to do.
     return buildPageDocument(srcRelPath, source);
   }
 
-  const collision = await fs.stat(destAbsPath).then(() => true).catch(() => false);
-  if (collision) {
-    throw new VaultError("PAGE_EXISTS", `A page named "${fileName}" already exists in the target section.`, 409);
+  // Page IDs are paths. Find descendants in the same physical container before
+  // moving anything, then remap their parent IDs and the container order files.
+  const sourcePages = await readSectionPages(sourceSectionAbsPath, sourceSectionPath, false);
+  const movedPaths = new Set([srcRelPath]);
+  let previousSize = 0;
+  while (previousSize !== movedPaths.size) {
+    previousSize = movedPaths.size;
+    for (const page of sourcePages) {
+      if (page.parentId && movedPaths.has(page.parentId)) movedPaths.add(page.path);
+    }
   }
+  const pagesToMove = sourcePages.filter((page) => movedPaths.has(page.path));
+  const targetPages = await readSectionPages(targetAbsPath, targetRelPath, false);
+  const pathMap = new Map(pagesToMove.map((page) => [
+    page.path,
+    toVaultRelativePath(path.posix.join(targetRelPath, path.posix.basename(page.path))),
+  ]));
+  type MoveArtifact = { source: string; destination: string; directory: boolean; content?: string };
+  const artifacts: MoveArtifact[] = [];
+  const exists = async (filePath: string) => Boolean(await fs.stat(filePath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }));
+  const addArtifact = async (sourcePath: string, destinationPath: string, content?: string) => {
+    const stat = await fs.stat(sourcePath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (!stat) return;
+    if (await exists(destinationPath)) {
+      throw new VaultError("PAGE_EXISTS", `Move destination already exists: ${destinationPath}`, 409);
+    }
+    artifacts.push({ source: sourcePath, destination: destinationPath, directory: stat.isDirectory(), content });
+  };
 
-  // Move assets directory if it exists.
-  const srcAssetsAbsPath = resolveVaultPath(siblingAssetDirectory(srcRelPath), "section").absolutePath;
-  const destAssetsRelPath = siblingAssetDirectory(destRelPath);
-  const destAssetsAbsPath = resolveVaultPath(destAssetsRelPath, "section").absolutePath;
-  const hasAssets = await fs.stat(srcAssetsAbsPath).then((s) => s.isDirectory()).catch(() => false);
-  if (hasAssets) {
-    const destAssetsCollision = await fs.stat(destAssetsAbsPath).then(() => true).catch(() => false);
-    if (destAssetsCollision) {
-      throw new VaultError("ASSET_COLLISION", "Cannot move page because the destination asset folder already exists.", 409);
+  let movedRootSource = source;
+  for (const summary of pagesToMove) {
+    const oldPath = summary.path;
+    const newPath = pathMap.get(oldPath)!;
+    const oldAbsolute = resolveVaultPath(oldPath, "page").absolutePath;
+    const newAbsolute = resolveVaultPath(newPath, "page").absolutePath;
+    const pageSource = oldPath === srcRelPath ? source : (await readPageSource(oldPath)).source;
+    const page = buildPageDocument(oldPath, pageSource);
+    const newParentId = oldPath === srcRelPath ? null : pathMap.get(summary.parentId ?? "") ?? null;
+    const oldAssetsUrl = `/vault/${siblingAssetDirectory(oldPath).split("/").map(encodeURIComponent).join("/")}/`;
+    const newAssetsUrl = `/vault/${siblingAssetDirectory(newPath).split("/").map(encodeURIComponent).join("/")}/`;
+    let nextSource = pageSource.replaceAll(oldAssetsUrl, newAssetsUrl);
+    if (newParentId !== (page.metadata.parent_id ?? null)) {
+      const metadata = { ...page.metadata };
+      if (newParentId) metadata.parent_id = newParentId;
+      else delete metadata.parent_id;
+      nextSource = serializeFrontmatterDocument(metadata, parseFrontmatterDocument(nextSource).body);
+    }
+    if (oldPath === srcRelPath) movedRootSource = nextSource;
+    await addArtifact(oldAbsolute, newAbsolute, nextSource);
+    for (const suffix of [
+      ".ink.json", ".annotations.json", ".companion.json", ".ref.json", ".log.json",
+      ".form.json", ".design-link.json", SPREADSHEET_SIDECAR_EXTENSION,
+      ...((await listAppDataSidecars(oldAbsolute)).map((name) => name.slice(path.basename(oldAbsolute, ".html").length))),
+    ]) {
+      await addArtifact(oldAbsolute.replace(/\.html$/i, suffix), newAbsolute.replace(/\.html$/i, suffix));
+    }
+    await addArtifact(resolveVaultPath(siblingAssetDirectory(oldPath), "section").absolutePath,
+      resolveVaultPath(siblingAssetDirectory(newPath), "section").absolutePath);
+    await addArtifact(oldAbsolute.replace(/\.html$/i, ".jupyter"), newAbsolute.replace(/\.html$/i, ".jupyter"));
+    const stem = path.posix.basename(oldPath, ".html");
+    const versionKinds = versionedNoteType(page.metadata) === "ink" ? ["", ".ink"]
+      : versionedNoteType(page.metadata) === "spreadsheet" ? ["", ".spreadsheet"] : ["", ".annotations"];
+    for (const kind of versionKinds) {
+      await addArtifact(
+        resolveVaultPath(path.posix.join(sourceSectionPath, ".versions", stem + kind), "section").absolutePath,
+        resolveVaultPath(path.posix.join(targetRelPath, ".versions", stem + kind), "section").absolutePath
+      );
     }
   }
 
-  const page = buildPageDocument(srcRelPath, source);
-  await stopJupyterSessionForPageIfNeeded(page);
-  const movedSidecars: Array<
-    ".ink.json" | ".annotations.json" | ".companion.json" | ".ref.json" | ".log.json" | ".form.json" | ".spreadsheet.json"
-  > = [];
-  let wroteDestination = false;
-  let movedAssets = false;
-  let movedJupyter = false;
-  let movedVersions = false;
-  let movedAppData: string[] = [];
+  const orderPaths = [path.join(sourceSectionAbsPath, PAGE_ORDER_FILE), path.join(targetAbsPath, PAGE_ORDER_FILE)];
+  const originalOrders = await Promise.all(orderPaths.map(async (orderPath) =>
+    fs.readFile(orderPath, "utf8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    })
+  ));
+  const sourceOrder = sourcePages.filter((page) => !movedPaths.has(page.path)).map((page) => page.path);
+  const targetOrder = [...targetPages.map((page) => page.path), ...pagesToMove.map((page) => pathMap.get(page.path)!)];
+  for (const summary of pagesToMove) {
+    await stopJupyterSessionForPageIfNeeded(buildPageDocument(
+      summary.path,
+      (await readPageSource(summary.path)).source
+    ));
+  }
+  const backupDirectory = path.join(sourceSectionAbsPath, `.sn-move-${randomUUID()}`);
+  const staged: Array<{ artifact: MoveArtifact; backup: string }> = [];
+  const copied: MoveArtifact[] = [];
+  let orderTouched = false;
   try {
-    await writeAtomically(destAbsPath, source);
-    wroteDestination = true;
-    if (hasAssets) {
-      await fs.rename(srcAssetsAbsPath, destAssetsAbsPath);
-      movedAssets = true;
+    await fs.mkdir(backupDirectory);
+    for (const artifact of artifacts) {
+      copied.push(artifact); // Include partial copies in rollback.
+      await fs.mkdir(path.dirname(artifact.destination), { recursive: true });
+      if (artifact.content !== undefined) await writeAtomically(artifact.destination, artifact.content);
+      else if (artifact.directory) await fs.cp(artifact.source, artifact.destination, { recursive: true, errorOnExist: true, force: false });
+      else await fs.copyFile(artifact.source, artifact.destination, fs.constants.COPYFILE_EXCL);
     }
-    for (const extension of [
-      ".ink.json",
-      ".annotations.json",
-      ".companion.json",
-      ".ref.json",
-      ".log.json",
-      ".form.json",
-      SPREADSHEET_SIDECAR_EXTENSION,
-    ] as const) {
-      if (await moveSidecarIfPresent(srcAbsPath, destAbsPath, extension)) movedSidecars.push(extension);
+    for (const [index, artifact] of artifacts.entries()) {
+      const backup = path.join(backupDirectory, String(index));
+      await fs.rename(artifact.source, backup);
+      staged.push({ artifact, backup });
     }
-    movedAppData = await moveAppDataSidecars(srcAbsPath, destAbsPath);
-    movedJupyter = await moveJupyterDirIfPresent(srcAbsPath, destAbsPath);
-    await movePageVersions(srcRelPath, destRelPath, versionedNoteType(page.metadata));
-    movedVersions = true;
-    await fs.rm(srcAbsPath, { force: false });
+    orderTouched = true;
+    await writeSectionPageOrder(sourceSectionAbsPath, sourceOrder);
+    await writeSectionPageOrder(targetAbsPath, targetOrder);
   } catch (error) {
-    if (movedVersions) {
-      await movePageVersions(destRelPath, srcRelPath, versionedNoteType(page.metadata)).catch(() => undefined);
+    const rollbackErrors: unknown[] = [];
+    if (orderTouched) {
+      for (const [index, orderPath] of orderPaths.entries()) {
+        try {
+          if (originalOrders[index] === null) await fs.rm(orderPath, { force: true });
+          else await writeAtomically(orderPath, originalOrders[index]!);
+        } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+      }
     }
-    if (movedJupyter) {
-      await restoreMovedDirectory(
-        destAbsPath.replace(/\.html$/i, ".jupyter"),
-        srcAbsPath.replace(/\.html$/i, ".jupyter")
-      ).catch(() => undefined);
+    for (const { artifact, backup } of staged.reverse()) {
+      try {
+        await fs.rename(backup, artifact.source);
+      } catch (rollbackError) { rollbackErrors.push(rollbackError); }
     }
-    if (movedAppData.length > 0) {
-      await restoreMovedAppDataSidecars(srcAbsPath, destAbsPath, movedAppData).catch(() => undefined);
+    for (const artifact of copied.reverse()) {
+      try { await fs.rm(artifact.destination, { recursive: artifact.directory, force: true }); }
+      catch (rollbackError) { rollbackErrors.push(rollbackError); }
     }
-    for (const extension of [...movedSidecars].reverse()) {
-      await moveSidecarIfPresent(destAbsPath, srcAbsPath, extension).catch(() => undefined);
-    }
-    if (movedAssets) {
-      await restoreMovedDirectory(destAssetsAbsPath, srcAssetsAbsPath).catch(() => undefined);
-    }
-    if (wroteDestination) await fs.rm(destAbsPath, { force: true }).catch(() => undefined);
+    if (rollbackErrors.length === 0) await fs.rm(backupDirectory, { recursive: true, force: true });
     invalidateVaultCache();
+    if (rollbackErrors.length) throw new AggregateError([error, ...rollbackErrors], `Page move rollback failed; backup retained at ${backupDirectory}`);
     throw error;
   }
+  // The backup is kept if cleanup fails; the committed tree still has every page.
+  await fs.rm(backupDirectory, { recursive: true, force: true }).catch(() => undefined);
   invalidateVaultCache();
-  return buildPageDocument(destRelPath, source);
+  return buildPageDocument(destRelPath, movedRootSource);
 }
 
 // ---------------------------------------------------------------------------

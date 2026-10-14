@@ -797,6 +797,8 @@ Archived notebooks are absent from the tree and the picker primary list, and rem
 
 Key notes (SN-229) remain page metadata shown as a gem beside the title. See **Key notes (SN-229)**.
 
+**Moving nested pages (SN-307).** A section or notebook move carries the selected page and every descendant in its current container. Child `parent_id` paths are rewritten to their new locations, the selected page becomes a root when its former parent stays behind, and both containers retain their visible page order in `_page-order.json`. The move copies page files and companions (assets, sidecars, Jupyter folders, app data, and versions), stages originals as a temporary backup, then commits the new order. On a failure, it restores the originals and removes destination copies. Embedded `/vault/` asset links on moved pages are rewritten to their new asset folders. Tree dragging within a container moves a page and its descendants as one ordered block and rejects placements that exceed the nesting depth cap.
+
 ### Key notes (SN-229)
 
 **Plain English:** Any page in the notebook tree can be marked as a key note. A gemstone icon sits beside its title, and the notebook header's **Key notes** lens gathers marked pages across all open notebooks, grouped by notebook.

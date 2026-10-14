@@ -269,7 +269,16 @@ export function resolveSidebarPageDrop(input: {
     }
   }
 
-  const filtered = pages.map((page) => page.path).filter((path) => path !== sourcePath);
+  const sourceDepth = computePageDepthInSection(sourcePath, pages);
+  const subtree = pages.filter((page) =>
+    page.path === sourcePath || isPageDescendantOf(pages, page.path, sourcePath)
+  ).map((page) => page.path);
+  const nextDepth = nextParentId ? computePageDepthInSection(nextParentId, pages) + 1 : 0;
+  if (subtree.some((path) => nextDepth + computePageDepthInSection(path, pages) - sourceDepth > 2)) {
+    return null;
+  }
+  const subtreeSet = new Set(subtree);
+  const filtered = pages.map((page) => page.path).filter((path) => !subtreeSet.has(path));
   const targetIdx = filtered.indexOf(targetPath);
   if (targetIdx < 0) {
     return null;
@@ -279,7 +288,7 @@ export function resolveSidebarPageDrop(input: {
   if (intent === "nest" || dropSide === "after") {
     insertAt = targetIdx + 1;
   }
-  filtered.splice(insertAt, 0, sourcePath);
+  filtered.splice(insertAt, 0, ...subtree);
 
   return { parentId: nextParentId, orderedIds: filtered };
 }

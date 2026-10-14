@@ -17,6 +17,7 @@ import {
   deleteSection,
   ensureInboxSection,
   movePage,
+  readPage,
   readVaultTree,
   renameNotebook,
   renameSection,
@@ -269,6 +270,92 @@ describe("section page order", () => {
 // ---------------------------------------------------------------------------
 
 describe("page move", () => {
+  it("moves the complete nested tree, its order, and child asset links across notebooks", async () => {
+    await withPopulatedVault(async (vaultRoot) => {
+      const first = await createPage({ sectionPath: "NbA/S1", title: "First", parentId: "NbA/S1/seed.html" });
+      const second = await createPage({ sectionPath: "NbA/S1", title: "Second", parentId: "NbA/S1/seed.html" });
+      const grandchild = await createPage({ sectionPath: "NbA/S1", title: "Grandchild", parentId: first.path });
+      const other = await createPage({ sectionPath: "NbA/S1", title: "Other" });
+      const target = await createPage({ sectionPath: "NbB/S3", title: "Already There" });
+      await reorderSectionPages("NbA/S1", [other.path, "NbA/S1/seed.html", second.path, first.path, grandchild.path]);
+      await reorderSectionPages("NbB/S3", [target.path]);
+      const assetDir = path.join(vaultRoot, "NbA", "S1", "first.assets");
+      await fs.mkdir(assetDir);
+      await fs.writeFile(path.join(assetDir, "image.png"), "image");
+      await fs.appendFile(path.join(vaultRoot, "NbA", "S1", "first.html"),
+        '<img src="/vault/NbA/S1/first.assets/image.png">');
+
+      await movePage("NbA/S1/seed.html", "NbB/S3");
+      const movedPaths = ["seed.html", "second.html", "first.html", "grandchild.html"]
+        .map((name) => `NbB/S3/${name}`);
+      const tree = await readVaultTree();
+      const source = tree.tree.find((notebook) => notebook.path === "NbA")!.sections.find((section) => section.path === "NbA/S1")!;
+      const destination = tree.tree.find((notebook) => notebook.path === "NbB")!.sections.find((section) => section.path === "NbB/S3")!;
+      expect(source.pages.map((page) => page.path)).toEqual([other.path]);
+      expect(destination.pages.map((page) => page.path)).toEqual([target.path, ...movedPaths]);
+      expect(destination.pages.map((page) => page.parentId)).toEqual([
+        null, null, "NbB/S3/seed.html", "NbB/S3/seed.html", "NbB/S3/first.html",
+      ]);
+      for (const movedPath of movedPaths) expect((await readPage(movedPath)).path).toBe(movedPath);
+      expect((await readPage("NbB/S3/first.html")).body).toContain("/vault/NbB/S3/first.assets/image.png");
+      expect(await fs.readFile(path.join(vaultRoot, "NbB", "S3", "first.assets", "image.png"), "utf8")).toBe("image");
+    });
+  });
+
+  it("rolls back every page, companion, and order file when staging a descendant fails", async () => {
+    await withPopulatedVault(async (vaultRoot) => {
+      const child = await createPage({ sectionPath: "NbA/S1", title: "Child", parentId: "NbA/S1/seed.html" });
+      await reorderSectionPages("NbA/S1", ["NbA/S1/seed.html", child.path]);
+      const sourceOrderPath = path.join(vaultRoot, "NbA", "S1", "_page-order.json");
+      const originalOrder = await fs.readFile(sourceOrderPath, "utf8");
+      const childAbsolute = path.join(vaultRoot, "NbA", "S1", "child.html");
+      const companion = path.join(vaultRoot, "NbA", "S1", "seed.companion.json");
+      await fs.writeFile(companion, '{"conversation":[]}');
+      const rename = fs.rename.bind(fs);
+      const spy = jest.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+        if (String(from) === childAbsolute && String(to).includes(".sn-move-")) {
+          throw new Error("injected staging failure");
+        }
+        return rename(from, to);
+      });
+      try {
+        await expect(movePage("NbA/S1/seed.html", "NbA/S2")).rejects.toThrow("injected staging failure");
+      } finally {
+        spy.mockRestore();
+      }
+      expect(await fs.readFile(sourceOrderPath, "utf8")).toBe(originalOrder);
+      expect((await readPage("NbA/S1/seed.html")).path).toBe("NbA/S1/seed.html");
+      expect((await readPage(child.path)).metadata.parent_id).toBe("NbA/S1/seed.html");
+      expect(await fs.readFile(companion, "utf8")).toBe('{"conversation":[]}');
+      await expect(fs.stat(path.join(vaultRoot, "NbA", "S2", "seed.html"))).rejects.toThrow();
+      await expect(fs.stat(path.join(vaultRoot, "NbA", "S2", "child.html"))).rejects.toThrow();
+      await expect(fs.stat(path.join(vaultRoot, "NbA", "S2", "seed.companion.json"))).rejects.toThrow();
+      expect((await fs.readdir(path.join(vaultRoot, "NbA", "S1"))).some((name) => name.startsWith(".sn-move-"))).toBe(false);
+    });
+  });
+
+  it("makes a moved child a root while keeping its descendants attached", async () => {
+    await withPopulatedVault(async () => {
+      const child = await createPage({ sectionPath: "NbA/S1", title: "Child", parentId: "NbA/S1/seed.html" });
+      const grandchild = await createPage({ sectionPath: "NbA/S1", title: "Grandchild", parentId: child.path });
+      await movePage(child.path, "NbA/S2");
+      expect((await readPage("NbA/S2/child.html")).metadata.parent_id).toBeUndefined();
+      expect((await readPage("NbA/S2/grandchild.html")).metadata.parent_id).toBe("NbA/S2/child.html");
+      expect((await readPage("NbA/S1/seed.html")).path).toBe("NbA/S1/seed.html");
+      await expect(readPage(grandchild.path)).rejects.toThrow("not found");
+    });
+  });
+
+  it("rejects a descendant collision before moving any page", async () => {
+    await withPopulatedVault(async (vaultRoot) => {
+      const child = await createPage({ sectionPath: "NbA/S1", title: "Child", parentId: "NbA/S1/seed.html" });
+      await fs.writeFile(path.join(vaultRoot, "NbA", "S2", "child.html"), "collision");
+      await expect(movePage("NbA/S1/seed.html", "NbA/S2")).rejects.toThrow("already exists");
+      expect((await readPage("NbA/S1/seed.html")).path).toBe("NbA/S1/seed.html");
+      expect((await readPage(child.path)).metadata.parent_id).toBe("NbA/S1/seed.html");
+      await expect(fs.stat(path.join(vaultRoot, "NbA", "S2", "seed.html"))).rejects.toThrow();
+    });
+  });
   it("moves a page to another section", async () => {
     await withPopulatedVault(async (vaultRoot) => {
       const moved = await movePage("NbA/S1/seed.html", "NbA/S2");

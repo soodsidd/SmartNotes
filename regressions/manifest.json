@@ -4247,6 +4247,31 @@
       "whenToRun": "Pre-merge when touching the related feature area."
     },
     {
+      "id": "unit-sn-307-subtree-move",
+      "name": "SN-307 page subtree move and tree drag",
+      "description": "Jest: subtree move, order, asset links, rollback, and drag placement.",
+      "intent": "Moving a page keeps its descendants together and restores every file if a move fails.",
+      "whenToRun": "Pre-merge when changing page moves, nesting, or tree drag order.",
+      "failureMeaning": "A move may split a page tree, break its order or assets, or leave partial files after failure.",
+      "appType": "node",
+      "command": "npm test -- tests/page-tree.test.ts tests/vault-notebook-section.test.ts -t \"sidebar page drop resolution|page move\"",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "vault", "targeted"],
+      "feature": "vault",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-307",
+      "addedAt": "2026-10-14",
+      "sourceFiles": [
+        { "path": "tests/page-tree.test.ts" },
+        { "path": "tests/vault-notebook-section.test.ts" }
+      ]
+    },
+    {
       "id": "unit-vault-notebook-section",
       "name": "Vault Notebook Section",
       "description": "Jest: tests/vault-notebook-section.test.ts",
