@@ -1899,7 +1899,8 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
     if (isDesignPage) {
       lines.push(
         `- Visual render (design artifact + ink): ${vaultToolPortPrefix}node scripts/vault-tool.mjs ur --path "${notePath}" --viewport desktop → Read the returned absoluteDiskPath PNG. Or POST { "tool": "ui_render", "args": { "path": "${notePath}", "viewport": "desktop" } } to apiBaseUrl/api/agent/vault. Do NOT use WebFetch→localhost (often blocked) and do NOT call page_render for design pages.`,
-        `- Shell one-liner: ${vaultToolPortPrefix}node scripts/vault-tool.mjs ur --path "${notePath}" --viewport desktop`
+        `- Shell one-liner: ${vaultToolPortPrefix}node scripts/vault-tool.mjs ur --path "${notePath}" --viewport desktop`,
+        `- Owner review comments: page_get returns them in \`comments\` (same contract as text pages; comment_list/resolve also work). An optional \`target\` { kind: "design-element", path, tag } anchors a comment to the element at that element-child index path from <body>; \`quote\` is that element's text (or the owner's selection). No \`target\` means a page-level comment.`
       );
     } else {
       lines.push(

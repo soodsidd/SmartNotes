@@ -756,6 +756,22 @@ export interface SavePageInput {
 
 const pageWriteLocks = new Map<string, Promise<void>>();
 
+/** Serialize a write against `savePage` and other writers of the same page file. */
+async function withPageWriteLock<T>(absolutePath: string, run: () => Promise<T>): Promise<T> {
+  const previous = pageWriteLocks.get(absolutePath) ?? Promise.resolve();
+  let release!: () => void;
+  const turn = new Promise<void>((resolve) => { release = resolve; });
+  const tail = previous.then(() => turn);
+  pageWriteLocks.set(absolutePath, tail);
+  await previous;
+  try {
+    return await run();
+  } finally {
+    release();
+    if (pageWriteLocks.get(absolutePath) === tail) pageWriteLocks.delete(absolutePath);
+  }
+}
+
 export async function readPaperSnapshot(pagePath: string) {
   if (!isBibliographyPath(pagePath)) throw new VaultError("INVALID_PATH", "A paper path is required.", 400);
   const { source } = await readPageSource(pagePath);
@@ -2861,6 +2877,8 @@ export interface StoredComment {
   text: string;
   createdAt: string;
   resolvedAt: string | null;
+  /** SN-310: design-page element anchor (see `PageCommentTarget` in src/lib/comment-types.ts). */
+  target?: { kind: "design-element"; path: number[]; tag: string };
 }
 
 export async function readPageComments(pagePath: string): Promise<StoredComment[]> {
@@ -2877,6 +2895,29 @@ export async function savePageComments(
    *  so a comment save never discards unsaved editor content. */
   currentBody?: string
 ): Promise<StoredComment[]> {
+  const { absolutePath } = resolveVaultPath(pagePath, "page");
+  return withPageWriteLock(absolutePath, () => savePageCommentsUnlocked(pagePath, comments, currentBody));
+}
+
+async function savePageCommentsUnlocked(
+  pagePath: string,
+  comments: StoredComment[],
+  currentBody?: string
+): Promise<StoredComment[]> {
+  const { absolutePath: pageAbsolutePath } = resolveVaultPath(pagePath, "page");
+  // SN-310: linked designs keep comments in the .design-link.json sidecar so the
+  // ordinary HTML file is never frontmatter-wrapped. `currentBody` is ignored:
+  // the HTML itself is untouched by a comment save.
+  const link = await readDesignLinkSidecar(pageAbsolutePath);
+  if (link) {
+    const nextLink: DesignLinkSidecar = { ...link };
+    if (comments.length > 0) nextLink.comments = comments;
+    else delete nextLink.comments;
+    await writeDesignLinkSidecar(pageAbsolutePath, nextLink);
+    invalidateVaultCache();
+    return comments;
+  }
+
   const { source, absolutePath, relativePath } = await readPageSource(pagePath);
   const page = buildPageDocument(relativePath, source);
 

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { Sparkles, X } from "lucide-react";
+import { MessageSquarePlus, Sparkles, X } from "lucide-react";
 import { streamJupyterFastLanePrompt } from "@/lib/api/jupyter";
 import { inlineAiHandoff, parseInlineAiContext, type InlineAiInvocation } from "@/lib/inline-ai";
 
@@ -80,7 +80,10 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
           else if (!e.shiftKey && document.activeElement === controls[controls.length - 1]) { e.preventDefault(); controls[0].focus(); }
         }
       }}>
-      {invocation.menu ? <button className="inline-ai-menu-action" role="menuitem" onClick={() => setInvocation({ ...invocation, menu: false })}><Sparkles size={16} /> Ask Companion...</button> : <>
+      {invocation.menu ? <>
+        <button className="inline-ai-menu-action" role="menuitem" onClick={() => setInvocation({ ...invocation, menu: false })}><Sparkles size={16} /> Ask Companion...</button>
+        {invocation.menuActions?.map(action => <button key={action.id} className="inline-ai-menu-action" role="menuitem" data-testid={`inline-ai-menu-${action.id}`} onClick={() => { close(); action.run(); }}><MessageSquarePlus size={16} /> {action.label}</button>)}
+      </> : <>
         <header><span><Sparkles size={16} /> Companion</span><button aria-label="Close Companion popover" onClick={close}><X size={16} /></button></header>
         <span className="inline-ai-target">{invocation.context.target}</span>
         <p className="inline-ai-helper">Uses full page text and table context. Images, ink, and linked files are not read.</p>

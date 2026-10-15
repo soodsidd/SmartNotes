@@ -13,6 +13,16 @@ export interface InlineAiInvocation {
   x: number;
   y: number;
   menu?: boolean;
+  /**
+   * SN-310: host-supplied menu items shown after "Ask Companion..." in menu
+   * mode (e.g. design Preview "Add comment"). Host-only — never from a frame.
+   */
+  menuActions?: InlineAiMenuAction[];
+}
+export interface InlineAiMenuAction {
+  id: string;
+  label: string;
+  run: () => void;
 }
 
 export function parseInlineAiContext(value: unknown): InlineAiContext | null {
