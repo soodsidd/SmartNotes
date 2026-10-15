@@ -11,6 +11,71 @@ export interface VaultToolDefinition {
 
 export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
   {
+    name: "job_inbox_query", description: "Read Job Inbox posting records, optionally restricted to selected posting IDs. Returns at most 200 records.",
+    group: "job_inbox", action: "query", parameters: {
+      path: { type: "string", required: true, description: "Job Inbox App page path." },
+      ids: { type: "array", description: "Optional selected posting IDs (max 50)." },
+    },
+  },
+  {
+    name: "job_inbox_update", description: "Update status, notes, or score on one Job Inbox posting.",
+    group: "job_inbox", action: "update", parameters: {
+      path: { type: "string", required: true, description: "Job Inbox App page path." },
+      rowId: { type: "string", required: true, description: "Posting row ID." },
+      status: { type: "string", description: "One of the Job Inbox statuses." },
+      notes: { type: "string", description: "Replacement notes." },
+      score: { type: "number", description: "Optional score from 0 to 100." },
+    },
+  },
+  {
+    name: "job_inbox_delete", description: "Delete one Job Inbox posting row. Does not delete a promoted application page.",
+    group: "job_inbox", action: "delete", parameters: {
+      path: { type: "string", required: true, description: "Job Inbox App page path." },
+      rowId: { type: "string", required: true, description: "Posting row ID." },
+    },
+  },
+  {
+    name: "recipe_list",
+    description: "List recipes, current notebook first then vault-wide. Resolve recipe names before running.",
+    group: "recipe",
+    action: "list",
+    parameters: {
+      path: { type: "string", required: true, description: "Active target page path." },
+    },
+  },
+  {
+    name: "recipe_run",
+    description:
+      "Start a recipe by exact name (local notebook wins) or recipePath. Creates a child under the target, copying the linked template and children. Returns instructions and output paths; read inputs and fill these pages before claiming completion.",
+    group: "recipe",
+    action: "run",
+    parameters: {
+      path: { type: "string", required: true, description: "Target page path." },
+      name: { type: "string", description: "Exact recipe title." },
+      recipePath: { type: "string", description: "Explicit recipe path to disambiguate." },
+    },
+  },
+  {
+    name: "recipe_mark",
+    description: "Mark or unmark a text page as a recipe.",
+    group: "recipe",
+    action: "mark",
+    parameters: {
+      path: { type: "string", required: true, description: "Text page path." },
+      enabled: { type: "boolean", required: true, description: "Enable or disable." },
+    },
+  },
+  {
+    name: "notebook_instructions_set",
+    description: "Designate the sole instructions page for its notebook, or unset it.",
+    group: "recipe",
+    action: "instructions",
+    parameters: {
+      path: { type: "string", required: true, description: "Text page path." },
+      enabled: { type: "boolean", required: true, description: "Enable or disable." },
+    },
+  },
+  {
     name: "app_template_list",
     description: "List the single maintained, versioned App template catalog available in every companion context.",
     group: "app",
@@ -973,6 +1038,7 @@ Workflows:
 - Bibliography papers (SN-282 / SN-302): papers are canonical pages under .bibliography/<id>.html, referenced from other pages by id. From an article: paper_list { query } to find an existing paper, else paper_create { title, referenceFromPath: "<article path>" } (the paper's home notebook defaults to that article's notebook; pass homeNotebookPath when creating without a referring page); for an existing paper use paper_reference_add { path, paper }. Promote an existing vault PDF with paper_create_from_pdf { sourcePath|href, title?, homeNotebookPath?, referenceFromPath?, replaceChip? } (copies PDF bytes onto the paper; reuses an existing paper when that exact asset is already attached). Attach a web PDF with paper_attach_pdf { paper, url } (direct http(s) link only), then read it with pdf_read_pages using the returned href. Edit paper notes with the normal page tools on the paper path. Remove with paper_remove (clears references, then deletes) — never page_delete/page_move/page_create inside .bibliography.
 - Page delete: page_delete with vault-relative path (never filesystem delete; clears assets and triggers tree reload warning)
 - Tree mutations: page/notebook/section create, rename, move, delete via vault tools (not direct file operations)
+- Recipes (SN-305): "run <name> here" → recipe_list with the active path → recipe_run { path, name } creates a child artifact (copying a linked template subtree); then fill it with page_write following the returned instructions. recipe_mark / notebook_instructions_set toggle page roles.
 - Math / LaTeX (text pages only): use $...$ for inline and $$...$$ for block equations — server normalizes to Tiptap math nodes on page_write/page_create/page_append/page_prepend/page_edit/page_replace_section. Design pages (note_type=design) are raw HTML/CSS and are never math-normalized; use page_write/page_edit only (page_append/prepend/replace_section/page_render are rejected)
 - Log form authoring: log_form_get → log_form_put; never edit .form.json or .log.json sidecars directly. log_form_get returns the validated form and rowCount, never an unbounded row dump; log_form_put validates the full script, projects fields, and preserves rows by stable field id.
 - Log surfaces: History is the human-readable reading surface; Table is the correction surface for editing/deleting rows. Named declarative views live in form.views and power stable live, JSON, and CSV links.

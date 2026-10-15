@@ -1671,6 +1671,8 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
 
   const lines = [
     "Smart Notes operating context:",
+    "Recipes are ordinary marked text pages. For requests such as run Fit analysis here (including Ask AI continuations), call recipe_list with the active path, then recipe_run with that target path and the recipe name. Read its instructions and target inputs, then fill the returned child page and copied children with page_write or the appropriate artifact tools. Ask for missing inputs; never fabricate. Do not stop after creating an empty artifact.",
+    "Author recipes in normal text pages and mark with recipe_mark or the page menu. Link a vault template using a normal link labelled Template (or rel=template); recipe_template frontmatter may also hold a canonical vault page path. notebook_instructions_set designates one text page per notebook.",
     `- Active note title: ${title}`,
     `- Vault root absolute path: ${normalizedVaultRoot || "(unknown)"}`,
     browserOrigin
@@ -1897,7 +1899,8 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
     if (isDesignPage) {
       lines.push(
         `- Visual render (design artifact + ink): ${vaultToolPortPrefix}node scripts/vault-tool.mjs ur --path "${notePath}" --viewport desktop → Read the returned absoluteDiskPath PNG. Or POST { "tool": "ui_render", "args": { "path": "${notePath}", "viewport": "desktop" } } to apiBaseUrl/api/agent/vault. Do NOT use WebFetch→localhost (often blocked) and do NOT call page_render for design pages.`,
-        `- Shell one-liner: ${vaultToolPortPrefix}node scripts/vault-tool.mjs ur --path "${notePath}" --viewport desktop`
+        `- Shell one-liner: ${vaultToolPortPrefix}node scripts/vault-tool.mjs ur --path "${notePath}" --viewport desktop`,
+        `- Owner review comments: page_get returns them in \`comments\` (same contract as text pages; comment_list/resolve also work). An optional \`target\` { kind: "design-element", path, tag } anchors a comment to the element at that element-child index path from <body>; \`quote\` is that element's text (or the owner's selection). No \`target\` means a page-level comment.`
       );
     } else {
       lines.push(

@@ -137,7 +137,7 @@ describe("sidebar page drop resolution", () => {
     });
     expect(result).toEqual({
       parentId: null,
-      orderedIds: ["a", "c", "b", "d"],
+      orderedIds: ["a", "b", "c", "d"],
     });
   });
 
@@ -152,8 +152,32 @@ describe("sidebar page drop resolution", () => {
     });
     expect(result).toEqual({
       parentId: null,
-      orderedIds: ["a", "c", "b", "d"],
+      orderedIds: ["a", "b", "c", "d"],
     });
+  });
+
+  it("drags a page with its descendants as one ordered block", () => {
+    const result = resolveSidebarPageDrop({
+      intent: "reorder",
+      sourcePath: "a",
+      targetPath: "d",
+      dropSide: "after",
+      pages,
+      nestingLookup: lookupForExpanded(["a", "b"]),
+    });
+    expect(result).toEqual({ parentId: null, orderedIds: ["d", "a", "b", "c"] });
+  });
+
+  it("rejects a drag that would place a descendant beyond the depth cap", () => {
+    const result = resolveSidebarPageDrop({
+      intent: "nest",
+      sourcePath: "a",
+      targetPath: "d",
+      dropSide: null,
+      pages,
+      nestingLookup: lookupForExpanded(["a", "b"]),
+    });
+    expect(result).toBeNull();
   });
 
   it("blocks nesting under a descendant page", () => {

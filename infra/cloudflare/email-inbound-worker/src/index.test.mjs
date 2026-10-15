@@ -65,6 +65,7 @@ test("accepts SMTP delivery only after a successful raw-MIME POST", async () => 
   assert.equal(request.init.headers.Authorization, "Bearer test-token");
   assert.equal(request.init.headers["Content-Type"], "message/rfc822");
   assert.equal(request.init.headers["X-Smart-Notes-Envelope-From"], "sender@example.com");
+  assert.equal(request.init.headers["X-Smart-Notes-Envelope-To"], "notes@lucidrss.com");
   assert.ok(request.init.body instanceof ArrayBuffer);
 });
 
@@ -96,13 +97,27 @@ test("normalizes the Cloudflare envelope sender forwarded to Smart Notes", async
   assert.equal(request.init.headers["X-Smart-Notes-Envelope-From"], "sender@example.com");
 });
 
+test("accepts jobs@lucidrss.com and forwards the envelope recipient", async () => {
+  let request;
+  globalThis.fetch = async (url, init) => {
+    request = { url, init };
+    return new Response('{"created":true,"appPath":"Career/Inbox/job-inbox.html"}', { status: 201 });
+  };
+  const delivery = message({ to: "jobs@lucidrss.com" });
+
+  await handleInboundEmail(delivery.input, validEnv);
+
+  assert.deepEqual(delivery.rejections, []);
+  assert.equal(request.init.headers["X-Smart-Notes-Envelope-To"], "jobs@lucidrss.com");
+});
+
 test("rejects unexpected recipients before contacting Smart Notes", async () => {
   let called = false;
   globalThis.fetch = async () => {
     called = true;
     return new Response(null, { status: 204 });
   };
-  const delivery = message({ to: "jobs@lucidrss.com" });
+  const delivery = message({ to: "other@lucidrss.com" });
 
   await handleInboundEmail(delivery.input, validEnv);
 

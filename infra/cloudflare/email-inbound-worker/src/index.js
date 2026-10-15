@@ -4,11 +4,16 @@
  * Delivery is deliberately online-only. A missing setting, wrong recipient,
  * empty/oversized message, network error, or non-2xx app response rejects the
  * SMTP delivery. There is no queue or retry store in this Worker.
+ *
+ * Accepts notes@lucidrss.com (notebook capture / Job: subject) and
+ * jobs@lucidrss.com (Career Job Inbox). Envelope recipient is forwarded so the
+ * app can route jobs@ even when MIME To still shows the original address.
  */
 
-const EXPECTED_RECIPIENT = "notes@lucidrss.com";
+const EXPECTED_RECIPIENTS = new Set(["notes@lucidrss.com", "jobs@lucidrss.com"]);
 const MAX_RAW_EMAIL_BYTES = 5 * 1024 * 1024;
 const ENVELOPE_FROM_HEADER = "X-Smart-Notes-Envelope-From";
+const ENVELOPE_TO_HEADER = "X-Smart-Notes-Envelope-To";
 
 export async function handleInboundEmail(message, env) {
   const inboundUrl = String(env.INBOUND_URL || "").trim().replace(/\/$/, "");
@@ -21,7 +26,7 @@ export async function handleInboundEmail(message, env) {
   }
 
   const recipient = String(message.to || "").trim().toLowerCase();
-  if (recipient !== EXPECTED_RECIPIENT) {
+  if (!EXPECTED_RECIPIENTS.has(recipient)) {
     console.warn(`smart-notes-email-inbound: rejected unexpected recipient ${recipient}`);
     message.setReject("Unexpected Smart Notes recipient");
     return;
@@ -53,6 +58,7 @@ export async function handleInboundEmail(message, env) {
         Authorization: `Bearer ${token}`,
         "Content-Type": "message/rfc822",
         [ENVELOPE_FROM_HEADER]: envelopeSender,
+        [ENVELOPE_TO_HEADER]: recipient,
       },
       body: rawBytes,
     });
@@ -79,7 +85,7 @@ export async function handleInboundEmail(message, env) {
   }
   console.log(
     `smart-notes-email-inbound: delivered to=${recipient} status=${response.status} ` +
-      `created=${result.created ?? "?"} id=${result.id ?? "?"}`,
+      `created=${result.created ?? "?"} id=${result.id ?? result.appPath ?? "?"}`,
   );
 }
 

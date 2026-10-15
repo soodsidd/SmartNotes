@@ -18,6 +18,7 @@ const fsp = require("fs/promises");
 const path = require("path");
 
 const ALLOWED_TOOLS = new Set([
+  "recipe_list", "recipe_run", "recipe_mark", "notebook_instructions_set",
   "page_get",
   "page_write",
   // SN-222 shell-less page creation. Forwards to POST /api/agent/vault on the
@@ -38,6 +39,7 @@ const ALLOWED_TOOLS = new Set([
   "app_template_list",
   "app_template_get",
   "app_query",
+  "job_inbox_query", "job_inbox_update",
   "app_create_from_template",
   "app_update",
   // SN-203 companion→app delivery tool (see note above).

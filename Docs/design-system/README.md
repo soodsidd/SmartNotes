@@ -15,9 +15,27 @@ over a 12% `--accent` tint, the same tint used for selected cells. New tokens:
 pills use the 44px touch target. In Data mode, number cells are right-aligned
 with tabular figures.
 
+## Design page editing, A4 guides and PDF export (SN-304)
+
+The design header adds an `A4 guides` toggle (pressed state uses `--surface` with
+`--foreground`), a `--muted-foreground` page-count status, a compact `Max pages`
+number input (`--input` border, `--background`, `--ring` focus) and an outline
+`Export PDF` Button. Editing uses a format toolbar row under the header: lucide
+icon-only buttons (bold, italic, underline, lists, link, undo, redo) with
+`aria-label`s, `--muted-foreground` icons and `--surface` hover. Page breaks are
+2px dashed `--accent` rules with a `Page N` chip in `--surface` /
+`--muted-foreground`; the over-limit warning reuses the `--destructive` text on a
+5% `--destructive` tint banner. With guides on, the frame is A4 width
+(210mm = 793.7px) and centered. All controls keep 44px mobile touch targets.
+No new tokens.
+
 ## Table context menu and icon ribbon (SN-308)
 
 Ribbon controls are icon-only (lucide) with tooltips and `aria-label`s, separated by 1px `--border` dividers. New tokens: `--table-ribbon-button-size: 28px` (desktop icon button) and `--table-ribbon-icon-size: 16px`. Mobile buttons keep the 44px touch target; the mobile stats chip is a pill using `--surface`, `--border`, and `--accent` when expanded. The table context menu reuses the editor context-menu styles; Delete table uses `--destructive` text with a 10% `--destructive` hover tint, matching the comment popover's destructive button.
+
+## Job Inbox App mobile-first ribbon (SN-309)
+
+The Job Inbox App (sandboxed frame, so tokens are mirrored into the template's `:root` from `src/styles/tokens.css`, light + `prefers-color-scheme: dark`) reuses the SN-308 ribbon pattern: icon-only lucide controls with `aria-label` + `title`, `--table-ribbon-button-size` (28px on fine pointers, overridden to the 44px touch target on coarse pointers or <=640px) and `--table-ribbon-icon-size`, groups split by 1px `--border` dividers on a `--surface` / `--radius-md` card. Pressed/expanded controls take a 12% `--accent` tint with `--accent` icon; disabled controls drop to 40% opacity; the filter count badge is an `--accent` / `--accent-foreground` pill at 11px. Inputs use `--input` border, `--background`, `--radius-sm` and `--ring` focus, at 16px on phones to avoid iOS zoom. Status chips reuse the `.chip` pill (11px, 999px radius): `New` gets an `--accent` border over a 12% `--accent` tint, in-progress statuses (Promoted/Applied/Interview/Offer) an `--accent` border and text, and closed statuses stay `--border` / `--secondary-foreground`. Selected rows use an 8% `--accent` tint, the open row a 2px inset `--accent` bar, and hover `--secondary`. Errors use `--destructive` text on a 5% `--destructive` tint with a 30% border. Promote is the only primary (`--accent` / `--accent-foreground`) button. Type sizes are 11/12/13px desktop, 14px phone base, 16px for the title. New layout metrics (no new color tokens): card rows at <=640px, a 420px side-panel column at >=960px, and below 960px the details panel replaces the list.
 
 ## Insert table and grid (SN-299)
 
@@ -263,3 +281,10 @@ OneNote-style lines are a CSS background on the editor content frame (`[data-tes
 | `--page-grid-small` / `-medium` / `-large` / `-xlarge` | `12px` / `20px` / `32px` / `48px` | Grid cell size |
 
 Popover chrome (photo #14) reuses existing tokens: the popup uses `--popover`, `--border`, and `shadow-md`. Section labels use `text-xs` with `--muted-foreground`. The selected tile has a 2px `--accent` border, and the selected swatch has a 2px `--accent` ring. Focus rings use `--ring`. The footer switch uses `--accent` (on) or `--secondary` (off). On mobile, the footer toggle row keeps the established `min-h-11` 44px target.
+
+
+## Ask Companion popover (SN-303)
+
+The owner references are the two photos on the vault page Key docs/ask-ai-companion. The final editor menu row uses the teal Sparkles icon after a divider. Format and Turn into group existing text actions. The shared card uses --popover, --foreground, --secondary-foreground (readable helper/footer copy), --border, --input, --accent, --accent-foreground, --ring, --radius-xs/sm/md and --shadow-popover. It shares --z-jupyter-inline-ai so it sits above the PDF reader. Spacing and typography reuse the documented Tailwind scale (4/8/12/16px spacing; 11/12/13px compact text); mobile textarea text is 16px and buttons retain 44px touch targets. New layout metric: 22rem preferred card width, capped to viewport minus 16px, with viewport-bounded scrolling. Keyboard focus is contained while open; Escape closes and restores focus. Empty target, disabled empty prompt, streaming, long content, provider error/retry and page-navigation interruption are explicit states.
+
+The mobile selection bubble keeps controls on one line with horizontal scrolling and the established 44px touch targets; Ask Companion uses the existing `--accent` color.

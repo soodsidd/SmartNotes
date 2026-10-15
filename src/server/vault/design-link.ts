@@ -31,6 +31,12 @@ export interface DesignLinkSidecar {
   sourcePath: string;
   /** SN-229: key-note marker. Omitted when false so the sidecar stays clean. */
   key_note?: boolean;
+  /**
+   * SN-310: owner review comments (same shape as page frontmatter `comments`).
+   * Stored here because the linked HTML must never be frontmatter-wrapped.
+   * Omitted when empty so the sidecar stays clean.
+   */
+  comments?: unknown[];
 }
 
 export interface ResolvedDesignLinkTarget {
@@ -232,6 +238,9 @@ export function designLinkMetadataFromSidecar(sidecar: DesignLinkSidecar): Front
     design_linked: true,
     design_source_path: sidecar.sourcePath,
     ...(sidecar.key_note === true ? { key_note: true } : {}),
+    ...(Array.isArray(sidecar.comments) && sidecar.comments.length > 0
+      ? { comments: sidecar.comments as FrontmatterData[string] }
+      : {}),
   };
 }
 

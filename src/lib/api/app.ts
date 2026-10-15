@@ -76,6 +76,18 @@ export async function runOwnerAppDataMutation(input: {
   return result.data;
 }
 
+export async function promoteJobFromApp(input: { path: string; sessionToken: string; rowId: string; runFit: boolean }) {
+  return readJson<{ created: boolean; applicationPath: string; fitPagePath: string | null; warning?: string }>(await vaultWriteFetch("/api/job-inbox/promote", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  }));
+}
+
+export async function deleteJobFromApp(input: { path: string; sessionToken: string; rowId: string }) {
+  return readJson<{ deleted: boolean; rowId: string; applicationId: string | null; applicationPath: string | null }>(await vaultWriteFetch("/api/job-inbox/delete", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  }));
+}
+
 export async function saveAppSource(path: string, title: string, content: string) {
   const result = await readJson<{ page: { path: string; title: string; body: string } }>(await vaultWriteFetch("/api/page", {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, title, content }),

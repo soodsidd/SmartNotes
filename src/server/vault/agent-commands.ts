@@ -1,3 +1,4 @@
+import { listRecipes, runRecipe, setPageRole } from "./recipes";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -51,6 +52,7 @@ import { getAppTemplate, listAppTemplates, APP_TEMPLATE_CATALOG_VERSION } from "
 import { getAppInventoryEntry, listAppInventory } from "./app-inventory";
 import { queryAppTableForCompanion, saveAppManifest, seedOwnedAppTable } from "./app-runtime";
 import { deliverCompanionAppMessage } from "./companion-app-channel";
+import { deleteJobPosting, queryJobPostings, updateJobPosting } from "./job-inbox";
 import {
   readVaultPdfPage,
   readVaultPdfPageCount,
@@ -67,7 +69,7 @@ import {
   type SheetSelector,
 } from "@/lib/spreadsheet-cells";
 
-export type VaultCommandGroup = "page" | "notebook" | "section" | "comment" | "version" | "vault" | "pdf" | "jupyter" | "log" | "design" | "app" | "spreadsheet" | "paper";
+export type VaultCommandGroup = "page" | "notebook" | "section" | "comment" | "version" | "vault" | "pdf" | "jupyter" | "log" | "design" | "app" | "job_inbox" | "spreadsheet" | "paper" | "recipe";
 
 export interface VaultCommandRequest {
   group: VaultCommandGroup;
@@ -1788,6 +1790,12 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
   const args = request.args && typeof request.args === "object" ? request.args : {};
 
   switch (group) {
+    case "recipe": {
+      if (action === "list") return { ok: true, group, action, data: await listRecipes(requireString(args.path, "path")) };
+      if (action === "run") return { ok: true, group, action, treeChanged: true, data: await runRecipe(requireString(args.path, "path"), optionalString(args.name), optionalString(args.recipePath) || undefined) };
+      if (action === "mark" || action === "instructions") return { ok: true, group, action, treeChanged: true, data: await setPageRole(requireString(args.path, "path"), action === "mark" ? "recipe" : "notebook_instructions", requireBoolean(args.enabled, "enabled")) };
+      throw new VaultError("INVALID_INPUT", `Unknown recipe action: ${action}`, 400);
+    }
     case "page":
       return runPageCommand(action, args);
     case "notebook":
@@ -1812,6 +1820,11 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
       return runDesignCommand(action, args);
     case "app":
       return runAppCommand(action, args);
+    case "job_inbox":
+      if (action === "query") return { ok: true, group, action, data: await queryJobPostings(requireString(args.path, "path"), args.ids) };
+      if (action === "update") return { ok: true, group, action, data: { posting: await updateJobPosting(requireString(args.path, "path"), requireString(args.rowId, "rowId"), { status: args.status, notes: args.notes, score: args.score }) } };
+      if (action === "delete") return { ok: true, group, action, data: await deleteJobPosting(requireString(args.path, "path"), requireString(args.rowId, "rowId")) };
+      throw new VaultError("UNKNOWN_COMMAND", `Unknown Job Inbox command: ${action}`, 400);
     case "paper":
       return runPaperCommand(action, args);
     default:
@@ -1821,6 +1834,8 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
 
 export function listVaultCommands() {
   return {
+    job_inbox: ["query", "update", "delete"],
+    recipe: ["list", "run", "mark", "instructions"],
     page: [
       "create",
       "delete",

@@ -1,4 +1,5 @@
 "use client";
+import { captureInlineAi, invokeInlineAi, type InlineAiContext } from "@/lib/inline-ai";
 
 import * as React from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -428,6 +429,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       pdfTarget?: PdfAttachmentTarget | null;
       /** SN-308: right-click landed in a table cell; show the table menu. */
       inTable?: boolean;
+      inlineContext?: InlineAiContext;
     } | null>(null);
     const [composerPending, setComposerPending] = React.useState<{
       from: number;
@@ -953,6 +955,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         viewportWidth: typeof window !== "undefined" ? window.innerWidth : undefined,
       });
 
+      const inlineContext = captureInlineAi(editor.view.dom, e.target as Element, "text");
       // SN-308: right-click does not move the selection; put it in the clicked cell first.
       const inTable = focusClickedTableCell(editor, e.target as Element | null, e.clientX, e.clientY);
       const { from, to } = editor.state.selection;
@@ -965,6 +968,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         mobile: isMobile,
         pdfTarget,
         inTable,
+        inlineContext,
       });
     }
 
@@ -2393,6 +2397,10 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         {!readOnly && !isDrawMode && editor && !composerPending && !contextMenu && (
           <BubbleMenu editor={editor} updateDelay={100} className="bubble-menu md:hidden">
             <div className="bubble-toolbar" data-testid="bubble-menu">
+              <BubbleBtn active={false} label="Ask Companion..." testId="bubble-ask-companion" onClick={() => {
+                const rect = editor.view.coordsAtPos(editor.state.selection.from);
+                invokeInlineAi({ context: captureInlineAi(editor.view.dom, editor.view.dom, "text"), x: rect.left, y: rect.bottom });
+              }} />
               <BubbleBtn
                 onClick={() => editor.chain().focus().toggleBold().run()}
                 active={editor.isActive("bold")}
@@ -2790,6 +2798,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         {/* Right-click context menu */}
         {!readOnly && contextMenu && editor && (
           <EditorContextMenu
+            onAskCompanion={() => {
+              if (contextMenu.inlineContext) invokeInlineAi({ context: contextMenu.inlineContext, x: contextMenu.x, y: contextMenu.y });
+            }}
             x={contextMenu.x}
             y={contextMenu.y}
             editor={editor}

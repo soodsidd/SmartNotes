@@ -1,5 +1,6 @@
 "use client";
 
+import { Sparkles } from "lucide-react";
 import * as React from "react";
 import type { Editor } from "@tiptap/react";
 import { cn } from "@/lib/utils";
@@ -25,24 +26,12 @@ export interface EditorContextMenuProps {
   onPromotePdf?: () => void;
   /** SN-308: when set (right-click inside a table), these groups replace the text-editing groups. */
   tableGroups?: EditorContextMenuAction[][] | null;
+  onAskCompanion?: () => void;
   onClose: () => void;
 }
 
-const CONTEXT_MENU_GROUPS = [
-  ["copy", "paste", "selectAll"],
-  ["bold", "italic", "strike", "code"],
-  ["h1", "h2", "h3"],
-  ["bullet", "ordered", "task"],
-  ["link"],
-  ["comment"],
-  ["promotePdf"],
-] as const;
-
-const MOBILE_CONTEXT_MENU_GROUPS = [
-  ["copy", "paste", "selectAll"],
-  ["comment"],
-  ["promotePdf"],
-] as const;
+const CONTEXT_MENU_GROUPS = [["copy", "paste", "selectAll"], ["link"]] as const;
+const MOBILE_CONTEXT_MENU_GROUPS = CONTEXT_MENU_GROUPS;
 
 export function EditorContextMenu({
   x,
@@ -60,9 +49,11 @@ export function EditorContextMenu({
   onOpenLink,
   onPromotePdf,
   tableGroups,
+  onAskCompanion,
   onClose,
 }: EditorContextMenuProps) {
   const menuRef = React.useRef<HTMLDivElement>(null);
+  const [submenu, setSubmenu] = React.useState<string | null>(null);
   const [position, setPosition] = React.useState({ left: x, top: y });
   const actions = React.useMemo(
     () =>
@@ -89,8 +80,9 @@ export function EditorContextMenu({
     const ids = mobile ? MOBILE_CONTEXT_MENU_GROUPS : CONTEXT_MENU_GROUPS;
     return ids
       .map((group) => group.map((id) => actionMap.get(id)).filter((a): a is EditorContextMenuAction => Boolean(a)))
+      .map(group => group.filter(action => action.id !== "copy" || canCopy))
       .filter((group) => group.length > 0);
-  }, [actionMap, mobile, tableGroups]);
+  }, [actionMap, mobile, tableGroups, canCopy]);
 
   // Keep the whole menu on screen (long table menus, right-clicks near an edge).
   React.useLayoutEffect(() => {
@@ -102,7 +94,7 @@ export function EditorContextMenu({
     const fitsBelow = y + rect.height + margin <= window.innerHeight;
     const top = fitsBelow ? y : Math.max(margin, Math.min(y - rect.height, window.innerHeight - rect.height - margin));
     setPosition((prev) => (prev.left === left && prev.top === top ? prev : { left, top }));
-  }, [x, y, renderedGroups]);
+  }, [x, y, renderedGroups, submenu]);
 
   React.useEffect(() => {
     function handlePointerDown(e: PointerEvent) {
@@ -154,12 +146,31 @@ export function EditorContextMenu({
                 data-testid={action.testId}
               >
                 {action.label}
-                {action.hint ? <span className="comment-context-hint">{action.hint}</span> : null}
+                {(action.hint || action.id === "paste" || action.id === "selectAll") ? <span className="comment-context-hint">{action.id === "paste" ? "Ctrl+V" : action.id === "selectAll" ? "Ctrl+A" : action.hint}</span> : null}
               </button>
             );
           })}
         </React.Fragment>
       ))}
+      {!tableGroups?.length && [
+        { label: "Format", ids: ["bold", "italic", "strike", "code"] },
+        { label: "Turn into", ids: ["h1", "h2", "h3", "bullet", "ordered", "task"] },
+      ].map(group => <div key={group.label}>
+        <button type="button" role="menuitem" className="comment-context-item" aria-expanded={submenu === group.label} onClick={() => setSubmenu(submenu === group.label ? null : group.label)}>
+          {group.label}<span className="comment-context-hint">›</span>
+        </button>
+        {submenu === group.label && <div role="menu" aria-label={group.label} className="pl-3">
+          {group.ids.map(id => actionMap.get(id)).filter((action): action is EditorContextMenuAction => Boolean(action)).map(action => <button key={action.id} type="button" role="menuitem" className="comment-context-item" data-testid={action.testId} onClick={() => { action.run(); onClose(); }}>{action.label}</button>)}
+        </div>}
+      </div>)}
+      {!tableGroups?.length && canAddComment && <button type="button" role="menuitem" className="comment-context-item" data-testid="ctx-add-comment" onClick={() => { onAddComment(); onClose(); }}>Add comment</button>}
+      {canPromotePdf && <button type="button" role="menuitem" className="comment-context-item" data-testid="ctx-promote-pdf" onClick={() => { onPromotePdf?.(); onClose(); }}>Promote to paper</button>}
+      {onAskCompanion && <>
+        <div className="comment-context-separator" role="separator" />
+        <button type="button" role="menuitem" className="comment-context-item" data-testid="ctx-ask-companion" onClick={() => { onAskCompanion(); onClose(); }}>
+          <Sparkles size={16} className="text-accent" /> Ask Companion...
+        </button>
+      </>}
     </div>
   );
 }

@@ -1330,6 +1330,48 @@
       "whenToRun": "Pre-merge when touching design pages, the /render/ui route, renderUiToPng, or the annotation layer."
     },
     {
+      "id": "unit-sn-304-design-pages",
+      "name": "SN-304 Design HTML and A4 Measurement",
+      "description": "Jest: byte-preserving design element edits, max-page metadata, and A4 pagination boundaries.",
+      "appType": "node",
+      "command": "npm test -- tests/design-html-edit.test.ts tests/design-pagination.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "node", "design", "targeted"],
+      "feature": "design-pages",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-304",
+      "addedAt": "2026-10-14",
+      "sourceFiles": [{ "path": "tests/design-html-edit.test.ts" }, { "path": "tests/design-pagination.test.ts" }],
+      "intent": "Protects verbatim HTML persistence around a selected edit and shared A4 page-break arithmetic.",
+      "whenToRun": "Pre-merge when changing design Preview editing, max-page metadata, or A4 guides."
+    },
+    {
+      "id": "e2e-sn-304-design-pages",
+      "name": "SN-304 WYSIWYG Design Pages",
+      "description": "Playwright desktop and mobile: real Resume Repo template editing, A4 guides, warning, and PDF export.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-304-design-pages.spec.ts --project=desktop --project=mobile",
+      "timeoutMs": 720000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "design", "targeted"],
+      "feature": "design-pages",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-304",
+      "addedAt": "2026-10-14",
+      "sourceFiles": [{ "path": "e2e/sn-304-design-pages.spec.ts" }, { "path": "e2e/fixtures/sn-304-resume-template.html" }],
+      "intent": "Protects the owner editing and exporting a real self-contained resume design at desktop and mobile widths.",
+      "whenToRun": "Pre-merge when changing WYSIWYG design Preview or its A4 PDF export."
+    },
+    {
       "id": "unit-design-page-link",
       "name": "Design Page Link In Place (SN-168)",
       "description": "Jest: tests/design-page-link.test.ts — portable-root containment, empty-stub adoption, sidecar metadata, verbatim write-through, missing-source/relink, and ink sidecar isolation.",
@@ -4247,6 +4289,31 @@
       "whenToRun": "Pre-merge when touching the related feature area."
     },
     {
+      "id": "unit-sn-307-subtree-move",
+      "name": "SN-307 page subtree move and tree drag",
+      "description": "Jest: subtree move, order, asset links, rollback, and drag placement.",
+      "intent": "Moving a page keeps its descendants together and restores every file if a move fails.",
+      "whenToRun": "Pre-merge when changing page moves, nesting, or tree drag order.",
+      "failureMeaning": "A move may split a page tree, break its order or assets, or leave partial files after failure.",
+      "appType": "node",
+      "command": "npm test -- tests/page-tree.test.ts tests/vault-notebook-section.test.ts -t \"sidebar page drop resolution|page move\"",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "vault", "targeted"],
+      "feature": "vault",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-307",
+      "addedAt": "2026-10-14",
+      "sourceFiles": [
+        { "path": "tests/page-tree.test.ts" },
+        { "path": "tests/vault-notebook-section.test.ts" }
+      ]
+    },
+    {
       "id": "unit-vault-notebook-section",
       "name": "Vault Notebook Section",
       "description": "Jest: tests/vault-notebook-section.test.ts",
@@ -4958,6 +5025,97 @@
       "addedBy": "SN-301",
       "addedAt": "2026-10-13",
       "sourceFiles": [{ "path": "e2e/sn-301-server-settings.spec.ts" }]
+    },
+    {
+      "id": "unit-recipes",
+      "name": "SN-305 recipe discovery, template subtree placement, and notebook instructions scoping",
+      "description": "Jest: tests/recipes.test.ts — notebook-first recipe discovery and disambiguation, recipe_run child placement with template subtree + asset copy, two-level depth cap before allocation, and notebook-instructions scoping in companion context.",
+      "intent": "Protects recurring artifact creation and prevents notebook policies leaking across notebooks.",
+      "whenToRun": "Pre-merge when changing recipes, page-copy, page roles, or companion page context.",
+      "failureMeaning": "Recipes may resolve the wrong page, copy templates incompletely or past the nesting cap, or notebook instructions may leak or go missing.",
+      "appType": "node",
+      "command": "node node_modules/jest/bin/jest.js --runInBand tests/recipes.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "node", "recipes", "notebook-instructions", "companion", "targeted"],
+      "feature": "recipes",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-305",
+      "addedAt": "2026-10-14",
+      "sourceFiles": [{ "path": "tests/recipes.test.ts" }, { "path": "src/server/vault/recipes.ts" }, { "path": "src/server/vault/page-copy.ts" }]
+    },
+    {
+      "id": "unit-job-inbox",
+      "name": "SN-306 Job Inbox records, intake routing, enrichment, and Promote",
+      "description": "Jest: tests/job-inbox.test.ts — LinkedIn JSON-LD/og enrichment and failure fallback, sourceKey dedupe, no-page intake via ingest type=job / share career-jobs / [Job] email with ordinary capture unchanged, status validation and postings delete rejection, companion job_inbox query/update, Promote page content, back-link, move-surviving application link, idempotency, Fit analysis child and missing-recipe warning, frame job-promote parsing, template embedding, SN-309 v2 UI controls/aria-labels/no prompt(), and the guarded v1-to-v2 Job Inbox source upgrade.",
+      "intent": "Protects the Career application tracker from creating vault pages per posting, losing records, or breaking the posting↔application link.",
+      "whenToRun": "Pre-merge when changing job-inbox, App runtime mutations, /api/ingest, email inbound routing, recipes, or the App frame bridge.",
+      "failureMeaning": "Postings may be duplicated, lost, deleted, or turned into pages; ordinary capture may be misrouted; or Promote may break its application link.",
+      "appType": "node",
+      "command": "node node_modules/jest/bin/jest.js --runInBand tests/job-inbox.test.ts",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "app",
+        "ingest",
+        "email",
+        "recipes",
+        "companion",
+        "targeted"
+      ],
+      "feature": "app",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-306",
+      "addedAt": "2026-10-14",
+      "sourceFiles": [
+        {
+          "path": "tests/job-inbox.test.ts"
+        },
+        {
+          "path": "src/server/vault/job-inbox.ts"
+        },
+        {
+          "path": "src/server/vault/job-inbox-template.ts"
+        },
+        {
+          "path": "src/app/api/ingest/route.ts"
+        },
+        {
+          "path": "src/server/email-inbound.ts"
+        }
+      ]
+    },
+    {
+      "id": "e2e-recipes",
+      "name": "SN-305 recipe page-menu toggles and companion recipe tools",
+      "description": "Playwright: e2e/sn-305-recipes.spec.ts — page menu marks/unmarks a recipe and notebook instructions, recipe_list/recipe_run via /api/agent/vault, and instructions appear only in the owning notebook's companion context.",
+      "intent": "Protects the mark-as-recipe UI and the end-to-end companion recipe path.",
+      "whenToRun": "Pre-merge when changing the sidebar page menu, page-role API, or companion recipe tools.",
+      "failureMeaning": "Recipe/instructions toggles may not persist, or companion recipe tools and instructions scoping may be broken end-to-end.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-305-recipes.spec.ts --project=desktop --workers=1 --retries=0",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "recipes", "notebook-instructions", "targeted"],
+      "feature": "recipes",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-305",
+      "addedAt": "2026-10-14",
+      "sourceFiles": [{ "path": "e2e/sn-305-recipes.spec.ts" }, { "path": "src/components/notebook-shell-reliable.tsx" }]
     }
   ]
 }

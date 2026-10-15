@@ -18,9 +18,12 @@ import {
   toApiPageDocument,
 } from "@/server/vault/pages";
 import { fileNameFromTitle, resolveVaultPath, toVaultRelativePath } from "@/server/vault/paths";
+import { appendJobPostingsFromContent } from "@/server/vault/job-inbox";
 
 export const MAX_RAW_EMAIL_BYTES = 5 * 1024 * 1024;
 export const EMAIL_ENVELOPE_FROM_HEADER = "x-smart-notes-envelope-from";
+export const EMAIL_ENVELOPE_TO_HEADER = "x-smart-notes-envelope-to";
+export const JOB_INBOX_ENVELOPE_RECIPIENT = "jobs@lucidrss.com";
 
 const EMAIL_STATE_DIRECTORY = "email-inbound";
 const TRANSACTION_DIRECTORY = "transactions";
@@ -68,6 +71,15 @@ export interface EmailInboundResult {
   id: string;
   page: ReturnType<typeof toApiPageDocument>;
   reference: EmailReferenceSidecar;
+}
+
+export interface JobEmailInboundResult {
+  created: boolean;
+  /** First posting (digest convenience); prefer `postings` when length > 1. */
+  posting: Awaited<ReturnType<typeof appendJobPostingsFromContent>>["postings"][number];
+  postings: Awaited<ReturnType<typeof appendJobPostingsFromContent>>["postings"];
+  appPath: string;
+  count: number;
 }
 
 interface DedupeRecord {
@@ -603,11 +615,33 @@ function mailtoSource(sender: string): string {
   return `mailto:${sender}`;
 }
 
+export function normalizeEnvelopeRecipient(value: string | null | undefined): string | null {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized || !/^[^@\s<>,]+@[^@\s<>,]+$/.test(normalized)) return null;
+  return normalized;
+}
+
+/** Job Inbox via Job:/[Job] subject, or any mail whose SMTP envelope recipient is jobs@. */
+export function resolveJobEmailTitle(
+  subject: string | undefined,
+  envelopeRecipient: string | null
+): string | null {
+  const jobSubject = /^\s*(?:\[Job\]|Job:)\s*(.+)$/i.exec(subject ?? "");
+  if (jobSubject) {
+    return jobSubject[1].trim() || "Untitled job";
+  }
+  if (envelopeRecipient === JOB_INBOX_ENVELOPE_RECIPIENT) {
+    return subject?.trim() || "Untitled job";
+  }
+  return null;
+}
+
 export async function processInboundEmail(
   rawMime: Buffer,
   allowedSenders: Set<string>,
-  envelopeSender: string
-): Promise<EmailInboundResult> {
+  envelopeSender: string,
+  envelopeRecipient: string | null = null
+): Promise<EmailInboundResult | JobEmailInboundResult> {
   return withIngestLock(async () => {
     await recoverInterruptedTransactions();
 
@@ -639,6 +673,50 @@ export async function processInboundEmail(
         "MIME From must match the authenticated envelope sender.",
         403
       );
+    }
+
+    // Job:/[Job] subjects and the jobs@ envelope recipient leave ordinary mail
+    // on the transactional page-capture path. Job mail often arrives as a Gmail
+    // forward whose HTML sanitizes to empty (images/trackers only) — Resume Repo
+    // accepted those; keep a usable posting instead of bouncing SMTP.
+    const jobTitle = resolveJobEmailTitle(parsed.subject, envelopeRecipient);
+    if (jobTitle) {
+      let html = "";
+      let urlSource = "";
+      try {
+        ({ html, urlSource } = normalizedBody(parsed));
+      } catch (error) {
+        if (!(error instanceof EmailInboundError) || error.code !== "EMPTY_EMAIL_BODY") {
+          throw error;
+        }
+        const rawHtml = typeof parsed.html === "string" ? parsed.html : "";
+        const extracted =
+          parsed.text?.trim() ||
+          (rawHtml ? cheerio.load(rawHtml).root().text().replace(/\s+/g, " ").trim() : "");
+        html = extracted ? plainTextToHtml(extracted) : plainTextToHtml(jobTitle);
+        urlSource = extracted || rawHtml || jobTitle;
+      }
+      const messageId = normalizeMessageId(parsed.messageId);
+      const key = messageId ? `email:${messageId.toLowerCase()}` : `email:sha256:${sha256(rawMime)}`;
+      const result = await appendJobPostingsFromContent({
+        title: jobTitle,
+        content: html || jobTitle,
+        sourceUrl: firstSafeHttpUrl(urlSource) ?? undefined,
+        source: "email",
+        sourceKey: key,
+        postedAt: receivedAt(parsed) ?? undefined,
+      });
+      const posting = result.postings[0];
+      if (!posting) {
+        throw new EmailInboundError("EMPTY_EMAIL_BODY", "Job email produced no postings.", 400);
+      }
+      return {
+        created: result.created,
+        posting,
+        postings: result.postings,
+        appPath: result.pagePath,
+        count: result.postings.length,
+      };
     }
 
     const { html, urlSource } = normalizedBody(parsed);

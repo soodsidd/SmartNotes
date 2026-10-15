@@ -1,4 +1,7 @@
 "use client";
+import { inlineAiFrameScript, parseInlineAiContext, type InlineAiContext } from "@/lib/inline-ai";
+import { DESIGN_CONTENT_HEIGHT_EXPRESSION } from "@/lib/design-pagination";
+import { DESIGN_COMMENT_QUOTE_LIMIT } from "@/lib/comment-types";
 
 import * as React from "react";
 import dynamic from "next/dynamic";
@@ -25,22 +28,31 @@ export interface UiRenderViewProps {
 const DESIGN_FRAME_MESSAGE_SOURCE = "smart-notes-design-frame";
 
 export type DesignFrameMessage =
+  | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "ask-companion"; x: number; y: number; context: InlineAiContext }
   | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "height"; height: number }
-  | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "external-link"; href: string };
+  | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "edit"; path: number[]; html: string; mode: "inner" | "outer" }
+  | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "external-link"; href: string }
+  // SN-310: element under a right-click / touch press, posted before ask-companion.
+  | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "comment-anchor"; path: number[]; tag: string; quote: string }
+  // SN-310: frame-document rects for commented elements (reply to comment-rects-request).
+  | { source: typeof DESIGN_FRAME_MESSAGE_SOURCE; kind: "comment-rects"; rects: DesignCommentRect[] };
 
-function designFrameBridgeScript() {
+export interface DesignCommentRect {
+  id: string;
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+function designFrameBridgeScript(editable = false) {
   return `<script data-smart-notes-frame-bridge="true">
 (() => {
+  ${inlineAiFrameScript(DESIGN_FRAME_MESSAGE_SOURCE)}
   const source = ${JSON.stringify(DESIGN_FRAME_MESSAGE_SOURCE)};
+  const editable = ${editable};
   const postHeight = () => {
-    const root = document.documentElement;
-    const body = document.body;
-    const height = Math.max(
-      root ? root.scrollHeight : 0,
-      root ? root.offsetHeight : 0,
-      body ? body.scrollHeight : 0,
-      body ? body.offsetHeight : 0
-    );
+    const height = ${DESIGN_CONTENT_HEIGHT_EXPRESSION};
     parent.postMessage({ source, kind: "height", height }, "*");
   };
 
@@ -56,6 +68,135 @@ function designFrameBridgeScript() {
       parent.postMessage({ source, kind: "external-link", href }, "*");
     }
   }, true);
+
+  const elementChildren = (node) => Array.from(node.children || []);
+  const pathFor = (node) => {
+    const path = [];
+    while (node && node !== document.body) {
+      const parentNode = node.parentElement;
+      if (!parentNode) return null;
+      path.unshift(elementChildren(parentNode).indexOf(node));
+      node = parentNode;
+    }
+    return node === document.body ? path : null;
+  };
+  const nodeAtPath = (path) => {
+    let node = document.body;
+    for (const index of path) {
+      node = node ? elementChildren(node)[index] : null;
+    }
+    return node || null;
+  };
+
+  // SN-310 companion comments: report the pressed element (capture phase, so it
+  // reaches the host before the inline-AI ask-companion menu message).
+  const postCommentAnchor = (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !document.body) return;
+    const element = target.closest('p,li,h1,h2,h3,h4,h5,h6,blockquote,pre,td,th,figcaption,img,a,button') || target;
+    const path = pathFor(element);
+    if (!path) return;
+    const selected = String(window.getSelection() || '').replace(/\\s+/g, ' ').trim();
+    const copy = element.cloneNode(true);
+    if (copy.querySelectorAll) copy.querySelectorAll('script,style,noscript').forEach((n) => n.remove());
+    const own = (copy.textContent || element.getAttribute('alt') || '').replace(/\\s+/g, ' ').trim();
+    const quote = (selected || own).slice(0, ${DESIGN_COMMENT_QUOTE_LIMIT});
+    parent.postMessage({ source, kind: 'comment-anchor', path, tag: element.tagName.toLowerCase(), quote }, '*');
+  };
+  document.addEventListener('contextmenu', postCommentAnchor, true);
+  document.addEventListener('pointerdown', (event) => { if (event.pointerType === 'touch') postCommentAnchor(event); }, true);
+  window.addEventListener('message', (event) => {
+    if (event.source !== parent || event.data?.source !== source || event.data?.kind !== 'comment-rects-request') return;
+    const items = Array.isArray(event.data.items) ? event.data.items : [];
+    const rects = [];
+    for (const item of items) {
+      if (!item || typeof item.id !== 'string' || !Array.isArray(item.path)) continue;
+      const node = nodeAtPath(item.path);
+      if (!node || node === document.body) continue;
+      const rect = node.getBoundingClientRect();
+      rects.push({ id: item.id, top: rect.top + window.scrollY, left: rect.left + window.scrollX, width: rect.width, height: rect.height });
+    }
+    parent.postMessage({ source, kind: 'comment-rects', rects }, '*');
+  });
+
+  if (editable) {
+    let active = null;
+    let activePath = null;
+    let savedRange = null;
+    let suppressInput = false;
+    const originalAttrs = new WeakMap();
+    const editTarget = (node) => {
+      if (!(node instanceof Element) || !document.body.contains(node)) return null;
+      if (node.closest('script,style,textarea,input,button,select,[contenteditable="false"]')) return null;
+      const block = node.closest('p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,figcaption');
+      if (block) return block;
+      let current = node;
+      while (current && current !== document.body) {
+        if (!current.querySelector('p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th') && current.textContent?.trim()) return current;
+        current = current.parentElement;
+      }
+      return null;
+    };
+    const restoreAttrs = (node, owner = node) => {
+      for (const [name, value] of Object.entries(originalAttrs.get(owner) || {})) {
+        if (value === null) node.removeAttribute(name); else node.setAttribute(name, value);
+      }
+    };
+    const sendEdit = (node = active, path = activePath, mode = 'inner') => {
+      if (!node || !path) return;
+      let html = node.innerHTML;
+      if (mode === 'outer') {
+        // Serialize without the editor's own contenteditable/spellcheck attributes.
+        const clone = node.cloneNode(true);
+        restoreAttrs(clone, node);
+        html = clone.outerHTML;
+      }
+      parent.postMessage({ source, kind: 'edit', path, html, mode }, '*');
+      postHeight();
+    };
+    document.addEventListener('pointerdown', (event) => {
+      const next = editTarget(event.target);
+      if (!next || next === active) return;
+      if (active) restoreAttrs(active);
+      active = next;
+      activePath = pathFor(next);
+      originalAttrs.set(next, { contenteditable: next.getAttribute('contenteditable'), spellcheck: next.getAttribute('spellcheck') });
+      active.setAttribute('contenteditable', 'true');
+      active.setAttribute('spellcheck', 'true');
+    }, true);
+    document.addEventListener('selectionchange', () => {
+      const selection = document.getSelection();
+      if (active && selection?.rangeCount && active.contains(selection.anchorNode)) savedRange = selection.getRangeAt(0).cloneRange();
+    });
+    document.addEventListener('input', (event) => {
+      if (!suppressInput && active && active.contains(event.target)) sendEdit();
+    });
+    window.addEventListener('message', (event) => {
+      if (event.source !== parent || event.data?.source !== source || event.data?.kind !== 'format' || !active) return;
+      const command = event.data.command;
+      if (!['bold','italic','underline','insertUnorderedList','insertOrderedList','undo','redo','createLink'].includes(command)) return;
+      active.focus();
+      const selection = document.getSelection();
+      if (savedRange && selection) { selection.removeAllRanges(); selection.addRange(savedRange); }
+      const beforePath = activePath;
+      const before = active;
+      const beforeParent = before.parentElement;
+      suppressInput = true;
+      document.execCommand(command, false, command === 'createLink' ? event.data.value : undefined);
+      suppressInput = false;
+      if (command === 'insertUnorderedList' || command === 'insertOrderedList') {
+        const next = beforeParent && beforePath ? elementChildren(beforeParent)[beforePath[beforePath.length - 1]] : null;
+        if (next) {
+          sendEdit(next, beforePath, 'outer');
+          restoreAttrs(before);
+          active = null;
+          activePath = null;
+        }
+      } else {
+        sendEdit();
+      }
+    });
+  }
 
   const start = () => {
     postHeight();
@@ -74,12 +215,41 @@ function designFrameBridgeScript() {
 </script>`;
 }
 
+function isElementPath(value: unknown): value is number[] {
+  return Array.isArray(value) && value.length <= 64 && value.every((index) => Number.isInteger(index) && index >= 0);
+}
+
+function isCommentAnchorMessage(candidate: Record<string, unknown>) {
+  return (
+    candidate.kind === "comment-anchor" &&
+    isElementPath(candidate.path) &&
+    typeof candidate.tag === "string" &&
+    /^[a-z][a-z0-9-]{0,31}$/.test(candidate.tag) &&
+    typeof candidate.quote === "string" &&
+    candidate.quote.length <= DESIGN_COMMENT_QUOTE_LIMIT
+  );
+}
+
+function isCommentRectsMessage(candidate: Record<string, unknown>) {
+  return (
+    candidate.kind === "comment-rects" &&
+    Array.isArray(candidate.rects) &&
+    candidate.rects.every(
+      (rect) =>
+        rect &&
+        typeof rect === "object" &&
+        typeof (rect as DesignCommentRect).id === "string" &&
+        ["top", "left", "width", "height"].every((key) => Number.isFinite((rect as unknown as Record<string, unknown>)[key]))
+    )
+  );
+}
+
 export function isDesignFrameMessage(value: unknown): value is DesignFrameMessage {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<DesignFrameMessage>;
   return (
     candidate.source === DESIGN_FRAME_MESSAGE_SOURCE &&
-    (candidate.kind === "height" || candidate.kind === "external-link")
+    (candidate.kind === "height" || candidate.kind === "external-link" || isCommentAnchorMessage(candidate) || isCommentRectsMessage(candidate) || (candidate.kind === "edit" && Array.isArray(candidate.path) && typeof candidate.html === "string" && (candidate.mode === "inner" || candidate.mode === "outer")) || (candidate.kind === "ask-companion" && Number.isFinite(candidate.x) && Number.isFinite(candidate.y) && parseInlineAiContext(candidate.context)?.surface === "design"))
   );
 }
 
@@ -88,9 +258,9 @@ export function isDesignFrameMessage(value: unknown): value is DesignFrameMessag
  * is rendered verbatim; a fragment is wrapped in a minimal responsive shell.
  * Optional token CSS is injected into <head> so the artifact ports to the real app.
  */
-export function buildDesignSrcDoc(bodyHtml: string, tokenCss?: string): string {
+export function buildDesignSrcDoc(bodyHtml: string, tokenCss?: string, editable = false): string {
   const injected = tokenCss ? `<style data-av-tokens="true">${tokenCss}</style>` : "";
-  const bridge = designFrameBridgeScript();
+  const bridge = designFrameBridgeScript(editable);
   const hasHtmlShell = /<html[\s>]/i.test(bodyHtml);
   if (hasHtmlShell) {
     if (/<\/head>/i.test(bodyHtml)) {
