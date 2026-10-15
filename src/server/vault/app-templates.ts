@@ -1,7 +1,7 @@
 import { normalizeAppManifest, type AppManifest } from "@/lib/app-contract";
 import type { NoteType } from "./types";
 import { VaultError } from "./errors";
-import { jobInboxManifest, jobInboxSource } from "./job-inbox-template";
+import { JOB_INBOX_TEMPLATE_VERSION, jobInboxManifest, jobInboxSource } from "./job-inbox-template";
 
 export const APP_TEMPLATE_CATALOG_VERSION = 1 as const;
 
@@ -79,7 +79,7 @@ const templates: AppTemplate[] = [
     }),
   },
   {
-    id: "job-inbox", version: 1, name: "Job Inbox", noteType: "app",
+    id: "job-inbox", version: JOB_INBOX_TEMPLATE_VERSION, name: "Job Inbox", noteType: "app",
     description: "Career postings, application status, saved triage views, and Promote.",
     source: "", manifest: jobInboxManifest,
   },

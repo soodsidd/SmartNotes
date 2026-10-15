@@ -5,6 +5,7 @@ import {
   setAppEnabled,
 } from "@/server/vault/app-runtime";
 import { toErrorResponse, VaultError } from "@/server/vault/errors";
+import { upgradeJobInboxSource } from "@/server/vault/job-inbox";
 import { emitVaultSideEffects } from "@/server/vault/socket-events";
 
 function requiredPath(value: unknown): string {
@@ -16,6 +17,8 @@ function requiredPath(value: unknown): string {
 export async function GET(request: Request) {
   try {
     const path = requiredPath(new URL(request.url).searchParams.get("path"));
+    // SN-309: bring an unmodified Job Inbox up to the current maintained UI before it loads.
+    await upgradeJobInboxSource(path).catch(() => false);
     const bootstrap = await bootstrapAppRuntime(path, request.headers.get("x-smart-notes-app-session"));
     return NextResponse.json(bootstrap, {
       headers: { "Cache-Control": "no-store", ETag: `"${bootstrap.revision}"` },
