@@ -69,7 +69,7 @@ const ui = String.raw`
 *{box-sizing:border-box}[hidden]{display:none!important}
 html,body{margin:0;background:var(--background);color:var(--foreground)}
 body{padding:8px;font:14px/1.4 'Hanken Grotesk',system-ui,sans-serif;-webkit-text-size-adjust:100%}
-button,input,select,textarea{font:inherit;color:inherit}
+button,input,select,textarea,label{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent}
 :focus-visible{outline:2px solid var(--ring);outline-offset:2px}
 svg{flex:none;width:var(--table-ribbon-icon-size);height:var(--table-ribbon-icon-size);fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .icon{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;width:var(--table-ribbon-button-size);height:var(--table-ribbon-button-size);padding:0;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--secondary-foreground);cursor:pointer}
@@ -82,11 +82,11 @@ svg{flex:none;width:var(--table-ribbon-icon-size);height:var(--table-ribbon-icon
 .count{margin-right:auto;color:var(--muted-foreground);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .ribbon{display:flex;align-items:center;gap:2px;padding:2px;overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);scrollbar-width:none}
 .ribbon::-webkit-scrollbar{display:none}
-.sep{flex:none;align-self:stretch;width:1px;margin:4px;background:var(--border)}
-.pick{display:inline-flex;flex:none;align-items:center;gap:4px;height:var(--table-ribbon-button-size);padding:0 2px 0 6px;border-radius:var(--radius-sm);color:var(--secondary-foreground)}
-.pick:hover{background:var(--secondary)}.pick:focus-within{outline:2px solid var(--ring);outline-offset:-2px}
+.group{display:flex;flex:none;align-items:center;gap:2px}.group+.group{margin-left:3px;padding-left:4px;border-left:1px solid var(--border)}
+.pick{position:relative;display:inline-flex;flex:none;align-items:center;gap:4px;height:var(--table-ribbon-button-size);padding:0 2px 0 6px;border-radius:var(--radius-sm);color:var(--secondary-foreground)}
+.pick:hover{background:var(--secondary)}.pick.is-active{color:var(--accent)}.pick:focus-within{outline:2px solid var(--ring);outline-offset:-2px}
 .pick select{height:100%;max-width:9rem;padding:0 2px;border:0;background:transparent;color:var(--foreground);font-size:12px;cursor:pointer}
-.pick select:focus-visible{outline:none}.pick select:disabled{opacity:.5;cursor:default}
+.pick select:focus-visible{outline:none}.pick select:disabled{opacity:.5;cursor:default}.pick:has(select:disabled){opacity:.4}.pick:has(select:disabled):hover{background:transparent}
 .control{width:100%;min-width:0;height:var(--table-ribbon-button-size);padding:0 8px;border:1px solid var(--input);border-radius:var(--radius-sm);background:var(--background);font-size:12px}
 textarea.control{height:auto;min-height:96px;padding:8px;line-height:1.5;resize:vertical}
 .save-form{display:flex;align-items:center;gap:4px;margin-top:8px}
@@ -97,7 +97,7 @@ textarea.control{height:auto;min-height:96px;padding:8px;line-height:1.5;resize:
 .filters-foot{display:flex;grid-column:1/-1;justify-content:flex-end}
 .error{display:flex;align-items:center;gap:8px;margin-top:8px;padding:2px 2px 2px 12px;border:1px solid color-mix(in srgb,var(--destructive) 30%,transparent);border-radius:var(--radius-sm);background:color-mix(in srgb,var(--destructive) 5%,transparent);color:var(--destructive);font-size:12px}
 .error span{flex:1}
-.layout{display:grid;align-items:start;gap:12px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr);align-items:start;gap:12px}.app-main{min-width:0}
 .table-wrap{margin-top:8px;overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md)}
 table{width:100%;border-collapse:collapse}
 th,td{padding:4px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
@@ -139,6 +139,8 @@ details summary{display:flex;align-items:center;min-height:var(--table-ribbon-bu
 @media(min-width:641px){body{padding:12px;font-size:13px}.filters{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
 @media(max-width:640px){
 input,select,textarea,.pick select{font-size:16px}
+.ribbon{flex-wrap:wrap;row-gap:2px;overflow-x:visible}.group+.group{margin-left:0;padding-left:0;border-left:0}.pick select{max-width:7.5rem}
+.pick.compact{justify-content:center;width:var(--table-ribbon-button-size);padding:0}.pick.compact select{position:absolute;inset:0;width:100%;max-width:none;opacity:0}
 table,tbody{display:block}thead{display:none}.table-wrap{overflow:visible}
 tbody tr{display:grid;grid-template-columns:44px auto auto minmax(0,1fr) auto;grid-template-areas:"sel co co co score" "sel role role role role" "sel status source posted posted";align-items:center;column-gap:8px;row-gap:2px;padding:8px 12px 8px 0;border-bottom:1px solid var(--border)}
 tbody tr:last-child{border-bottom:0}
@@ -156,16 +158,14 @@ td[data-col=score]{grid-area:score;font-weight:600}
 <main class="app-main">
 <header class="top"><h1>Job Inbox</h1><span id="count" class="count" aria-live="polite"></span><button id="refresh" type="button" class="icon" aria-label="Refresh" title="Refresh">${icons.refresh}</button></header>
 <div class="ribbon" role="toolbar" aria-label="Job Inbox actions">
-<label class="pick" title="Saved view">${icons.bookmark}<select id="views" aria-label="Saved view"><option value="">All postings</option></select></label>
+<span class="group"><label class="pick" title="Saved view">${icons.bookmark}<select id="views" aria-label="Saved view"><option value="">All postings</option></select></label>
 <button id="save-view" type="button" class="icon" aria-label="Save current view" title="Save current view">${icons.bookmarkPlus}</button>
-<button id="delete-view" type="button" class="icon" aria-label="Delete saved view" title="Delete saved view" disabled>${icons.trash}</button>
-<span class="sep" aria-hidden="true"></span>
-<button id="toggle-filters" type="button" class="icon" aria-label="Filters" title="Filters" aria-expanded="false" aria-controls="filters">${icons.filter}<span id="filter-badge" class="badge" hidden></span></button>
-<label class="pick" title="Sort">${icons.sort}<select id="sort" aria-label="Sort postings"></select></label>
-<span class="sep" aria-hidden="true"></span>
-<button id="select-all" type="button" class="icon" aria-label="Select all shown" title="Select all shown" aria-pressed="false">${icons.listChecks}</button>
-<label class="pick" title="Set status of selected">${icons.tag}<select id="bulk-status" aria-label="Set status of selected" disabled></select></label>
-<button id="ask-companion" type="button" class="icon" aria-label="Ask companion about selected" title="Ask companion about selected" disabled>${icons.sparkles}</button>
+<button id="delete-view" type="button" class="icon" aria-label="Delete saved view" title="Delete saved view" disabled>${icons.trash}</button></span>
+<span class="group"><button id="toggle-filters" type="button" class="icon" aria-label="Filters" title="Filters" aria-expanded="false" aria-controls="filters">${icons.filter}<span id="filter-badge" class="badge" hidden></span></button>
+<label id="sort-pick" class="pick compact" title="Sort">${icons.sort}<select id="sort" aria-label="Sort postings"></select></label></span>
+<span class="group"><button id="select-all" type="button" class="icon" aria-label="Select all shown" title="Select all shown" aria-pressed="false">${icons.listChecks}</button>
+<label class="pick compact" title="Set status of selected">${icons.tag}<select id="bulk-status" aria-label="Set status of selected" disabled></select></label>
+<button id="ask-companion" type="button" class="icon" aria-label="Ask companion about selected" title="Ask companion about selected" disabled>${icons.sparkles}</button></span>
 </div>
 <form id="save-form" class="save-form" hidden><input id="view-name" class="control" aria-label="View name" placeholder="View name" maxlength="80" autocomplete="off"><button type="submit" class="icon" aria-label="Save view" title="Save view">${icons.check}</button><button id="cancel-save" type="button" class="icon" aria-label="Cancel" title="Cancel">${icons.x}</button></form>
 <section id="filters" class="filters" aria-label="Filters" hidden><div class="filters-foot"><button id="clear-filters" type="button" class="icon" aria-label="Clear filters" title="Clear filters">${icons.filterX}</button></div></section>
@@ -193,7 +193,7 @@ td[data-col=score]{grid-area:score;font-weight:600}
 const controller = String.raw`
 const $=id=>document.getElementById(id), statusList=${JSON.stringify(JOB_STATUSES)}, sourceList=['ingest','email','share'];
 const wide=matchMedia('(min-width:960px)');
-let postings=[],views=[],sorting=[],filters=[],selected={},openId=null,currentView='';
+let postings=[],views=[],sorting=[],filters=[],selected={},openId=null,currentView='',shown={};
 const fill=(element,placeholder,list)=>{element.replaceChildren();if(placeholder)element.add(new Option(placeholder,''));list.forEach(s=>element.add(new Option(s,s)))};
 fill($('bulk-status'),'Status…',statusList);fill($('panel-status'),null,statusList);
 const textFilter=(row,id,value)=>String(row.getValue(id)||'').toLowerCase().includes(String(value).toLowerCase());
@@ -206,7 +206,7 @@ function checkbox(label){const e=document.createElement('input');e.type='checkbo
 const tones={New:'new',Promoted:'active',Applied:'active',Interview:'active',Offer:'active'};
 function chip(text,tone){const e=cell('span',text,'chip');if(tone)e.dataset.tone=tone;return e}
 const postingName=v=>[v.company,v.role].filter(Boolean).join(' — ')||v.title;
-function shortDate(value){const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(value||''));if(!m)return value?String(value):'—';return new Date(Number(m[1]),Number(m[2])-1,Number(m[3])).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'2-digit'})}
+function shortDate(value){const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(value||''));if(!m)return value?String(value):'—';const year=Number(m[1]);return new Date(year,Number(m[2])-1,Number(m[3])).toLocaleDateString(undefined,year===new Date().getFullYear()?{month:'short',day:'numeric'}:{month:'short',day:'numeric',year:'numeric'})}
 function showError(message){$('error-text').textContent=message;$('error').hidden=false}
 function clearError(){$('error-text').textContent='';$('error').hidden=true}
 $('dismiss-error').onclick=clearError;
@@ -221,7 +221,7 @@ function build(){const tr=document.createElement('tr');const foot=$('filters').f
 build();
 function toggleAll(on){for(const row of table.getRowModel().rows)row.toggleSelected(on)}
 const sortOptions=[['postedAt','desc','Newest posted'],['postedAt','asc','Oldest posted'],['score','desc','Highest score'],['score','asc','Lowest score'],['company','asc','Company A–Z'],['company','desc','Company Z–A'],['role','asc','Role A–Z'],['status','asc','Status A–Z']];
-function renderSort(){const s=$('sort');s.replaceChildren(new Option('Default order',''));for(const [id,dir,label] of sortOptions)s.add(new Option(label,id+':'+dir));let value='';if(sorting.length===1){value=sorting[0].id+':'+(sorting[0].desc?'desc':'asc');if(!sortOptions.some(([id,dir])=>id+':'+dir===value)){s.add(new Option('Custom sort','custom'));value='custom'}}else if(sorting.length>1){s.add(new Option('Custom ('+sorting.length+' columns)','custom'));value='custom'}s.value=value}
+function renderSort(){const s=$('sort');s.replaceChildren(new Option('Default order',''));for(const [id,dir,label] of sortOptions)s.add(new Option(label,id+':'+dir));let value='';if(sorting.length===1){value=sorting[0].id+':'+(sorting[0].desc?'desc':'asc');if(!sortOptions.some(([id,dir])=>id+':'+dir===value)){s.add(new Option('Custom sort','custom'));value='custom'}}else if(sorting.length>1){s.add(new Option('Custom ('+sorting.length+' columns)','custom'));value='custom'}s.value=value;$('sort-pick').classList.toggle('is-active',sorting.length>0)}
 $('sort').onchange=()=>{const v=$('sort').value;if(v==='custom')return;if(!v){sorting=[];sync();return}const [id,dir]=v.split(':');sorting=[{id,desc:dir==='desc'}];sync()};
 function renderRows(){for(const refresh of refreshers)refresh();renderSort();const rows=table.getRowModel().rows;const body=document.createDocumentFragment();for(const row of rows){const v=row.original;const tr=document.createElement('tr');tr.dataset.id=v.id;if(row.getIsSelected())tr.classList.add('is-selected');if(v.id===openId)tr.setAttribute('aria-current','true');tr.onclick=event=>{if(!event.target.closest('input,button,label'))openPanel(v.id)};for(const c of table.getAllLeafColumns()){const td=document.createElement('td');td.dataset.col=c.id;const value=c.id==='select'?null:row.getValue(c.id);if(c.id==='select'){const e=checkbox('Select '+postingName(v));e.checked=row.getIsSelected();e.onchange=()=>row.toggleSelected(e.checked);const wrap=cell('label','','check');wrap.append(e);td.append(wrap)}else if(c.id==='company'){const b=cell('button',value||v.title||'—','open');b.type='button';b.title='Open details: '+postingName(v);b.onclick=()=>openPanel(v.id);td.append(b)}else if(c.id==='status')td.append(chip(value||'—',tones[value]));else if(c.id==='postedAt'){td.textContent=shortDate(value);if(value)td.title=String(value)}else if(c.id==='role'){const s=cell('span',value||'—','trunc');if(value)s.title=String(value);td.append(s)}else td.textContent=value===null||value===undefined||value===''?'—':String(value);tr.append(td)}body.append(tr)}$('body').replaceChildren(body);$('empty').hidden=rows.length!==0;const n=Object.keys(selected).length;$('count').textContent=rows.length+' shown'+(n?' · '+n+' selected':'');$('bulk-status').disabled=!n;$('ask-companion').disabled=!n;$('select-all').setAttribute('aria-pressed',String(rows.length>0&&rows.every(r=>r.getIsSelected())));$('filter-badge').textContent=String(filters.length);$('filter-badge').hidden=!filters.length}
 async function all(tableId){const out=[];for(let offset=0;;offset+=20){const data=await smartNotesApp.query(tableId,{limit:20,offset});out.push(...data.rows);if(data.rows.length<20)break}return out}
@@ -247,7 +247,8 @@ function openPanel(id){const row=postings.find(p=>p.id===id);if(!row)return;cons
 $('panel-title').textContent=postingName(v);
 $('panel-source').replaceChildren(chip(v.status,tones[v.status]),chip(v.source),chip('Added '+new Date(row.createdAt).toLocaleDateString()),chip('Enrichment: '+(v.enrichmentStatus||'pending')));
 $('panel-link').textContent=v.sourceUrl||'';$('panel-link-row').hidden=!v.sourceUrl;
-if(!reopened){$('panel-status').value=v.status;$('panel-score').value=v.score??'';$('panel-notes').value=v.notes||'';$('panel-saved').textContent=''}
+// A refresh keeps the user's unsaved edits but picks up server changes (e.g. Promote) in untouched fields.
+const next={'panel-status':v.status,'panel-score':String(v.score??''),'panel-notes':v.notes||''};for(const [field,value] of Object.entries(next)){if(!reopened||$(field).value===shown[field])$(field).value=value}shown=next;if(!reopened)$('panel-saved').textContent='';
 $('panel-jd').textContent=v.jd||'No description available.';
 $('application').hidden=!v.applicationId;const app=v.applicationId?'Open application: '+(v.applicationPath||v.applicationId):'Open application';$('application').title=app;$('application').setAttribute('aria-label',app);
 $('promote').disabled=!!v.applicationId;$('promote-label').textContent=v.applicationId?'Promoted':'Promote';$('run-fit').disabled=!!v.applicationId;
@@ -259,7 +260,7 @@ $('close-panel').onclick=closePanel;
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('panel').hidden)closePanel()});
 wide.addEventListener('change',()=>{if(openId)placePanel()});
 $('application').onclick=async()=>{const row=postings.find(p=>p.id===openId);if(!row?.values.applicationId)return;try{await smartNotesApp.jobInbox.openApplication(row.values.applicationId)}catch(e){showError(e.message)}};
-$('save-details').onclick=async()=>{const row=postings.find(p=>p.id===openId);if(!row)return;try{await smartNotesApp.update('postings',row.id,{...row.values,status:$('panel-status').value,score:$('panel-score').value?Number($('panel-score').value):null,notes:$('panel-notes').value});$('panel-saved').textContent='';await load();$('panel-status').value=postings.find(p=>p.id===row.id)?.values.status??$('panel-status').value;$('panel-saved').textContent='Saved'}catch(e){showError(e.message)}};
+$('save-details').onclick=async()=>{const row=postings.find(p=>p.id===openId);if(!row)return;try{await smartNotesApp.update('postings',row.id,{...row.values,status:$('panel-status').value,score:$('panel-score').value?Number($('panel-score').value):null,notes:$('panel-notes').value});$('panel-saved').textContent='';await load();$('panel-saved').textContent='Saved'}catch(e){showError(e.message)}};
 $('promote').onclick=async()=>{if(!openId)return;const button=$('promote');button.disabled=true;try{const result=await smartNotesApp.jobInbox.promote(openId,$('run-fit').checked);await load();if(result.warning)showError(result.warning)}catch(e){showError(e.message);button.disabled=false}};
 smartNotesApp.companion.onMessage(async message=>{if(message?.action==='refresh')await load()});
 load();

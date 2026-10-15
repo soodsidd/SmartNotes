@@ -1,0 +1,182 @@
+[
+  {
+    "name": "desktop renders 8 rows",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "desktop no horizontal overflow",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "desktop icon buttons 28px",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "header sort ascending",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "sorted first row Acme",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "multi-sort shows Custom (2 columns)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "sort select Highest score",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "filters panel opens",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "status filter → 3 rows",
+    "ok": true,
+    "detail": "3 shown"
+  },
+  {
+    "name": "filter badge shows 1",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "saved view created + selected",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "All postings view restores 8 rows",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "saved view reapplies filter",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "bulk controls disabled with no selection",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "count shows 2 selected",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "ask companion sends selected IDs",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "bulk status updates 2 rows",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "select all selects shown rows",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "row click opens panel",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "desktop panel beside list",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "save details persists status/score/notes",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "promote passes Fit=false and disables",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "panel status follows Promote (no stale Save)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "open application",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Escape closes panel",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mobile no horizontal page overflow",
+    "ok": true,
+    "detail": "390"
+  },
+  {
+    "name": "mobile ribbon targets ≥44px",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mobile row checkbox target ≥44px",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mobile header hidden (card rows)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mobile selection actions visible without scrolling",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mobile filters fit width",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mobile panel replaces list full width",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mobile panel no overflow",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mobile close returns to list",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mobile tap checkbox selects (no panel)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "no page errors",
+    "ok": true,
+    "detail": ""
+  }
+]
