@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import {
   constantTimeTokenEqual,
   EMAIL_ENVELOPE_FROM_HEADER,
+  EMAIL_ENVELOPE_TO_HEADER,
   EmailInboundError,
   logEmailInbound,
   MAX_RAW_EMAIL_BYTES,
+  normalizeEnvelopeRecipient,
   normalizeEnvelopeSender,
   parseAllowedSenders,
   processInboundEmail,
@@ -74,6 +76,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const envelopeSender = normalizeEnvelopeSender(request.headers.get(EMAIL_ENVELOPE_FROM_HEADER));
+    const envelopeRecipient = normalizeEnvelopeRecipient(request.headers.get(EMAIL_ENVELOPE_TO_HEADER));
     const rawMime = Buffer.from(await request.arrayBuffer());
     if (rawMime.length === 0) {
       throw new EmailInboundError("INVALID_MIME", "Raw MIME body is empty.", 400);
@@ -82,7 +85,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       throw new EmailInboundError("EMAIL_TOO_LARGE", "Raw email exceeds the 5 MiB limit.", 413);
     }
 
-    const result = await processInboundEmail(rawMime, allowedSenders, envelopeSender);
+    const result = await processInboundEmail(rawMime, allowedSenders, envelopeSender, envelopeRecipient);
     return NextResponse.json(
       { status: "ok", ...result },
       { status: result.created ? 201 : 200 }

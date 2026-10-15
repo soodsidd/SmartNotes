@@ -3,8 +3,8 @@ import path from "node:path";
 import { normalizeAppManifest } from "@/lib/app-contract";
 
 export const JOB_INBOX_TEMPLATE_ID = "job-inbox";
-/** v2 (SN-309): mobile-first icon UI. Bump when the maintained source changes. */
-export const JOB_INBOX_TEMPLATE_VERSION = 2;
+/** v3: detail-panel Delete for inbox postings. Bump when the maintained source changes. */
+export const JOB_INBOX_TEMPLATE_VERSION = 3;
 export const JOB_STATUSES = ["New", "Skipped", "Archived", "Promoted", "Applied", "Interview", "Offer", "Rejected", "Closed", "Declined"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
@@ -134,6 +134,10 @@ input[type=checkbox]{width:16px;height:16px;margin:0;accent-color:var(--accent);
 .fit:hover{background:var(--secondary)}
 .primary{display:inline-flex;align-items:center;gap:6px;height:var(--table-ribbon-button-size);padding:0 12px;border:0;border-radius:var(--radius-sm);background:var(--accent);color:var(--accent-foreground);font-size:12px;font-weight:600;cursor:pointer}
 .primary:disabled{opacity:.5;cursor:default}
+.danger{display:inline-flex;align-items:center;gap:6px;height:var(--table-ribbon-button-size);padding:0 12px;border:1px solid color-mix(in srgb,var(--destructive) 35%,transparent);border-radius:var(--radius-sm);background:transparent;color:var(--destructive);font-size:12px;font-weight:600;cursor:pointer}
+.danger:hover:not(:disabled){background:color-mix(in srgb,var(--destructive) 10%,transparent)}
+.danger[aria-pressed=true]{background:var(--destructive);color:#fff;border-color:var(--destructive)}
+.danger:disabled{opacity:.5;cursor:default}
 details summary{display:flex;align-items:center;min-height:var(--table-ribbon-button-size);color:var(--secondary-foreground);font-size:11px;font-weight:600;cursor:pointer}
 .jd{font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
 @media(min-width:641px){body{padding:12px;font-size:13px}.filters{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
@@ -182,6 +186,7 @@ td[data-col=score]{grid-area:score;font-weight:600}
 <div class="actions"><span id="panel-saved" class="saved" aria-live="polite"></span>
 <button id="save-details" type="button" class="icon" aria-label="Save changes" title="Save changes">${icons.save}</button>
 <button id="application" type="button" class="icon" aria-label="Open application" title="Open application" hidden>${icons.fileText}</button>
+<button id="delete-posting" type="button" class="danger" title="Delete this inbox entry" aria-pressed="false">${icons.trash}<span id="delete-label">Delete</span></button>
 <label class="fit" title="Run Fit analysis when promoting"><input id="run-fit" type="checkbox" checked>${icons.sparkles}<span>Fit</span></label>
 <button id="promote" type="button" class="primary" title="Promote to an application page">${icons.rocket}<span id="promote-label">Promote</span></button></div>
 <details open><summary>Job description</summary><div id="panel-jd" class="jd"></div></details>
@@ -193,7 +198,7 @@ td[data-col=score]{grid-area:score;font-weight:600}
 const controller = String.raw`
 const $=id=>document.getElementById(id), statusList=${JSON.stringify(JOB_STATUSES)}, sourceList=['ingest','email','share'];
 const wide=matchMedia('(min-width:960px)');
-let postings=[],views=[],sorting=[],filters=[],selected={},openId=null,currentView='',shown={};
+let postings=[],views=[],sorting=[],filters=[],selected={},openId=null,currentView='',shown={},deleteArmed=false;
 const fill=(element,placeholder,list)=>{element.replaceChildren();if(placeholder)element.add(new Option(placeholder,''));list.forEach(s=>element.add(new Option(s,s)))};
 fill($('bulk-status'),'Status…',statusList);fill($('panel-status'),null,statusList);
 const textFilter=(row,id,value)=>String(row.getValue(id)||'').toLowerCase().includes(String(value).toLowerCase());
@@ -243,7 +248,9 @@ $('bulk-status').onchange=async()=>{const status=$('bulk-status').value;if(!stat
 $('ask-companion').onclick=async()=>{const ids=Object.keys(selected);if(!ids.length){showError('Select one or more postings first.');return}try{await smartNotesApp.companion.send({text:'Help me triage these selected Job Inbox postings. Use job_inbox_query for these IDs; you may update status or notes with job_inbox_update when I ask.',payload:{postingIds:ids}})}catch(e){showError(e.message)}};
 const rowFor=id=>id?$('body').querySelector('tr[data-id="'+CSS.escape(id)+'"]'):null;
 function placePanel(){const panel=$('panel');if(!wide.matches){panel.style.marginTop='';return}const tr=rowFor(openId);const offset=tr?tr.getBoundingClientRect().top-$('layout').getBoundingClientRect().top:0;panel.style.marginTop=Math.max(0,Math.round(offset))+'px'}
+function resetDeleteArm(){deleteArmed=false;$('delete-posting').disabled=false;$('delete-posting').setAttribute('aria-pressed','false');$('delete-label').textContent='Delete';$('delete-posting').title='Delete this inbox entry'}
 function openPanel(id){const row=postings.find(p=>p.id===id);if(!row)return;const reopened=openId===id&&!$('panel').hidden;openId=id;const v=row.values;
+if(!reopened)resetDeleteArm();
 $('panel-title').textContent=postingName(v);
 $('panel-source').replaceChildren(chip(v.status,tones[v.status]),chip(v.source),chip('Added '+new Date(row.createdAt).toLocaleDateString()),chip('Enrichment: '+(v.enrichmentStatus||'pending')));
 $('panel-link').textContent=v.sourceUrl||'';$('panel-link-row').hidden=!v.sourceUrl;
@@ -255,13 +262,15 @@ $('promote').disabled=!!v.applicationId;$('promote-label').textContent=v.applica
 for(const tr of $('body').rows){if(tr.dataset.id===id)tr.setAttribute('aria-current','true');else tr.removeAttribute('aria-current')}
 $('panel').hidden=false;$('layout').classList.add('has-panel');document.body.classList.add('detail-open');placePanel();
 if(!reopened){$('close-panel').focus({preventScroll:true});if(wide.matches)$('panel').scrollIntoView({block:'nearest'});else{window.scrollTo(0,0);$('panel').scrollIntoView({block:'start'})}}}
-function closePanel(){const id=openId;openId=null;$('panel').hidden=true;$('layout').classList.remove('has-panel');document.body.classList.remove('detail-open');for(const tr of $('body').rows)tr.removeAttribute('aria-current');const tr=rowFor(id);if(tr){tr.scrollIntoView({block:'nearest'});tr.querySelector('button.open')?.focus({preventScroll:true})}}
+function closePanel(){const id=openId;openId=null;resetDeleteArm();$('panel').hidden=true;$('layout').classList.remove('has-panel');document.body.classList.remove('detail-open');for(const tr of $('body').rows)tr.removeAttribute('aria-current');const tr=rowFor(id);if(tr){tr.scrollIntoView({block:'nearest'});tr.querySelector('button.open')?.focus({preventScroll:true})}}
 $('close-panel').onclick=closePanel;
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('panel').hidden)closePanel()});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('panel').hidden){if(deleteArmed){resetDeleteArm();return}closePanel()}});
 wide.addEventListener('change',()=>{if(openId)placePanel()});
 $('application').onclick=async()=>{const row=postings.find(p=>p.id===openId);if(!row?.values.applicationId)return;try{await smartNotesApp.jobInbox.openApplication(row.values.applicationId)}catch(e){showError(e.message)}};
 $('save-details').onclick=async()=>{const row=postings.find(p=>p.id===openId);if(!row)return;try{await smartNotesApp.update('postings',row.id,{...row.values,status:$('panel-status').value,score:$('panel-score').value?Number($('panel-score').value):null,notes:$('panel-notes').value});$('panel-saved').textContent='';await load();$('panel-saved').textContent='Saved'}catch(e){showError(e.message)}};
 $('promote').onclick=async()=>{if(!openId)return;const button=$('promote');button.disabled=true;try{const result=await smartNotesApp.jobInbox.promote(openId,$('run-fit').checked);await load();if(result.warning)showError(result.warning)}catch(e){showError(e.message);button.disabled=false}};
+// Frame sandbox has no allow-modals, so Delete is a two-click confirm (arm, then Confirm).
+$('delete-posting').onclick=async()=>{if(!openId)return;if(!deleteArmed){deleteArmed=true;$('delete-posting').setAttribute('aria-pressed','true');$('delete-label').textContent='Confirm';$('delete-posting').title='Click again to permanently delete this inbox entry';return}const id=openId;const button=$('delete-posting');button.disabled=true;try{await smartNotesApp.jobInbox.delete(id);delete selected[id];openId=null;resetDeleteArm();$('panel').hidden=true;$('layout').classList.remove('has-panel');document.body.classList.remove('detail-open');await load()}catch(e){showError(e.message);resetDeleteArm()}};
 smartNotesApp.companion.onMessage(async message=>{if(message?.action==='refresh')await load()});
 load();
 `;

@@ -21,7 +21,7 @@ import {
   type AppFrameRpcResponse,
 } from "@/lib/app-frame";
 import {
-  fetchAppBootstrap, fetchAppDataSnapshot, focusedAppUrl, reloadAppSource, runAppRpc, promoteJobFromApp,
+  fetchAppBootstrap, fetchAppDataSnapshot, focusedAppUrl, reloadAppSource, runAppRpc, promoteJobFromApp, deleteJobFromApp,
   runOwnerAppDataMutation, saveAppSource, setAppEnabled,
   type AppBootstrapResponse,
 } from "@/lib/api/app";
@@ -650,6 +650,18 @@ export function AppPageView({ pagePath, title, bodyHtml, onOpenSidebar, reloadRe
         const operation = token
           ? promoteJobFromApp({ path: pagePath, sessionToken: token, rowId: message.rowId, runFit: message.runFit })
           : Promise.reject(new Error("Promote requires a live App session."));
+        void operation.then((data) => {
+          iframeRef.current?.contentWindow?.postMessage(boundedRpcResponse({ source: "smart-notes-app-host", nonce, kind: "rpc-result", requestId: message.requestId, ok: true, data }), "*");
+        }).catch((error) => {
+          iframeRef.current?.contentWindow?.postMessage({ source: "smart-notes-app-host", nonce, kind: "rpc-result", requestId: message.requestId, ok: false, error: errorMessage(error).slice(0, 400) }, "*");
+        }).finally(() => limiter.finish(message.requestId));
+        return;
+      }
+      if (message.kind === "job-delete") {
+        const token = bootstrap?.sessionToken;
+        const operation = token
+          ? deleteJobFromApp({ path: pagePath, sessionToken: token, rowId: message.rowId })
+          : Promise.reject(new Error("Delete requires a live App session."));
         void operation.then((data) => {
           iframeRef.current?.contentWindow?.postMessage(boundedRpcResponse({ source: "smart-notes-app-host", nonce, kind: "rpc-result", requestId: message.requestId, ok: true, data }), "*");
         }).catch((error) => {

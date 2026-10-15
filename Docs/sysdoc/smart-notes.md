@@ -621,13 +621,15 @@ Authenticated, server-only raw-MIME ingress for the Cloudflare Email Worker. The
 request must use `Content-Type: message/rfc822` and
 `Authorization: Bearer <SMART_NOTES_EMAIL_INBOUND_TOKEN>`. On that authenticated
 Worker-to-app request, `X-Smart-Notes-Envelope-From` carries Cloudflare's actual
-SMTP envelope sender (`EmailMessage.from`). The raw request body is capped at 5
-MiB. Missing token or sender-allowlist configuration returns 503; invalid bearer
-returns 401; a missing, invalid, or disallowed envelope sender, or a mismatch
-between it and the single MIME `From` mailbox, returns 403; invalid MIME, missing
-recipient, or an empty usable body returns 400; oversized input returns 413. The
-envelope header is authoritative only after bearer validation; arbitrary public
-requests cannot establish an envelope identity by supplying the header alone.
+SMTP envelope sender (`EmailMessage.from`) and `X-Smart-Notes-Envelope-To`
+carries the envelope recipient (`EmailMessage.to`). The raw request body is
+capped at 5 MiB. Missing token or sender-allowlist configuration returns 503;
+invalid bearer returns 401; a missing, invalid, or disallowed envelope sender,
+or a mismatch between it and the single MIME `From` mailbox, returns 403;
+invalid MIME, missing recipient, or an empty usable body returns 400; oversized
+input returns 413. Envelope headers are authoritative only after bearer
+validation; arbitrary public requests cannot establish an envelope identity by
+supplying the headers alone.
 
 `mailparser` decodes RFC headers and MIME alternatives. HTML is preferred and
 sanitized to the editor-safe subset; scripts, styles, event handlers, images,
@@ -636,6 +638,11 @@ HTML-escaped. Attachment parts are counted in email metadata but their payloads
 are never written. The first credential-free HTTP(S) URL in the selected,
 sanitized body becomes `sourceUrl`; otherwise the reference uses
 `mailto:<sender>`.
+
+Subjects matching `[Job]` / `Job:` (capture group becomes the posting title),
+or any message whose authenticated envelope recipient is `jobs@lucidrss.com`,
+append one Career Job Inbox posting instead of creating a page. All other mail
+keeps the page-capture path below.
 
 The first subject comma optionally routes `Notebook name, Note title`. The
 prefix must uniquely match a current primary or portable notebook's display name
@@ -1515,14 +1522,14 @@ Legacy callers (no `captureId`): the page is created first (empty), then body co
 
 Smart Notes has an isolated, online-only Cloudflare email route and application endpoint. The route was enabled after SN-212 verification and now delivers allowed mail into the vault while failing closed whenever Smart Notes rejects or cannot receive a message.
 
-- `notes@lucidrss.com` has an enabled Email Routing rule targeting the `smart-notes-email-inbound` Email Worker. The final live gate verified one exact notebook route and one unresolved-prefix global-Inbox fallback from the configured allowed sender.
-- Subjects starting `[Job]` or `Job:` are routed to the Career Job Inbox as one App-data record per Message-ID instead of a page; all other mail keeps this page-capture path (SN-306, see Job Inbox App).
-- The Worker forwards raw MIME as `Content-Type: message/rfc822` to `https://notes-inbound.lucidrss.com/api/email/inbound`, authenticates with a bearer token, and carries Cloudflare's SMTP envelope sender from `EmailMessage.from` in `X-Smart-Notes-Envelope-From`. The app validates the bearer first, then requires that authenticated envelope identity to be allowlisted and to exactly match the MIME `From`. Its configured secret names are `INBOUND_URL` and `SMART_NOTES_EMAIL_INBOUND_TOKEN`; secret values must never be written to source control, sysdoc, briefs, or diagnostics.
+- `notes@lucidrss.com` and `jobs@lucidrss.com` both have enabled Email Routing rules targeting the `smart-notes-email-inbound` Email Worker. The original SN-215 live gate verified one exact notebook route and one unresolved-prefix global-Inbox fallback from the configured allowed sender on `notes@`.
+- Subjects starting `[Job]` or `Job:` on either address, and every accepted message whose SMTP envelope recipient is `jobs@lucidrss.com`, are routed to the Career Job Inbox as one App-data record per Message-ID instead of a page; all other `notes@` mail keeps the page-capture path (SN-306, see Job Inbox App).
+- The Worker forwards raw MIME as `Content-Type: message/rfc822` to `https://notes-inbound.lucidrss.com/api/email/inbound`, authenticates with a bearer token, and carries Cloudflare's SMTP envelope sender from `EmailMessage.from` in `X-Smart-Notes-Envelope-From` plus the envelope recipient from `EmailMessage.to` in `X-Smart-Notes-Envelope-To`. The app validates the bearer first, then requires that authenticated envelope sender to be allowlisted and to exactly match the MIME `From`. Its configured secret names are `INBOUND_URL` and `SMART_NOTES_EMAIL_INBOUND_TOKEN`; secret values must never be written to source control, sysdoc, briefs, or diagnostics.
 - The Cloudflare Tunnel exposes only the exact `/api/email/inbound` path on `notes-inbound.lucidrss.com` to Smart Notes at `localhost:3002`. Every other path on that hostname returns tunnel-level `404`.
 - Delivery is online-only for the MVP. If Smart Notes is unavailable or rejects the request, the Worker rejects the email so the sender receives a failure and can resend. There is no mailbox polling, Cloudflare Queue, durable buffer, or background retry.
-- Resume Repo remains isolated on `inbound.lucidrss.com` and `localhost:5111`; its enabled `jobs@lucidrss.com` routing rule still targets `resume-repo-email-inbound`.
-- `POST /api/email/inbound` implements the server-only bearer, exact sender allowlist, 5 MiB raw MIME cap, sanitized body mapping, exact notebook routing, atomic page/reference/dedupe commit, and restart-durable replay behavior described in REST API.
-- The version-controlled deployment source and operator runbook are in `infra/cloudflare/email-inbound-worker/`. It documents tunnel validation, diagnostics, the enable gate, jobs-route isolation, and rollback. Rollback begins by disabling only the Smart Notes rule; the tunnel hostname may remain path-scoped and inactive.
+- Resume Repo's `inbound.lucidrss.com` → `localhost:5111` tunnel rule and `resume-repo-email-inbound` Worker remain as rollback artifacts only; live `jobs@lucidrss.com` mail targets `smart-notes-email-inbound`.
+- `POST /api/email/inbound` implements the server-only bearer, exact sender allowlist, 5 MiB raw MIME cap, sanitized body mapping, Job Inbox subject/envelope routing, exact notebook routing, atomic page/reference/dedupe commit, and restart-durable replay behavior described in REST API.
+- The version-controlled deployment source and operator runbook are in `infra/cloudflare/email-inbound-worker/`. It documents tunnel validation, diagnostics, the enable gate, and rollback. Rollback of job mail begins by retargeting only the `jobs@` Email Routing rule.
 
 ### Public ingest ingress (SN-166)
 
@@ -2256,26 +2263,7 @@ CSV import/export is browser-local. Import replaces the current workbook with on
 
 ## Job Inbox App (Career postings and application tracker, SN-306)
 
-The Career **Job Inbox** is a maintained App template (`job-inbox`, catalog entry "Job Inbox") that doubles as the application tracker. Job postings are **App-data records in the `postings` table, never vault pages**, so daily intake never grows the tree; saved grid views live in a second app-owned `views` table. There is no tracker spreadsheet and no analysis UI.
-
-**Provisioning.** The App page is created lazily at `Career/Inbox/job-inbox.html` (Career notebook and Inbox section created if missing) the first time explicit job intake arrives; it is found by `manifest.template.id === "job-inbox"` among App pages in the Career notebook. Ordinary capture never provisions it. Moving the App out of the Career notebook makes the next intake provision a fresh one.
-
-**Intake routing (explicit only).** `server/vault/job-inbox.ts#appendJobPosting` is the single append path, serialized by an in-process lock and deduped by `sourceKey`:
-- `POST /api/ingest` with `type: "job"` **or** `destination.id: "career-jobs"` appends a record (201 created / 200 duplicate) and returns `{ posting, appPath, created }`. Bearer callers are `source=ingest`; same-origin share-target posts are `source=share`. The page-destination allowlist is not consulted because nothing is written to a destination. Every other type/destination keeps the unchanged page-capture path.
-- `POST /api/email/inbound` with a subject starting `[Job]` or `Job:` appends a `source=email` record keyed by Message-ID (raw-MIME hash fallback); every other email keeps the transactional page-capture path.
-- Without an explicit key, the dedupe key is `sha256(source, sourceUrl, title)`.
-
-**Enrichment (ported from Resume Repo `inbox_enrich.py`).** LinkedIn job URLs (`*.linkedin.com/(comm/)jobs/view/<id>`) are canonicalized; the public page is fetched (8 s timeout, 2 MB cap) and parsed with cheerio from JSON-LD `JobPosting` (title, hiringOrganization, description), falling back to `og:title` "Role at Company" and `og:description`. `enrichmentStatus` is `complete | partial | failed | skipped`; fetch failures never block intake — the captured title/content is kept.
-
-**Grid UI (SN-309 mobile-first, template version 2).** The template embeds `@tanstack/table-core` (headless sort/filter/selection) into the opaque App source at template-get time, with a module-scoped `process` shim because the sandboxed frame has no `process`. A single icon ribbon (inline lucide SVGs, `aria-label` + `title` on every icon control; 28px buttons on fine pointers, 44px on coarse pointers or <=640px) groups: saved view picker / save view / delete view | filters toggle (active-count badge) / sort picker | select all shown / bulk status / Ask companion (the last two are disabled until something is selected). Per-column filters (company, role, status, source, posted range, score range) live in a collapsible filter panel instead of the table header; the header holds only sort buttons (click = sort, Shift-click = add a multi-sort key, numbered indicators). Filter state keeps the original table-core `columnFilters` shape, so saved views from v1 still load. Saving a view uses an inline name field because the frame sandbox (`allow-scripts` only) blocks `prompt()`. At <=640px the table renders as card rows (company + score, role, status chip / source / posted) with a 44px checkbox column and the ribbon wraps; sort and bulk status become icon-only pickers over a transparent native select. The App frame auto-sizes to content height, so the details panel stays in document flow rather than `position:fixed`: below 960px it replaces the list as a full-width detail view (Close/Esc returns to and focuses the row), at >=960px it sits in a 420px column beside the list, top-aligned to the clicked row. On a refresh (save, Promote, companion `refresh`) the panel keeps unsaved edits but adopts server values in untouched fields, so a Save after Promote cannot revert the status. Filter and header controls are built once and refreshed in place so a blur-triggered change never loses focus. External links cannot be opened from the frame (anchor navigation is blocked by the bridge), so the source URL is shown as selectable text. **Source upgrade:** App source is copied into the page body at provisioning, so `GET /api/page/app` calls `upgradeJobInboxSource` first, which replaces the body with the current template and bumps `manifest.template.version` only when the manifest is older than `JOB_INBOX_TEMPLATE_VERSION` **and** the body still contains the unmodified v1 toolbar marker; customized sources and all data tables/rows/views are left untouched. Bump the version whenever the maintained source changes.
-
-**Statuses and immutability.** `New, Skipped, Archived, Promoted, Applied, Interview, Offer, Rejected, Closed, Declined`. Postings are never hard-deleted: `delete` on the `postings` table of a `job-inbox` App is rejected with `403 JOB_RECORD_IMMUTABLE` for frame RPC and owner Develop > Data alike; saved views remain deletable. Server intake/Promote writes go through `executeServiceAppDataMutation` (add/update only, no frame session, bypasses the enabled check — callers must authorize the template).
-
-**Promote.** Frame `smartNotesApp.jobInbox.promote(rowId, runFit)` → host `job-promote` message → `POST /api/job-inbox/promote`, which first authenticates the frame session via an App RPC query. It creates `Career/Applications/<Company – Role>` with the JD, source link, and a `/?page=<app>&job=<rowId>` back-link, stamps `job_application_id` / `job_posting_id` frontmatter, and updates the record to `Promoted` with `applicationId`/`applicationPath`. The link survives moves because `job-open-application` → `GET /api/job-inbox/application?id=` resolves the page by `job_application_id`, not path. Promote is idempotent per posting. "Run Fit analysis" (default on) runs the SN-305 recipe `Fit analysis` against the new page to create a child page; if the recipe is missing/ambiguous the application is kept and a warning is returned. No resume/portfolio pages are created.
-
-**Companion.** `job_inbox_query` (`path`, optional `ids` ≤50; ≤200 records) and `job_inbox_update` (`rowId` + `status`/`notes`/`score` 0–100) are vault tools in group `job_inbox`, also allowed through the editor-sandbox bridge. "Ask companion about selected" sends the selected posting IDs over the SN-203 companion channel; an `{action:"refresh"}` app message reloads the grid. App `query` accepts a non-negative `offset` (frame RPC, companion `app_query`, offline package) so the grid pages through >200 rows.
-
-**Evidence.** `tests/job-inbox.test.ts` covers enrichment parsing/fallbacks, dedupe, no-page intake via ingest/share/email with ordinary capture unchanged, status validation, delete rejection, companion commands, Promote page content/back-link/move-survival/idempotency, Fit success and missing-recipe warning, frame message parsing, and template embedding. Desktop/mobile screenshots: `e2e/evidence/SN-306/`. SN-309 adds a v2 control/aria-label/no-`prompt()` check and the guarded v1-to-v2 source upgrade test; mobile-first evidence (desktop grid/filters/selection/panel/dark, mobile grid/filters/selection/panel) is in `e2e/evidence/SN-309/`.
+**Resume Repo retirement (2026-10-15).** Resume Repo is archived in Ascent Vector. Durable career content lives under Career: Master, Templates, Recipes (+ notebook instructions), Inbox, and Applications (Tesla demo only). Stale RR application folders were not migrated. See `C:/Projects/Resume Repo/RETIRED.md`.
 
 ## Spreadsheet Pages (Vault-native Syncfusion workbooks, SN-207)
 

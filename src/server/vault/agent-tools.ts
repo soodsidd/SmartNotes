@@ -18,13 +18,20 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
     },
   },
   {
-    name: "job_inbox_update", description: "Update status, notes, or score on one Job Inbox posting. Records cannot be deleted.",
+    name: "job_inbox_update", description: "Update status, notes, or score on one Job Inbox posting.",
     group: "job_inbox", action: "update", parameters: {
       path: { type: "string", required: true, description: "Job Inbox App page path." },
       rowId: { type: "string", required: true, description: "Posting row ID." },
       status: { type: "string", description: "One of the Job Inbox statuses." },
       notes: { type: "string", description: "Replacement notes." },
       score: { type: "number", description: "Optional score from 0 to 100." },
+    },
+  },
+  {
+    name: "job_inbox_delete", description: "Delete one Job Inbox posting row. Does not delete a promoted application page.",
+    group: "job_inbox", action: "delete", parameters: {
+      path: { type: "string", required: true, description: "Job Inbox App page path." },
+      rowId: { type: "string", required: true, description: "Posting row ID." },
     },
   },
   {

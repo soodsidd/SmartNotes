@@ -6,7 +6,7 @@ import { resolveVaultPath } from "@/server/vault/paths";
 import { emitVaultSideEffects } from "@/server/vault/socket-events";
 import { authorizeIngestRequest, type IngestAuthMode } from "@/server/ingest-auth";
 import { resolveAllowlistedDestination } from "@/server/ingest-destinations";
-import { appendJobPosting } from "@/server/vault/job-inbox";
+import { appendJobPostingsFromContent } from "@/server/vault/job-inbox";
 
 const VALID_REFERENCE_TYPES = new Set<ReferenceType>(["article", "paper", "web"]);
 
@@ -172,12 +172,18 @@ export async function POST(request: Request) {
     // Inbox instead of creating a page. It never writes to a requested
     // destination, so the page-destination allowlist does not apply.
     if (payload.type === "job" || payload.destination?.id?.toLowerCase() === "career-jobs") {
-      const result = await appendJobPosting({
+      const result = await appendJobPostingsFromContent({
         title: payload.title, sourceUrl: payload.sourceUrl, content: payload.content,
         source: authMode === "same-origin" ? "share" : "ingest",
         postedAt: payload.publishedDate,
       });
-      return NextResponse.json({ posting: result.posting, appPath: result.pagePath, created: result.created }, { status: result.created ? 201 : 200 });
+      return NextResponse.json({
+        posting: result.postings[0],
+        postings: result.postings,
+        count: result.postings.length,
+        appPath: result.pagePath,
+        created: result.created,
+      }, { status: result.created ? 201 : 200 });
     }
     const captureDestination = await resolveCaptureDestination(authMode, payload.destination);
     const page = await capturePage({

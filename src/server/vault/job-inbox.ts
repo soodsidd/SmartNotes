@@ -71,18 +71,27 @@ export async function findJobInboxApp(): Promise<string | null> {
 
 /** Unmodified v1 sources carry this toolbar markup; owner-customized sources are left alone. */
 const V1_SOURCE_MARKER = '<button id="ask-companion">Ask companion about selected</button>';
+/** Unmodified v2 (SN-309) sources have the mobile-first ribbon but not Delete yet. */
+function isUnmodifiedMaintainedSource(body: string, version: number): boolean {
+  if (version <= 1) return body.includes(V1_SOURCE_MARKER);
+  if (version === 2) {
+    return body.includes('id="toggle-filters"') && body.includes('id="promote"') && body.includes("function createTable") && !body.includes('id="delete-posting"');
+  }
+  return false;
+}
 
 /**
- * Replace a Job Inbox App's stale maintained source with the current template
- * (SN-309). Only touches pages whose manifest predates the current template
- * version and whose body is still the unmodified maintained source; data
- * tables, rows and saved views are untouched.
+ * Replace a Job Inbox App's stale maintained source with the current template.
+ * Only touches pages whose manifest predates the current template version and
+ * whose body is still the unmodified maintained source; data tables, rows and
+ * saved views are untouched.
  */
 export async function upgradeJobInboxSource(pagePath: string): Promise<boolean> {
   const manifest = await readAppManifest(pagePath);
-  if (manifest.template?.id !== JOB_INBOX_TEMPLATE_ID || manifest.template.version >= JOB_INBOX_TEMPLATE_VERSION) return false;
+  const version = manifest.template?.version ?? 0;
+  if (manifest.template?.id !== JOB_INBOX_TEMPLATE_ID || version >= JOB_INBOX_TEMPLATE_VERSION) return false;
   const page = await readPage(pagePath);
-  if (!page.body.includes(V1_SOURCE_MARKER)) return false;
+  if (!isUnmodifiedMaintainedSource(page.body, version)) return false;
   await savePage({ path: page.path, title: page.title, body: getAppTemplate(JOB_INBOX_TEMPLATE_ID).source });
   await saveAppManifest(page.path, { ...manifest, template: { id: JOB_INBOX_TEMPLATE_ID, version: JOB_INBOX_TEMPLATE_VERSION } });
   return true;
@@ -97,9 +106,31 @@ export async function assertJobInboxApp(pagePath: string): Promise<string> {
   return page.path;
 }
 
+/** Resume Repo `LINKEDIN_JOB_URL_RE` parity: www / country /comm jobs/view IDs. */
+const LINKEDIN_JOB_URL_RE = /https?:\/\/(?:[\w.-]+\.)?linkedin\.com(?:\/comm)?\/jobs\/view\/(\d+)/gi;
+
+/** Unique LinkedIn job IDs in first-seen order (RR `extract_linkedin_job_ids`). */
+export function extractLinkedInJobIds(text: string): string[] {
+  if (!text) return [];
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const match of text.matchAll(LINKEDIN_JOB_URL_RE)) {
+    const jobId = match[1];
+    if (!seen.has(jobId)) {
+      seen.add(jobId);
+      ordered.push(jobId);
+    }
+  }
+  return ordered;
+}
+
+export function linkedinJobUrl(jobId: string): string {
+  return `https://www.linkedin.com/jobs/view/${jobId}`;
+}
+
+/** Canonical job URLs for each unique ID in first-seen order. */
 export function linkedinJobUrls(text: string): string[] {
-  const matches = text.matchAll(/https?:\/\/(?:[\w.-]+\.)?linkedin\.com\/(?:comm\/)?jobs\/view\/(\d+)/gi);
-  return [...new Set([...matches].map((match) => `https://www.linkedin.com/jobs/view/${match[1]}`))];
+  return extractLinkedInJobIds(text).map(linkedinJobUrl);
 }
 
 export function parseLinkedInJobHtml(html: string) {
@@ -124,18 +155,31 @@ export function parseLinkedInJobHtml(html: string) {
 }
 
 export async function enrichJobPosting(input: JobPostingInput, fetchPage: typeof fetch = fetch): Promise<Pick<JobValues, "company" | "role" | "jd" | "sourceUrl" | "enrichmentStatus">> {
-  const urls = linkedinJobUrls(`${input.sourceUrl ?? ""} ${input.content}`);
-  const sourceUrl = urls[0] ?? input.sourceUrl ?? "";
-  const fallback = { company: input.company?.trim() ?? "", role: input.role?.trim() || input.title.trim(), jd: stripHtml(input.content).trim().slice(0, 100_000), sourceUrl };
-  if (!urls.length) return { ...fallback, enrichmentStatus: "skipped" };
+  const preferred = input.sourceUrl ? linkedinJobUrls(input.sourceUrl)[0] : undefined;
+  const urls = linkedinJobUrls(`${input.sourceUrl ?? ""}\n${input.content}`);
+  const sourceUrl = preferred ?? urls[0] ?? input.sourceUrl ?? "";
+  const fetchUrl = preferred ?? urls[0];
+  const fallback = {
+    company: input.company?.trim() ?? "",
+    role: input.role?.trim() || input.title.trim(),
+    jd: stripHtml(input.content).trim().slice(0, 100_000),
+    sourceUrl,
+  };
+  if (!fetchUrl) return { ...fallback, enrichmentStatus: "skipped" };
   try {
-    const response = await fetchPage(urls[0], { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "SmartNotes-JobInbox/1.0" } });
+    const response = await fetchPage(fetchUrl, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "SmartNotes-JobInbox/1.0" } });
     if (!response.ok || Number(response.headers.get("content-length") ?? 0) > 2_000_000) throw new Error("LinkedIn page unavailable");
     const html = (await response.text()).slice(0, 2_000_000);
     const parsed = parseLinkedInJobHtml(html);
-    return { company: parsed.company || fallback.company, role: parsed.role || fallback.role, jd: parsed.jd || fallback.jd, sourceUrl, enrichmentStatus: parsed.jd ? "complete" : "partial" };
+    return {
+      company: parsed.company || fallback.company,
+      role: parsed.role || fallback.role,
+      jd: parsed.jd || fallback.jd,
+      sourceUrl: fetchUrl,
+      enrichmentStatus: parsed.jd ? "complete" : "partial",
+    };
   } catch {
-    return { ...fallback, enrichmentStatus: "failed" };
+    return { ...fallback, sourceUrl: fetchUrl, enrichmentStatus: "failed" };
   }
 }
 
@@ -162,15 +206,52 @@ export async function appendJobPosting(input: JobPostingInput, fetchPage: typeof
     const existing = (await postingRows(pagePath)).find((row) => row.values.sourceKey === key);
     if (existing) return { created: false, pagePath, posting: existing };
     const enriched = await enrichJobPosting(input, fetchPage);
+    const title = (enriched.role || input.title).trim();
     const values: JobValues = {
-      sourceKey: key, source: input.source, sourceUrl: enriched.sourceUrl, title: input.title.trim(),
-      company: enriched.company, role: enriched.role, jd: enriched.jd, status: "New", score: null,
+      sourceKey: key, source: input.source, sourceUrl: enriched.sourceUrl, title,
+      company: enriched.company, role: enriched.role || title, jd: enriched.jd, status: "New", score: null,
       notes: "", postedAt: input.postedAt ?? null, enrichmentStatus: enriched.enrichmentStatus,
       applicationId: "", applicationPath: "", fitPagePath: "",
     };
     const result = await executeServiceAppDataMutation({ path: pagePath, tableId: "postings", operation: "add", values }) as { row: LogRow };
     return { created: true, pagePath, posting: result.row };
   });
+}
+
+/**
+ * LinkedIn job-alert digests: one posting row per unique jobs/view ID (RR inbox_enrich
+ * multi-job pattern). Zero LinkedIn URLs keeps a single row from the email body.
+ */
+export async function appendJobPostingsFromContent(input: JobPostingInput, fetchPage: typeof fetch = fetch) {
+  const urls = linkedinJobUrls(`${input.sourceUrl ?? ""}\n${input.content}`);
+  if (urls.length <= 1) {
+    const single = await appendJobPosting(
+      urls[0] ? { ...input, sourceUrl: urls[0], content: input.content.trim() || urls[0] } : input,
+      fetchPage,
+    );
+    return { created: single.created, pagePath: single.pagePath, postings: [single.posting] };
+  }
+  const baseKey = input.sourceKey?.trim()
+    || crypto.createHash("sha256").update(`${input.source}\0${input.sourceUrl ?? ""}\0${input.title}`).digest("hex");
+  const postings: LogRow[] = [];
+  let pagePath = "";
+  let created = false;
+  for (const url of urls) {
+    const jobId = url.match(/\/(\d+)$/)?.[1];
+    if (!jobId) continue;
+    const result = await appendJobPosting({
+      title: input.title,
+      content: url,
+      sourceUrl: url,
+      source: input.source,
+      sourceKey: `${baseKey}:${jobId}`,
+      postedAt: input.postedAt,
+    }, fetchPage);
+    pagePath = result.pagePath;
+    if (result.created) created = true;
+    postings.push(result.posting);
+  }
+  return { created, pagePath, postings };
 }
 
 export async function updateJobPosting(pagePath: string, rowId: string, patch: { status?: unknown; notes?: unknown; score?: unknown }) {
@@ -234,5 +315,22 @@ export async function promoteJobPosting(pagePath: string, rowId: string, runFit 
     }
     await executeServiceAppDataMutation({ path, tableId: "postings", operation: "update", rowId, values: { ...values, status: "Promoted", applicationId, applicationPath: page.path, fitPagePath } });
     return { created: true, applicationPath: page.path, applicationId, fitPagePath: fitPagePath || null, warning };
+  });
+}
+
+/** Remove one inbox posting row. Leaves any promoted application page in place for manual cleanup. */
+export async function deleteJobPosting(pagePath: string, rowId: string) {
+  return withJobLock(async () => {
+    const path = await assertJobInboxApp(pagePath);
+    const row = (await postingRows(path)).find((candidate) => candidate.id === rowId);
+    if (!row) throw new VaultError("JOB_NOT_FOUND", "Posting not found.", 404);
+    const values = row.values as unknown as JobValues;
+    await executeServiceAppDataMutation({ path, tableId: "postings", operation: "delete", rowId });
+    return {
+      deleted: true,
+      rowId,
+      applicationId: values.applicationId || null,
+      applicationPath: values.applicationPath || null,
+    };
   });
 }

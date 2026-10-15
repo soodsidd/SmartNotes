@@ -384,8 +384,9 @@ async function executeAppRpcUnlocked(input: AppRpcInput, ownerDataAccess = false
   }
   const operation: AppRpcOperation = input.operation;
   const attachment = await resolveAttachment(input.path, input.tableId);
-  if (appManifest.template?.id === "job-inbox" && attachment.id === "postings" && operation === "delete") {
-    throw new VaultError("JOB_RECORD_IMMUTABLE", "Job postings cannot be deleted; set a status instead.", 403);
+  // App RPC and Owner Data keep postings immutable; trusted service delete is used by deleteJobPosting.
+  if (!serviceAccess && appManifest.template?.id === "job-inbox" && attachment.id === "postings" && operation === "delete") {
+    throw new VaultError("JOB_RECORD_IMMUTABLE", "Job postings cannot be deleted via App data; use Delete in Job Inbox.", 403);
   }
   const current = await readAttachmentDocument(input.path, attachment);
 
@@ -563,10 +564,10 @@ export async function executeOwnerAppDataMutation(input: AppRpcInput): Promise<u
   return withTableMutationLock(`app-runtime:${input.path}`, () => executeAppRpcUnlocked(input, true));
 }
 
-/** Trusted server-side intake and Promote mutations; callers must authorize the App template. */
+/** Trusted server-side intake, Promote, and Delete mutations; callers must authorize the App template. */
 export async function executeServiceAppDataMutation(input: Omit<AppRpcInput, "sessionToken">): Promise<unknown> {
-  if (input.operation !== "add" && input.operation !== "update") {
-    throw new VaultError("INVALID_APP_OPERATION", "Service App data accepts add or update.", 400);
+  if (input.operation !== "add" && input.operation !== "update" && input.operation !== "delete") {
+    throw new VaultError("INVALID_APP_OPERATION", "Service App data accepts add, update, or delete.", 400);
   }
   return withTableMutationLock(`app-runtime:${input.path}`, () => executeAppRpcUnlocked({ ...input, sessionToken: undefined }, false, true));
 }

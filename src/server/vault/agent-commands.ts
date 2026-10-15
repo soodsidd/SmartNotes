@@ -52,7 +52,7 @@ import { getAppTemplate, listAppTemplates, APP_TEMPLATE_CATALOG_VERSION } from "
 import { getAppInventoryEntry, listAppInventory } from "./app-inventory";
 import { queryAppTableForCompanion, saveAppManifest, seedOwnedAppTable } from "./app-runtime";
 import { deliverCompanionAppMessage } from "./companion-app-channel";
-import { queryJobPostings, updateJobPosting } from "./job-inbox";
+import { deleteJobPosting, queryJobPostings, updateJobPosting } from "./job-inbox";
 import {
   readVaultPdfPage,
   readVaultPdfPageCount,
@@ -1823,6 +1823,7 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
     case "job_inbox":
       if (action === "query") return { ok: true, group, action, data: await queryJobPostings(requireString(args.path, "path"), args.ids) };
       if (action === "update") return { ok: true, group, action, data: { posting: await updateJobPosting(requireString(args.path, "path"), requireString(args.rowId, "rowId"), { status: args.status, notes: args.notes, score: args.score }) } };
+      if (action === "delete") return { ok: true, group, action, data: await deleteJobPosting(requireString(args.path, "path"), requireString(args.rowId, "rowId")) };
       throw new VaultError("UNKNOWN_COMMAND", `Unknown Job Inbox command: ${action}`, 400);
     case "paper":
       return runPaperCommand(action, args);
@@ -1833,7 +1834,7 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
 
 export function listVaultCommands() {
   return {
-    job_inbox: ["query", "update"],
+    job_inbox: ["query", "update", "delete"],
     recipe: ["list", "run", "mark", "instructions"],
     page: [
       "create",
