@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import * as cheerio from "cheerio";
 import { readAppDataSnapshot, readAppManifest, saveAppManifest, executeServiceAppDataMutation } from "./app-runtime";
 import { getAppTemplate } from "./app-templates";
-import { JOB_INBOX_TEMPLATE_ID, JOB_STATUSES, type JobStatus } from "./job-inbox-template";
+import { JOB_INBOX_TEMPLATE_ID, JOB_INBOX_TEMPLATE_VERSION, JOB_STATUSES, type JobStatus } from "./job-inbox-template";
 import { createNotebook, createPage, createSection, readPage, readVaultTree, savePage, updatePageMetadata } from "./pages";
 import { runRecipe } from "./recipes";
 import { VaultError } from "./errors";
@@ -67,6 +67,25 @@ export async function findJobInboxApp(): Promise<string | null> {
     if (manifest.template?.id === JOB_INBOX_TEMPLATE_ID) return page.path;
   }
   return null;
+}
+
+/** Unmodified v1 sources carry this toolbar markup; owner-customized sources are left alone. */
+const V1_SOURCE_MARKER = '<button id="ask-companion">Ask companion about selected</button>';
+
+/**
+ * Replace a Job Inbox App's stale maintained source with the current template
+ * (SN-309). Only touches pages whose manifest predates the current template
+ * version and whose body is still the unmodified maintained source; data
+ * tables, rows and saved views are untouched.
+ */
+export async function upgradeJobInboxSource(pagePath: string): Promise<boolean> {
+  const manifest = await readAppManifest(pagePath);
+  if (manifest.template?.id !== JOB_INBOX_TEMPLATE_ID || manifest.template.version >= JOB_INBOX_TEMPLATE_VERSION) return false;
+  const page = await readPage(pagePath);
+  if (!page.body.includes(V1_SOURCE_MARKER)) return false;
+  await savePage({ path: page.path, title: page.title, body: getAppTemplate(JOB_INBOX_TEMPLATE_ID).source });
+  await saveAppManifest(page.path, { ...manifest, template: { id: JOB_INBOX_TEMPLATE_ID, version: JOB_INBOX_TEMPLATE_VERSION } });
+  return true;
 }
 
 export async function assertJobInboxApp(pagePath: string): Promise<string> {

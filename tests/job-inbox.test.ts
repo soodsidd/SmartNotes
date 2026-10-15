@@ -3,13 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { POST as postIngest } from "@/app/api/ingest/route";
 import { POST as postEmailInbound } from "@/app/api/email/inbound/route";
-import { createPage, invalidateVaultTreeCacheForTesting, movePage, readPage, readVaultTree } from "@/server/vault/pages";
+import { createPage, invalidateVaultTreeCacheForTesting, movePage, readPage, readVaultTree, savePage } from "@/server/vault/pages";
 import { setPageRole } from "@/server/vault/recipes";
-import { bootstrapAppRuntime, executeAppRpc, executeOwnerAppDataMutation, executeServiceAppDataMutation } from "@/server/vault/app-runtime";
+import { bootstrapAppRuntime, executeAppRpc, readAppManifest, saveAppManifest, executeOwnerAppDataMutation, executeServiceAppDataMutation } from "@/server/vault/app-runtime";
 import { EMAIL_ENVELOPE_FROM_HEADER, resetEmailInboundProcessStateForTesting } from "@/server/email-inbound";
 import {
   appendJobPosting, enrichJobPosting, findJobInboxApp, linkedinJobUrls, parseLinkedInJobHtml,
-  promoteJobPosting, queryJobPostings, resolveJobApplication, updateJobPosting,
+  promoteJobPosting, queryJobPostings, resolveJobApplication, updateJobPosting, upgradeJobInboxSource,
 } from "@/server/vault/job-inbox";
 import { executeVaultCommand } from "@/server/vault/agent-commands";
 import { parseAppFrameMessage } from "@/lib/app-frame";
@@ -230,5 +230,38 @@ describe("App frame bridge", () => {
     expect(template.source).toContain("function createTable");
     expect(template.source).not.toMatch(/<\/script>[\s\S]*<\/script>/);
     expect(template.manifest?.tables.map((t) => t.id)).toEqual(["postings", "views"]);
+  });
+
+  test("SN-309 mobile-first UI keeps every triage control with accessible labels and no prompt()", () => {
+    const { source, version } = getAppTemplate("job-inbox");
+    expect(version).toBe(2);
+    for (const id of ["views", "save-view", "delete-view", "toggle-filters", "sort", "select-all", "bulk-status", "ask-companion",
+      "panel-status", "panel-score", "panel-notes", "save-details", "promote", "run-fit", "application", "close-panel"]) {
+      expect(source).toContain(`id="${id}"`);
+    }
+    // Icon-only buttons must carry an accessible name.
+    for (const button of source.match(/<button[^>]*class="icon"[^>]*>/g) ?? []) expect(button).toMatch(/aria-label="[^"]+"/);
+    // The App frame sandbox has no allow-modals, so prompt() would silently fail.
+    expect(source).not.toMatch(/\bprompt\(/);
+  });
+
+  test("upgrades only an unmodified v1 Job Inbox source and preserves its data", async () => {
+    const { pagePath } = await appendJobPosting({ title: "Role", content: "jd", source: "ingest", sourceKey: "keep" }, noFetch);
+    const page = await readPage(pagePath);
+    const v1Body = '<main><div class="toolbar"><button id="ask-companion">Ask companion about selected</button></div></main>';
+    const manifest = await readAppManifest(pagePath);
+    await savePage({ path: pagePath, title: page.title, body: v1Body });
+    await saveAppManifest(pagePath, { ...manifest, template: { id: "job-inbox", version: 1 } });
+
+    expect(await upgradeJobInboxSource(pagePath)).toBe(true);
+    expect((await readPage(pagePath)).body).toContain('id="toggle-filters"');
+    expect((await readAppManifest(pagePath)).template).toEqual({ id: "job-inbox", version: 2 });
+    expect((await queryJobPostings(pagePath)).postings.map((p) => p.values.sourceKey)).toEqual(["keep"]);
+    expect(await upgradeJobInboxSource(pagePath)).toBe(false);
+
+    await savePage({ path: pagePath, title: page.title, body: "<main>my custom inbox</main>" });
+    await saveAppManifest(pagePath, { ...manifest, template: { id: "job-inbox", version: 1 } });
+    expect(await upgradeJobInboxSource(pagePath)).toBe(false);
+    expect((await readPage(pagePath)).body).toBe("<main>my custom inbox</main>");
   });
 });

@@ -5051,7 +5051,7 @@
     {
       "id": "unit-job-inbox",
       "name": "SN-306 Job Inbox records, intake routing, enrichment, and Promote",
-      "description": "Jest: tests/job-inbox.test.ts — LinkedIn JSON-LD/og enrichment and failure fallback, sourceKey dedupe, no-page intake via ingest type=job / share career-jobs / [Job] email with ordinary capture unchanged, status validation and postings delete rejection, companion job_inbox query/update, Promote page content, back-link, move-surviving application link, idempotency, Fit analysis child and missing-recipe warning, frame job-promote parsing, and template embedding.",
+      "description": "Jest: tests/job-inbox.test.ts — LinkedIn JSON-LD/og enrichment and failure fallback, sourceKey dedupe, no-page intake via ingest type=job / share career-jobs / [Job] email with ordinary capture unchanged, status validation and postings delete rejection, companion job_inbox query/update, Promote page content, back-link, move-surviving application link, idempotency, Fit analysis child and missing-recipe warning, frame job-promote parsing, template embedding, SN-309 v2 UI controls/aria-labels/no prompt(), and the guarded v1-to-v2 Job Inbox source upgrade.",
       "intent": "Protects the Career application tracker from creating vault pages per posting, losing records, or breaking the posting↔application link.",
       "whenToRun": "Pre-merge when changing job-inbox, App runtime mutations, /api/ingest, email inbound routing, recipes, or the App frame bridge.",
       "failureMeaning": "Postings may be duplicated, lost, deleted, or turned into pages; ordinary capture may be misrouted; or Promote may break its application link.",
