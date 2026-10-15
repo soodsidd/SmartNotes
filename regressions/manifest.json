@@ -4983,6 +4983,43 @@
       "sourceFiles": [{ "path": "tests/floating-text-box.test.ts" }]
     },
     {
+      "id": "unit-sn-318-main-flow-width",
+      "name": "Main editor flow width resize and per-page persistence",
+      "description": "Jest checks the main-flow column width clamp (360-1200, default 672), the right-edge handle (live drag reflow, keyboard steps, one commit per drag or key burst), the main_flow_width frontmatter round-trip through PATCH/PUT/GET, and HTML export at the page width.",
+      "intent": "Protects each page's chosen column width from loss on save or reload and keeps the resize handle width-only.",
+      "whenToRun": "Pre-merge when changing the text page main flow frame, page frontmatter writes, the page PATCH route, or HTML export.",
+      "failureMeaning": "A page may reopen at the wrong column width, autosave may drop the width, the handle may stop reflowing or persist on every pixel, or export may ignore the width.",
+      "appType": "node",
+      "command": "npm test -- tests/main-flow-width.test.ts tests/main-flow-width-route.test.ts tests/main-flow-width-handle.test.tsx",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "editor",
+        "main-flow",
+        "targeted"
+      ],
+      "feature": "editor",
+      "testType": "integration",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-318",
+      "addedAt": "2026-10-15",
+      "sourceFiles": [
+        {
+          "path": "tests/main-flow-width.test.ts"
+        },
+        {
+          "path": "tests/main-flow-width-route.test.ts"
+        },
+        {
+          "path": "tests/main-flow-width-handle.test.tsx"
+        }
+      ]
+    },
+    {
       "id": "unit-sn-301-server-supervisor",
       "name": "Server supervisor lifecycle and Settings panel",
       "description": "Isolated launcher stop/start/restart, port-conflict refusal, origin and DNS-rebinding guards, stale-supervisor takeover, and Settings Server tab status/log/action behavior.",

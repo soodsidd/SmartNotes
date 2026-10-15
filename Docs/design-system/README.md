@@ -62,6 +62,17 @@ with the same `--surface` fill and `--border` outline as the corner handle and a
 `ew-resize` cursor. Both resize handles show a `--ring` focus outline. No new
 token was introduced.
 
+SN-318 gives the main editor flow frame (the bordered column) the same
+right-edge, width-only affordance. A full-height 12px hit strip carries the same
+8×16px `--surface` / `--border` grip. The grip is sticky, so it stays in view on
+long pages. Hover and drag draw a 1px `--ring` line along the edge. Keyboard
+focus shows the `--ring` outline on the grip. The outline now frames the prose
+with equal frame padding on both sides. Its width is the column width plus twice
+that inset. The column clamps to 360–1200px; 1200px matches
+`--editor-table-expanded-max-width`. The default stays 672px. The handle is
+hidden below 768px, read-only and draw mode, and print. No new color, spacing,
+or typography token was introduced.
+
 ## Shared paper notes (SN-279)
 
 Bibliography, virtual paper rows, reference controls, and ownership breadcrumbs

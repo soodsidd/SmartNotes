@@ -1,0 +1,24 @@
+PASS opens at the default 672px column (672px)
+PASS prose stays inside the outline (1000 <= 1024)
+PASS right-edge width grip is visible
+PASS mid-drag: column 552px, prose already reflowed 672→552px wide
+PASS width-only: column 432px, outline 720→480px
+PASS prose rewraps 3→4 lines at 432px
+PASS image reflows to fit the column (432px)
+PASS height follows content: outline bottom 810 >= text 806
+PASS drag release does not create a stray floating box
+PASS narrowed width persisted to page frontmatter
+PASS keyboard adjusts width live (632px)
+PASS keyboard burst persisted once paused
+PASS widened to 960px; prose 3→2 lines
+PASS widened width persisted to page frontmatter
+PASS click inside the widened column (old canvas zone) does not create a box
+PASS click on empty canvas below/right of the column still creates a box
+PASS empty created box is pruned when the caret leaves
+PASS reload restores the 960px column and wrapping (960px, 2 lines)
+PASS width lives only in frontmatter, never in the HTML body
+PASS at 1.05× zoom a 105px drag narrows by 100 layout px (860px)
+PASS zero page or console errors (0)
+
+Console errors:
+(none)

@@ -365,6 +365,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     // SN-318: live column width — follows the stored value, updated on every drag step.
     const storedMainFlowWidth = normalizeMainFlowWidth(mainFlowWidthProp);
     const [mainFlowWidth, setMainFlowWidth] = React.useState(storedMainFlowWidth);
+    // Frame padding left of the prose; the outline insets the column by this on both sides.
+    const [mainFlowInset, setMainFlowInset] = React.useState(0);
     React.useEffect(() => {
       setMainFlowWidth(storedMainFlowWidth);
     }, [storedMainFlowWidth, pagePath]);
@@ -632,7 +634,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         const proseMirror = editor.view.dom as HTMLElement;
         const rect = proseMirror.getBoundingClientRect();
         const scale = rect.width / proseMirror.offsetWidth || 1;
-        const mainFlowRight = rect.left + mainFlowWidth * scale;
+        const mainFlowRight = rect.left + (mainFlowWidth + mainFlowInset) * scale;
         const lastFlow = Array.from(proseMirror.children).filter((child) =>
           !(child as HTMLElement).matches('[data-type="floating-text-box"]')
         ).at(-1) as HTMLElement | undefined;
@@ -1615,6 +1617,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
       const syncTextHeight = () => {
         setTextHeight(Math.max(proseMirror.scrollHeight, proseMirror.offsetHeight));
+        setMainFlowInset(proseMirror.offsetParent === contentSizerRef.current ? proseMirror.offsetLeft : 0);
         const flowChildren = Array.from(proseMirror.children).filter(
           (child) => !(child as HTMLElement).matches('[data-type="floating-text-box"]')
         ) as HTMLElement[];
@@ -2594,13 +2597,14 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                 data-testid="editor-main-flow-outline"
                 aria-hidden="true"
                 style={{
-                  width: mainFlowWidth,
+                  width: mainFlowWidth + mainFlowInset * 2,
                   height: Math.max(mainFlowHeight, textHeight, 240),
                 }}
               />
               {!readOnly && !isDrawMode && !inkCaptureMode && onMainFlowWidthChange ? (
                 <MainFlowWidthHandle
                   width={mainFlowWidth}
+                  inset={mainFlowInset * 2}
                   height={Math.max(mainFlowHeight, textHeight, 240)}
                   onLiveChange={setMainFlowWidth}
                   onCommit={onMainFlowWidthChange}
