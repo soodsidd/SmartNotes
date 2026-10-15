@@ -965,13 +965,19 @@ Standard browser shortcuts apply (Cmd/Ctrl+B for bold, etc.) plus:
 
 **Main flow frame:** The primary typed column is a fixed-width frame (`EDITOR_MAIN_FLOW_WIDTH` = 672px) drawn with the same faint 1px border language as floating boxes. It is not movable or resizable — it only shows the extents of the main editor so floating boxes can be placed clearly outside it. Ordinary ProseMirror blocks are constrained to that width; floating boxes stay absolutely positioned on the wider canvas.
 
-**Create / edit:** Click empty canvas beside or below the main frame, or choose Insert → Text box. Each box has an always-visible outline, a Move and Delete tab, and a bottom-right resize handle. Drag Move or focus it and use arrow keys to nudge; drag the corner to resize. Height expands when content needs more space.
+**Create / edit:** Click empty canvas beside or below the main frame, or choose Insert → Text box. Each box has an always-visible outline, a Move and Delete tab, a bottom-right corner resize handle, and (SN-316) a width-only handle centred on the right edge. Drag Move or focus it and use arrow keys to nudge; drag the corner to resize both dimensions.
+
+**Width-only resize and content-driven height (SN-316):** OneNote-style. Dragging the right-edge handle (`floating-text-box-resize-width`, `resizeFloatingBoxWidth`) changes only `width`; x, y and the stored min-height are untouched. Every pointer move commits, so the text rewraps live while you drag. Focusing the handle and pressing ←/→ changes the width by 1px, or 10px with Shift. The stored height is only a CSS `min-height`, so the box always grows or shrinks to fit its text and images. Box content uses `overflow-wrap: anywhere`, so long words wrap instead of overflowing.
+
+**Images grow the box:** Inside a box, an image that the user has sized (it has an inline `width`) is allowed past 100% of the box width. Unsized images keep the Tailwind preflight `img { max-width: 100% }` cap, so a large pasted screenshot does not blow up the box. A `ResizeObserver` on the box content (`fitToContent` in the node view) measures the furthest image right edge. If an image sticks out, it commits a wider `width` through `fitFloatingBoxWidthToContent`. That function only ever grows the box, so an image works as a minimum width when the box is narrowed. Expanded tables are deliberately left out of the measurement and keep overflowing as SN-278 intends.
+
+**Lesson (stray boxes):** If a drag starts inside a box (an image resize handle, for example) and is released over the canvas, Chromium fires `click` on the common ancestor, the ProseMirror root. That used to hit the empty-canvas create path. `pressStartedInFloatingBoxRef`, set in `handleEditorPointerDownCapture`, now suppresses click-to-create for those presses. The TipTap image node view does not add the `editor-image` class to its `<img>`, so floating-box image CSS targets `[data-resize-wrapper] > img`.
 
 **Empty auto-delete:** Leaving an empty newly created box (click away / blur / caret leaves) removes it automatically. Boxes that contain typed text, images, tables, or other atoms are kept. Focusing Move/Delete/resize chrome does not count as leaving the box.
 
 **Persistence:** Geometry is stored as x, y, width, and minimum height HTML attributes; nested paragraphs, images, and tables remain in the same page HTML and the existing page draft autosave. The box does not reflow ordinary page text. Search, Companion, page export, and print receive the box content as part of that HTML.
 
-**Implementation:** `src/lib/floating-text-box.ts`, `src/lib/floating-text-box-extension.ts`, `src/components/rich-text-editor.tsx`, styles in `src/app/globals.css`. Unit coverage: `tests/floating-text-box.test.ts`.
+**Implementation:** `src/lib/floating-text-box.ts`, `src/lib/floating-text-box-extension.ts`, `src/components/rich-text-editor.tsx`, styles in `src/app/globals.css`. Unit coverage: `tests/floating-text-box.test.ts` (catalog `unit-sn-296-floating-text-box`, which includes the SN-316 width, keyboard and image-growth cases). Desktop browser evidence: `evidence/sn-316/`.
 
 ### Page rule and grid lines (SN-297)
 
