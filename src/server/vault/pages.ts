@@ -17,6 +17,7 @@ import {
 } from "./notebook-registry";
 import { applyKeyNoteFlag, isKeyNoteFlag } from "@/lib/key-note";
 import { applyPageLinesMetadata, normalizePageLines } from "@/lib/page-lines";
+import { applyMainFlowWidthMetadata, normalizeMainFlowWidth } from "@/lib/main-flow-width";
 import type { FrontmatterData, FrontmatterValue, NoteType, VaultNotebook, VaultPageDocument, VaultPageSummary } from "./types";
 import { deletePageVersions, movePageVersions } from "./versions";
 import { SPREADSHEET_SIDECAR_EXTENSION, writeSpreadsheetWorkbook } from "./spreadsheet";
@@ -2035,6 +2036,36 @@ export async function setPageLines(input: SetPageLinesInput) {
   const nextMetadata = applyPageLinesMetadata(
     { ...page.metadata, updated: new Date().toISOString() },
     normalizePageLines(input.pageLines)
+  );
+  const serialized = serializeFrontmatterDocument(nextMetadata, page.body);
+  await writeAtomically(absolutePath, serialized);
+  invalidateVaultCache();
+  return buildPageDocument(relativePath, serialized);
+}
+
+export interface SetPageMainFlowWidthInput {
+  path: string;
+  mainFlowWidth: unknown;
+}
+
+/**
+ * SN-318: store the page's main editor flow column width in frontmatter.
+ * Only metadata changes; the HTML body is written back byte-for-byte.
+ */
+export async function setPageMainFlowWidth(input: SetPageMainFlowWidthInput) {
+  const { absolutePath, relativePath } = resolveVaultPath(input.path, "page");
+  const existingLink = await readDesignLinkSidecar(absolutePath);
+  if (existingLink) {
+    throw new VaultError("INVALID_INPUT", "Column width is available for text pages only.", 400);
+  }
+  const page = await readPageDocument(input.path);
+  const noteType = page.metadata.note_type;
+  if (typeof noteType === "string" && noteType !== "text") {
+    throw new VaultError("INVALID_INPUT", "Column width is available for text pages only.", 400);
+  }
+  const nextMetadata = applyMainFlowWidthMetadata(
+    { ...page.metadata, updated: new Date().toISOString() },
+    normalizeMainFlowWidth(input.mainFlowWidth)
   );
   const serialized = serializeFrontmatterDocument(nextMetadata, page.body);
   await writeAtomically(absolutePath, serialized);

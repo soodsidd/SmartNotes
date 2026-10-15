@@ -1,6 +1,6 @@
 import { setPageRole } from "@/server/vault/recipes";
 import { NextResponse } from "next/server";
-import { createPage, deletePage, movePage, nestPage, readPage, readPaperSnapshot, renamePage, savePage, setPageKeyNote, setPageLines, toApiPageDocument } from "@/server/vault/pages";
+import { createPage, deletePage, movePage, nestPage, readPage, readPaperSnapshot, renamePage, savePage, setPageKeyNote, setPageLines, setPageMainFlowWidth, toApiPageDocument } from "@/server/vault/pages";
 import { isBibliographyPath } from "@/lib/papers";
 import { toErrorResponse, VaultError } from "@/server/vault/errors";
 import { emitVaultSideEffects } from "@/server/vault/socket-events";
@@ -161,6 +161,19 @@ export async function PATCH(request: Request) {
       const page = await setPageLines({
         path: linesBody.path ?? "",
         pageLines: linesBody.pageLines,
+      });
+      emitVaultSideEffects({ treeChanged: true });
+      return NextResponse.json({ page: toApiPageDocument(page) });
+    }
+
+    if (body.action === "mainFlowWidth") {
+      const widthBody = body as { action: "mainFlowWidth"; path?: string; mainFlowWidth?: unknown };
+      if (typeof widthBody.mainFlowWidth !== "number" || !Number.isFinite(widthBody.mainFlowWidth)) {
+        throw new VaultError("INVALID_INPUT", '"mainFlowWidth" must be a finite number.', 400);
+      }
+      const page = await setPageMainFlowWidth({
+        path: widthBody.path ?? "",
+        mainFlowWidth: widthBody.mainFlowWidth,
       });
       emitVaultSideEffects({ treeChanged: true });
       return NextResponse.json({ page: toApiPageDocument(page) });

@@ -42,6 +42,13 @@ export interface PageLinesPagePayload {
   pageLines: { style: string; color: string };
 }
 
+/** SN-318: per-page main editor flow column width stored in frontmatter. */
+export interface MainFlowWidthPagePayload {
+  action: "mainFlowWidth";
+  path: string;
+  mainFlowWidth: number;
+}
+
 export interface ReorderPagesPayload {
   sectionPath: string;
   orderedIds: string[];

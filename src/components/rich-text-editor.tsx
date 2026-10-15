@@ -90,10 +90,7 @@ import {
   scrollEditorToPageToc,
   stripLegacyPageTocIfPresent,
 } from "@/lib/page-toc";
-import {
-  EDITOR_MAIN_FLOW_WIDTH,
-  pruneEmptyFloatingTextBoxes,
-} from "@/lib/floating-text-box";
+import { pruneEmptyFloatingTextBoxes } from "@/lib/floating-text-box";
 import { cn } from "@/lib/utils";
 import { MAX_INSERT_TABLE_DIMENSION, tableCellCount, tableDimension } from "@/lib/table-insert";
 import { TableRibbon } from "@/components/table-ribbon";
@@ -131,6 +128,8 @@ import {
 import { AnnotationDrawToolbar } from "@/components/annotation-draw-toolbar";
 import { PageLinesPopover } from "@/components/page-lines-popover";
 import { DEFAULT_PAGE_LINES, pageLinesBackgroundStyle, type PageLinesSetting } from "@/lib/page-lines";
+import { MAIN_FLOW_DEFAULT_WIDTH, normalizeMainFlowWidth } from "@/lib/main-flow-width";
+import { MainFlowWidthHandle } from "@/components/main-flow-width-handle";
 import { shouldOpenEditorContextMenu } from "@/lib/editor-context-menu";
 import { useSpellcheckEnabled } from "@/components/spellcheck-provider";
 import {
@@ -221,6 +220,10 @@ interface RichTextEditorProps {
   pageLines?: PageLinesSetting;
   /** Called when the user picks lines in the toolbar popover. Caller persists. */
   onPageLinesChange?: (next: PageLinesSetting) => void;
+  /** SN-318: per-page main flow column width in px (from page frontmatter). */
+  mainFlowWidth?: number;
+  /** Called once per drag / keyboard burst on the column's right-edge handle. Caller persists. */
+  onMainFlowWidthChange?: (next: number) => void;
 }
 
 interface HeadingChevronControl extends CollapsibleHeadingSection {
@@ -345,6 +348,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       onPersistAttachment,
       pageLines = DEFAULT_PAGE_LINES,
       onPageLinesChange,
+      mainFlowWidth: mainFlowWidthProp = MAIN_FLOW_DEFAULT_WIDTH,
+      onMainFlowWidthChange,
     },
     ref
   ) {
@@ -357,6 +362,12 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     const isDrawMode = annotationMode === "draw" && !readOnly;
     const [textHeight, setTextHeight] = React.useState(0);
     const [mainFlowHeight, setMainFlowHeight] = React.useState(0);
+    // SN-318: live column width — follows the stored value, updated on every drag step.
+    const storedMainFlowWidth = normalizeMainFlowWidth(mainFlowWidthProp);
+    const [mainFlowWidth, setMainFlowWidth] = React.useState(storedMainFlowWidth);
+    React.useEffect(() => {
+      setMainFlowWidth(storedMainFlowWidth);
+    }, [storedMainFlowWidth, pagePath]);
     const [viewportHeight, setViewportHeight] = React.useState(0);
     const [scrollTop, setScrollTop] = React.useState(0);
     // In capture mode the editor is rendered in an unbounded (non-scrolling)
@@ -621,7 +632,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         const proseMirror = editor.view.dom as HTMLElement;
         const rect = proseMirror.getBoundingClientRect();
         const scale = rect.width / proseMirror.offsetWidth || 1;
-        const mainFlowRight = rect.left + EDITOR_MAIN_FLOW_WIDTH * scale;
+        const mainFlowRight = rect.left + mainFlowWidth * scale;
         const lastFlow = Array.from(proseMirror.children).filter((child) =>
           !(child as HTMLElement).matches('[data-type="floating-text-box"]')
         ).at(-1) as HTMLElement | undefined;
@@ -1247,7 +1258,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     function insertFloatingBox(x?: number, y?: number) {
       if (!editor || readOnly || isDrawMode) return;
       const position = editor.state.doc.content.size;
-      const fallbackX = EDITOR_MAIN_FLOW_WIDTH + 24;
+      const fallbackX = mainFlowWidth + 24;
       const fallbackY = (scrollAreaRef.current?.scrollTop ?? 0) + 140;
       const inserted = editor.commands.insertContentAt(position, {
         type: "floatingTextBox",
@@ -2024,6 +2035,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           const measuredTextHeight = Math.max(proseMirror.scrollHeight, proseMirror.offsetHeight);
           return {
             html: editor.getHTML(),
+            mainFlowWidth,
             frameHeight: computePageFrameHeight({
               textHeight: measuredTextHeight,
               viewportHeight: viewportHeight || measuredTextHeight,
@@ -2567,7 +2579,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                   : undefined),
                 ...pageLinesBackgroundStyle(pageLines),
                 ...editorZoomSurfaceStyle(workspaceZoom, workspacePan),
-                ["--editor-main-flow-width" as string]: `${EDITOR_MAIN_FLOW_WIDTH}px`,
+                ["--editor-main-flow-width" as string]: `${mainFlowWidth}px`,
               }}
               data-testid="editor-content-frame"
               data-page-lines={pageLines.style === "none" ? undefined : pageLines.style}
@@ -2582,10 +2594,18 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                 data-testid="editor-main-flow-outline"
                 aria-hidden="true"
                 style={{
-                  width: EDITOR_MAIN_FLOW_WIDTH,
+                  width: mainFlowWidth,
                   height: Math.max(mainFlowHeight, textHeight, 240),
                 }}
               />
+              {!readOnly && !isDrawMode && !inkCaptureMode && onMainFlowWidthChange ? (
+                <MainFlowWidthHandle
+                  width={mainFlowWidth}
+                  height={Math.max(mainFlowHeight, textHeight, 240)}
+                  onLiveChange={setMainFlowWidth}
+                  onCommit={onMainFlowWidthChange}
+                />
+              ) : null}
               <EditorContent
                 editor={editor}
                 className={cn(

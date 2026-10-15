@@ -407,6 +407,48 @@ select {
   background: transparent;
 }
 
+/* SN-318: width-only handle on the main flow's right edge. Full-height hit strip;
+   the visible grip is sticky so it stays in view on long pages. */
+.editor-main-flow-resize {
+  position: absolute;
+  top: 0;
+  z-index: 15;
+  width: 12px;
+  padding: 0;
+  transform: translateX(-50%);
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.editor-main-flow-resize::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 50%;
+  width: 1px;
+  background: transparent;
+}
+.editor-main-flow-resize:hover::before,
+.editor-main-flow-resize[data-dragging="true"]::before { background: var(--ring); }
+.editor-main-flow-resize__grip {
+  position: sticky;
+  top: 45%;
+  display: block;
+  width: 8px;
+  height: 16px;
+  margin: 24px auto 0;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.editor-main-flow-resize:focus-visible { outline: none; }
+.editor-main-flow-resize:focus-visible .editor-main-flow-resize__grip { outline: 2px solid var(--ring); outline-offset: 1px; }
+body.page-print-active .editor-main-flow-resize { display: none; }
+@media (max-width: 767px) {
+  /* Phones: the column is already viewport-bound, so there is nothing to resize. */
+  .editor-main-flow-resize { display: none; }
+}
+
 .editor-content .floating-text-box {
   position: absolute;
   z-index: 20;
@@ -795,7 +837,8 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 .editor-content .tableWrapper[data-data-mode="true"] table { font-variant-numeric: tabular-nums; }
 .editor-content .tableWrapper[data-data-mode="true"] .numericCell:not([data-align]) { text-align: right; }
 .editor-content.ProseMirror > .tableWrapper[data-expanded="true"] {
-  max-width: var(--editor-table-expanded-max-width);
+  /* SN-318: never narrower than a widened main flow. */
+  max-width: max(var(--editor-table-expanded-max-width), var(--editor-main-flow-width, 672px));
 }
 .editor-content .floating-text-box .tableWrapper[data-expanded="true"] {
   position: relative;

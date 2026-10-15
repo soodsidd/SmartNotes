@@ -1,4 +1,5 @@
 import { escapeHtml } from "@/lib/html-utils";
+import { isDefaultMainFlowWidth, normalizeMainFlowWidth } from "@/lib/main-flow-width";
 
 export const PAGE_PRINT_ACTIVE_CLASS = "page-print-active";
 
@@ -11,6 +12,8 @@ export interface PageInkExport {
 export interface PageContentExport {
   html: string;
   frameHeight: number;
+  /** SN-318: main flow column width in px (per-page; default 672). */
+  mainFlowWidth?: number;
 }
 
 export interface StandaloneHtmlBundleInput {
@@ -18,6 +21,8 @@ export interface StandaloneHtmlBundleInput {
   bodyHtml: string;
   ink?: PageInkExport | null;
   frameHeight: number;
+  /** SN-318: per-page main flow width; omitted / default keeps the stock export layout. */
+  mainFlowWidth?: number;
 }
 
 const VAULT_ASSET_PATTERN = /(?:src|href)=["'](\/vault\/[^"']+)["']/gi;
@@ -66,6 +71,11 @@ body {
 .exported-page__content {
   position: relative;
   z-index: 1;
+}
+
+/* SN-318: a page with a custom column width exports at that width. */
+.exported-page[data-main-flow-width] .exported-page__content > :not([data-type="floating-text-box"]) {
+  max-width: var(--editor-main-flow-width);
 }
 
 .exported-page__ink {
@@ -313,6 +323,13 @@ export function stripDuplicatePageHeading(html: string) {
 export function buildStandaloneHtmlBundle(input: StandaloneHtmlBundleInput) {
   const title = escapeHtml(input.title.trim() || "Untitled page");
   const bodyHtml = stripDuplicatePageHeading(input.bodyHtml);
+  const customWidth =
+    input.mainFlowWidth !== undefined && !isDefaultMainFlowWidth(input.mainFlowWidth)
+      ? normalizeMainFlowWidth(input.mainFlowWidth)
+      : null;
+  const articleAttrs = customWidth
+    ? ` data-main-flow-width="${customWidth}" style="--editor-main-flow-width:${customWidth}px;max-width:max(760px, ${customWidth}px)"`
+    : "";
   const inkLayer = input.ink
     ? `<div class="exported-page__ink" aria-hidden="true">${input.ink.svg}</div>`
     : "";
@@ -331,7 +348,7 @@ export function buildStandaloneHtmlBundle(input: StandaloneHtmlBundleInput) {
   <style>${EXPORT_CONTENT_CSS}</style>
 </head>
 <body>
-  <article class="exported-page">
+  <article class="exported-page"${articleAttrs}>
     <header class="exported-page__header">
       <h1>${title}</h1>
     </header>

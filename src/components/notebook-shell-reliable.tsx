@@ -373,6 +373,11 @@ import {
   type PageLinesSetting,
 } from "@/lib/page-lines";
 import {
+  MAIN_FLOW_WIDTH_METADATA_KEY,
+  applyMainFlowWidthMetadata,
+  mainFlowWidthFromMetadata,
+} from "@/lib/main-flow-width";
+import {
   reorderNotebookPaths,
   type NotebookGroup,
 } from "@/lib/notebook-sidebar-organization";
@@ -4591,6 +4596,34 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     [syncTreePage]
   );
 
+  // SN-318: main flow column width lives in page frontmatter, same flow as page lines.
+  const handleMainFlowWidthChange = React.useCallback(
+    async (next: number) => {
+      const path = activePagePathRef.current;
+      const current = draftRef.current;
+      if (!path || !current || current.path !== path) return;
+      const previousMetadata = current.metadata;
+      const applyMetadata = (metadata: Record<string, unknown> | undefined) =>
+        applyMainFlowWidthMetadata({ ...(metadata ?? {}) }, next) as PageDraft["metadata"];
+      setDraft((d) => (d && d.path === path ? { ...d, metadata: applyMetadata(d.metadata) } : d));
+      try {
+        await flushSaveRef.current();
+        const page = await setVaultMainFlowWidth(path, next);
+        const stored = page.metadata?.[MAIN_FLOW_WIDTH_METADATA_KEY];
+        syncTreePage(path, (treePage) => {
+          const metadata: Record<string, unknown> = { ...(treePage.metadata ?? {}) };
+          if (stored === undefined) delete metadata[MAIN_FLOW_WIDTH_METADATA_KEY];
+          else metadata[MAIN_FLOW_WIDTH_METADATA_KEY] = stored;
+          return { ...treePage, metadata };
+        });
+      } catch (error) {
+        setDraft((d) => (d && d.path === path ? { ...d, metadata: previousMetadata } : d));
+        toast.error(error instanceof Error ? error.message : "Failed to update column width.");
+      }
+    },
+    [syncTreePage]
+  );
+
   const [pageOrderOverrides, setPageOrderOverrides] = React.useState<Map<string, string[]>>(new Map());
 
   const treeWithOverrides = React.useMemo(() => {
@@ -5952,6 +5985,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         bodyHtml,
         ink,
         frameHeight: snapshot.frameHeight,
+        mainFlowWidth: snapshot.mainFlowWidth,
       });
       triggerHtmlBundleDownload(draft.title, bundle);
     } catch (error) {
@@ -6809,6 +6843,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 onPageLinesChange={(next) => {
                   if (activeVersionPreview) return;
                   void handlePageLinesChange(next);
+                }}
+                onMainFlowWidthChange={(next) => {
+                  if (activeVersionPreview) return;
+                  void handleMainFlowWidthChange(next);
                 }}
               />
               )
@@ -9421,6 +9459,7 @@ function EditorPanel({
   onAnnotationSaveStatusChange,
   onCommentsChange,
   onPageLinesChange,
+  onMainFlowWidthChange,
 }: {
   draft: PageDraft;
   editorRef: React.RefObject<RichTextEditorHandle | null>;
@@ -9442,6 +9481,7 @@ function EditorPanel({
   onAnnotationSaveStatusChange?: (status: "idle" | "saving" | "saved" | "error") => void;
   onCommentsChange?: (comments: PageComment[]) => void;
   onPageLinesChange?: (next: PageLinesSetting) => void;
+  onMainFlowWidthChange?: (next: number) => void;
 }) {
   const [annotationMode, setAnnotationMode] = React.useState<"edit" | "draw">("edit");
   const [annotationHistory, setAnnotationHistory] = React.useState({
@@ -9572,6 +9612,8 @@ function EditorPanel({
     [draft.metadata]
   );
 
+  const mainFlowWidth = mainFlowWidthFromMetadata(draft.metadata);
+
   React.useLayoutEffect(() => {
     if (previewContent !== undefined || previewAnnotationsJson !== undefined) {
       displayedPathRef.current = draft.path;
@@ -9659,6 +9701,8 @@ function EditorPanel({
         onCommentsChange={readOnly ? undefined : onCommentsChange}
         pageLines={pageLines}
         onPageLinesChange={readOnly ? undefined : onPageLinesChange}
+        mainFlowWidth={mainFlowWidth}
+        onMainFlowWidthChange={readOnly ? undefined : onMainFlowWidthChange}
       />
       {localPdfReader ? (
         <ImmersivePdfReader
@@ -10378,6 +10422,21 @@ async function nestVaultPage(pagePath: string, parentId: string | null) {
 
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, "Failed to nest page."));
+  }
+
+  const body = (await response.json()) as { page: ApiPageDocument };
+  return body.page;
+}
+
+async function setVaultMainFlowWidth(pagePath: string, mainFlowWidth: number) {
+  const response = await vaultWriteFetch("/api/page", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "mainFlowWidth", path: pagePath, mainFlowWidth }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Failed to update column width."));
   }
 
   const body = (await response.json()) as { page: ApiPageDocument };
