@@ -5886,6 +5886,39 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   const activeVersionPreview =
     versionPreview && draft?.path === versionPreview.parentPagePath ? versionPreview : null;
+
+  // Shared by text pages (EditorPanel) and design pages (SN-310): both persist
+  // the full comments array through PUT /api/page/comments.
+  const persistPageComments = React.useCallback(
+    async (comments: PageComment[]) => {
+      if (activeVersionPreview) return;
+      const path = activePagePathRef.current;
+      if (!path) return;
+      try {
+        // Include the current in-memory content so the comment save
+        // never discards text that the autosave hasn't flushed yet.
+        const pageBody = draftRef.current?.content;
+        await vaultWriteFetch("/api/page/comments", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path, comments, pageBody }),
+        });
+        syncTreePage(path, (page) => ({
+          ...page,
+          metadata: {
+            ...(page.metadata ?? {}),
+            comments,
+          },
+        }));
+        setDraft((d) =>
+          d && d.path === path ? { ...d, metadata: { ...d.metadata, comments } } : d
+        );
+      } catch {
+        // non-fatal — comments will re-sync on next page load
+      }
+    },
+    [activeVersionPreview, syncTreePage]
+  );
   const isMobileCompanionOpen = aiOpen && !isWideViewport;
   // SN-211: closed-panel companion icon states. Ready wins over working; both are
   // suppressed while the panel is open (viewed = acknowledged / turn is visible).
@@ -6720,6 +6753,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                       ? undefined
                       : (content) => updateDraft({ content })
                   }
+                  comments={extractComments(draft.metadata ?? {})}
+                  onCommentsChange={
+                    activeVersionPreview || draft.sourceMissing
+                      ? undefined
+                      : (comments) => void persistPageComments(comments)
+                  }
                   onSaveStatusChange={(status) => {
                     if (activeVersionPreview) return;
                     if (status === "saving") setSaveState("saving");
@@ -6766,33 +6805,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   else if (status === "saved") setSaveState("saved");
                   else if (status === "error") setSaveState("error");
                 }}
-                onCommentsChange={async (comments) => {
-                  if (activeVersionPreview) return;
-                  const path = activePagePathRef.current;
-                  if (!path) return;
-                  try {
-                    // Include the current in-memory content so the comment save
-                    // never discards text that the autosave hasn't flushed yet.
-                    const pageBody = draftRef.current?.content;
-                    await vaultWriteFetch("/api/page/comments", {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ path, comments, pageBody }),
-                    });
-                    syncTreePage(path, (page) => ({
-                      ...page,
-                      metadata: {
-                        ...(page.metadata ?? {}),
-                        comments,
-                      },
-                    }));
-                    setDraft((d) =>
-                      d ? { ...d, metadata: { ...d.metadata, comments } } : d
-                    );
-                  } catch {
-                    // non-fatal — comments will re-sync on next page load
-                  }
-                }}
+                onCommentsChange={persistPageComments}
                 onPageLinesChange={(next) => {
                   if (activeVersionPreview) return;
                   void handlePageLinesChange(next);
