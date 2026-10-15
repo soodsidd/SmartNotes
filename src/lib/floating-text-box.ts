@@ -30,6 +30,25 @@ export function resizeFloatingBox(geometry: FloatingBoxGeometry, dx: number, dy:
   return normalizeFloatingBoxGeometry({ ...geometry, width: geometry.width + dx, height: geometry.height + dy });
 }
 
+/** Right-edge resize: only the width changes; text reflows and height follows content. */
+export function resizeFloatingBoxWidth(geometry: FloatingBoxGeometry, dx: number): FloatingBoxGeometry {
+  return normalizeFloatingBoxGeometry({ ...geometry, width: geometry.width + dx });
+}
+
+/**
+ * Grow the box width by however much its content overflows horizontally
+ * (e.g. an embedded image resized wider than the box). Never shrinks.
+ */
+export function fitFloatingBoxWidthToContent(
+  geometry: FloatingBoxGeometry,
+  neededContentWidth: number,
+  availableContentWidth: number,
+): FloatingBoxGeometry {
+  const overflow = Math.ceil(neededContentWidth - availableContentWidth);
+  if (!Number.isFinite(overflow) || overflow <= 0) return geometry;
+  return normalizeFloatingBoxGeometry({ ...geometry, width: geometry.width + overflow });
+}
+
 /** True when a floating box has no typed text, images, tables, or other non-empty blocks. */
 export function isFloatingTextBoxEmpty(node: PMNode): boolean {
   if (node.type.name !== "floatingTextBox") return false;

@@ -3,9 +3,11 @@ import type { NodeView } from "@tiptap/pm/view";
 import {
   FLOATING_BOX_DEFAULT_HEIGHT,
   FLOATING_BOX_DEFAULT_WIDTH,
+  fitFloatingBoxWidthToContent,
   moveFloatingBox,
   normalizeFloatingBoxGeometry,
   resizeFloatingBox,
+  resizeFloatingBoxWidth,
   type FloatingBoxGeometry,
 } from "./floating-text-box";
 
@@ -72,7 +74,13 @@ export const FloatingTextBox = Node.create({
       resize.className = "floating-text-box__resize";
       resize.setAttribute("aria-label", "Resize text box");
       resize.dataset.testid = "floating-text-box-resize";
-      dom.append(controls, contentDOM, resize);
+      const resizeWidth = document.createElement("button");
+      resizeWidth.type = "button";
+      resizeWidth.className = "floating-text-box__resize-width";
+      resizeWidth.title = "Drag to change width; arrow keys to adjust";
+      resizeWidth.setAttribute("aria-label", "Resize text box width");
+      resizeWidth.dataset.testid = "floating-text-box-resize-width";
+      dom.append(controls, contentDOM, resizeWidth, resize);
 
       function geometry(): FloatingBoxGeometry {
         return normalizeFloatingBoxGeometry(current.attrs as FloatingBoxGeometry);
@@ -88,8 +96,28 @@ export const FloatingTextBox = Node.create({
       function commit(next: FloatingBoxGeometry) {
         const pos = getPos();
         if (typeof pos !== "number") return;
+        const prev = geometry();
+        if (prev.x === next.x && prev.y === next.y && prev.width === next.width && prev.height === next.height) return;
         editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, next));
       }
+      // Height is min-height, so it already follows content. Width is explicit,
+      // so grow it when an embedded image is resized wider than the box.
+      // Expanded tables are left to overflow on purpose (SN-278).
+      function fitToContent() {
+        if (!editor.isEditable || contentDOM.clientWidth === 0) return;
+        const area = contentDOM.getBoundingClientRect();
+        const scale = area.width / contentDOM.clientWidth || 1;
+        let right = area.right;
+        contentDOM.querySelectorAll("img").forEach((image) => {
+          right = Math.max(right, image.getBoundingClientRect().right);
+        });
+        const needed = contentDOM.clientWidth + (right - area.right) / scale;
+        commit(fitFloatingBoxWidthToContent(geometry(), needed, contentDOM.clientWidth));
+      }
+      const resizeObserver = typeof ResizeObserver === "function"
+        ? new ResizeObserver(() => fitToContent())
+        : null;
+      resizeObserver?.observe(contentDOM);
       function drag(handle: HTMLElement, transform: (start: FloatingBoxGeometry, dx: number, dy: number) => FloatingBoxGeometry) {
         handle.addEventListener("pointerdown", (event) => {
           if (event.button !== 0) return;
@@ -118,6 +146,15 @@ export const FloatingTextBox = Node.create({
       }
       drag(move, moveFloatingBox);
       drag(resize, resizeFloatingBox);
+      drag(resizeWidth, (start, dx) => resizeFloatingBoxWidth(start, dx));
+      resizeWidth.addEventListener("keydown", (event) => {
+        const step = event.shiftKey ? 10 : 1;
+        const delta = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+        if (!delta) return;
+        event.preventDefault();
+        event.stopPropagation();
+        commit(resizeFloatingBoxWidth(geometry(), delta));
+      });
       move.addEventListener("keydown", (event) => {
         const direction: Record<string, [number, number]> = {
           ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
@@ -143,7 +180,8 @@ export const FloatingTextBox = Node.create({
           paint();
           return true;
         },
-        stopEvent(event) { return (event.target instanceof globalThis.Node && controls.contains(event.target)) || event.target === resize; },
+        destroy() { resizeObserver?.disconnect(); },
+        stopEvent(event) { return (event.target instanceof globalThis.Node && controls.contains(event.target)) || event.target === resize || event.target === resizeWidth; },
         ignoreMutation(mutation) { return mutation.type === "attributes" && mutation.target === dom; },
       };
     };

@@ -3,10 +3,12 @@ import { Editor } from "@tiptap/core";
 import { createEditorExtensions, insertUploadedEditorAsset, setEditorHtmlSilent } from "@/lib/rich-text-editor-config";
 import {
   EDITOR_MAIN_FLOW_WIDTH,
+  fitFloatingBoxWidthToContent,
   isFloatingTextBoxEmpty,
   moveFloatingBox,
   pruneEmptyFloatingTextBoxes,
   resizeFloatingBox,
+  resizeFloatingBoxWidth,
 } from "@/lib/floating-text-box";
 
 function editor(content = "<p>Main flow</p>") {
@@ -131,5 +133,77 @@ describe("floating text boxes", () => {
     expect(instance.getHTML()).toContain('data-width="400"');
     expect(instance.getHTML()).toContain('data-height="68"');
     instance.destroy();
+  });
+
+  test("SN-316: width-only resize keeps x/y/min-height and clamps width; content fit only grows", () => {
+    const start = { x: 40, y: 80, width: 360, height: 120 };
+    expect(resizeFloatingBoxWidth(start, 140)).toEqual({ ...start, width: 500 });
+    expect(resizeFloatingBoxWidth(start, -1000)).toEqual({ ...start, width: 160 });
+    expect(fitFloatingBoxWidthToContent(start, 452.2, 340)).toEqual({ ...start, width: 473 });
+    expect(fitFloatingBoxWidthToContent(start, 300, 340)).toBe(start);
+    expect(fitFloatingBoxWidthToContent(start, Number.NaN, 340)).toBe(start);
+  });
+
+  test("SN-316: right-edge handle changes only width, live on every pointer move, with min-height content sizing", () => {
+    const instance = editor('<div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Long wrapped text that reflows</p></div></div>');
+    const pointer = (type: string, x: number, y: number) => {
+      const event = new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      return event;
+    };
+    const box = instance.view.dom.querySelector<HTMLElement>('[data-testid="floating-text-box"]')!;
+    const handle = instance.view.dom.querySelector<HTMLButtonElement>('[data-testid="floating-text-box-resize-width"]')!;
+    expect(handle.getAttribute("aria-label")).toBe("Resize text box width");
+    handle.setPointerCapture = jest.fn();
+    handle.dispatchEvent(pointer("pointerdown", 100, 100));
+    handle.dispatchEvent(pointer("pointermove", 40, 180));
+    // Mid-drag: the box DOM already has the new width, so text reflows live.
+    expect(box.style.width).toBe("300px");
+    expect(box.style.minHeight).toBe("48px");
+    expect(box.style.height).toBe("");
+    handle.dispatchEvent(pointer("pointermove", 220, 300));
+    handle.dispatchEvent(pointer("pointerup", 220, 300));
+    const html = instance.getHTML();
+    expect(html).toContain('data-width="480"');
+    expect(html).toContain('data-height="48"');
+    expect(html).toContain('data-x="20"');
+    expect(html).toContain('data-y="30"');
+    expect(html).toContain("min-height: 48px");
+
+    handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    expect(instance.getHTML()).toContain('data-width="479"');
+    handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", shiftKey: true, bubbles: true }));
+    expect(instance.getHTML()).toContain('data-width="489"');
+    instance.destroy();
+  });
+
+  test("SN-316: an embedded image resized wider than the box grows the box to contain it", () => {
+    const callbacks: Array<() => void> = [];
+    const original = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+      constructor(callback: () => void) { callbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    };
+    try {
+      const instance = editor('<div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Caption</p><img src="/vault/notes/a.png" width="300"></div></div>');
+      const content = instance.view.dom.querySelector<HTMLElement>(".floating-text-box__content")!;
+      const image = content.querySelector<HTMLImageElement>("img")!;
+      const rect = (left: number, width: number) => ({ left, right: left + width, width, top: 0, bottom: 0, height: 0, x: left, y: 0, toJSON() {} }) as DOMRect;
+      Object.defineProperty(content, "clientWidth", { configurable: true, value: 340 });
+      content.getBoundingClientRect = () => rect(10, 340);
+      // Image dragged from 300px to 420px: 80px past the content edge.
+      image.getBoundingClientRect = () => rect(10, 420);
+      callbacks.forEach((callback) => callback());
+      expect(instance.getHTML()).toContain('data-width="440"');
+      expect(instance.getHTML()).toContain('data-height="48"');
+      // Image fits again: the box never shrinks on its own.
+      image.getBoundingClientRect = () => rect(10, 200);
+      callbacks.forEach((callback) => callback());
+      expect(instance.getHTML()).toContain('data-width="440"');
+      instance.destroy();
+    } finally {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = original;
+    }
   });
 });

@@ -448,12 +448,34 @@ select {
   cursor: nwse-resize;
   touch-action: none;
 }
+/* SN-316: right-edge width-only handle — text reflows, height follows content. */
+.floating-text-box__resize-width {
+  position: absolute;
+  top: 50%;
+  right: -4px;
+  width: 8px;
+  height: 16px;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: ew-resize;
+  touch-action: none;
+}
+.floating-text-box__resize:focus-visible,
+.floating-text-box__resize-width:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.floating-text-box__content { overflow-wrap: anywhere; }
+/* A user-sized image may exceed the box; the node view then widens the box to contain it. */
+.floating-text-box [data-resize-container][data-node="image"] [data-resize-wrapper]:has(> img[style*="width"]),
+.floating-text-box img.editor-image[style*="width"] { max-width: none; }
 .floating-text-box__content > :first-child { margin-top: 0; }
 .floating-text-box__content > :last-child { margin-bottom: 0; }
 .editor-readonly .floating-text-box__controls,
 .editor-readonly .floating-text-box__resize,
+.editor-readonly .floating-text-box__resize-width,
 body.page-print-active .floating-text-box__controls,
-body.page-print-active .floating-text-box__resize { display: none; }
+body.page-print-active .floating-text-box__resize,
+body.page-print-active .floating-text-box__resize-width { display: none; }
 
 /* Reading density overrides — applied via data-density on <html> */
 [data-density="compact"] .editor-content {
