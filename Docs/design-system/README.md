@@ -57,6 +57,11 @@ at the bottom-right. The box uses the existing `--surface`, `--border`,
 compact control type and the editor content retains the page typography. No new
 color, spacing, or typography token was introduced.
 
+SN-316 adds a width-only handle centred on the right edge. It is an 8×16px tab
+with the same `--surface` fill and `--border` outline as the corner handle and an
+`ew-resize` cursor. Both resize handles show a `--ring` focus outline. No new
+token was introduced.
+
 ## Shared paper notes (SN-279)
 
 Bibliography, virtual paper rows, reference controls, and ownership breadcrumbs

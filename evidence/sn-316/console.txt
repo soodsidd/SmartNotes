@@ -1,0 +1,15 @@
+PASS starts at stored width 240 (240)
+PASS right-edge width handle is visible
+PASS mid-drag: width 360, text already rewrapped 5→3 lines
+PASS width-only: width 500, stored min-height unchanged (48)
+PASS text reflows 5→3 lines at 500px
+PASS height auto-fits shorter content (307→258px)
+PASS releasing the image drag on the canvas does not create a stray box
+PASS image resized to 520px (wider than the old 500px box)
+PASS box widened to 540 so the image is fully inside
+PASS box grew to 594px tall; image bottom not clipped
+PASS reload keeps width 540 and contained image
+PASS zero page or console errors (0)
+
+Console errors:
+(none)

@@ -373,6 +373,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     });
     const scrollAreaRef = React.useRef<HTMLDivElement>(null);
     const contentSizerRef = React.useRef<HTMLDivElement>(null);
+    // A drag that starts inside a floating box (e.g. image resize) and is released
+    // on the canvas fires click on a common ancestor; it must not create a box.
+    const pressStartedInFloatingBoxRef = React.useRef(false);
     const lastEmittedRef = React.useRef(content);
     const [linkDialog, setLinkDialog] = React.useState<{ open: boolean; href: string }>({
       open: false,
@@ -601,6 +604,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     }
 
     function handleEditorPointerDownCapture(e: React.PointerEvent) {
+      pressStartedInFloatingBoxRef.current =
+        e.target instanceof Element && Boolean(e.target.closest('[data-type="floating-text-box"]'));
       if (readOnly || isDrawMode) return;
       const target = resolvePdfAttachmentTarget(e.target instanceof Element ? e.target : null);
       if (!target) return;
@@ -611,7 +616,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
     function handleEditorClick(e: React.MouseEvent) {
       if (readOnly || isDrawMode) return;
-      if (editor && e.target instanceof HTMLElement && !e.target.closest('[data-type="floating-text-box"]')) {
+      if (editor && e.target instanceof HTMLElement && !e.target.closest('[data-type="floating-text-box"]') &&
+          !pressStartedInFloatingBoxRef.current) {
         const proseMirror = editor.view.dom as HTMLElement;
         const rect = proseMirror.getBoundingClientRect();
         const scale = rect.width / proseMirror.offsetWidth || 1;

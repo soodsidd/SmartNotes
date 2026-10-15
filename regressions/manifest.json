@@ -4963,7 +4963,7 @@
     {
       "id": "unit-sn-296-floating-text-box",
       "name": "Floating text box persistence and geometry",
-      "description": "Jest checks box move and resize limits and HTML reload with rich text, an image, and a table.",
+      "description": "Jest checks box move and resize limits, the SN-316 width-only handle (live reflow, keyboard), image-driven box growth, and HTML reload with rich text, an image, and a table.",
       "intent": "Protects text box content and placement from loss during page save and reload.",
       "whenToRun": "Pre-merge when changing the text page canvas, rich text schema, or floating text boxes.",
       "failureMeaning": "A text box may move unexpectedly or lose content, geometry, images, or tables after reload.",
