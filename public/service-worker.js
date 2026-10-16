@@ -1,5 +1,5 @@
-/* Smart Notes service worker — BUILD_ID: XlNLn4r4DqbSXBuZQMACY */
-const BUILD_ID = "XlNLn4r4DqbSXBuZQMACY";
+/* Smart Notes service worker — BUILD_ID: FsPK-EAgZ67aPLQzAWojL */
+const BUILD_ID = "FsPK-EAgZ67aPLQzAWojL";
 const APP_SHELL_CACHE = `smart-notes-app-shell-${BUILD_ID}`;
 const STATIC_CACHE = `smart-notes-static-${BUILD_ID}`;
 const VAULT_PDF_CACHE_PREFIX = "smart-notes-vault-pdfs-";
