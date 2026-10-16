@@ -8,7 +8,7 @@ import { VaultError } from "@/server/vault/errors";
 import { readPage } from "@/server/vault/pages";
 import { resolveVaultPath } from "@/server/vault/paths";
 import { issueRenderToken } from "@/server/vault/page-render-token";
-import { A4_WIDTH_PX, DESIGN_CONTENT_HEIGHT_EXPRESSION, measureDesignPages } from "@/lib/design-pagination";
+import { A4_HEIGHT_PX, A4_WIDTH_PX, DESIGN_CONTENT_HEIGHT_EXPRESSION, measureDesignPages } from "@/lib/design-pagination";
 
 export interface PageRenderOptions {
   pagePath: string;
@@ -392,15 +392,17 @@ export async function renderDesignToPdf(pagePath: string, bodyHtml?: string): Pr
   let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
   try {
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage({ viewport: { width: Math.round(A4_WIDTH_PX), height: 900 } });
+    // Same integer A4_WIDTH_PX as Preview guides — no Math.round drift (SN-319).
+    const page = await browser.newPage({ viewport: { width: A4_WIDTH_PX, height: Math.ceil(A4_HEIGHT_PX) } });
     await page.emulateMedia({ media: "screen" });
     await page.setContent(documentHtml, { waitUntil: "load", timeout: 60_000 });
     await page.evaluate(() => document.fonts.ready);
     const height = await page.evaluate<number>(DESIGN_CONTENT_HEIGHT_EXPRESSION);
     const pages = measureDesignPages(height).pages;
+    // Page box in CSS px matches A4_HEIGHT_PX so geometric breaks align with guide Y.
     const pdf = await page.pdf({
-      width: "210mm",
-      height: "297mm",
+      width: `${A4_WIDTH_PX}px`,
+      height: `${A4_HEIGHT_PX}px`,
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
       printBackground: true,
       preferCSSPageSize: false,

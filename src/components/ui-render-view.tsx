@@ -106,7 +106,13 @@ function designFrameBridgeScript(editable = false) {
   document.addEventListener('contextmenu', postCommentAnchor, true);
   document.addEventListener('pointerdown', (event) => { if (event.pointerType === 'touch') postCommentAnchor(event); }, true);
   window.addEventListener('message', (event) => {
-    if (event.source !== parent || event.data?.source !== source || event.data?.kind !== 'comment-rects-request') return;
+    if (event.source !== parent || event.data?.source !== source) return;
+    // SN-319: host asks for a fresh height after A4 guide toggle / width change.
+    if (event.data?.kind === 'height-request') {
+      postHeight();
+      return;
+    }
+    if (event.data?.kind !== 'comment-rects-request') return;
     const items = Array.isArray(event.data.items) ? event.data.items : [];
     const rects = [];
     for (const item of items) {

@@ -210,6 +210,25 @@ export function DesignPageView({
     return () => observer.disconnect();
   }, [tab]);
 
+  // SN-319: after A4 guide toggle (width change) or Preview remount, ask the frame
+  // to remasure so guide Y / page count match the current layout before export.
+  React.useEffect(() => {
+    if (tab !== "preview" || sourceMissing) return;
+    const requestHeight = () => {
+      iframeRef.current?.contentWindow?.postMessage(
+        { source: "smart-notes-design-frame", kind: "height-request" },
+        "*"
+      );
+    };
+    requestHeight();
+    const t1 = window.setTimeout(requestHeight, 50);
+    const t2 = window.setTimeout(requestHeight, 250);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [pageLayout, tab, previewBody, sourceMissing]);
+
   React.useEffect(() => {
     const handleMessage = (event: MessageEvent<unknown>) => {
       if (event.source !== iframeRef.current?.contentWindow || !isDesignFrameMessage(event.data)) {

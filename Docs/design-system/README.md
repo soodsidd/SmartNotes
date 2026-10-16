@@ -26,7 +26,7 @@ icon-only buttons (bold, italic, underline, lists, link, undo, redo) with
 2px dashed `--accent` rules with a `Page N` chip in `--surface` /
 `--muted-foreground`; the over-limit warning reuses the `--destructive` text on a
 5% `--destructive` tint banner. With guides on, the frame is A4 width
-(210mm = 793.7px) and centered. All controls keep 44px mobile touch targets.
+(210mm → integer `A4_WIDTH_PX` = 794px, shared with Export PDF) and centered. All controls keep 44px mobile touch targets.
 No new tokens.
 
 ## Table context menu and icon ribbon (SN-308)

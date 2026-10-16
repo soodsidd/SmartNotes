@@ -1332,10 +1332,10 @@
     {
       "id": "unit-sn-304-design-pages",
       "name": "SN-304 Design HTML and A4 Measurement",
-      "description": "Jest: byte-preserving design element edits, max-page metadata, and A4 pagination boundaries.",
+      "description": "Jest: byte-preserving design element edits, A4 pagination, and resume-fixture PDF guide Y vs page-box alignment (SN-319).",
       "appType": "node",
-      "command": "npm test -- tests/design-html-edit.test.ts tests/design-pagination.test.ts",
-      "timeoutMs": 120000,
+      "command": "npm test -- tests/design-html-edit.test.ts tests/design-pagination.test.ts tests/design-pdf-guide-alignment.test.ts",
+      "timeoutMs": 180000,
       "enabled": true,
       "tags": ["unit", "node", "design", "targeted"],
       "feature": "design-pages",
@@ -1346,9 +1346,14 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-304",
       "addedAt": "2026-10-14",
-      "sourceFiles": [{ "path": "tests/design-html-edit.test.ts" }, { "path": "tests/design-pagination.test.ts" }],
-      "intent": "Protects verbatim HTML persistence around a selected edit and shared A4 page-break arithmetic.",
-      "whenToRun": "Pre-merge when changing design Preview editing, max-page metadata, or A4 guides."
+      "sourceFiles": [
+        { "path": "tests/design-html-edit.test.ts" },
+        { "path": "tests/design-pagination.test.ts" },
+        { "path": "tests/design-pdf-guide-alignment.test.ts" },
+        { "path": "e2e/fixtures/sn-304-resume-template.html" }
+      ],
+      "intent": "Protects verbatim HTML persistence around a selected edit, shared A4 page-break arithmetic, and Preview guide Y vs Export PDF page edges on the resume fixture.",
+      "whenToRun": "Pre-merge when changing design Preview editing, max-page metadata, A4 guides, or design PDF export geometry."
     },
     {
       "id": "e2e-sn-304-design-pages",
