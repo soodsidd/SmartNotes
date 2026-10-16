@@ -668,8 +668,9 @@ export async function processInboundEmail(
     }
     const sender = headerSenders[0];
     // jobs@ is Career Job Inbox intake: Cloudflare already gates the recipient and the
-    // Worker bearer authenticates the hop. Auto-forwards and job-board mail keep the
-    // original From, so the notes@ owner allowlist must not reject them. notes@ stays strict.
+    // Worker bearer authenticates the hop. Gmail auto-forward (CAF) rewrites the envelope
+    // to soodsidd+caf_=jobs=lucidrss.com@gmail.com while MIME From stays the job board,
+    // so skip both the owner allowlist and envelope↔From equality. notes@ stays strict.
     const jobInboxEnvelope = envelopeRecipient === JOB_INBOX_ENVELOPE_RECIPIENT;
     if (!jobInboxEnvelope && !allowedSenders.has(envelopeSender)) {
       throw new EmailInboundError("SENDER_NOT_ALLOWED", "Email sender is not allowed.", 403, {
@@ -677,7 +678,7 @@ export async function processInboundEmail(
         envelopeRecipient: envelopeRecipient ?? null,
       });
     }
-    if (sender !== envelopeSender) {
+    if (!jobInboxEnvelope && sender !== envelopeSender) {
       throw new EmailInboundError(
         "SENDER_MISMATCH",
         "MIME From must match the authenticated envelope sender.",

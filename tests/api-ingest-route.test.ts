@@ -729,6 +729,18 @@ describe("email inbound authentication and request limits", () => {
       }));
       expect(jobsAtBoard.status).toBeLessThan(300);
 
+      // Gmail CAF: envelope rewriter ≠ MIME From — still accepted on jobs@.
+      const jobsAtCaf = await postEmailInbound(emailRequest(rawEmail({
+        from: "jobalerts-noreply@linkedin.com",
+        subject: "CAF forwarded role",
+        messageId: "<jobs-at-caf@example.com>",
+        to: "jobs@lucidrss.com",
+      }), {
+        [EMAIL_ENVELOPE_FROM_HEADER]: "soodsidd+caf_=jobs=lucidrss.com@gmail.com",
+        [EMAIL_ENVELOPE_TO_HEADER]: "jobs@lucidrss.com",
+      }));
+      expect(jobsAtCaf.status).toBeLessThan(300);
+
       const mismatchedMimeFrom = await postEmailInbound(emailRequest(rawEmail({
         from: "attacker@example.com",
       })));

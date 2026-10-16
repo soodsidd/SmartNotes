@@ -267,6 +267,25 @@ describe("intake routing", () => {
     expect(boardResp.status).toBeLessThan(300);
     expect((await queryJobPostings(app!)).total).toBe(3);
 
+    // Gmail CAF auto-forward: envelope is soodsidd+caf_=jobs=…@gmail.com, From stays the board.
+    const cafMail = Buffer.from([
+      "From: Job Alerts <jobalerts-noreply@linkedin.com>", "To: soodsidd@gmail.com",
+      "Subject: Staff Robotics Engineer", "Date: Mon, 10 Aug 2026 12:34:56 -0700",
+      "Content-Type: text/plain; charset=utf-8", "Message-ID: <caf-1@linkedin.com>", "",
+      "Apply https://www.linkedin.com/jobs/view/99",
+    ].join("\r\n"), "utf8");
+    const cafResp = await postEmailInbound(new Request("http://localhost/api/email/inbound", {
+      method: "POST", body: new Uint8Array(cafMail),
+      headers: {
+        Authorization: "Bearer email-token",
+        "Content-Type": "message/rfc822",
+        [EMAIL_ENVELOPE_FROM_HEADER]: "soodsidd+caf_=jobs=lucidrss.com@gmail.com",
+        [EMAIL_ENVELOPE_TO_HEADER]: "jobs@lucidrss.com",
+      },
+    }));
+    expect(cafResp.status).toBeLessThan(300);
+    expect((await queryJobPostings(app!)).total).toBe(4);
+
     // Gmail forwards often strip to empty after HTML sanitization — must not bounce.
     const emptyForward = Buffer.from([
       "From: Me <me@example.com>", "To: recruiter@example.com",
@@ -276,7 +295,7 @@ describe("intake routing", () => {
     ].join("\r\n"), "utf8");
     const emptyResp = await send(emptyForward, { [EMAIL_ENVELOPE_TO_HEADER]: "jobs@lucidrss.com" });
     expect(emptyResp.status).toBeLessThan(300);
-    expect((await queryJobPostings(app!)).total).toBe(4);
+    expect((await queryJobPostings(app!)).total).toBe(5);
     expect((await queryJobPostings(app!)).postings.map((p) => p.values.title)).toEqual(
       expect.arrayContaining(["Staff Engineer at Acme"]),
     );
