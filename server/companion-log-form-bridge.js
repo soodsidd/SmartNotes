@@ -21,6 +21,10 @@ const ALLOWED_TOOLS = new Set([
   "recipe_list", "recipe_run", "recipe_mark", "notebook_instructions_set",
   "page_get",
   "page_write",
+  // Targeted multi-patch for large App/design HTML (and text pages). Same
+  // POST /api/agent/vault path as page_write; without this, shell-less
+  // companions are forced into full-source rewrites.
+  "page_edit",
   // SN-222 shell-less page creation. Forwards to POST /api/agent/vault on the
   // same request/response path as page_write, so server-owned validation, the
   // create confirmation (path / resolvedDiskPath / vaultRelativePath), and the
