@@ -70,8 +70,11 @@ focus shows the `--ring` outline on the grip. The outline now frames the prose
 with equal frame padding on both sides. Its width is the column width plus twice
 that inset. The column clamps to 360–1200px; 1200px matches
 `--editor-table-expanded-max-width`. The default stays 672px. The handle is
-hidden below 768px, read-only and draw mode, and print. No new color, spacing,
-or typography token was introduced.
+hidden below 768px, read-only and draw mode, and print. SN-321 hides the main
+outline and grip until the main editor column receives focus; both remain
+visible while the grip has keyboard focus or is being dragged. The printed
+frame keeps its existing appearance. No new color, spacing, or typography
+token was introduced.
 
 ## Shared paper notes (SN-279)
 

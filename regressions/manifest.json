@@ -5020,6 +5020,32 @@
       ]
     },
     {
+      "id": "e2e-sn-321-main-flow-outline",
+      "name": "Main editor outline follows focus",
+      "description": "Playwright desktop/mobile: the main outline starts hidden, appears with main-column focus, and hides on blur; the width grip follows its desktop visibility.",
+      "intent": "Protects the focus-gated main editor frame without changing the floating-box or mobile resize affordances.",
+      "whenToRun": "Pre-merge when changing the main editor frame focus or resize-handle visibility.",
+      "failureMeaning": "The outline or grip may be visible before editing, fail to appear on focus, or remain after blur.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-321-main-flow-outline.spec.ts",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "editor", "main-flow", "targeted"],
+      "feature": "editor",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "low",
+      "cost": "medium",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-321",
+      "addedAt": "2026-10-16",
+      "sourceFiles": [
+        { "path": "e2e/sn-321-main-flow-outline.spec.ts" },
+        { "path": "src/components/rich-text-editor.tsx" },
+        { "path": "src/app/globals.css" }
+      ]
+    },
+    {
       "id": "unit-sn-301-server-supervisor",
       "name": "Server supervisor lifecycle and Settings panel",
       "description": "Isolated launcher stop/start/restart, port-conflict refusal, origin and DNS-rebinding guards, stale-supervisor takeover, and Settings Server tab status/log/action behavior.",
