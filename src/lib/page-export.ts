@@ -182,6 +182,55 @@ body {
 .editor-content ol {
   padding-left: 1.5em;
   margin: 0.5em 0 0.75em;
+  list-style-position: outside;
+}
+
+.editor-content ul:not([data-type="taskList"]) {
+  list-style-type: disc;
+}
+
+.editor-content ol {
+  list-style-type: decimal;
+}
+
+.editor-content ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) {
+  list-style-type: circle;
+}
+
+.editor-content ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) {
+  list-style-type: square;
+}
+
+.editor-content ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) {
+  list-style-type: disc;
+}
+
+.editor-content ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) {
+  list-style-type: circle;
+}
+
+.editor-content ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) {
+  list-style-type: square;
+}
+
+.editor-content ol ol {
+  list-style-type: lower-alpha;
+}
+
+.editor-content ol ol ol {
+  list-style-type: lower-roman;
+}
+
+.editor-content ol ol ol ol {
+  list-style-type: decimal;
+}
+
+.editor-content ol ol ol ol ol {
+  list-style-type: lower-alpha;
+}
+
+.editor-content ol ol ol ol ol ol {
+  list-style-type: lower-roman;
 }
 
 .editor-content li { margin: 0.2em 0; }
@@ -196,6 +245,11 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 0.5em;
+}
+
+.editor-content ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
 }
 
 .editor-content table {
