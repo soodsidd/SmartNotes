@@ -248,6 +248,25 @@ describe("intake routing", () => {
       expect.arrayContaining(["Platform Engineer", "Staff Camera Engineer — Tesla"]),
     );
 
+    // Auto-forward / job-board mail keeps the original From — allowlist must not block jobs@.
+    const boardMail = Buffer.from([
+      "From: Careers <noreply@boards.example>", "To: jobs@lucidrss.com",
+      "Subject: Senior Optics Engineer", "Date: Mon, 10 Aug 2026 12:34:56 -0700",
+      "Content-Type: text/plain; charset=utf-8", "Message-ID: <board-1@boards.example>", "",
+      "Apply https://boards.example/jobs/42",
+    ].join("\r\n"), "utf8");
+    const boardResp = await postEmailInbound(new Request("http://localhost/api/email/inbound", {
+      method: "POST", body: new Uint8Array(boardMail),
+      headers: {
+        Authorization: "Bearer email-token",
+        "Content-Type": "message/rfc822",
+        [EMAIL_ENVELOPE_FROM_HEADER]: "noreply@boards.example",
+        [EMAIL_ENVELOPE_TO_HEADER]: "jobs@lucidrss.com",
+      },
+    }));
+    expect(boardResp.status).toBeLessThan(300);
+    expect((await queryJobPostings(app!)).total).toBe(3);
+
     // Gmail forwards often strip to empty after HTML sanitization — must not bounce.
     const emptyForward = Buffer.from([
       "From: Me <me@example.com>", "To: recruiter@example.com",
@@ -257,7 +276,7 @@ describe("intake routing", () => {
     ].join("\r\n"), "utf8");
     const emptyResp = await send(emptyForward, { [EMAIL_ENVELOPE_TO_HEADER]: "jobs@lucidrss.com" });
     expect(emptyResp.status).toBeLessThan(300);
-    expect((await queryJobPostings(app!)).total).toBe(3);
+    expect((await queryJobPostings(app!)).total).toBe(4);
     expect((await queryJobPostings(app!)).postings.map((p) => p.values.title)).toEqual(
       expect.arrayContaining(["Staff Engineer at Acme"]),
     );

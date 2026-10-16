@@ -98,6 +98,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       code: normalized.code,
       status: normalized.status,
       error: error instanceof Error ? error.message : String(error),
+      ...(normalized instanceof EmailInboundError ? normalized.details ?? {} : {}),
     });
     return errorResponse(normalized);
   }

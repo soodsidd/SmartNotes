@@ -33,12 +33,15 @@ const TEMP_FILE_PREFIX = ".sn-email-";
 export class EmailInboundError extends Error {
   readonly code: string;
   readonly status: number;
+  /** Safe diagnostic fields only (never tokens or message bodies). */
+  readonly details?: Record<string, unknown>;
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, details?: Record<string, unknown>) {
     super(message);
     this.name = "EmailInboundError";
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -664,14 +667,22 @@ export async function processInboundEmail(
       throw new EmailInboundError("INVALID_MIME", "Email must contain exactly one From mailbox.", 400);
     }
     const sender = headerSenders[0];
-    if (!allowedSenders.has(envelopeSender)) {
-      throw new EmailInboundError("SENDER_NOT_ALLOWED", "Email sender is not allowed.", 403);
+    // jobs@ is Career Job Inbox intake: Cloudflare already gates the recipient and the
+    // Worker bearer authenticates the hop. Auto-forwards and job-board mail keep the
+    // original From, so the notes@ owner allowlist must not reject them. notes@ stays strict.
+    const jobInboxEnvelope = envelopeRecipient === JOB_INBOX_ENVELOPE_RECIPIENT;
+    if (!jobInboxEnvelope && !allowedSenders.has(envelopeSender)) {
+      throw new EmailInboundError("SENDER_NOT_ALLOWED", "Email sender is not allowed.", 403, {
+        envelopeSender,
+        envelopeRecipient: envelopeRecipient ?? null,
+      });
     }
     if (sender !== envelopeSender) {
       throw new EmailInboundError(
         "SENDER_MISMATCH",
         "MIME From must match the authenticated envelope sender.",
-        403
+        403,
+        { envelopeSender, mimeFrom: sender, envelopeRecipient: envelopeRecipient ?? null }
       );
     }
 

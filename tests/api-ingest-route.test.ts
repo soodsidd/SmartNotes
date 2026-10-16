@@ -10,6 +10,7 @@ import { invalidateVaultTreeCacheForTesting } from "@/server/vault/pages";
 import {
   constantTimeTokenEqual,
   EMAIL_ENVELOPE_FROM_HEADER,
+  EMAIL_ENVELOPE_TO_HEADER,
   firstSafeHttpUrl,
   MAX_RAW_EMAIL_BYTES,
   parseAllowedSenders,
@@ -716,12 +717,23 @@ describe("email inbound authentication and request limits", () => {
       expect(disallowedEnvelope.status).toBe(403);
       await expect(disallowedEnvelope.json()).resolves.toMatchObject({ code: "SENDER_NOT_ALLOWED" });
 
+      // jobs@ Career intake skips the owner allowlist (auto-forward / job-board From).
+      const jobsAtBoard = await postEmailInbound(emailRequest(rawEmail({
+        from: "noreply@boards.example",
+        subject: "Optics role",
+        messageId: "<jobs-at-board@example.com>",
+        to: "jobs@lucidrss.com",
+      }), {
+        [EMAIL_ENVELOPE_FROM_HEADER]: "noreply@boards.example",
+        [EMAIL_ENVELOPE_TO_HEADER]: "jobs@lucidrss.com",
+      }));
+      expect(jobsAtBoard.status).toBeLessThan(300);
+
       const mismatchedMimeFrom = await postEmailInbound(emailRequest(rawEmail({
         from: "attacker@example.com",
       })));
       expect(mismatchedMimeFrom.status).toBe(403);
       await expect(mismatchedMimeFrom.json()).resolves.toMatchObject({ code: "SENDER_MISMATCH" });
-      expect(await listFilesRecursively(process.env.SMART_NOTES_VAULT!)).toEqual([]);
 
       const normalized = await postEmailInbound(emailRequest(rawEmail({
         from: ALLOWED_EMAIL_SENDER.toUpperCase(),

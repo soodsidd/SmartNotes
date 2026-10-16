@@ -624,8 +624,12 @@ Worker-to-app request, `X-Smart-Notes-Envelope-From` carries Cloudflare's actual
 SMTP envelope sender (`EmailMessage.from`) and `X-Smart-Notes-Envelope-To`
 carries the envelope recipient (`EmailMessage.to`). The raw request body is
 capped at 5 MiB. Missing token or sender-allowlist configuration returns 503;
-invalid bearer returns 401; a missing, invalid, or disallowed envelope sender,
-or a mismatch between it and the single MIME `From` mailbox, returns 403;
+invalid bearer returns 401; a missing or invalid envelope sender, a disallowed
+envelope sender on non-`jobs@` mail, or a mismatch between the envelope sender
+and the single MIME `From` mailbox, returns 403. Mail whose authenticated
+envelope recipient is `jobs@lucidrss.com` skips the owner sender allowlist
+(Cloudflare recipient + Worker bearer remain required) so auto-forwards and
+job-board From addresses can land in the Career Job Inbox;
 invalid MIME, missing recipient, or an empty usable body returns 400; oversized
 input returns 413. Envelope headers are authoritative only after bearer
 validation; arbitrary public requests cannot establish an envelope identity by
@@ -1555,7 +1559,7 @@ Smart Notes has an isolated, online-only Cloudflare email route and application 
 - The Cloudflare Tunnel exposes only the exact `/api/email/inbound` path on `notes-inbound.lucidrss.com` to Smart Notes at `localhost:3002`. Every other path on that hostname returns tunnel-level `404`.
 - Delivery is online-only for the MVP. If Smart Notes is unavailable or rejects the request, the Worker rejects the email so the sender receives a failure and can resend. There is no mailbox polling, Cloudflare Queue, durable buffer, or background retry.
 - Resume Repo's `inbound.lucidrss.com` → `localhost:5111` tunnel rule and `resume-repo-email-inbound` Worker remain as rollback artifacts only; live `jobs@lucidrss.com` mail targets `smart-notes-email-inbound`.
-- `POST /api/email/inbound` implements the server-only bearer, exact sender allowlist, 5 MiB raw MIME cap, sanitized body mapping, Job Inbox subject/envelope routing, exact notebook routing, atomic page/reference/dedupe commit, and restart-durable replay behavior described in REST API.
+- `POST /api/email/inbound` implements the server-only bearer, exact sender allowlist for non-`jobs@` mail (`jobs@` skips allowlist after bearer + envelope checks), 5 MiB raw MIME cap, sanitized body mapping, Job Inbox subject/envelope routing, exact notebook routing, atomic page/reference/dedupe commit, and restart-durable replay behavior described in REST API.
 - The version-controlled deployment source and operator runbook are in `infra/cloudflare/email-inbound-worker/`. It documents tunnel validation, diagnostics, the enable gate, and rollback. Rollback of job mail begins by retargeting only the `jobs@` Email Routing rule.
 
 ### Public ingest ingress (SN-166)
