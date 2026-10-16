@@ -1,5 +1,9 @@
 # Smart Notes Design System
 
+## Editor list markers (SN-317)
+
+Bullet, numbered, and checklist markers live in `.editor-content` CSS (`src/app/globals.css`, mirrored in page-export). No new color, spacing, radius, or typography tokens: list indent stays `1.5em` / task-list `0.25em`, and checked task copy reuses `--muted-foreground` with strikethrough. Marker shapes are standard CSS `list-style-type` values (`disc` / `circle` / `square`; `decimal` / `lower-alpha` / `lower-roman`) so they inherit `--foreground` from surrounding prose.
+
 ## Table ribbon and selection stats (SN-278)
 
 Fork photo #16 shows a bordered ribbon card under the format bar. It reuses
