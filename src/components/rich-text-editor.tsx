@@ -90,7 +90,7 @@ import {
   scrollEditorToPageToc,
   stripLegacyPageTocIfPresent,
 } from "@/lib/page-toc";
-import { pruneEmptyFloatingTextBoxes } from "@/lib/floating-text-box";
+import { pruneEmptyFloatingTextBoxes, selectionInFloatingTextBox } from "@/lib/floating-text-box";
 import { cn } from "@/lib/utils";
 import { MAX_INSERT_TABLE_DIMENSION, tableCellCount, tableDimension } from "@/lib/table-insert";
 import { TableRibbon } from "@/components/table-ribbon";
@@ -365,6 +365,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     // SN-318: live column width — follows the stored value, updated on every drag step.
     const storedMainFlowWidth = normalizeMainFlowWidth(mainFlowWidthProp);
     const [mainFlowWidth, setMainFlowWidth] = React.useState(storedMainFlowWidth);
+    // SN-321: the main-flow outline + width handle only show while the caret is in the main column.
+    const [mainFlowFocused, setMainFlowFocused] = React.useState(false);
     // Frame padding left of the prose; the outline insets the column by this on both sides.
     const [mainFlowInset, setMainFlowInset] = React.useState(0);
     React.useEffect(() => {
@@ -1274,6 +1276,32 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       if (!editor?.view?.dom) return;
       editor.view.dom.setAttribute("spellcheck", spellcheckEnabled ? "true" : "false");
     }, [editor, spellcheckEnabled]);
+
+    React.useEffect(() => {
+      if (!editor) return;
+      let blurTimer: number | null = null;
+      const sync = () => {
+        if (blurTimer !== null) window.clearTimeout(blurTimer);
+        blurTimer = null;
+        const active = typeof document !== "undefined" ? document.activeElement : null;
+        const inBoxChrome = active instanceof Element && active.closest(".floating-text-box") !== null;
+        setMainFlowFocused(
+          editor.isFocused && !inBoxChrome && !selectionInFloatingTextBox(editor.state)
+        );
+      };
+      // Let keyboard focus move onto the width grip before hiding it on editor blur.
+      const clear = () => { blurTimer = window.setTimeout(sync, 0); };
+      sync();
+      editor.on("focus", sync);
+      editor.on("selectionUpdate", sync);
+      editor.on("blur", clear);
+      return () => {
+        if (blurTimer !== null) window.clearTimeout(blurTimer);
+        editor.off("focus", sync);
+        editor.off("selectionUpdate", sync);
+        editor.off("blur", clear);
+      };
+    }, [editor]);
 
     React.useEffect(() => {
       if (!editor?.view?.dom) return;
@@ -2575,7 +2603,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             >
             <div
               ref={contentSizerRef}
-              className={cn("relative w-full", MOBILE_EDITOR_FRAME_PADDING)}
+              className={cn("editor-content-frame relative w-full", MOBILE_EDITOR_FRAME_PADDING)}
               style={{
                 ...(pageFrameHeight > 0 && workspaceZoom === EDITOR_ZOOM_DEFAULT
                   ? { minHeight: pageFrameHeight }
@@ -2585,13 +2613,15 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                 ["--editor-main-flow-width" as string]: `${mainFlowWidth}px`,
               }}
               data-testid="editor-content-frame"
+              data-main-flow-focused={mainFlowFocused && !readOnly && !isDrawMode ? "true" : undefined}
               data-page-lines={pageLines.style === "none" ? undefined : pageLines.style}
               data-page-line-color={pageLines.style === "none" ? undefined : pageLines.color}
               data-heading-collapse-scope={collapseScopeId}
               data-editor-zoom={workspaceZoom === EDITOR_ZOOM_DEFAULT ? undefined : workspaceZoom}
             >
               {collapsedHeadingCss ? <style>{collapsedHeadingCss}</style> : null}
-              {/* Non-movable main-flow outline — same faint border language as floating boxes. */}
+              {/* Non-movable main-flow outline — same faint border language as floating boxes.
+                  Painted only while the main column is focused (SN-321). */}
               <div
                 className="editor-main-flow-outline"
                 data-testid="editor-main-flow-outline"

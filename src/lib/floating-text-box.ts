@@ -1,5 +1,6 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/core";
+import type { EditorState } from "@tiptap/pm/state";
 
 export const FLOATING_BOX_DEFAULT_WIDTH = 360;
 export const FLOATING_BOX_DEFAULT_HEIGHT = 48;
@@ -71,6 +72,22 @@ export function isFloatingTextBoxEmpty(node: PMNode): boolean {
     return true;
   });
   return empty;
+}
+
+/**
+ * SN-321: true when the selection sits in (or selects) a floating text box rather
+ * than the main flow. Floating boxes share the main ProseMirror view, so editor
+ * focus alone can't tell the two apart.
+ */
+export function selectionInFloatingTextBox(state: EditorState): boolean {
+  const { selection } = state;
+  const selected = (selection as { node?: PMNode }).node;
+  if (selected?.type.name === "floatingTextBox") return true;
+  const { $from } = selection;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type.name === "floatingTextBox") return true;
+  }
+  return false;
 }
 
 /**

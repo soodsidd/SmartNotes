@@ -405,6 +405,16 @@ select {
   pointer-events: none;
   border: 1px solid var(--border);
   background: transparent;
+  visibility: hidden;
+}
+
+/* SN-321: the main column frame follows editor focus. Keep both affordances
+   visible while the width handle itself has focus or owns a drag. */
+.editor-content-frame[data-main-flow-focused="true"] > .editor-main-flow-outline,
+.editor-content-frame[data-main-flow-focused="true"] > .editor-main-flow-resize,
+.editor-content-frame:has(> .editor-main-flow-resize:is(:focus, [data-dragging="true"])) > .editor-main-flow-outline,
+.editor-content-frame > .editor-main-flow-resize:is(:focus, [data-dragging="true"]) {
+  visibility: visible;
 }
 
 /* SN-318: width-only handle on the main flow's right edge. Full-height hit strip;
@@ -420,6 +430,7 @@ select {
   background: transparent;
   cursor: ew-resize;
   touch-action: none;
+  visibility: hidden;
 }
 .editor-main-flow-resize::before {
   content: "";
@@ -444,6 +455,11 @@ select {
 .editor-main-flow-resize:focus-visible { outline: none; }
 .editor-main-flow-resize:focus-visible .editor-main-flow-resize__grip { outline: 2px solid var(--ring); outline-offset: 1px; }
 body.page-print-active .editor-main-flow-resize { display: none; }
+/* Preserve the existing printed page frame regardless of editor focus. */
+body.page-print-active .editor-main-flow-outline { visibility: visible; }
+@media print {
+  .editor-main-flow-outline { visibility: visible; }
+}
 @media (max-width: 767px) {
   /* Phones: the column is already viewport-bound, so there is nothing to resize. */
   .editor-main-flow-resize { display: none; }

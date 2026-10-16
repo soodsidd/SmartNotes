@@ -9,6 +9,7 @@ import {
   pruneEmptyFloatingTextBoxes,
   resizeFloatingBox,
   resizeFloatingBoxWidth,
+  selectionInFloatingTextBox,
 } from "@/lib/floating-text-box";
 
 function editor(content = "<p>Main flow</p>") {
@@ -16,6 +17,22 @@ function editor(content = "<p>Main flow</p>") {
 }
 
 describe("floating text boxes", () => {
+  test("main flow selection stays distinct from floating box content and node selection", () => {
+    const instance = editor('<p>Main</p><div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Box</p></div></div>');
+    let boxPos = -1;
+    instance.state.doc.descendants((node, pos) => {
+      if (node.type.name === "floatingTextBox") boxPos = pos;
+    });
+
+    instance.commands.setTextSelection(1);
+    expect(selectionInFloatingTextBox(instance.state)).toBe(false);
+    instance.commands.setTextSelection(boxPos + 2);
+    expect(selectionInFloatingTextBox(instance.state)).toBe(true);
+    instance.commands.setNodeSelection(boxPos);
+    expect(selectionInFloatingTextBox(instance.state)).toBe(true);
+    instance.destroy();
+  });
+
   test("move and resize clamp to valid geometry", () => {
     const start = { x: 40, y: 80, width: 360, height: 48 };
     expect(moveFloatingBox(start, -100, 9)).toEqual({ ...start, x: 0, y: 89 });
