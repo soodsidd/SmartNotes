@@ -292,3 +292,101 @@ export function resolveSidebarPageDrop(input: {
 
   return { parentId: nextParentId, orderedIds: filtered };
 }
+
+/** Remap a page path into another section by preserving the basename (SN-307 / SN-320). */
+export function remapPagePathToSection(pagePath: string, targetSectionPath: string): string {
+  const basename = pagePath.split("/").pop() ?? pagePath;
+  return `${targetSectionPath}/${basename}`;
+}
+
+/** Source page plus descendants in the source container's visible order. */
+export function collectPageSubtreePaths(pages: PagePathLookup[], sourcePath: string): string[] {
+  return pages
+    .filter((page) => page.path === sourcePath || isPageDescendantOf(pages, page.path, sourcePath))
+    .map((page) => page.path);
+}
+
+export type SidebarCrossContainerDropKind = "section" | "page";
+
+export interface SidebarCrossContainerDropInput {
+  sourcePath: string;
+  sourceContainerPath: string;
+  targetSectionPath: string;
+  /** When dropping relative to an existing page in the target section. */
+  targetPagePath?: string | null;
+  dropSide?: "before" | "after" | null;
+  sourcePages: PagePathLookup[];
+  targetPages: PagePathLookup[];
+}
+
+export interface SidebarCrossContainerDropResult {
+  targetSectionPath: string;
+  /** Destination order after the move (remapped paths). Null when append-only is fine. */
+  orderedIds: string[] | null;
+}
+
+/**
+ * Resolve a cross-section sidebar drop onto a section header, empty zone, or
+ * page row. Same-container drops stay on `resolveSidebarPageDrop`.
+ */
+export function resolveSidebarCrossContainerDrop(
+  input: SidebarCrossContainerDropInput
+): SidebarCrossContainerDropResult | null {
+  const {
+    sourcePath,
+    sourceContainerPath,
+    targetSectionPath,
+    targetPagePath = null,
+    dropSide = null,
+    sourcePages,
+    targetPages,
+  } = input;
+
+  if (!sourcePath || !targetSectionPath) {
+    return null;
+  }
+  if (sourceContainerPath === targetSectionPath) {
+    return null;
+  }
+
+  const sourcePage = sourcePages.find((page) => page.path === sourcePath);
+  if (!sourcePage) {
+    return null;
+  }
+
+  const subtree = collectPageSubtreePaths(sourcePages, sourcePath);
+  if (subtree.length === 0) {
+    return null;
+  }
+  const remappedSubtree = subtree.map((path) => remapPagePathToSection(path, targetSectionPath));
+
+  // Collision: a page with the same basename already exists in the target.
+  const targetPathSet = new Set(targetPages.map((page) => page.path));
+  if (remappedSubtree.some((path) => targetPathSet.has(path))) {
+    return null;
+  }
+
+  // Section header / empty zone: movePage appends; no explicit reorder needed.
+  if (!targetPagePath) {
+    return { targetSectionPath, orderedIds: null };
+  }
+
+  const targetPage = targetPages.find((page) => page.path === targetPagePath);
+  if (!targetPage || !dropSide) {
+    return null;
+  }
+
+  const filtered = targetPages.map((page) => page.path);
+  const targetIdx = filtered.indexOf(targetPagePath);
+  if (targetIdx < 0) {
+    return null;
+  }
+
+  let insertAt = targetIdx;
+  if (dropSide === "after") {
+    insertAt = targetIdx + 1;
+  }
+  filtered.splice(insertAt, 0, ...remappedSubtree);
+
+  return { targetSectionPath, orderedIds: filtered };
+}
