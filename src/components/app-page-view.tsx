@@ -268,6 +268,9 @@ export function AppPageView({ pagePath, title, bodyHtml, onOpenSidebar, reloadRe
   const [stopped, setStopped] = React.useState(false);
   const [nonce, setNonce] = React.useState(createAppFrameNonce);
   const [frameHeight, setFrameHeight] = React.useState(640);
+  // Narrow viewports: fill the preview pane and scroll inside the iframe.
+  // Content-height iframes force outer scrolling, which traps touch gestures on phones.
+  const [fillFrame, setFillFrame] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
   const [externalSource, setExternalSource] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -293,6 +296,15 @@ export function AppPageView({ pagePath, title, bodyHtml, onOpenSidebar, reloadRe
   // envelopes are addressed to the frame currently mounted.
   const nonceRef = React.useRef(nonce);
   nonceRef.current = nonce;
+
+  React.useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(max-width: 767px)");
+    const sync = () => setFillFrame(media.matches);
+    sync();
+    media.addEventListener?.("change", sync);
+    return () => media.removeEventListener?.("change", sync);
+  }, []);
 
   const readPendingLocal = React.useCallback((): PendingAppMutation[] | null => {
     try {
@@ -1037,7 +1049,11 @@ export function AppPageView({ pagePath, title, bodyHtml, onOpenSidebar, reloadRe
       ) : stopped ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"><Square className="size-6 text-muted-foreground" /><p className="text-sm">App runtime stopped. Smart Notes and app data are unaffected.</p><Button onClick={() => void reloadRuntime()} disabled={busy}><Play className="size-4" />Recover and reload</Button></div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto bg-surface/40" data-testid="app-preview">
+        <div
+          className={cn("min-h-0 flex-1 bg-surface/40", fillFrame ? "overflow-hidden" : "overflow-auto")}
+          data-testid="app-preview"
+          data-fill-frame={fillFrame ? "true" : "false"}
+        >
           <iframe
             key={nonce} ref={iframeRef} title={title || "App page"} srcDoc={srcDoc}
             sandbox="allow-scripts" data-testid="app-page-frame"
@@ -1048,7 +1064,13 @@ export function AppPageView({ pagePath, title, bodyHtml, onOpenSidebar, reloadRe
                 void reloadRuntime();
               }
             }}
-            style={{ display: "block", width: "100%", height: `${frameHeight}px`, border: 0, background: "transparent" }}
+            style={{
+              display: "block",
+              width: "100%",
+              height: fillFrame ? "100%" : `${frameHeight}px`,
+              border: 0,
+              background: "transparent",
+            }}
           />
         </div>
       )}

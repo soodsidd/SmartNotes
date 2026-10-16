@@ -1870,13 +1870,16 @@ function createChatModule(httpServer, io, userConfig = {}) {
       args = [
         '-p',
         '--output-format', 'stream-json',
+        // Claude CLI: -p/--print + stream-json requires --verbose (otherwise
+        // the process exits with that exact error before any events).
+        // UI verbosity still follows runtime.verbose in parseLine below.
+        '--verbose',
         '--no-session-persistence',
         // Sandbox flags BEFORE --system-prompt: on Windows (shell: true), a
         // multi-line system prompt mangles later args via cmd.exe tokenisation,
         // causing --dangerously-skip-permissions to be silently dropped.
         ...claudeSandboxArgs(sandboxCfg),
       ];
-      if (verboseEnabled) args.push('--verbose');
       if (hasSystemPrompt) {
         const systemPromptDelivery = buildClaudeSystemPromptArgs(normalizedSystemPrompt, chatId);
         args.push(...systemPromptDelivery.args);

@@ -21,6 +21,13 @@ describe("owner-controlled App Develop workspace contract", () => {
     expect(componentSource).not.toContain('sandbox="allow-scripts allow-same-origin"');
   });
 
+  it("fills the preview pane on narrow viewports so Apps scroll inside the iframe", () => {
+    expect(componentSource).toContain('matchMedia("(max-width: 767px)")');
+    expect(componentSource).toContain('data-fill-frame={fillFrame ? "true" : "false"}');
+    expect(componentSource).toContain('fillFrame ? "overflow-hidden" : "overflow-auto"');
+    expect(componentSource).toContain('height: fillFrame ? "100%" : `${frameHeight}px`');
+  });
+
   it("owns Preview, Data, and Source tabs with keyboard and touch access", () => {
     expect(componentSource).toContain('{ id: "preview", label: "Preview"');
     expect(componentSource).toContain('{ id: "data", label: "Data"');
