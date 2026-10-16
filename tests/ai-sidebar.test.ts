@@ -44,6 +44,7 @@ import {
   resolveSubtreeRootPath,
   isSharedCompanionScope,
   isCompanionThreadDisplayed,
+  isCompanionTurnBusyOnThread,
   getAiScopeSharedLabel,
   getAiScopeOptionDescription,
   COMPANION_SHARED_SCOPES,
@@ -277,6 +278,14 @@ describe("provider quality defaults", () => {
 // ─── buildAiTurnRequest ─────────────────────────────────────────────────────
 
 describe("buildAiTurnRequest", () => {
+  it("carries the resolved durable thread identity", () => {
+    expect(buildAiTurnRequest({
+      threadKey: "Notebook/Section/page.html::whole",
+      message: "Continue",
+      history: [],
+      pageContext: "# Page",
+    }).thread_key).toBe("Notebook/Section/page.html::whole");
+  });
   it("includes the client-allocated durable turn ID", () => {
     expect(
       buildAiTurnRequest({
@@ -1690,6 +1699,21 @@ describe("isCompanionThreadDisplayed (SN-202 transcript-binding guard)", () => {
     expect(
       isCompanionThreadDisplayed(undefined, { storePath: "a.html", scopeKey: "whole" })
     ).toBe(false);
+  });
+});
+
+describe("parallel companion busy state (SN-322)", () => {
+  const running = { path: "book/a.html", scopeKey: "whole" };
+
+  it("keeps the sending thread busy while a different page is free", () => {
+    expect(isCompanionTurnBusyOnThread("turn-a", running, { storePath: "book/a.html", scopeKey: "whole" })).toBe(true);
+    expect(isCompanionTurnBusyOnThread("turn-a", running, { storePath: "book/b.html", scopeKey: "whole" })).toBe(false);
+  });
+
+  it("treats pages in one shared section thread as the same busy chat", () => {
+    const shared = { path: "book/section", scopeKey: "section" };
+    expect(isCompanionTurnBusyOnThread("turn-a", shared, { storePath: "book/section", scopeKey: "section" })).toBe(true);
+    expect(isCompanionTurnBusyOnThread(null, shared, { storePath: "book/section", scopeKey: "section" })).toBe(false);
   });
 });
 

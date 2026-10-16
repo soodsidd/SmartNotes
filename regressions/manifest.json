@@ -1591,6 +1591,33 @@
       "whenToRun": "Pre-merge when touching companion UI, persistence effects, provider selection, or composer behavior."
     },
     {
+      "id": "unit-sn-322-parallel-companion-turns",
+      "name": "SN-322 parallel companion turns",
+      "description": "Jest: cross-thread keep-alive, same-thread supersede, legacy CLI-chat fallback, durable thread request identity, and displayed-thread busy state.",
+      "appType": "node",
+      "command": "npm test -- tests/companion-parallel-turns.test.ts tests/ai-sidebar.test.ts tests/ai-sidebar-ui.test.ts tests/sn-287-companion-composer.test.tsx",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "node", "ai", "parallel-turns", "targeted"],
+      "feature": "companion",
+      "testType": "integration",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-322",
+      "addedAt": "2026-10-16",
+      "sourceFiles": [
+        { "path": "tests/companion-parallel-turns.test.ts" },
+        { "path": "tests/ai-sidebar.test.ts" },
+        { "path": "tests/ai-sidebar-ui.test.ts" },
+        { "path": "tests/sn-287-companion-composer.test.tsx" }
+      ],
+      "intent": "Protects independent live companion threads across pages and tabs while preserving one live turn per shared thread.",
+      "whenToRun": "Pre-merge when changing CLI-chat supersede, companion thread addressing, reattach, or the shell busy gate.",
+      "failureMeaning": "A send may cancel another page, fail to supersede its own thread, or keep the wrong composer busy."
+    },
+    {
       "id": "unit-sn-193-pdf-reader-selection",
       "name": "SN-193 PDF read-mode selection and touch navigation",
       "description": "Jest: tests/pdf-reader-selection.test.ts — read-mode text selection/copy, touch pan preservation, and annotation interaction layering.",

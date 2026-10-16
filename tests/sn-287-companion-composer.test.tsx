@@ -307,7 +307,7 @@ describe("SN-287 shell retry identity (source contract)", () => {
 
   it("retains the failed composer draft with its turn identity and never retries during a live turn", () => {
     expect(SHELL_SRC).toContain("retainFailedSend(errorMessage, { turnId, userMessageId, assistantMessageId });");
-    expect(SHELL_SRC).toMatch(/if \(!failed \|\| activeTurnIdRef\.current\) \{\n\s+return;/);
+    expect(SHELL_SRC).toContain("if (!failed || isCompanionTurnBusyOnThread(activeTurnIdRef.current, activeTurnContextRef.current");
     expect(SHELL_SRC).toContain('void handleAiSubmit(prompt, attachments, { origin: "composer" })');
   });
 });

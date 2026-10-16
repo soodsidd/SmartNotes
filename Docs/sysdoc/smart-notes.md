@@ -1222,6 +1222,8 @@ A running turn is a **server-owned live turn**, not a UI lifecycle — see *Dura
 
 **Binding and recovery:** every transcript and stream write is gated by the displayed `(storePath, scopeKey)` binding. On cold return, discovery probes the active page store, notebook-section store, and stable subtree-root store, regardless of the restored selector value; it switches to the originating scope, requests all-scope active-turn/session lookup, and either replays the live run from sequence `-1` or reconciles its terminal transcript. The terminal transcript is persisted before the pointer is cleared. With Keep off, the recovery pointer survives only until terminal reconciliation, after which its temporary durable scope is removed.
 
+**Parallel turns (SN-322):** Smart Notes sends `thread_key` from the resolved `(storePath, scopeKey)` thread address. The server keeps live turns and resumable provider sessions separate by this key: starting a turn on another page or thread does not cancel the first, while a newer send to the same thread supersedes only its previous live turn. CLI-chat clients without a thread key retain app-scope supersede. Navigation and panel close still detach without cancellation. Each tab uses the durable pointer and turn ID for reattach; terminal cleanup checks that the pointer still belongs to the finishing turn before clearing it, so an older cancelled tab does not erase a newer turn pointer.
+
 ### Closed-panel ready affordance (SN-211)
 
 **Plain English:** If you start a companion turn and then close the panel, the companion icon tells you when the answer is ready — without reopening it. Opening the companion is the acknowledgement; the badge clears on open and does not come back for that same completion.
@@ -1323,6 +1325,8 @@ Builder functions: `appendAiTimelineText()`, `appendAiTimelineReasoning()`, `app
 **Cancel path:** Stop calls `handleAiCancel` in the shell, which POSTs `{ cancel: turnId }` to `/api/chat/cancel` (existing cli-chat handler), clears `activeTurnIdRef`, sets `aiTurnActive` false, and marks the in-flight assistant bubble `isStreaming: false`.
 
 **Design tokens:** The failed-send row reuses existing tokens only: `--border`, `--muted` at 45% (the attachment-chip surface), `--destructive` for the "Not sent" label and icon, `--muted-foreground` for the error text, the existing `xs` ghost/secondary `Button`, and the 44px `min-h-11` touch target on mobile. No new values were added.
+
+**Thread-local busy state (SN-322):** The shell marks the composer busy only when its observed `activeTurnIdRef` belongs to the displayed resolved thread. A live turn on page A does not block a composer or app-initiated send on page B. A shared section or page-tree address remains one thread, so its composer stays busy across pages within that shared scope. The server still enforces same-thread supersede for a newer send from another tab. No new visual tokens or design values were added.
 
 ### Companion document attachments (SN-86)
 

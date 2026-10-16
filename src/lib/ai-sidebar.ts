@@ -308,6 +308,7 @@ export function getAiProviderModelOptions(models: string[] | undefined, activeMo
 
 export function buildAiTurnRequest(params: {
   turnId?: string;
+  threadKey?: string;
   message: string;
   history: AiTurnRequestMessage[];
   pageContext: string;
@@ -320,6 +321,7 @@ export function buildAiTurnRequest(params: {
 }) {
   const payload: {
     turn_id?: string;
+    thread_key?: string;
     message: string;
     history: AiTurnRequestMessage[];
     page_context: string;
@@ -336,11 +338,15 @@ export function buildAiTurnRequest(params: {
   };
 
   const turnId = params.turnId?.trim();
+  const threadKey = params.threadKey?.trim();
   const providerId = params.providerId?.trim();
   const model = params.model?.trim();
 
   if (turnId) {
     payload.turn_id = turnId;
+  }
+  if (threadKey) {
+    payload.thread_key = threadKey;
   }
 
   if (providerId) {
@@ -1018,6 +1024,15 @@ export function isCompanionThreadDisplayed(
     normalizeIdentityPath(turnContext.path) === store &&
     turnContext.scopeKey === displayed.scopeKey
   );
+}
+
+/** Busy state belongs to the displayed thread, not to another page's live turn. */
+export function isCompanionTurnBusyOnThread(
+  turnId: string | null,
+  turnContext: { path: string; scopeKey: string } | null,
+  displayed: DisplayedCompanionThread
+): boolean {
+  return Boolean(turnId) && isCompanionThreadDisplayed(turnContext, displayed);
 }
 
 /**
