@@ -1,9 +1,12 @@
 import {
   buildPageNestingActionLookup,
   buildPageTree,
+  collectPageSubtreePaths,
   flattenPageTree,
   getPageNestingActionState,
   mergeTreeExpandState,
+  remapPagePathToSection,
+  resolveSidebarCrossContainerDrop,
   resolveSidebarPageDrop,
   resolveTreeExpandPathsForPage,
 } from "@/lib/page-tree";
@@ -190,6 +193,128 @@ describe("sidebar page drop resolution", () => {
       nestingLookup: lookupForExpanded(["a", "b"]),
     });
     expect(result).toBeNull();
+  });
+});
+
+describe("sidebar cross-container drop resolution (SN-320)", () => {
+  const sourcePages = [
+    makePage("Nb/Alpha/root.html", "Root", null),
+    makePage("Nb/Alpha/child.html", "Child", "Nb/Alpha/root.html"),
+    makePage("Nb/Alpha/grand.html", "Grand", "Nb/Alpha/child.html"),
+    makePage("Nb/Alpha/other.html", "Other", null),
+  ];
+  const targetPages = [
+    makePage("Nb/Archive/keep.html", "Keep", null),
+    makePage("Nb/Archive/tail.html", "Tail", null),
+  ];
+
+  it("remaps a page path into the destination section by basename", () => {
+    expect(remapPagePathToSection("Nb/Alpha/root.html", "Nb/Archive")).toBe("Nb/Archive/root.html");
+  });
+
+  it("collects the dragged page and its descendants in container order", () => {
+    expect(collectPageSubtreePaths(sourcePages, "Nb/Alpha/root.html")).toEqual([
+      "Nb/Alpha/root.html",
+      "Nb/Alpha/child.html",
+      "Nb/Alpha/grand.html",
+    ]);
+  });
+
+  it("appends via movePage when dropping on a section header or empty zone", () => {
+    const result = resolveSidebarCrossContainerDrop({
+      sourcePath: "Nb/Alpha/root.html",
+      sourceContainerPath: "Nb/Alpha",
+      targetSectionPath: "Nb/Archive",
+      sourcePages,
+      targetPages: [],
+    });
+    expect(result).toEqual({ targetSectionPath: "Nb/Archive", orderedIds: null });
+  });
+
+  it("inserts the remapped subtree before an existing target page", () => {
+    const result = resolveSidebarCrossContainerDrop({
+      sourcePath: "Nb/Alpha/root.html",
+      sourceContainerPath: "Nb/Alpha",
+      targetSectionPath: "Nb/Archive",
+      targetPagePath: "Nb/Archive/keep.html",
+      dropSide: "before",
+      sourcePages,
+      targetPages,
+    });
+    expect(result).toEqual({
+      targetSectionPath: "Nb/Archive",
+      orderedIds: [
+        "Nb/Archive/root.html",
+        "Nb/Archive/child.html",
+        "Nb/Archive/grand.html",
+        "Nb/Archive/keep.html",
+        "Nb/Archive/tail.html",
+      ],
+    });
+  });
+
+  it("inserts the remapped subtree after an existing target page", () => {
+    const result = resolveSidebarCrossContainerDrop({
+      sourcePath: "Nb/Alpha/root.html",
+      sourceContainerPath: "Nb/Alpha",
+      targetSectionPath: "Nb/Archive",
+      targetPagePath: "Nb/Archive/keep.html",
+      dropSide: "after",
+      sourcePages,
+      targetPages,
+    });
+    expect(result).toEqual({
+      targetSectionPath: "Nb/Archive",
+      orderedIds: [
+        "Nb/Archive/keep.html",
+        "Nb/Archive/root.html",
+        "Nb/Archive/child.html",
+        "Nb/Archive/grand.html",
+        "Nb/Archive/tail.html",
+      ],
+    });
+  });
+
+  it("rejects same-container drops so local DnD stays on resolveSidebarPageDrop", () => {
+    expect(
+      resolveSidebarCrossContainerDrop({
+        sourcePath: "Nb/Alpha/root.html",
+        sourceContainerPath: "Nb/Alpha",
+        targetSectionPath: "Nb/Alpha",
+        sourcePages,
+        targetPages: sourcePages,
+      })
+    ).toBeNull();
+  });
+
+  it("rejects basename collisions in the destination section", () => {
+    const collidingTarget = [
+      makePage("Nb/Archive/root.html", "Existing", null),
+      ...targetPages,
+    ];
+    expect(
+      resolveSidebarCrossContainerDrop({
+        sourcePath: "Nb/Alpha/root.html",
+        sourceContainerPath: "Nb/Alpha",
+        targetSectionPath: "Nb/Archive",
+        sourcePages,
+        targetPages: collidingTarget,
+      })
+    ).toBeNull();
+  });
+
+  it("rejects a page-relative drop without a drop side", () => {
+    expect(
+      resolveSidebarCrossContainerDrop({
+        sourcePath: "Nb/Alpha/other.html",
+        sourceContainerPath: "Nb/Alpha",
+        targetSectionPath: "Nb/Archive",
+        targetPagePath: "Nb/Archive/keep.html",
+        dropSide: null,
+        sourcePages,
+        targetPages,
+      })
+    ).toBeNull();
   });
 });
 

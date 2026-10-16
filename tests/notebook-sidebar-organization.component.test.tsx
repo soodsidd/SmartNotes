@@ -70,6 +70,7 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
     onSetPageKeyNote: jest.fn().mockResolvedValue(undefined),
     onReorderPages: jest.fn().mockResolvedValue(undefined),
     onApplyPageDrop: jest.fn().mockResolvedValue(undefined),
+    onCrossContainerPageDrop: jest.fn().mockResolvedValue(undefined),
     onCreateNotebook: jest.fn(),
     onRevealNotebook: jest.fn(),
     onCreateSection: jest.fn(),

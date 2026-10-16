@@ -301,6 +301,7 @@ import {
   flattenPageTree,
   getPageNestingActionState,
   mergeTreeExpandState,
+  resolveSidebarCrossContainerDrop,
   resolveSidebarPageDrop,
   resolveTreeExpandPathsForPage,
   type PageNestingActionLookup,
@@ -4710,6 +4711,60 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     [loadTree, tree]
   );
 
+  /** SN-320: cross-section sidebar drop → movePage (+ optional destination order). */
+  const handleSidebarCrossContainerPageDrop = React.useCallback(
+    async (
+      sourcePath: string,
+      sourceContainerPath: string,
+      targetSectionPath: string,
+      targetPagePath: string | null,
+      dropSide: "before" | "after" | null
+    ) => {
+      const sourceNotebook = tree.find((entry) => entry.path === sourceContainerPath);
+      const sourceSection = tree
+        .flatMap((entry) => entry.sections)
+        .find((entry) => entry.path === sourceContainerPath);
+      const sourcePages = sourceSection?.pages ?? sourceNotebook?.pages ?? [];
+      const targetSection = tree
+        .flatMap((entry) => entry.sections)
+        .find((entry) => entry.path === targetSectionPath);
+      if (!targetSection) {
+        toast.error("That section is no longer available.");
+        return;
+      }
+
+      const resolved = resolveSidebarCrossContainerDrop({
+        sourcePath,
+        sourceContainerPath,
+        targetSectionPath,
+        targetPagePath,
+        dropSide,
+        sourcePages,
+        targetPages: targetSection.pages,
+      });
+      if (!resolved) {
+        toast.error("Cannot move page into that section (name collision or invalid drop).");
+        return;
+      }
+
+      try {
+        const page = await moveVaultPage({
+          action: "move",
+          path: sourcePath,
+          sectionPath: targetSectionPath,
+        });
+        if (resolved.orderedIds) {
+          await reorderVaultSectionPages(targetSectionPath, resolved.orderedIds);
+        }
+        setExpandedSections((current) => new Set([...current, targetSectionPath]));
+        await loadTree({ pagePath: page.path });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to move page.");
+      }
+    },
+    [loadTree, tree]
+  );
+
   const handleCreateNotebookDialog = React.useCallback(() => {
     setCreateNotebookError(null);
     setCreateNotebookDialogOpen(true);
@@ -6541,6 +6596,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                     onSetPageKeyNote={handleSidebarSetPageKeyNote}
                     onReorderPages={handleSidebarReorderPages}
                     onApplyPageDrop={handleSidebarApplyPageDrop}
+                    onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
                     onCreateNotebook={handleCreateNotebookDialog}
                     onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
                     onRevealNotebook={handleRevealNotebook}
@@ -6989,6 +7045,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             onSetPageKeyNote={handleSidebarSetPageKeyNote}
             onReorderPages={handleSidebarReorderPages}
             onApplyPageDrop={handleSidebarApplyPageDrop}
+            onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
             onCreateNotebook={handleCreateNotebookDialog}
             onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
             onRevealNotebook={handleRevealNotebook}
@@ -7810,6 +7867,7 @@ export const Sidebar = React.memo(function Sidebar({
   onSetPageKeyNote,
   onReorderPages,
   onApplyPageDrop,
+  onCrossContainerPageDrop,
   onCreateNotebook,
   onOpenWorkspace,
   onRevealNotebook,
@@ -7886,6 +7944,13 @@ export const Sidebar = React.memo(function Sidebar({
     parentId: string | null,
     orderedIds: string[]
   ) => Promise<void>;
+  onCrossContainerPageDrop: (
+    sourcePath: string,
+    sourceContainerPath: string,
+    targetSectionPath: string,
+    targetPagePath: string | null,
+    dropSide: "before" | "after" | null
+  ) => Promise<void>;
   onCreateNotebook: () => void;
   onOpenWorkspace?: () => void;
   onRevealNotebook: (notebookPath: string) => void | Promise<void>;
@@ -7922,13 +7987,22 @@ export const Sidebar = React.memo(function Sidebar({
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [draggedPagePath, setDraggedPagePath] = React.useState<string | null>(null);
   const [dragOverPagePath, setDragOverPagePath] = React.useState<string | null>(null);
-  const [dragIntent, setDragIntent] = React.useState<"nest" | "unnest" | "reorder" | null>(null);
+  const [dragOverSectionPath, setDragOverSectionPath] = React.useState<string | null>(null);
+  const [dragIntent, setDragIntent] = React.useState<"nest" | "unnest" | "reorder" | "move" | null>(null);
   const [dragDropSide, setDragDropSide] = React.useState<"before" | "after" | null>(null);
   const [pageContextMenu, setPageContextMenu] = React.useState<PageContextMenuState | null>(null);
   const [ghostContextMenu, setGhostContextMenu] = React.useState<GhostContextMenuState | null>(null);
   const dragStartXRef = React.useRef<number>(0);
   // Ref (not state) so onDragOver closures see the current section path synchronously
   const draggedPageSectionPathRef = React.useRef<string | null>(null);
+  const clearSidebarPageDrag = React.useCallback(() => {
+    draggedPageSectionPathRef.current = null;
+    setDraggedPagePath(null);
+    setDragOverPagePath(null);
+    setDragOverSectionPath(null);
+    setDragIntent(null);
+    setDragDropSide(null);
+  }, []);
   const visibleNotebooks = React.useMemo(
     () => tree.filter((notebook) => notebook.path !== BIBLIOGRAPHY_PATH && !closedNotebooks.has(notebook.path) && !archivedNotebooks.has(notebook.path)),
     [archivedNotebooks, closedNotebooks, tree]
@@ -8338,10 +8412,13 @@ export const Sidebar = React.memo(function Sidebar({
                               setDragIntent("reorder");
                               setDragDropSide(dropSide);
                             } else {
+                              // Cross-container onto notebook-root rows is not supported via movePage
+                              // (move targets sections only). Section headers/empty zones handle moves in.
                               setDragIntent(null);
                               setDragDropSide(null);
                             }
                             setDragOverPagePath(node.page.path);
+                            setDragOverSectionPath(null);
                           }}
                           onDragLeave={(e) => {
                             if (!e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -8352,7 +8429,12 @@ export const Sidebar = React.memo(function Sidebar({
                           onDrop={(e) => {
                             e.preventDefault();
                             const source = draggedPagePath;
-                            if (source && dragIntent && source !== node.page.path) {
+                            if (
+                              source &&
+                              dragIntent &&
+                              dragIntent !== "move" &&
+                              source !== node.page.path
+                            ) {
                               const drop = resolveSidebarPageDrop({
                                 intent: dragIntent,
                                 sourcePath: source,
@@ -8370,18 +8452,10 @@ export const Sidebar = React.memo(function Sidebar({
                                 ).catch(() => {});
                               }
                             }
-                            draggedPageSectionPathRef.current = null;
-                            setDraggedPagePath(null);
-                            setDragOverPagePath(null);
-                            setDragIntent(null);
-                            setDragDropSide(null);
+                            clearSidebarPageDrag();
                           }}
                           onDragEnd={() => {
-                            draggedPageSectionPathRef.current = null;
-                            setDraggedPagePath(null);
-                            setDragOverPagePath(null);
-                            setDragIntent(null);
-                            setDragDropSide(null);
+                            clearSidebarPageDrag();
                           }}
                         >
                           {isReorderTarget && dragDropSide === "before" && (
@@ -8600,14 +8674,55 @@ export const Sidebar = React.memo(function Sidebar({
                     const sectionOpen = expandedSections.has(section.path);
                     const sectionActive = section.path === activeSectionPath;
 
+                    const isSectionDropTarget =
+                      Boolean(draggedPagePath) &&
+                      dragOverSectionPath === section.path &&
+                      draggedPageSectionPathRef.current !== section.path;
+
                     return (
                       <div key={section.path} data-testid={`section-${section.path}`}>
                         <div
                           className={cn(
                             "flex items-center rounded transition",
                             compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] gap-1 px-1.5 py-0.5" : "gap-1.5 px-1.5 py-1",
-                            sectionActive ? "bg-surface/80" : "hover:bg-surface/70"
+                            sectionActive ? "bg-surface/80" : "hover:bg-surface/70",
+                            isSectionDropTarget && "ring-1 ring-inset ring-accent bg-accent/5"
                           )}
+                          data-testid={`section-drop-${section.path}`}
+                          onDragOver={(e) => {
+                            const source = draggedPagePath;
+                            const sourceContainer = draggedPageSectionPathRef.current;
+                            if (!source || !sourceContainer || sourceContainer === section.path) {
+                              return;
+                            }
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "move";
+                            setDragOverSectionPath(section.path);
+                            setDragOverPagePath(null);
+                            setDragIntent("move");
+                            setDragDropSide(null);
+                          }}
+                          onDragLeave={(e) => {
+                            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                              setDragOverSectionPath((current) => (current === section.path ? null : current));
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const source = draggedPagePath;
+                            const sourceContainer = draggedPageSectionPathRef.current;
+                            if (source && sourceContainer && sourceContainer !== section.path) {
+                              void onCrossContainerPageDrop(
+                                source,
+                                sourceContainer,
+                                section.path,
+                                null,
+                                null
+                              );
+                            }
+                            clearSidebarPageDrag();
+                          }}
                         >
                           <button
                             type="button"
@@ -8747,7 +8862,51 @@ export const Sidebar = React.memo(function Sidebar({
 
                               if (!flatNodes.length) {
                                 return (
-                                  <div className="ml-5 space-y-2 rounded border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
+                                  <div
+                                    className={cn(
+                                      "ml-5 space-y-2 rounded border border-dashed px-3 py-3 text-xs text-muted-foreground transition",
+                                      isSectionDropTarget
+                                        ? "border-accent bg-accent/5 text-foreground"
+                                        : "border-border"
+                                    )}
+                                    data-testid={`section-empty-drop-${section.path}`}
+                                    onDragOver={(e) => {
+                                      const source = draggedPagePath;
+                                      const sourceContainer = draggedPageSectionPathRef.current;
+                                      if (!source || !sourceContainer || sourceContainer === section.path) {
+                                        return;
+                                      }
+                                      e.preventDefault();
+                                      e.dataTransfer.dropEffect = "move";
+                                      setDragOverSectionPath(section.path);
+                                      setDragOverPagePath(null);
+                                      setDragIntent("move");
+                                      setDragDropSide(null);
+                                    }}
+                                    onDragLeave={(e) => {
+                                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                        setDragOverSectionPath((current) =>
+                                          current === section.path ? null : current
+                                        );
+                                      }
+                                    }}
+                                    onDrop={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      const source = draggedPagePath;
+                                      const sourceContainer = draggedPageSectionPathRef.current;
+                                      if (source && sourceContainer && sourceContainer !== section.path) {
+                                        void onCrossContainerPageDrop(
+                                          source,
+                                          sourceContainer,
+                                          section.path,
+                                          null,
+                                          null
+                                        );
+                                      }
+                                      clearSidebarPageDrag();
+                                    }}
+                                  >
                                     <p>No pages yet</p>
                                     {notebook.isPortable ? (
                                       <button
@@ -8787,7 +8946,7 @@ export const Sidebar = React.memo(function Sidebar({
                                   node.depth >= 2;
                                 const isReorderTarget =
                                   node.page.path === dragOverPagePath &&
-                                  (dragIntent === "reorder" || dragIntent === "unnest") &&
+                                  (dragIntent === "reorder" || dragIntent === "unnest" || dragIntent === "move") &&
                                   !isDragging;
                                 const indentPx = resolvePageIndent(sectionPageIndentBase, node.depth);
                                 const visibleGhosts =
@@ -8844,9 +9003,18 @@ export const Sidebar = React.memo(function Sidebar({
                                       e.preventDefault();
                                       const source = draggedPagePath;
                                       if (!source) return;
+                                      const sameContainer = draggedPageSectionPathRef.current === section.path;
                                       const delta = e.clientX - dragStartXRef.current;
                                       const rect = e.currentTarget.getBoundingClientRect();
                                       const dropSide = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                                      setDragOverSectionPath(null);
+                                      if (!sameContainer) {
+                                        // Cross-section: move as a section-root block at the drop line.
+                                        setDragIntent("move");
+                                        setDragDropSide(dropSide);
+                                        setDragOverPagePath(node.page.path);
+                                        return;
+                                      }
                                       const sourceNesting = getPageNestingActionState(nestingLookup, source);
                                       if (delta > 36) {
                                         setDragIntent("nest");
@@ -8854,12 +9022,9 @@ export const Sidebar = React.memo(function Sidebar({
                                       } else if (delta < -36 && sourceNesting.canOutdent) {
                                         setDragIntent("unnest");
                                         setDragDropSide(dropSide);
-                                      } else if (draggedPageSectionPathRef.current === section.path) {
+                                      } else {
                                         setDragIntent("reorder");
                                         setDragDropSide(dropSide);
-                                      } else {
-                                        setDragIntent(null);
-                                        setDragDropSide(null);
                                       }
                                       setDragOverPagePath(node.page.path);
                                     }}
@@ -8872,36 +9037,39 @@ export const Sidebar = React.memo(function Sidebar({
                                     onDrop={(e) => {
                                       e.preventDefault();
                                       const source = draggedPagePath;
+                                      const sourceContainer = draggedPageSectionPathRef.current;
                                       if (source && dragIntent && source !== node.page.path) {
-                                        const drop = resolveSidebarPageDrop({
-                                          intent: dragIntent,
-                                          sourcePath: source,
-                                          targetPath: node.page.path,
-                                          dropSide: dragDropSide,
-                                          pages: section.pages,
-                                          nestingLookup,
-                                        });
-                                        if (drop) {
-                                          void onApplyPageDrop(
-                                            section.path,
+                                        if (dragIntent === "move" && sourceContainer && sourceContainer !== section.path) {
+                                          void onCrossContainerPageDrop(
                                             source,
-                                            drop.parentId,
-                                            drop.orderedIds
-                                          ).catch(() => {});
+                                            sourceContainer,
+                                            section.path,
+                                            node.page.path,
+                                            dragDropSide
+                                          );
+                                        } else if (dragIntent !== "move") {
+                                          const drop = resolveSidebarPageDrop({
+                                            intent: dragIntent,
+                                            sourcePath: source,
+                                            targetPath: node.page.path,
+                                            dropSide: dragDropSide,
+                                            pages: section.pages,
+                                            nestingLookup,
+                                          });
+                                          if (drop) {
+                                            void onApplyPageDrop(
+                                              section.path,
+                                              source,
+                                              drop.parentId,
+                                              drop.orderedIds
+                                            ).catch(() => {});
+                                          }
                                         }
                                       }
-                                      draggedPageSectionPathRef.current = null;
-                                      setDraggedPagePath(null);
-                                      setDragOverPagePath(null);
-                                      setDragIntent(null);
-                                      setDragDropSide(null);
+                                      clearSidebarPageDrag();
                                     }}
                                     onDragEnd={() => {
-                                      draggedPageSectionPathRef.current = null;
-                                      setDraggedPagePath(null);
-                                      setDragOverPagePath(null);
-                                      setDragIntent(null);
-                                      setDragDropSide(null);
+                                      clearSidebarPageDrag();
                                     }}
                                   >
                                     {isReorderTarget && dragDropSide === "before" && (

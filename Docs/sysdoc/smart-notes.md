@@ -790,7 +790,7 @@ Vault tree shape:
 - `VaultNotebook.sections[].pages` contains section-scoped page stubs stored under real section directories.
 - Nested pages use `parent_id` frontmatter and stay in the same physical container as their parent.
 
-Notebook-root and section pages both support custom page order through `_page-order.json`. Sidebar page drag can reorder, nest right, or outdent left; drops resolve through `resolveSidebarPageDrop`, patch `parent_id` when needed, and persist the container order. Creation from a notebook, section, or page targets that notebook root, section, or parent respectively. Text and Jupyter pages share these placement rules.
+Notebook-root and section pages both support custom page order through `_page-order.json`. Within one section or notebook-root container, sidebar page drag can reorder, nest right, or outdent left; those drops resolve through `resolveSidebarPageDrop`, patch `parent_id` when needed, and persist the container order. Creation from a notebook, section, or page targets that notebook root, section, or parent respectively. Text and Jupyter pages share these placement rules.
 
 **Notebook picker organization (SN-232).** The tree sidebar remains the familiar navigation surface: open, non-archived notebooks appear in vault order; notebook expansion remains multi-expand; and picker filter, lens, notebook reorder, groups, and archive actions do not render there. Page Pin/Unpin lives in the tree page context menu so any ordinary page can enter the picker’s Pinned section. The folder button opens the organization picker, which contains all non-archived open and closed notebooks. Selecting a closed notebook preserves the existing reopen behavior.
 
@@ -805,6 +805,8 @@ Archived notebooks are absent from the tree and the picker primary list, and rem
 Key notes (SN-229) remain page metadata shown as a gem beside the title. See **Key notes (SN-229)**.
 
 **Moving nested pages (SN-307).** A section or notebook move carries the selected page and every descendant in its current container. Child `parent_id` paths are rewritten to their new locations, the selected page becomes a root when its former parent stays behind, and both containers retain their visible page order in `_page-order.json`. The move copies page files and companions (assets, sidecars, Jupyter folders, app data, and versions), stages originals as a temporary backup, then commits the new order. On a failure, it restores the originals and removes destination copies. Embedded `/vault/` asset links on moved pages are rewritten to their new asset folders. Tree dragging within a container moves a page and its descendants as one ordered block and rejects placements that exceed the nesting depth cap.
+
+**Cross-section sidebar drag (SN-320).** Dragging a page tree onto another section’s header, its empty “No pages yet” zone, or a page row in that section moves the subtree with the same `movePage` path as the Move dialog (SN-307 semantics and rollback). `resolveSidebarCrossContainerDrop` remaps basenames into the destination, refuses same-container drops and basename collisions with a toast, and after a successful move optionally reorders so a drop before/after an existing page lands at that position (empty/header drops append). Same-container nest/outdent/reorder is unchanged. Section reorder via drag, paper-row DnD, and dropping onto notebook-root containers remain out of scope; use the Move dialog when a destination is not a section.
 
 ### Key notes (SN-229)
 
