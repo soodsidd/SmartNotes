@@ -2,10 +2,13 @@ import { test, expect, type APIRequestContext } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { A4_HEIGHT_PX } from "../src/lib/design-pagination";
 import { ensureNotebookTreeVisible } from "./helpers";
 
 const FIXTURE = path.resolve(__dirname, "fixtures", "sn-304-resume-template.html");
 const EVIDENCE = path.resolve(__dirname, "evidence", "SN-304");
+/** CSS px per PDF point (96 CSS px/in, 72 pt/in). */
+const CSS_PX_PER_PT = 96 / 72;
 
 async function createDesign(request: APIRequestContext, title: string, body: string) {
   const created = await request.post("/api/agent/vault", {
@@ -42,6 +45,14 @@ test("SN-304: real resume template edits verbatim, shows A4 guides, and exports 
   const guideCount = await page.getByTestId("design-page-break").count();
   const pageCount = guideCount + 1;
   await expect(page.getByTestId("design-page-count")).toHaveText(`${pageCount} pages`);
+  // Preview guide Y is the CSS `top` of each break rule (mathematical A4 strips).
+  const guideYs = await page.getByTestId("design-page-break").evaluateAll((nodes) =>
+    nodes.map((node) => Number.parseFloat((node as HTMLElement).style.top)),
+  );
+  expect(guideYs).toHaveLength(guideCount);
+  for (let index = 0; index < guideYs.length; index += 1) {
+    expect(Math.abs(guideYs[index]! - (index + 1) * A4_HEIGHT_PX)).toBeLessThanOrEqual(2);
+  }
   await fs.mkdir(EVIDENCE, { recursive: true });
   await page.getByTestId("design-page-break").first().scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(EVIDENCE, `${testInfo.project.name}-guides.png`) });
@@ -66,9 +77,18 @@ test("SN-304: real resume template edits verbatim, shows A4 guides, and exports 
   const pdf = await getDocument({ data: new Uint8Array(bytes), useSystemFonts: true }).promise;
   expect(pdf.numPages).toBe(Number(exported.headers()["x-design-page-count"]));
   const size = (await pdf.getPage(1)).getViewport({ scale: 1 });
-  // A4 is 595.28 x 841.89pt; Chromium rounds paper dimensions by under 1pt.
+  // Shared integer A4_WIDTH_PX page box (SN-319): height in CSS px ≈ A4_HEIGHT_PX.
+  const pdfPageHeightCssPx = size.height * CSS_PX_PER_PT;
+  expect(Math.abs(pdfPageHeightCssPx - A4_HEIGHT_PX)).toBeLessThanOrEqual(2);
+  expect(Math.abs(size.height - A4_HEIGHT_PX * (72 / 96))).toBeLessThanOrEqual(1);
+  // A4 is ~595.28 x 841.89pt; Chromium may differ by under 1pt from ISO A4.
   expect(Math.abs(size.width - 595.28)).toBeLessThan(1);
   expect(Math.abs(size.height - 841.89)).toBeLessThan(1);
   expect(pdf.numPages).toBe(pageCount);
+  // Guide Y must match cumulative PDF page edges within ≤2 CSS px (AC1).
+  for (let index = 0; index < guideYs.length; index += 1) {
+    const pdfEdgeY = (index + 1) * pdfPageHeightCssPx;
+    expect(Math.abs(guideYs[index]! - pdfEdgeY)).toBeLessThanOrEqual(2);
+  }
   await pdf.destroy();
 });
