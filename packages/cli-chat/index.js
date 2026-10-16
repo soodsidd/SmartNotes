@@ -837,6 +837,9 @@ function createChatModule(httpServer, io, userConfig = {}) {
   function getProviderSession(provider, scopeKey = buildScopeKey(appId, '')) {
     return sessionState?.[provider]?.[scopeKey] || '';
   }
+  function getSessionScopeKey(scopeKey, threadKey = '') {
+    return threadKey ? JSON.stringify(['thread', threadKey]) : scopeKey;
+  }
   function clearProviderSession(provider, scopeKey = buildScopeKey(appId, '')) {
     if (sessionState[provider]) delete sessionState[provider][scopeKey];
     saveSessions();
@@ -1081,6 +1084,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       model: extra.model || '',
       project_id: extra.project_id || '',
       scope_key: extra.scope_key || buildScopeKey(appId, ''),
+      thread_key: extra.thread_key || '',
       request: extra.request && typeof extra.request === 'object' ? extra.request : {},
       events: Array.isArray(extra.events) ? extra.events.slice() : [],
     };
@@ -1105,6 +1109,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
     record.model = raw.model || raw.request?.model || record.model;
     record.project_id = raw.project_id || raw.projectId || raw.request?.project_id || record.project_id;
     record.scope_key = raw.scope_key || raw.scopeKey || record.scope_key || buildScopeKey(appId, record.project_id);
+    record.thread_key = raw.thread_key || record.thread_key;
     record.request = raw.request && typeof raw.request === 'object' ? raw.request : {};
     record.events = legacyEvents
       .filter(entry => entry && typeof entry === 'object')
@@ -1217,6 +1222,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       model: job.model || '',
       project_id: job.projectId || '',
       scope_key: job.scopeKey || buildScopeKey(appId, job.projectId || ''),
+      thread_key: job.threadKey || '',
       request: job.request || {},
     });
     record.turn_id = chatId;
@@ -1224,6 +1230,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
     record.model = record.model || job.model || '';
     record.project_id = record.project_id || job.projectId || '';
     record.scope_key = record.scope_key || job.scopeKey || buildScopeKey(appId, record.project_id);
+    record.thread_key = record.thread_key || job.threadKey || '';
     record.request = record.request && typeof record.request === 'object' ? record.request : {};
     record.events.push(event);
     if (event.type === 'done' && event.payload?.status) record.status = String(event.payload.status);
@@ -1600,7 +1607,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
 
     const missingCodexThread = provider === 'codex' && isLikelyMissingCodexThread(message);
     if (missingCodexThread) {
-      clearProviderSession('codex', job.scopeKey || buildScopeKey(appId, job.projectId || ''));
+      clearProviderSession('codex', job.sessionScopeKey || job.scopeKey || buildScopeKey(appId, job.projectId || ''));
       if (hasVisibleTurnOutput(job)) return;
     }
 
@@ -1609,7 +1616,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
     if (isLikelyFatalProviderError(provider, message)) {
       emitStatus(chatId, message, { provider, source: 'stderr', code: 'stderr' });
       if (provider === 'codex') {
-        clearProviderSession('codex', job.scopeKey || buildScopeKey(appId, job.projectId || ''));
+        clearProviderSession('codex', job.sessionScopeKey || job.scopeKey || buildScopeKey(appId, job.projectId || ''));
       }
       // Don't wait the full idle window for a turn we know is dead.
       job.status = 'failed';
@@ -1700,11 +1707,12 @@ function createChatModule(httpServer, io, userConfig = {}) {
     return true;
   }
 
-  function cancelRunningTurnsInScope(scopeKey, message = 'Cancelled because a newer request started in this chat.') {
+  function cancelRunningTurnsInScope(scopeKey, threadKey = '', message = 'Cancelled because a newer request started in this chat.') {
     const cancelled = [];
-    for (const summary of listActiveTurnSummaries(scopeKey)) {
-      if (!summary?.turn_id) continue;
-      if (cancelJob(summary.turn_id, message)) cancelled.push(summary.turn_id);
+    for (const record of listPersistedJobRecords()) {
+      if (record.status !== 'running' || String(record.thread_key || '') !== threadKey) continue;
+      if (!threadKey && String(record.scope_key || buildScopeKey(appId, record.project_id)) !== scopeKey) continue;
+      if (cancelJob(record.turn_id, message)) cancelled.push(record.turn_id);
     }
     return cancelled;
   }
@@ -1807,18 +1815,21 @@ function createChatModule(httpServer, io, userConfig = {}) {
 
   function runChat(chatId, prompt, systemPrompt, provider, model, runOptions = {}) {
     const job = jobs[chatId];
+    // A same-thread send may supersede this turn before its deferred runner starts.
+    if (!job || job.status !== 'running') return;
     const settings = readStoredConfig();
     const runtime = getRuntimeSettings(settings);
     const verboseEnabled = runtime.verbose;
     const normalizedSystemPrompt = typeof systemPrompt === 'string' ? systemPrompt : '';
     const hasSystemPrompt = normalizedSystemPrompt.trim().length > 0;
     const workingDirectory = runOptions.workingDirectory || cfg.workingDirectory;
-    const sessionScopeKey = runOptions.scopeKey || buildScopeKey(appId, '');
+    const sessionScopeKey = getSessionScopeKey(runOptions.scopeKey || buildScopeKey(appId, ''), runOptions.threadKey);
     let tracedCommand = '';
 
     job.provider = provider;
     job.verbose = verboseEnabled;
-    job.scopeKey = sessionScopeKey;
+    job.scopeKey = runOptions.scopeKey || buildScopeKey(appId, '');
+    job.sessionScopeKey = sessionScopeKey;
     job.projectId = runOptions.projectId || job.projectId || '';
 
     // NOTE: PDF attachments are extracted to plain text server-side (extractPdfText)
@@ -2226,7 +2237,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
         } else if (event.type === 'result') {
           markTerminal();
           const job = ensureJob(chatId);
-          if (event.sessionId) setProviderSession('ghcopilot', event.sessionId, job.scopeKey || buildScopeKey(appId, job.projectId || ''));
+          if (event.sessionId) setProviderSession('ghcopilot', event.sessionId, job.sessionScopeKey || job.scopeKey || buildScopeKey(appId, job.projectId || ''));
           const exitCode = typeof event.exitCode === 'number' ? event.exitCode : 0;
           if (exitCode === 0) {
             job.status = 'completed';
@@ -2249,7 +2260,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
         const event = JSON.parse(line);
         if (event.type === 'thread.started' && event.thread_id) {
           const job = ensureJob(chatId);
-          setProviderSession('codex', event.thread_id, job.scopeKey || buildScopeKey(appId, job.projectId || ''));
+          setProviderSession('codex', event.thread_id, job.sessionScopeKey || job.scopeKey || buildScopeKey(appId, job.projectId || ''));
         } else if (event.type === 'item.started') {
           const item = event.item || {};
           if (verboseEnabled && item.type === 'command_execution' && item.command) {
@@ -2294,7 +2305,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
           const err = event.error?.message || event.message || 'Codex run failed';
           if (isLikelyMissingCodexThread(err)) {
             const job = ensureJob(chatId);
-            clearProviderSession('codex', job.scopeKey || buildScopeKey(appId, job.projectId || ''));
+            clearProviderSession('codex', job.sessionScopeKey || job.scopeKey || buildScopeKey(appId, job.projectId || ''));
           }
           emitProviderError(chatId, provider, err);
         }
@@ -2359,7 +2370,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
           markTerminal();
           const job = ensureJob(chatId);
           const sid = typeof event.session_id === 'string' ? event.session_id.trim() : '';
-          if (sid) setProviderSession('cursor', sid, job.scopeKey || buildScopeKey(appId, job.projectId || ''));
+          if (sid) setProviderSession('cursor', sid, job.sessionScopeKey || job.scopeKey || buildScopeKey(appId, job.projectId || ''));
 
           if (event.is_error === true || subtype === 'error') {
             const errMsg = typeof event.result === 'string' ? event.result : 'Cursor agent returned an error.';
@@ -2582,9 +2593,14 @@ function createChatModule(httpServer, io, userConfig = {}) {
         if (requestedTurnId && (jobs[requestedTurnId] || loadPersistedJobRecord(requestedTurnId))) {
           return sendJson(res, 409, { error: 'turn_id already exists' });
         }
+        const threadKey = typeof data.thread_key === 'string' ? data.thread_key.trim() : '';
+        if (data.thread_key !== undefined && (!threadKey || threadKey.length > 2048 || /[\x00-\x1f]/.test(threadKey))) {
+          return sendJson(res, 400, { error: 'Invalid thread_key' });
+        }
+        const sessionScopeKey = getSessionScopeKey(activeScope.scopeKey, threadKey);
         const chatId = requestedTurnId || crypto.randomUUID();
         const pdfTextResults = await Promise.all(sanitizedPdfAttachments.map(doc => extractPdfText(doc.path)));
-        const supersededTurnIds = cancelRunningTurnsInScope(activeScope.scopeKey);
+        const supersededTurnIds = cancelRunningTurnsInScope(activeScope.scopeKey, threadKey);
         logTrace('turn_created', {
           ...getRequestClientDetails(req),
           turn_id: chatId,
@@ -2601,6 +2617,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
           page_context: String(data.page_context || ''),
           project_id: activeScope.project?.id || '',
           scope_key: activeScope.scopeKey,
+          thread_key: threadKey,
           working_directory: activeScope.workingDirectory,
           superseded_turn_ids: supersededTurnIds,
         });
@@ -2639,7 +2656,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
         if (data.link_content) parts.push('', 'Content from a linked URL the user shared:', data.link_content);
         // Only embed history when there's no active Copilot session.
         // With --resume, GH Copilot CLI maintains its own conversation memory.
-        const hasSession = (provider === 'ghcopilot' || provider === 'codex') && getProviderSession(provider, activeScope.scopeKey);
+        const hasSession = (provider === 'ghcopilot' || provider === 'codex') && getProviderSession(provider, sessionScopeKey);
         const sanitizedHistory = sanitizeConversationHistory(data.history);
         if (sanitizedHistory.length && !hasSession) {
           const recent = sanitizedHistory.slice(-6);
@@ -2671,6 +2688,8 @@ function createChatModule(httpServer, io, userConfig = {}) {
           model: (data.model || '').trim(),
           projectId: activeScope.project?.id || '',
           scopeKey: activeScope.scopeKey,
+          threadKey,
+          sessionScopeKey,
           workingDirectory: activeScope.workingDirectory,
           request: {
             message,
@@ -2694,6 +2713,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
             model: (data.model || '').trim(),
             project_id: activeScope.project?.id || '',
             scope_key: activeScope.scopeKey,
+            thread_key: threadKey,
             request: {
               message,
               app_context: appContext,
@@ -2714,6 +2734,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
         setImmediate(() => runChat(chatId, parts.join('\n'), sysText, provider, (data.model || '').trim(), {
           workingDirectory: activeScope.workingDirectory,
           scopeKey: activeScope.scopeKey,
+          threadKey,
           projectId: activeScope.project?.id || '',
           boundPort: companionApiTarget.port,
         }));
@@ -2739,9 +2760,13 @@ function createChatModule(httpServer, io, userConfig = {}) {
     }
 
     if (apiPath === '/reset-session' && req.method === 'POST') {
-      const activeScope = getActiveScopeSettings();
-      clearProviderSessions(activeScope.scopeKey);
-      sendJson(res, 200, { status: 'ok', stateScopeId: activeScope.scopeKey, projectId: activeScope.project?.id || '' });
+      readBody(req, 4096).then(buf => {
+        const data = buf.length ? JSON.parse(buf.toString('utf8')) : {};
+        const activeScope = getActiveScopeSettings();
+        const threadKey = typeof data.thread_key === 'string' ? data.thread_key.trim() : '';
+        clearProviderSessions(getSessionScopeKey(activeScope.scopeKey, threadKey));
+        sendJson(res, 200, { status: 'ok', stateScopeId: activeScope.scopeKey, projectId: activeScope.project?.id || '' });
+      }).catch(err => sendJson(res, 400, { error: err.message }));
       return;
     }
 

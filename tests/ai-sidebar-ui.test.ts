@@ -174,7 +174,9 @@ describe("Paste-to-attach", () => {
     // SN-287: the empty-send guard is separate so a blocked (busy/unavailable)
     // composer send is retained as a failed send instead of silently dropped.
     expect(notebookShellSrc).toContain("if (!prompt.trim() && !hasUploadedAttachment) {");
-    expect(notebookShellSrc).toMatch(/!draft \|\|\s+\(activeProjectWorkspace && !workspaceSession\?\.capability\) \|\|\s+activeTurnIdRef\.current/);
+    expect(notebookShellSrc).toMatch(/!draft \|\|\s+\(activeProjectWorkspace && !workspaceSession\?\.capability\) \|\|\s+busyOnSubmitThread/);
+    expect(notebookShellSrc).toContain("isTurnActive: displayedTurnActive");
+    expect(notebookShellSrc).toContain("threadKey: submitThreadKey");
   });
 
   it("keeps companion draft typing out of ReliableNotebookShell state", () => {
@@ -193,11 +195,11 @@ describe("Paste-to-attach", () => {
       "await saveCompanionThread(pending.path, pending.scopeKey, aiMessages);"
     );
     expect(NOTEBOOK_SHELL_SRC).toContain(
-      "await clearCompanionActiveTurnPointer(pending.path, pending.scopeKey);"
+      "await clearCompanionActiveTurnPointer(pending.path, pending.scopeKey, pending.turnId);"
     );
     expect(NOTEBOOK_SHELL_SRC).toContain("finalizeActiveTurn({ persistTranscript: true });");
     expect(NOTEBOOK_SHELL_SRC).toContain(
-      "pendingTerminalTurnPersistRef.current = context;"
+      "pendingTerminalTurnPersistRef.current = { ...context, turnId };"
     );
   });
 
@@ -330,7 +332,7 @@ describe("AI sidebar cancel wiring", () => {
 
   it("tracks aiTurnActive state and passes it to desktop and mobile composers", () => {
     expect(NOTEBOOK_SHELL_SRC).toContain("const [aiTurnActive, setAiTurnActive]");
-    expect(NOTEBOOK_SHELL_SRC).toContain("isTurnActive: aiTurnActive");
+    expect(NOTEBOOK_SHELL_SRC).toContain("isTurnActive: displayedTurnActive");
     expect(NOTEBOOK_SHELL_SRC).toContain("onCancel: handleAiCancel");
   });
 

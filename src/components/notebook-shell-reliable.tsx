@@ -259,6 +259,7 @@ import {
   resolveCompanionThreadAddress,
   resolveSubtreeRootPath,
   isCompanionThreadDisplayed,
+  isCompanionTurnBusyOnThread,
   createEmptyCompanionSidecar,
   describeTerminalTurnStatus,
   findCompanionActiveTurn,
@@ -1076,7 +1077,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const activeTurnLastSeqRef = React.useRef(-1);
   // Page + scope the in-flight turn belongs to (for durable pointer cleanup).
   const activeTurnContextRef = React.useRef<{ path: string; scopeKey: string } | null>(null);
-  const pendingTerminalTurnPersistRef = React.useRef<{ path: string; scopeKey: string } | null>(null);
+  const pendingTerminalTurnPersistRef = React.useRef<{ path: string; scopeKey: string; turnId: string } | null>(null);
   // Dedupe reattach discovery so we probe the durable pointer once per page+scope.
   const reattachDiscoveryKeyRef = React.useRef<string | null>(null);
   const prevCompanionDisposeRef = React.useRef<{ path: string | null; scopeKey: string }>({
@@ -1625,12 +1626,13 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // SN-132: clear only the live-turn pointer for a page+scope, leaving any saved
   // transcript intact. Called when a turn reaches a terminal state.
   const clearCompanionActiveTurnPointer = React.useCallback(
-    async (path: string, scopeKey: string) => {
+    async (path: string, scopeKey: string, expectedTurnId: string) => {
       try {
-        const base =
-          companionSidecarRef.current && companionPageRef.current === path
-            ? companionSidecarRef.current
-            : await fetchCompanionSessions(path).catch(() => createEmptyCompanionSidecar());
+        // A newer send in another tab may already own this thread. Read the
+        // current sidecar before clearing so the older cancelled tab cannot
+        // erase the new turn's recovery pointer.
+        const base = await fetchCompanionSessions(path);
+        if (getCompanionActiveTurn(base, scopeKey)?.turnId !== expectedTurnId) return;
         const next = setCompanionActiveTurn(base, scopeKey, null);
         companionSidecarRef.current = next;
         companionPageRef.current = path;
@@ -1645,10 +1647,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // SN-132: reset the provider session (conversation continuity) without touching
   // any running turn. clearProviderSessions only affects the *next* turn's
   // --resume; the server-owned process for an in-flight turn is unaffected.
-  const resetProviderSession = React.useCallback(async () => {
+  const resetProviderSession = React.useCallback(async (threadKey: string | null) => {
     await fetch("/api/chat/reset-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ thread_key: threadKey }),
     }).catch(() => undefined);
   }, []);
 
@@ -1887,10 +1890,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       // only thing that could trigger recovery, so the recovered answer must be
       // durable first. (aiMessagesRef lags a render behind setAiMessages, so persist
       // the array captured inside the updater rather than the ref.)
+      const latest = await fetchCompanionSessions(path).catch(() => null);
+      if (!latest || getCompanionActiveTurn(latest, scopeKey)?.turnId !== pointer.turnId) return;
       if (reconciledMessages) {
         await saveCompanionThread(path, scopeKey, reconciledMessages);
       }
-      await clearCompanionActiveTurnPointer(path, scopeKey);
+      await clearCompanionActiveTurnPointer(path, scopeKey, pointer.turnId);
     },
     [clearCompanionActiveTurnPointer, saveCompanionThread]
   );
@@ -1990,10 +1995,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     }
     pendingTerminalTurnPersistRef.current = null;
     void (async () => {
+      const latest = await fetchCompanionSessions(pending.path).catch(() => null);
+      if (!latest || getCompanionActiveTurn(latest, pending.scopeKey)?.turnId !== pending.turnId) return;
       // Terminal confirmation is the first point where ordinary transcript
       // persistence may release the live pointer.
       await saveCompanionThread(pending.path, pending.scopeKey, aiMessages);
-      await clearCompanionActiveTurnPointer(pending.path, pending.scopeKey);
+      await clearCompanionActiveTurnPointer(pending.path, pending.scopeKey, pending.turnId);
       if (!keepConversationRef.current) {
         await clearCompanionScopeOnPage(pending.path, pending.scopeKey);
       }
@@ -2087,15 +2094,16 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     // observers and the durable live-turn pointer so no orphaned pointer remains.
     const finalizeActiveTurn = (options: { persistTranscript?: boolean } = {}) => {
       const context = activeTurnContextRef.current;
+      const turnId = activeTurnIdRef.current;
       activeTurnIdRef.current = null;
       activeAssistantMessageIdRef.current = null;
       activeTurnLastSeqRef.current = -1;
       activeTurnContextRef.current = null;
       setAiTurnActive(false);
-      if (context && options.persistTranscript) {
-        pendingTerminalTurnPersistRef.current = context;
-      } else if (context) {
-        void clearCompanionActiveTurnPointer(context.path, context.scopeKey);
+      if (context && turnId && options.persistTranscript) {
+        pendingTerminalTurnPersistRef.current = { ...context, turnId };
+      } else if (context && turnId) {
+        void clearCompanionActiveTurnPointer(context.path, context.scopeKey, turnId);
       }
     };
 
@@ -2684,9 +2692,14 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     // We intentionally no longer blanket-reset scope to 'whole' on navigation
     // (SN-202 Problem 3/4 root seam); the availability effect below narrows scope
     // only when the destination page cannot honor the current selection.
-    detachActiveTurn();
-    void resetProviderSession();
-  }, [companionStorePath, companionScopeKey, detachActiveTurn, resetProviderSession]);
+    if (!isCompanionThreadDisplayed(activeTurnContextRef.current, {
+      storePath: companionStorePath,
+      scopeKey: companionScopeKey,
+    })) {
+      detachActiveTurn();
+      void resetProviderSession(companionThreadKey);
+    }
+  }, [companionStorePath, companionScopeKey, companionThreadKey, detachActiveTurn, resetProviderSession]);
 
   React.useEffect(() => {
     resetAiComposer();
@@ -5383,6 +5396,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     const submitScopeKey = companionScopeKeyRef.current;
     const submitPath = companionStorePathRef.current || draft?.path || "";
     const submitThreadKey = `${submitPath}::${submitScopeKey}`;
+    const busyOnSubmitThread = isCompanionTurnBusyOnThread(
+      activeTurnIdRef.current,
+      activeTurnContextRef.current,
+      { storePath: submitPath, scopeKey: submitScopeKey }
+    );
     // SN-287: a retry may only reuse its turn identity on the thread it failed on.
     const retryIdentity = retryOf && retryOf.threadKey === submitThreadKey && retryOf.turnId
       ? retryOf
@@ -5408,11 +5426,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     if (
       !draft ||
       (activeProjectWorkspace && !workspaceSession?.capability) ||
-      activeTurnIdRef.current
+      busyOnSubmitThread
     ) {
       // Nothing reached the server: keep the draft so it is never silently lost.
       retainFailedSend(
-        activeTurnIdRef.current
+        busyOnSubmitThread
           ? "Smart Notes AI is still working on the previous reply."
           : "Smart Notes AI is not available for this page.",
         retryIdentity ?? { turnId: null, userMessageId: null, assistantMessageId: null }
@@ -5586,6 +5604,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       const turnRequestBody = JSON.stringify(
         buildAiTurnRequest({
           turnId,
+          threadKey: submitThreadKey,
           message: prompt,
           history,
           pageContext,
@@ -5617,9 +5636,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         // turn_id). Never start a second turn — attach to (or reconcile) the
         // existing one through the durable-pointer path.
         revokeComposerAttachmentUrls(attachments);
-        activeTurnIdRef.current = null;
-        activeTurnContextRef.current = null;
-        setAiTurnActive(false);
+        if (activeTurnIdRef.current === turnId) {
+          activeTurnIdRef.current = null;
+          activeTurnContextRef.current = null;
+          setAiTurnActive(false);
+        }
         updateAiMessage(assistantMessageId, (message) => ({ ...message, isStreaming: false }));
         reattachDiscoveryKeyRef.current = null;
         await reattachOrReconcileTurn(submitPath, submitScopeKey, pointer);
@@ -5636,14 +5657,14 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       // Accepted: the composer attachments' preview URLs are no longer needed.
       revokeComposerAttachmentUrls(attachments);
     } catch (error) {
-      await clearCompanionActiveTurnPointer(submitPath, submitScopeKey);
+      await clearCompanionActiveTurnPointer(submitPath, submitScopeKey, turnId);
       // SN-211: the turn never launched — drop the closed-panel watcher so no
       // stale working affordance lingers and a failed send never lights ready.
       if (watchedTurnIdRef.current === turnId) {
         watchedTurnIdRef.current = null;
         setCompanionTurnPending(false);
       }
-      if (activeTurnContextRef.current?.path === submitPath &&
+      if (activeTurnIdRef.current === turnId && activeTurnContextRef.current?.path === submitPath &&
           activeTurnContextRef.current.scopeKey === submitScopeKey) {
         activeTurnIdRef.current = null;
         activeTurnContextRef.current = null;
@@ -5677,7 +5698,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // turn identity (see AiFailedSendRecord). Never runs while a turn is live.
   const handleAiRetryFailedSend = React.useCallback(() => {
     const failed = aiFailedSendRef.current;
-    if (!failed || activeTurnIdRef.current) {
+    if (!failed || isCompanionTurnBusyOnThread(activeTurnIdRef.current, activeTurnContextRef.current, {
+      storePath: companionStorePathRef.current,
+      scopeKey: companionScopeKeyRef.current,
+    })) {
       return;
     }
     setAiFailedSend(null);
@@ -5728,8 +5752,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         body: JSON.stringify({ cancel: currentTurnId }),
       }).catch(() => undefined);
     }
-    if (context) {
-      void clearCompanionActiveTurnPointer(context.path, context.scopeKey);
+    if (context && currentTurnId) {
+      void clearCompanionActiveTurnPointer(context.path, context.scopeKey, currentTurnId);
     }
 
     if (assistantMessageId) {
@@ -5752,7 +5776,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       if (!current || current.noteType !== "app") {
         return { ok: false, error: "The companion is only available from a running app page." };
       }
-      if (activeTurnIdRef.current) {
+      if (isCompanionTurnBusyOnThread(activeTurnIdRef.current, activeTurnContextRef.current, {
+        storePath: companionStorePathRef.current,
+        scopeKey: companionScopeKeyRef.current,
+      })) {
         return { ok: false, error: "The companion is busy with another response. Try again shortly." };
       }
       const prompt = buildCompanionAppMessagePrompt({ text, payload, appTitle: current.title });
@@ -6346,6 +6373,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const paperShellTitle = paperShellPath
     ? tree.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH)?.pages.find((page) => page.path === paperShellPath)?.title ?? draft?.title ?? "Paper"
     : null;
+  const displayedTurnActive = aiTurnActive &&
+    isCompanionTurnBusyOnThread(activeTurnIdRef.current, activeTurnContextRef.current, {
+      storePath: companionStorePath,
+      scopeKey: companionScopeKey,
+    });
   // One shared prop bundle and one AiSidebar element serve every shell presentation.
   const companionProps = {
     pageTitle: paperShellTitle ?? draft?.title ?? "No note selected",
@@ -6369,7 +6401,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     initialComposerDraft: aiComposerSnapshotRef.current.draft,
     initialComposerAttachments: aiComposerSnapshotRef.current.attachments,
     disabled: !draft || Boolean(activeProjectWorkspace && !workspaceSession?.capability),
-    isTurnActive: aiTurnActive,
+    isTurnActive: displayedTurnActive,
     providers: aiProviders,
     activeProviderId: aiActiveProviderId,
     verboseEnabled: aiVerboseEnabled,
