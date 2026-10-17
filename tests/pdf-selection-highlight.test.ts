@@ -6,6 +6,7 @@
  */
 import {
   buildSelectionHighlight,
+  findHighlightAtPoint,
   isSelectionAlreadyHighlighted,
   type PdfRect,
 } from "@/lib/pdf-selection-highlight";
@@ -63,5 +64,28 @@ describe("buildSelectionHighlight", () => {
 
   test("omits custom text when the selected text could not be read", () => {
     expect(buildSelectionHighlight(selection, defaults, "id-2", null, created)).not.toHaveProperty("custom");
+  });
+});
+
+describe("findHighlightAtPoint (phone tap on an existing highlight)", () => {
+  const items = [
+    { id: "ink", type: INK, segmentRects: [line1] },
+    { id: "a", type: HIGHLIGHT, segmentRects: [line1, line2] },
+  ];
+
+  test("finds the highlight under a finger tap, with slack around thin lines", () => {
+    expect(findHighlightAtPoint(items, 150, 106, HIGHLIGHT)).toBe("a");
+    expect(findHighlightAtPoint(items, 150, 98, HIGHLIGHT)).toBe("a");
+  });
+
+  test("misses text outside every highlight so ordinary taps keep chrome/page-turn behavior", () => {
+    expect(findHighlightAtPoint(items, 300, 122, HIGHLIGHT)).toBeNull();
+    expect(findHighlightAtPoint(items, 150, 300, HIGHLIGHT)).toBeNull();
+  });
+
+  test("prefers the topmost (latest) overlapping highlight and ignores ink", () => {
+    const stacked = [...items, { id: "b", type: HIGHLIGHT, segmentRects: [line1] }];
+    expect(findHighlightAtPoint(stacked, 150, 106, HIGHLIGHT)).toBe("b");
+    expect(findHighlightAtPoint([{ id: "ink", type: INK, segmentRects: [line1] }], 150, 106, HIGHLIGHT)).toBeNull();
   });
 });

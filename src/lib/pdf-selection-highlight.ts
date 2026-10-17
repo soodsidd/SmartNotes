@@ -70,3 +70,31 @@ export function buildSelectionHighlight<TDefaults extends object>(
     ...(text ? { custom: { text } } : {}),
   };
 }
+
+/** Finger slack around thin highlight lines, in PDF points. */
+const TAP_SLOP_PT = 4;
+
+/**
+ * Topmost highlight whose marked segments contain a PDF-space tap point.
+ * Read mode keeps touch away from EmbedPDF so the browser owns pan/pinch;
+ * a deliberate finger tap uses this to open the tapped highlight's dish.
+ */
+export function findHighlightAtPoint(
+  annotations: Array<PdfHighlightLike & { id?: string }>,
+  x: number,
+  y: number,
+  highlightType: number
+): string | null {
+  for (let i = annotations.length - 1; i >= 0; i -= 1) {
+    const annotation = annotations[i];
+    if (annotation.type !== highlightType || !annotation.id) continue;
+    const hit = (annotation.segmentRects ?? []).some((rect) =>
+      x >= rect.origin.x - TAP_SLOP_PT &&
+      x <= rect.origin.x + rect.size.width + TAP_SLOP_PT &&
+      y >= rect.origin.y - TAP_SLOP_PT &&
+      y <= rect.origin.y + rect.size.height + TAP_SLOP_PT
+    );
+    if (hit) return annotation.id;
+  }
+  return null;
+}

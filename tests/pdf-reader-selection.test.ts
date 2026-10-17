@@ -167,6 +167,13 @@ describe("PDF selection menu actions (SN-334)", () => {
     expect(READER_SOURCE).toContain('data-testid="pdf-reader-anno-edit"');
   });
 
+  test("a short finger tap selects the highlight under it without touching pan/pinch routing", () => {
+    expect(READER_SOURCE).toMatch(
+      /event\.pointerType === "touch" &&\s*!candidate\.multiTouch[\s\S]*?findHighlightAtPoint\([\s\S]*?scope\.selectAnnotation\(pageIndex, hitId\)/
+    );
+    expect(READER_SOURCE).toContain("data-page-index={pageIndex}");
+  });
+
   test("offers Undo for a read-mode Highlight without entering Annotate", () => {
     expect(READER_SOURCE).toContain('data-testid="pdf-reader-highlight-undo"');
     expect(READER_SOURCE).toMatch(

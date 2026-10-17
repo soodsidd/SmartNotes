@@ -57,7 +57,7 @@
 /* SN-334: PDF passage actions (Highlight, Record, Ask Companion). The menu
    floats beside the selection's anchor rect, never over the passage. */
 .pdf-passage-menu {
-  position: absolute; z-index: 12; pointer-events: auto;
+  position: absolute; z-index: 12; pointer-events: auto; width: max-content;
   transform: translate(calc(-50% + var(--pdf-passage-shift, 0px)), .5rem);
   max-width: calc(100vw - 1rem); padding: .25rem; border: 1px solid var(--border);
   border-radius: var(--radius-md); background: var(--popover); color: var(--foreground);

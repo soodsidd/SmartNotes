@@ -1625,9 +1625,9 @@
     {
       "id": "unit-sn-193-pdf-reader-selection",
       "name": "PDF read-mode selection and Companion handoff",
-      "description": "Jest: tests/pdf-reader-selection.test.ts and tests/inline-ai-popover.test.tsx — read-mode selection/copy, touch navigation, and captured PDF text through Companion prompts and handoff.",
+      "description": "Jest: tests/pdf-reader-selection.test.ts and tests/inline-ai-popover.test.tsx — read-mode selection/copy, touch navigation, and captured PDF text through Companion prompts and handoff; SN-334 adds tests/pdf-selection-highlight.test.ts and tests/pdf-passage-actions.test.tsx for the Highlight/Record/Ask Companion menu, duplicate-free Highlight, and phone highlight taps.",
       "appType": "node",
-      "command": "npm test -- tests/pdf-reader-selection.test.ts tests/inline-ai-popover.test.tsx",
+      "command": "npm test -- tests/pdf-reader-selection.test.ts tests/inline-ai-popover.test.tsx tests/pdf-selection-highlight.test.ts tests/pdf-passage-actions.test.tsx",
       "timeoutMs": 120000,
       "enabled": true,
       "tags": [
@@ -1652,6 +1652,12 @@
         },
         {
           "path": "tests/inline-ai-popover.test.tsx"
+        },
+        {
+          "path": "tests/pdf-selection-highlight.test.ts"
+        },
+        {
+          "path": "tests/pdf-passage-actions.test.tsx"
         }
       ],
       "intent": "Prevents PDF selection from disappearing or becoming page context during Ask Companion while preserving copy, finger navigation, and annotation taps.",

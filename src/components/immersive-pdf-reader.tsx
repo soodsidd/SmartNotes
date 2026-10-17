@@ -56,6 +56,7 @@ import { PdfPassageActions, PdfPassageMenu } from "@/components/pdf-passage-acti
 import { exactPdfHighlightQuote } from "@/lib/pdf-record";
 import {
   buildSelectionHighlight,
+  findHighlightAtPoint,
   isSelectionAlreadyHighlighted,
   type PdfHighlightLike,
 } from "@/lib/pdf-selection-highlight";
@@ -2543,6 +2544,38 @@ function ReaderSurface({
     const target = event.target as HTMLElement | null;
     if (target?.closest("button, a, input, textarea, [contenteditable='true'], .pdf-reader__anno-menu")) return;
     if ((annotationRef.current?.getSelectedAnnotationIds().length ?? 0) > 0) return;
+    // SN-334: read-mode touch never reaches EmbedPDF (native pan/pinch keep
+    // the gesture), so a deliberate short finger tap hit-tests highlights
+    // itself and opens the tapped highlight's Record/Ask/comment dish.
+    if (
+      event.pointerType === "touch" &&
+      !candidate.multiTouch &&
+      performance.now() - candidate.startedAt <= 600 &&
+      Math.hypot(event.clientX - candidate.startX, event.clientY - candidate.startY) <= 10
+    ) {
+      const frameEl = document
+        .elementsFromPoint(event.clientX, event.clientY)
+        .find((el): el is HTMLElement => el instanceof HTMLElement && el.classList.contains("pdf-reader__page-frame"));
+      const scope = annotationRef.current;
+      const pageIndex = Number(frameEl?.dataset.pageIndex);
+      if (frameEl && scope && Number.isInteger(pageIndex)) {
+        const box = frameEl.getBoundingClientRect();
+        const zoom = zoomState.currentZoomLevel || 1;
+        const toLayout = box.width > 0 ? frameEl.offsetWidth / box.width : 1;
+        const pdfX = ((event.clientX - box.left) * toLayout) / zoom;
+        const pdfY = ((event.clientY - box.top) * toLayout) / zoom;
+        const hitId = findHighlightAtPoint(
+          scope.getAnnotations({ pageIndex }).map((item) => item.object as PdfHighlightLike & { id?: string }),
+          pdfX,
+          pdfY,
+          PdfAnnotationSubtype.HIGHLIGHT
+        );
+        if (hitId) {
+          scope.selectAnnotation(pageIndex, hitId);
+          return;
+        }
+      }
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     const turn = resolvePdfTapTurn({
       annotateMode,
@@ -2559,7 +2592,7 @@ function ReaderSurface({
     });
     if (!turn) return;
     pendingTapTurnRef.current = turn;
-  }, [annotateMode]);
+  }, [annotateMode, zoomState.currentZoomLevel]);
   const cancelTapTurn = React.useCallback((event: React.PointerEvent<HTMLElement>) => {
     activeTapPointersRef.current.delete(event.pointerId);
     if (tapTurnCandidateRef.current?.pointerId === event.pointerId) {
@@ -3241,6 +3274,7 @@ function ReaderSurface({
               const pageLayers = (
                 <div
                   className="pdf-reader__page-frame"
+                  data-page-index={pageIndex}
                   onContextMenu={event => { event.preventDefault(); void askPdf(pageIndex, event.clientX, event.clientY); }}
                   style={{ width, height }}
                 >
