@@ -11,6 +11,17 @@ inline AI popover values (`.5rem`, `.75rem`, `1rem`, `.75rem` labels and
 `.8125rem` body); controls use the existing 44px phone touch target. No new
 design values were introduced.
 
+## PDF Record area and page (SN-336)
+
+The crop layer, crop rectangle, crop toolbar and Record panel image preview reuse
+`--ring` (keyboard focus), `--accent` (crop outline), `--foreground` (35% dimming
+outside the crop via `color-mix`), `--border`, `--radius-sm`, `--background` and
+`--muted-foreground`. The crop toolbar reuses the Annotate bar classes
+(`.pdf-reader__annotate-bar`, `-tool`, `-done`) and its 44px phone targets; the
+preview caption uses the existing `.75rem` label size. The `14rem` preview
+max-height and `2px` crop outline match existing panel/focus values. No new
+design tokens were introduced.
+
 ## Editor list markers (SN-317)
 
 Bullet, numbered, and checklist markers live in `.editor-content` CSS (`src/app/globals.css`, mirrored in page-export). No new color, spacing, radius, or typography tokens: list indent stays `1.5em` / task-list `0.25em`, and checked task copy reuses `--muted-foreground` with strikethrough. Marker shapes are standard CSS `list-style-type` values (`disc` / `circle` / `square`; `decimal` / `lower-alpha` / `lower-roman`) so they inherit `--foreground` from surrounding prose.

@@ -2235,6 +2235,27 @@ function ReaderSurface({
   React.useEffect(() => {
     if (annotateMode) leaveRecordArea();
   }, [annotateMode, leaveRecordArea]);
+  // Same two page actions in the desktop bar menu and the phone More menu.
+  const recordClipItems = pdfPath && recordDestinationPath ? (testIdPrefix: string) => (
+    <>
+      <DropdownMenuItem
+        data-testid={`${testIdPrefix}-record-area`}
+        disabled={totalPages <= 0}
+        onClick={() => startRecordArea(currentPage - 1)}
+      >
+        <Crop className="size-4" aria-hidden="true" />
+        Record area on page {currentPage}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        data-testid={`${testIdPrefix}-record-page`}
+        disabled={totalPages <= 0 || clipStatus?.state === "rendering"}
+        onClick={() => void renderClip(currentPage - 1, null)}
+      >
+        <FileImage className="size-4" aria-hidden="true" />
+        Record page {currentPage}
+      </DropdownMenuItem>
+    </>
+  ) : null;
 
   // Escape leaves performance mode before Annotate/outline/reader close.
   // Annotation-focused Cmd/Ctrl+Z uses the
@@ -3023,6 +3044,27 @@ function ReaderSurface({
           >
             <Moon className="size-5" aria-hidden="true" />
           </button>
+          {recordClipItems ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                type="button"
+                className="pdf-reader__control pdf-reader__control--menu-phone"
+                data-testid="pdf-reader-record-clip"
+                aria-label="Record figure or page"
+                title="Record figure or page"
+              >
+                <FileImage className="size-5" aria-hidden="true" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                sideOffset={6}
+                className="z-[400] min-w-52"
+                positionerClassName="z-[400]"
+              >
+                {recordClipItems("pdf-reader-bar")}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
           <button
             type="button"
             className="pdf-reader__control pdf-reader__annotate-toggle"
@@ -3184,25 +3226,10 @@ function ReaderSurface({
                 <Moon className="size-4" aria-hidden="true" />
                 Night mode
               </DropdownMenuCheckboxItem>
-              {pdfPath && recordDestinationPath ? (
+              {recordClipItems ? (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    data-testid="pdf-reader-more-record-area"
-                    disabled={totalPages <= 0}
-                    onClick={() => startRecordArea(currentPage - 1)}
-                  >
-                    <Crop className="size-4" aria-hidden="true" />
-                    Record area on page {currentPage}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    data-testid="pdf-reader-more-record-page"
-                    disabled={totalPages <= 0 || clipStatus?.state === "rendering"}
-                    onClick={() => void renderClip(currentPage - 1, null)}
-                  >
-                    <FileImage className="size-4" aria-hidden="true" />
-                    Record page {currentPage}
-                  </DropdownMenuItem>
+                  {recordClipItems("pdf-reader-more")}
                 </>
               ) : null}
             </DropdownMenuContent>

@@ -193,7 +193,7 @@ test("selection menu: Highlight, Record, Ask Companion, reopen and tapped highli
     const line = await selectLine(page, 0.2).catch(() => selectLine(page));
     const box = (await page.locator(".pdf-reader__page-frame").first().boundingBox())!;
     await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * line, { button: "right" });
-    await expect(page.getByRole("menuitem")).toHaveText(["Highlight", "Record", "Record options…", "Ask Companion..."]);
+    await expect(page.getByRole("menuitem")).toHaveText(["Highlight", "Record", "Record options…", "Record area", "Record page", "Ask Companion..."]);
     await shot("11-context-menu");
     // 11. Context-menu Highlight then Undo from the notice, without Annotate.
     const before = (await sidecar(page, target.vaultPath)).length;
