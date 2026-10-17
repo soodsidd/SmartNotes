@@ -1659,6 +1659,44 @@
       "failureMeaning": "Selected text may disappear or switch to page context during a Companion answer, copy may fail, touch users may lose pan and scroll, or annotations may stop receiving pointer input."
     },
     {
+      "id": "unit-sn-335-pdf-record",
+      "name": "PDF Record passage and Record answer",
+      "description": "Jest: tests/pdf-record.test.ts, tests/pdf-record-panel.test.tsx and tests/inline-ai-popover.test.tsx — verbatim source quote, provenance and return link, labeled AI answer, destination affinity, idempotent retry and undo.",
+      "appType": "node",
+      "command": "npm test -- tests/pdf-record.test.ts tests/pdf-record-panel.test.tsx tests/inline-ai-popover.test.tsx",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "pdf",
+        "record",
+        "targeted"
+      ],
+      "feature": "attachments",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-335",
+      "addedAt": "2026-10-16",
+      "sourceFiles": [
+        {
+          "path": "tests/pdf-record.test.ts"
+        },
+        {
+          "path": "tests/pdf-record-panel.test.tsx"
+        },
+        {
+          "path": "tests/inline-ai-popover.test.tsx"
+        }
+      ],
+      "intent": "Keeps PDF Record saving the exact source passage with title, page, path and return link, labels AI output separately, and makes retries land once in the originally chosen note.",
+      "whenToRun": "Pre-merge when changing PDF Record, the Ask Companion popover Record chips, pdf-record API routes, or vault record append/undo.",
+      "failureMeaning": "Recorded notes may lose or alter the source quote, mix AI output into the source, report Saved early, duplicate on retry, or land in a different note."
+    },
+    {
       "id": "unit-sn-197-pdf-companion-shell",
       "name": "SN-197 immersive PDF companion shell",
       "description": "Jest component coverage: tests/ai-sidebar-pdf-shell.test.tsx — shared companion mount plus reader, rail, dialog, and dropdown z-token ordering.",
