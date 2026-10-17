@@ -1,5 +1,6 @@
 "use client";
 import { InlineAiPopover } from "@/components/inline-ai-popover";
+import { PdfRecordPanel } from "@/components/pdf-record-panel";
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
@@ -205,6 +206,7 @@ const ImmersivePdfReader = dynamic(
   modal?: boolean;
   notesPanel?: { open: boolean; onToggle: () => void };
   onSaveAsPaper?: () => void;
+  recordDestinationPath?: string;
 }>;
 import {
   getVersionsControlLabel,
@@ -6494,6 +6496,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   return (
     <main className="h-screen overflow-hidden bg-background text-foreground" data-testid="app-shell" data-paper-inline={paperInline ? "true" : undefined} data-paper-dock={paperDock ? "true" : undefined}>
       {draft?.path && <InlineAiPopover pagePath={draft.path} onContinue={handleJupyterAskInCompanion} />}
+      <PdfRecordPanel onOpenNote={(path) => { void closePdfReader().then((closed) => { if (closed) handleSidebarOpenPage(path); }); }} />
       <input
         ref={docxImportInputRef}
         type="file"
@@ -7133,6 +7136,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           insetRight={paperShellPath ? paperLayout.readerInsetRight : 0}
           modal={!paperShellPath || paperLayout.mode !== "split"}
           notesPanel={paperShellPath ? { open: paperLayout.mode !== "hidden", onToggle: togglePaperNotes } : undefined}
+          recordDestinationPath={paperShellPath ?? draft?.path}
           onSaveAsPaper={
             !paperShellPath && draft && !isBibliographyPath(draft.path)
               ? () => setPromotePdfTarget({ href: pdfReader.href, fileName: pdfReader.fileName })

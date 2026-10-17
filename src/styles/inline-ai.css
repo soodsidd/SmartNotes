@@ -31,3 +31,25 @@
   .inline-ai-popover button, .inline-ai-menu-action { min-height: 44px; }
   .inline-ai-popover textarea { font-size: 1rem; }
 }
+
+.pdf-record-panel {
+  position: fixed; z-index: var(--z-jupyter-inline-ai); right: 1rem; bottom: 1rem;
+  width: min(22rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem);
+  overflow: auto; padding: 1rem; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: var(--popover); color: var(--foreground);
+  box-shadow: var(--shadow-popover); font-family: var(--font-sans); font-size: .8125rem;
+}
+.pdf-record-panel header, .pdf-record-panel__actions { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.pdf-record-panel__quote { white-space: pre-wrap; max-height: 8rem; overflow: auto; border-left: 2px solid var(--border); padding-left: .75rem; }
+.pdf-record-panel label { display: block; margin-top: .75rem; font-size: .75rem; }
+.pdf-record-panel textarea, .pdf-record-panel select { display: block; width: 100%; padding: .5rem; border: 1px solid var(--input); border-radius: var(--radius-sm); background: var(--background); color: var(--foreground); }
+.pdf-record-panel textarea { min-height: 5rem; }
+.pdf-record-panel button { padding: .375rem .5rem; border-radius: var(--radius-sm); }
+.pdf-record-panel button:hover { background: var(--secondary); }
+.pdf-record-panel button:focus-visible, .pdf-record-panel :is(select,textarea):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.pdf-record-panel__primary { background: var(--accent); color: var(--accent-foreground); }
+.pdf-record-panel [role="alert"] { color: var(--destructive); }
+@media (pointer: coarse), (max-width: 767px) {
+  .pdf-record-panel button { min-height: 44px; }
+  .pdf-record-panel textarea, .pdf-record-panel select { font-size: 1rem; }
+}

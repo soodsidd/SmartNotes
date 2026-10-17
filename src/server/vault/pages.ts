@@ -753,6 +753,8 @@ export interface SavePageInput {
   body: string;
   /** Inline paper edits must be based on the exact canonical file that was opened. */
   expectedPaperRevision?: string;
+  /** Server-owned Record idempotency ledger, written with the page body. */
+  pdfRecordIds?: string;
 }
 
 const pageWriteLocks = new Map<string, Promise<void>>();
@@ -799,6 +801,39 @@ export async function savePage(input: SavePageInput) {
   }
 }
 
+/** Append one captured PDF record under the page write lock. The durable marker
+ * makes a retry after an ambiguous response idempotent. */
+export async function appendPdfRecord(input: import("@/lib/pdf-record").PdfRecordInput) {
+  const { pdfRecordAnchor, pdfRecordMarkup } = await import("@/lib/pdf-record");
+  const { absolutePath } = resolveVaultPath(input.destinationPath, "page");
+  return withPageWriteLock(absolutePath, async () => {
+    const page = await readPage(input.destinationPath);
+    if (page.metadata.note_type !== "text" && page.metadata.note_type !== undefined) {
+      throw new VaultError("INVALID_DESTINATION", "Choose a text note for Record.", 400);
+    }
+    const ids = String(page.metadata.pdf_record_ids ?? "").split(",").filter(Boolean);
+    if (ids.includes(input.id) && !page.body.includes(pdfRecordAnchor(input.id))) {
+      throw new VaultError("RECORD_MISSING", "This Record was changed in the note. Open the note to review it.", 409);
+    }
+    if (page.body.includes(pdfRecordAnchor(input.id))) return { page, created: false };
+    const addition = pdfRecordMarkup(input);
+    const body = page.body.trim() === "<p></p>" ? addition : `${page.body}\n${addition}`;
+    return { page: await savePageUnlocked({ path: page.path, title: page.title, body, pdfRecordIds: [...ids, input.id].join(",") }), created: true };
+  });
+}
+
+export async function undoPdfRecord(destinationPath: string, id: string) {
+  const { removePdfRecord } = await import("@/lib/pdf-record");
+  const { absolutePath } = resolveVaultPath(destinationPath, "page");
+  return withPageWriteLock(absolutePath, async () => {
+    const page = await readPage(destinationPath);
+    const body = removePdfRecord(page.body, id);
+    if (body === null) return { page, removed: false };
+    const ids = String(page.metadata.pdf_record_ids ?? "").split(",").filter(value => value && value !== id);
+    return { page: await savePageUnlocked({ path: page.path, title: page.title, body, pdfRecordIds: ids.join(",") }), removed: true };
+  });
+}
+
 async function savePageUnlocked(input: SavePageInput) {
   const { absolutePath, relativePath } = resolveVaultPath(input.path, "page");
   const existingLink = await readDesignLinkSidecar(absolutePath);
@@ -835,6 +870,7 @@ async function savePageUnlocked(input: SavePageInput) {
     ...page.metadata,
     title: input.title.trim() || page.title,
     updated: now,
+    ...(input.pdfRecordIds !== undefined ? { pdf_record_ids: input.pdfRecordIds } : {}),
   };
 
   if (!nextMetadata.created) {

@@ -51,6 +51,8 @@
  */
 
 import { invokeInlineAi } from "@/lib/inline-ai";
+import { invokePdfRecord } from "@/components/pdf-record-panel";
+import { exactPdfHighlightQuote } from "@/lib/pdf-record";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import {
@@ -453,6 +455,8 @@ export interface ImmersivePdfReaderProps {
   notesPanel?: PaperNotesToggle;
   /** SN-302: promote this vault PDF into a Bibliography paper (hidden in paper shell). */
   onSaveAsPaper?: () => void;
+  /** Frozen default destination for this reading session. */
+  recordDestinationPath?: string;
 }
 
 export interface PaperNotesToggle {
@@ -463,6 +467,7 @@ export interface PaperNotesToggle {
 /** Context keeps the notes toggle out of the session/gate/surface prop chain. */
 const PaperNotesToggleContext = React.createContext<PaperNotesToggle | null>(null);
 const SaveAsPaperContext = React.createContext<(() => void) | null>(null);
+const PdfRecordDestinationContext = React.createContext<string | null>(null);
 
 /** Phone / tablet: prefer cheaper WASM paint (DPR 1, smaller tiles, buffer 1). */
 function isCoarsePointerClient(): boolean {
@@ -549,6 +554,7 @@ export default function ImmersivePdfReader({
   modal = true,
   notesPanel,
   onSaveAsPaper,
+  recordDestinationPath,
 }: ImmersivePdfReaderProps): React.ReactElement | null {
   const { engine, isLoading, error, fontsReady } = usePdfiumEngineWhenFontsReady();
   // Run PDFium on the main thread (SN-148). Worker blob: origin cannot fetch
@@ -756,6 +762,7 @@ export default function ImmersivePdfReader({
     >
       <PaperNotesToggleContext.Provider value={open ? notesPanel ?? null : null}>
       <SaveAsPaperContext.Provider value={open && !notesPanel ? onSaveAsPaper ?? null : null}>
+      <PdfRecordDestinationContext.Provider value={recordDestinationPath ?? null}>
       {error || pdfFetchError ? (
         <ReaderMessage
           title={title}
@@ -792,6 +799,7 @@ export default function ImmersivePdfReader({
           onPerformanceModeChange={performanceMode.setEnabled}
         />
       )}
+      </PdfRecordDestinationContext.Provider>
       </SaveAsPaperContext.Provider>
       </PaperNotesToggleContext.Provider>
     </div>
@@ -1218,6 +1226,7 @@ function HighlightCommentMenu({
   onSave,
   onDelete,
   onClose,
+  onRecord,
 }: {
   annotationId: string;
   content: string;
@@ -1227,6 +1236,7 @@ function HighlightCommentMenu({
   onSave: (content: string) => void;
   onDelete: () => void;
   onClose: () => void;
+  onRecord: () => void;
 }) {
   const [draft, setDraft] = React.useState(content);
   const inputId = `hl-note-${annotationId}`;
@@ -1260,7 +1270,8 @@ function HighlightCommentMenu({
             </button>
           </div>
         </div>
-        <p className="pdf-reader__anno-comment-text">{content}</p>
+        {content ? <p className="pdf-reader__anno-comment-text">{content}</p> : null}
+        <button type="button" className="pdf-reader__anno-action" onClick={onRecord}>Record highlight</button>
       </div>
     );
   }
@@ -1290,6 +1301,7 @@ function HighlightCommentMenu({
           </button>
         </div>
       </div>
+      <button type="button" className="pdf-reader__anno-action" onClick={onRecord}>Record highlight</button>
       {canEdit ? (
         <>
           <label className="pdf-reader__anno-note-label" htmlFor={inputId}>
@@ -1503,6 +1515,8 @@ function ReaderSurface({
 }: ReaderSurfaceProps) {
   const notesPanel = React.useContext(PaperNotesToggleContext);
   const onSaveAsPaper = React.useContext(SaveAsPaperContext);
+  const recordDestinationPath = React.useContext(PdfRecordDestinationContext);
+  const pdfPath = React.useMemo(() => vaultHrefToPdfPath(href), [href]);
   const { state: scrollState, provides: scroll } = useScroll(documentId);
   const { provides: scrollCap } = useScrollCapability();
   const { state: zoomState, provides: zoom } = useZoom(documentId);
@@ -1537,17 +1551,26 @@ function ReaderSurface({
       retainedPdfiumEngine.extractText(doc, [pageIndex]).toPromise().catch(() => ""),
     ]);
     if (revision !== selectionRevisionRef.current) return;
-    const text = selected.join("\n").slice(0, 16000);
+    const exactText = selected.join("\n");
+    const text = exactText.slice(0, 16000);
     inlineAiOpenRef.current = hasSelection;
     setPdfInlineAiOpen(true);
     invokeInlineAi({ x, y, menu, sourceId: pdfInlineAiSource,
+      pdfRecord: pdfPath && recordDestinationPath ? { source: { pdfPath, pdfTitle: title, page: pageIndex + 1, quote: (hasSelection ? exactText : pageText) || null, quoteUnavailable: !(hasSelection ? exactText : pageText), quoteRecovered: !hasSelection && Boolean(pageText) }, defaultDestinationPath: recordDestinationPath } : undefined,
       onClose: () => {
         inlineAiOpenRef.current = false;
         setPdfInlineAiOpen(false);
         if (hasSelection && revision === selectionRevisionRef.current) selection?.clear(documentId);
       },
       context: { surface: "pdf", target: hasSelection ? "Selection" : "PDF page", text: hasSelection ? text : pageText.slice(0, 16000), pageText: pageText.slice(0, 16000), tableText: "" } });
-  }, [activeDocument, documentId, pdfInlineAiSource, selection]);
+  }, [activeDocument, documentId, pdfInlineAiSource, pdfPath, recordDestinationPath, selection, title]);
+  const recordSelection = React.useCallback(async (pageIndex: number, quick: boolean) => {
+    if (!pdfPath || !recordDestinationPath || !selection?.getBoundingRects(documentId).length) return;
+    const revision = selectionRevisionRef.current;
+    const text = (await selection.getSelectedText(documentId).toPromise().catch(() => [])).join("\n");
+    if (revision !== selectionRevisionRef.current) return;
+    invokePdfRecord({ source: { pdfPath, pdfTitle: title, page: pageIndex + 1, quote: text || null, quoteUnavailable: !text }, defaultDestinationPath: recordDestinationPath, quick });
+  }, [documentId, pdfPath, recordDestinationPath, selection, title]);
   const { provides: history } = useHistoryCapability();
   const { plugin: viewportPlugin } = useViewportPlugin();
   const { provides: viewportCap } = useViewportCapability();
@@ -1588,7 +1611,6 @@ function ReaderSurface({
     setControlsVisible(controlsVisibleAfterPerformanceChange(performanceMode));
   }, [performanceMode]);
 
-  const pdfPath = React.useMemo(() => vaultHrefToPdfPath(href), [href]);
   const pendingItemsRef = React.useRef<unknown[] | null>(null);
   const importedRef = React.useRef(false);
   const saveTimerRef = React.useRef<number | null>(null);
@@ -2493,7 +2515,7 @@ function ReaderSurface({
       selected: boolean;
       context: {
         type: string;
-        annotation?: { object: { id: string; type: number; contents?: string } };
+        annotation?: { object: { id: string; type: number; contents?: string; custom?: { quote?: string }; segmentRects?: Array<{ origin: { x: number; y: number }; size: { width: number; height: number } }> } };
         pageIndex: number;
         contentLocked?: boolean;
       };
@@ -2514,7 +2536,7 @@ function ReaderSurface({
       const content = typeof obj.contents === "string" ? obj.contents : "";
       // Quiet highlights remain quiet while reading. A highlight with a note
       // is directly readable without entering Annotate.
-      if (!annotateMode && !content.trim()) return null;
+      if (!annotateMode && !content.trim() && !recordDestinationPath) return null;
       const anchorW = rect?.size.width ?? 0;
       const anchorH = rect?.size.height ?? 0;
 
@@ -2570,12 +2592,25 @@ function ReaderSurface({
                 annotation?.deselectAnnotation();
               }}
               onClose={() => annotation?.deselectAnnotation()}
+              onRecord={() => void (async () => {
+                if (!pdfPath || !recordDestinationPath) return;
+                let quote = exactPdfHighlightQuote(obj.custom);
+                let quoteRecovered = false;
+                if (quote === null && obj.segmentRects?.length) {
+                  try {
+                    const response = await fetch("/api/pdf-record/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pdfPath, page: context.pageIndex + 1, segmentRects: obj.segmentRects }) });
+                    if (response.ok) { quote = ((await response.json()) as { quote: string | null }).quote; quoteRecovered = quote !== null; }
+                  } catch { /* Keep unavailable text explicit. */ }
+                }
+                invokePdfRecord({ source: { pdfPath, pdfTitle: title, page: context.pageIndex + 1, quote, quoteUnavailable: quote === null, quoteRecovered }, defaultDestinationPath: recordDestinationPath, quick: true });
+                annotation?.deselectAnnotation();
+              })()}
             />
           </div>
         </div>
       );
     },
-    [annotation, annotateMode, enterAnnotate]
+    [annotation, annotateMode, enterAnnotate, pdfPath, recordDestinationPath, title]
   );
 
   const eraseInkAt = React.useCallback(
@@ -3139,6 +3174,8 @@ function ReaderSurface({
                         const rect = event.currentTarget.getBoundingClientRect();
                         void askPdf(pageIndex, rect.left, rect.bottom, false);
                       }}><Sparkles size={16} /> Ask Companion...</button>
+                      <button className="inline-ai-menu-action" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); void recordSelection(pageIndex, true); }}>Record</button>
+                      <button className="inline-ai-menu-action" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); void recordSelection(pageIndex, false); }}>Record options…</button>
                     </div> : null}
                   />
                   <AnnotationLayer

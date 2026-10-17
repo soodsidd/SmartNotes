@@ -129,3 +129,22 @@ it("uses the same PDF passage for a free-text Ask and dismisses a stale target",
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+it("offers PDF Record and sends the original quote with a completed answer", async () => {
+  const recorded: unknown[] = [];
+  const listener = (event: Event) => recorded.push((event as CustomEvent).detail);
+  window.addEventListener("smart-notes-pdf-record", listener);
+  jest.mocked(streamJupyterFastLanePrompt).mockResolvedValue({ text: "An AI explanation", sessionId: null, ttftMs: 1, durationMs: 1 });
+  render(<InlineAiPopover pagePath="Notes/pdf.html" onContinue={jest.fn()} />);
+  const pdfRecord = { source: { pdfPath: "Notes/paper.pdf", pdfTitle: "Paper", page: 3, quote: " Original\nquote " }, defaultDestinationPath: "Notes/pdf.html" };
+  act(() => invokeInlineAi({ context: { surface: "pdf", target: "Selection", text: " Original\nquote ", pageText: "Other page", tableText: "" }, x: 10, y: 10, menu: true, pdfRecord }));
+  expect(screen.getByRole("menuitem", { name: "Record", exact: true })).toBeVisible();
+  fireEvent.click(screen.getByRole("menuitem", { name: /Ask Companion/ }));
+  expect(screen.getByRole("button", { name: "Record", exact: true })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Explain" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
+  await screen.findByRole("button", { name: "Record answer" });
+  fireEvent.click(screen.getByRole("button", { name: "Record answer" }));
+  expect(recorded).toEqual([expect.objectContaining({ source: pdfRecord.source, defaultDestinationPath: "Notes/pdf.html", question: "Explain this text.", answer: "An AI explanation", quick: true })]);
+  window.removeEventListener("smart-notes-pdf-record", listener);
+});

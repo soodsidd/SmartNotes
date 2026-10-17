@@ -21,6 +21,8 @@ export interface InlineAiInvocation {
    * mode (e.g. design Preview "Add comment"). Host-only — never from a frame.
    */
   menuActions?: InlineAiMenuAction[];
+  /** Host-captured PDF source and fixed default note for Record. */
+  pdfRecord?: { source: import("@/lib/pdf-record").PdfRecordSource; defaultDestinationPath: string };
 }
 export interface InlineAiMenuAction {
   id: string;

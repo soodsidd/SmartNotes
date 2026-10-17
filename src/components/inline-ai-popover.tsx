@@ -5,11 +5,13 @@ import { createPortal } from "react-dom";
 import { MessageSquarePlus, Sparkles, X } from "lucide-react";
 import { streamJupyterFastLanePrompt } from "@/lib/api/jupyter";
 import { inlineAiHandoff, parseInlineAiContext, type InlineAiInvocation } from "@/lib/inline-ai";
+import { invokePdfRecord } from "@/components/pdf-record-panel";
 
 export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; onContinue: (payload: { draft: string }) => void }) {
   const [invocation, setInvocation] = React.useState<InlineAiInvocation | null>(null);
   const [question, setQuestion] = React.useState("");
   const [answer, setAnswer] = React.useState("");
+  const [answeredQuestion, setAnsweredQuestion] = React.useState("");
   const [error, setError] = React.useState("");
   const [working, setWorking] = React.useState(false);
   const abort = React.useRef<AbortController | null>(null);
@@ -30,7 +32,7 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
       abort.current?.abort(); abort.current = null;
       invocationRef.current = detail;
       previousFocus.current = document.activeElement as HTMLElement;
-      setQuestion(""); setAnswer(""); setError(""); setWorking(false); setInvocation(detail);
+      setQuestion(""); setAnswer(""); setAnsweredQuestion(""); setError(""); setWorking(false); setInvocation(detail);
     };
     window.addEventListener("smart-notes-ask-companion", open);
     return () => { window.removeEventListener("smart-notes-ask-companion", open); abort.current?.abort(); };
@@ -74,7 +76,7 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
         signal: controller.signal,
         onDelta: (_, text) => { if (!controller.signal.aborted) setAnswer(text); },
       });
-      if (!controller.signal.aborted) setAnswer(result.text);
+      if (!controller.signal.aborted) { setAnswer(result.text); setAnsweredQuestion(question); }
     } catch (err) {
       if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Could not get an answer. Try again.");
     } finally { if (!controller.signal.aborted) setWorking(false); }
@@ -93,13 +95,16 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
       }}>
       {invocation.menu ? <>
         <button className="inline-ai-menu-action" role="menuitem" onClick={() => setInvocation({ ...invocation, menu: false })}><Sparkles size={16} /> Ask Companion...</button>
+        {invocation.pdfRecord && <button className="inline-ai-menu-action" role="menuitem" onClick={() => { invokePdfRecord({ ...invocation.pdfRecord!, quick: true }); close(); }}>Record</button>}
+        {invocation.pdfRecord && <button className="inline-ai-menu-action" role="menuitem" onClick={() => { invokePdfRecord(invocation.pdfRecord!); close(); }}>Record options…</button>}
         {invocation.menuActions?.map(action => <button key={action.id} className="inline-ai-menu-action" role="menuitem" data-testid={`inline-ai-menu-${action.id}`} onClick={() => { close(); action.run(); }}><MessageSquarePlus size={16} /> {action.label}</button>)}
       </> : <>
         <header><span><Sparkles size={16} /> Companion</span><button aria-label="Close Companion popover" onClick={close}><X size={16} /></button></header>
         <span className="inline-ai-target">{invocation.context.target}</span>
         <p className="inline-ai-helper">Uses full page text and table context. Images, ink, and linked files are not read.</p>
         <blockquote>{invocation.context.text || "This target has no text yet."}</blockquote>
-        <div className="inline-ai-chips">{["Explain", "Summarize"].map(label => <button key={label} disabled={working} onClick={() => { setQuestion(`${label} this text.`); panel.current?.querySelector("textarea")?.focus(); }}>{label}</button>)}</div>
+        <div className="inline-ai-chips">{["Explain", "Summarize"].map(label => <button key={label} disabled={working} onClick={() => { setQuestion(`${label} this text.`); panel.current?.querySelector("textarea")?.focus(); }}>{label}</button>)}{invocation.pdfRecord && <button onClick={() => invokePdfRecord({ ...invocation.pdfRecord!, quick: true })}>Record</button>}</div>
+        {invocation.pdfRecord && <button className="inline-ai-continue" onClick={() => invokePdfRecord(invocation.pdfRecord!)}>Add thought or choose note…</button>}
         <form onSubmit={e => { e.preventDefault(); void ask(); }}>
           <label htmlFor="inline-ai-question">Ask about this text</label>
           <textarea id="inline-ai-question" placeholder="What does this mean?" rows={3} maxLength={4000} value={question} disabled={working} onChange={e => setQuestion(e.target.value)} />
@@ -107,6 +112,7 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
         </form>
         {working && !answer && <p role="status">Thinking…</p>}
         {answer && <div className="inline-ai-answer" aria-live="polite" aria-busy={working}>{answer}</div>}
+        {invocation.pdfRecord && answer && !working && answeredQuestion === question && <button className="inline-ai-continue" onClick={() => invokePdfRecord({ ...invocation.pdfRecord!, question: answeredQuestion, answer, quick: true })}>Record answer</button>}
         {error && <p role="alert">{error}</p>}
         <button className="inline-ai-continue" onClick={() => { onContinue({ draft: inlineAiHandoff(invocation.context, question, answer) }); close(); }}>Continue in Companion →</button>
       </>}
