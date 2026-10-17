@@ -1,5 +1,16 @@
 # Smart Notes Design System
 
+## PDF Record panel (SN-335)
+
+The selection menu, Companion Record chip, and floating save confirmation reuse
+the inline AI popover's `--popover`, `--foreground`, `--border`, `--input`,
+`--background`, `--accent`, `--accent-foreground`, `--destructive`, `--ring`,
+`--shadow-popover`, `--radius-sm`, `--radius-md`, `--font-sans`, and
+`--z-jupyter-inline-ai` tokens. Its spacing and typography reuse the existing
+inline AI popover values (`.5rem`, `.75rem`, `1rem`, `.75rem` labels and
+`.8125rem` body); controls use the existing 44px phone touch target. No new
+design values were introduced.
+
 ## Editor list markers (SN-317)
 
 Bullet, numbered, and checklist markers live in `.editor-content` CSS (`src/app/globals.css`, mirrored in page-export). No new color, spacing, radius, or typography tokens: list indent stays `1.5em` / task-list `0.25em`, and checked task copy reuses `--muted-foreground` with strikethrough. Marker shapes are standard CSS `list-style-type` values (`disc` / `circle` / `square`; `decimal` / `lower-alpha` / `lower-roman`) so they inherit `--foreground` from surrounding prose.
