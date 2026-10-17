@@ -39,6 +39,29 @@ describe("PDF read-mode text selection (SN-193)", () => {
     expect(READER_SOURCE).toContain("selection.copyToClipboard(documentId)");
   });
 
+  test("keeps a selected range through secondary-click menu opening", () => {
+    expect(READER_SOURCE).toMatch(
+      /event\.button === 2 && selection\?\.getBoundingRects\(documentId\)\.length[\s\S]*?event\.nativeEvent\.stopImmediatePropagation\(\)/
+    );
+    expect(READER_SOURCE).toContain("onPointerDownCapture={preserveFingerNavigation}");
+  });
+
+  test("captures selected PDF text before asynchronous page extraction and never falls back to page text", () => {
+    expect(READER_SOURCE).toMatch(
+      /const hasSelection = Boolean\(selection\?\.getBoundingRects\(documentId\)\.length\);[\s\S]*?const selectedTextTask = hasSelection \? selection\?\.getSelectedText\(documentId\)\.toPromise\(\) : null;[\s\S]*?await Promise\.all/
+    );
+    expect(READER_SOURCE).toContain('target: hasSelection ? "Selection" : "PDF page"');
+    expect(READER_SOURCE).toContain("text: hasSelection ? text : pageText.slice(0, 16000)");
+    expect(READER_SOURCE).toContain("if (revision !== selectionRevisionRef.current) return");
+    expect(READER_SOURCE).toContain("selection?.clear(documentId)");
+  });
+
+  test("makes the mobile selection-menu action tappable above annotation hit testing", () => {
+    expect(READER_SOURCE).toContain('className="pdf-reader__selection-menu"');
+    expect(READER_SOURCE).toContain('style={{ ...menuWrapperProps.style, pointerEvents: "auto" }}');
+    expect(READER_SOURCE).toContain("selected && !pdfInlineAiOpen");
+  });
+
   test("keeps annotation hit areas above selection for read-mode comment taps", () => {
     expect(READER_SOURCE).toMatch(
       /<SelectionLayer[\s\S]*?<AnnotationLayer[\s\S]*?pointerEvents: annotationPointerEvents/

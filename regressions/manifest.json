@@ -1624,10 +1624,10 @@
     },
     {
       "id": "unit-sn-193-pdf-reader-selection",
-      "name": "SN-193 PDF read-mode selection and touch navigation",
-      "description": "Jest: tests/pdf-reader-selection.test.ts — read-mode text selection/copy, touch pan preservation, and annotation interaction layering.",
+      "name": "PDF read-mode selection and Companion handoff",
+      "description": "Jest: tests/pdf-reader-selection.test.ts and tests/inline-ai-popover.test.tsx — read-mode selection/copy, touch navigation, and captured PDF text through Companion prompts and handoff.",
       "appType": "node",
-      "command": "npm test -- tests/pdf-reader-selection.test.ts",
+      "command": "npm test -- tests/pdf-reader-selection.test.ts tests/inline-ai-popover.test.tsx",
       "timeoutMs": 120000,
       "enabled": true,
       "tags": [
@@ -1649,11 +1649,14 @@
       "sourceFiles": [
         {
           "path": "tests/pdf-reader-selection.test.ts"
+        },
+        {
+          "path": "tests/inline-ai-popover.test.tsx"
         }
       ],
-      "intent": "Prevents ordinary PDF reading from losing desktop text selection and copy while preserving document-first finger navigation and read-mode annotation taps.",
-      "whenToRun": "Pre-merge when changing immersive PDF pointer providers, selection/copy wiring, touch handoff, or annotation layer ordering.",
-      "failureMeaning": "Desktop readers may be unable to select or copy PDF text, touch users may lose pan and scroll, or annotations and Annotate tools may stop receiving pointer input."
+      "intent": "Prevents PDF selection from disappearing or becoming page context during Ask Companion while preserving copy, finger navigation, and annotation taps.",
+      "whenToRun": "Pre-merge when changing immersive PDF selection, context menus, Companion handoff, touch navigation, or annotation layer ordering.",
+      "failureMeaning": "Selected text may disappear or switch to page context during a Companion answer, copy may fail, touch users may lose pan and scroll, or annotations may stop receiving pointer input."
     },
     {
       "id": "unit-sn-197-pdf-companion-shell",

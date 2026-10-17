@@ -13,6 +13,9 @@ export interface InlineAiInvocation {
   x: number;
   y: number;
   menu?: boolean;
+  /** Optional owner of a live selection; used to dismiss a stale PDF target. */
+  sourceId?: string;
+  onClose?: () => void;
   /**
    * SN-310: host-supplied menu items shown after "Ask Companion..." in menu
    * mode (e.g. design Preview "Add comment"). Host-only — never from a frame.

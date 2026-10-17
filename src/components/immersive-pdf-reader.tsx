@@ -1510,16 +1510,44 @@ function ReaderSurface({
   const { provides: annotation } = useAnnotation(documentId);
   const { provides: interactionManager } = useInteractionManagerCapability();
   const { provides: selection } = useSelectionCapability();
+  const selectionRevisionRef = React.useRef(0);
+  const inlineAiOpenRef = React.useRef(false);
+  const [pdfInlineAiOpen, setPdfInlineAiOpen] = React.useState(false);
+  const pdfInlineAiSource = `pdf:${documentId}`;
+  React.useEffect(() => {
+    if (!selection) return;
+    return selection.onSelectionChange(({ documentId: changedDocumentId }) => {
+      if (changedDocumentId !== documentId) return;
+      selectionRevisionRef.current += 1;
+      if (inlineAiOpenRef.current) {
+        window.dispatchEvent(new CustomEvent("smart-notes-ask-companion-dismiss", { detail: pdfInlineAiSource }));
+      }
+    });
+  }, [documentId, pdfInlineAiSource, selection]);
   const askPdf = React.useCallback(async (pageIndex: number, x: number, y: number, menu = true) => {
     const doc = activeDocument?.document;
     if (!doc || !retainedPdfiumEngine) return;
+    // Capture the virtual PDF range before focus or another pointer action can
+    // change it. A failed text read must never silently become page context.
+    const hasSelection = Boolean(selection?.getBoundingRects(documentId).length);
+    const revision = selectionRevisionRef.current;
+    const selectedTextTask = hasSelection ? selection?.getSelectedText(documentId).toPromise() : null;
     const [selected, pageText] = await Promise.all([
-      selection?.getSelectedText(documentId).toPromise().catch(() => []) ?? Promise.resolve([]),
+      selectedTextTask?.catch(() => []) ?? Promise.resolve([]),
       retainedPdfiumEngine.extractText(doc, [pageIndex]).toPromise().catch(() => ""),
     ]);
-    const text = selected.join("\n").trim().slice(0, 16000);
-    invokeInlineAi({ x, y, menu, context: { surface: "pdf", target: text ? "Selection" : "PDF page", text: text || pageText.slice(0, 16000), pageText: pageText.slice(0, 16000), tableText: "" } });
-  }, [activeDocument, documentId, selection]);
+    if (revision !== selectionRevisionRef.current) return;
+    const text = selected.join("\n").slice(0, 16000);
+    inlineAiOpenRef.current = hasSelection;
+    setPdfInlineAiOpen(true);
+    invokeInlineAi({ x, y, menu, sourceId: pdfInlineAiSource,
+      onClose: () => {
+        inlineAiOpenRef.current = false;
+        setPdfInlineAiOpen(false);
+        if (hasSelection && revision === selectionRevisionRef.current) selection?.clear(documentId);
+      },
+      context: { surface: "pdf", target: hasSelection ? "Selection" : "PDF page", text: hasSelection ? text : pageText.slice(0, 16000), pageText: pageText.slice(0, 16000), tableText: "" } });
+  }, [activeDocument, documentId, pdfInlineAiSource, selection]);
   const { provides: history } = useHistoryCapability();
   const { plugin: viewportPlugin } = useViewportPlugin();
   const { provides: viewportCap } = useViewportCapability();
@@ -2585,6 +2613,12 @@ function ReaderSurface({
 
   const preserveFingerNavigation = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      // EmbedPDF clears its virtual selection on pointerdown. A secondary
+      // click is an invocation of the existing range, not a new selection.
+      if (event.button === 2 && selection?.getBoundingRects(documentId).length) {
+        event.nativeEvent.stopImmediatePropagation();
+        return;
+      }
       if (
         !shouldPreservePdfFingerNavigation({
           annotateMode,
@@ -2600,7 +2634,7 @@ function ReaderSurface({
       // gesture. Highlight keeps its established touch selection handoff.
       event.nativeEvent.stopImmediatePropagation();
     },
-    [activeTool, annotateMode]
+    [activeTool, annotateMode, documentId, selection]
   );
 
   // Annotation hit areas stay available in reading mode so a researcher can
@@ -3099,8 +3133,9 @@ function ReaderSurface({
                   <SelectionLayer
                     documentId={documentId}
                     pageIndex={pageIndex}
-                    selectionMenu={({ selected, menuWrapperProps }) => selected ? <div {...menuWrapperProps}>
+                    selectionMenu={({ selected, menuWrapperProps }) => selected && !pdfInlineAiOpen ? <div {...menuWrapperProps} className="pdf-reader__selection-menu" style={{ ...menuWrapperProps.style, pointerEvents: "auto" }}>
                       <button className="inline-ai-menu-action" onPointerDown={event => event.stopPropagation()} onClick={event => {
+                        event.stopPropagation();
                         const rect = event.currentTarget.getBoundingClientRect();
                         void askPdf(pageIndex, rect.left, rect.bottom, false);
                       }}><Sparkles size={16} /> Ask Companion...</button>

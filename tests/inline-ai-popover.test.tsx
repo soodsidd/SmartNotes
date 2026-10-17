@@ -89,3 +89,43 @@ it("opens the frame menu row first, dismisses it on outside pointerdown, and rej
   fireEvent.pointerDown(document.body);
   expect(screen.queryByTestId("ask-companion-popover")).not.toBeInTheDocument();
 });
+
+it("keeps the captured PDF passage through menu, prompt chip, stream, and Companion handoff", async () => {
+  const onContinue = jest.fn();
+  const onClose = jest.fn();
+  const passage = " First line\nSecond line ";
+  jest.mocked(streamJupyterFastLanePrompt).mockImplementation(async (_, __, ___, options) => {
+    options?.onDelta?.("Partial", "Partial");
+    return { text: "Full answer", sessionId: null, ttftMs: 1, durationMs: 1 };
+  });
+  render(<InlineAiPopover pagePath="Notes/pdf.html" onContinue={onContinue} />);
+  const pdfContext = { surface: "pdf" as const, target: "Selection", text: passage, pageText: "Other page text", tableText: "" };
+  act(() => invokeInlineAi({ context: pdfContext, x: 10, y: 10, menu: true, sourceId: "pdf:one", onClose }));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Ask Companion/ }));
+  expect(screen.getByRole("dialog").querySelector("blockquote")?.textContent).toBe(passage);
+  fireEvent.click(screen.getByRole("button", { name: "Summarize" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
+  await screen.findByText("Full answer");
+  expect(streamJupyterFastLanePrompt).toHaveBeenCalledWith("Notes/pdf.html", "Summarize this text.", pdfContext, expect.any(Object));
+  fireEvent.click(screen.getByRole("button", { name: "Continue in Companion →" }));
+  expect(onContinue.mock.calls[0][0].draft).toContain(JSON.stringify(pdfContext));
+  expect(onContinue.mock.calls[0][0].draft).toContain("Full answer");
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("uses the same PDF passage for a free-text Ask and dismisses a stale target", async () => {
+  const onClose = jest.fn();
+  const pdfContext = { surface: "pdf" as const, target: "Selection", text: "Exact passage", pageText: "Page", tableText: "" };
+  jest.mocked(streamJupyterFastLanePrompt).mockResolvedValue({ text: "Answer", sessionId: null, ttftMs: 1, durationMs: 1 });
+  render(<InlineAiPopover pagePath="Notes/pdf.html" onContinue={jest.fn()} />);
+  act(() => invokeInlineAi({ context: pdfContext, x: 10, y: 10, sourceId: "pdf:one", onClose }));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "Why this phrase?" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
+  await screen.findByText("Answer");
+  expect(streamJupyterFastLanePrompt).toHaveBeenCalledWith("Notes/pdf.html", "Why this phrase?", pdfContext, expect.any(Object));
+  act(() => window.dispatchEvent(new CustomEvent("smart-notes-ask-companion-dismiss", { detail: "pdf:another" })));
+  expect(screen.getByRole("dialog")).toBeVisible();
+  act(() => window.dispatchEvent(new CustomEvent("smart-notes-ask-companion-dismiss", { detail: "pdf:one" })));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(onClose).toHaveBeenCalledTimes(1);
+});

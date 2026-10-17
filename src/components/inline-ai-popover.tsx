@@ -14,9 +14,12 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
   const [working, setWorking] = React.useState(false);
   const abort = React.useRef<AbortController | null>(null);
   const panel = React.useRef<HTMLDivElement>(null);
+  const invocationRef = React.useRef<InlineAiInvocation | null>(null);
   const previousFocus = React.useRef<HTMLElement | null>(null);
   const close = React.useCallback(() => {
     abort.current?.abort(); abort.current = null;
+    invocationRef.current?.onClose?.();
+    invocationRef.current = null;
     setInvocation(null); setWorking(false);
     previousFocus.current?.focus();
   }, []);
@@ -25,12 +28,20 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
       const detail = (event as CustomEvent<InlineAiInvocation>).detail;
       if (!detail || !parseInlineAiContext(detail.context) || !Number.isFinite(detail.x) || !Number.isFinite(detail.y)) return;
       abort.current?.abort(); abort.current = null;
+      invocationRef.current = detail;
       previousFocus.current = document.activeElement as HTMLElement;
       setQuestion(""); setAnswer(""); setError(""); setWorking(false); setInvocation(detail);
     };
     window.addEventListener("smart-notes-ask-companion", open);
     return () => { window.removeEventListener("smart-notes-ask-companion", open); abort.current?.abort(); };
   }, []);
+  React.useEffect(() => {
+    const dismiss = (event: Event) => {
+      if (invocationRef.current?.sourceId === (event as CustomEvent<string>).detail) close();
+    };
+    window.addEventListener("smart-notes-ask-companion-dismiss", dismiss);
+    return () => window.removeEventListener("smart-notes-ask-companion-dismiss", dismiss);
+  }, [close]);
   React.useEffect(close, [pagePath, close]);
   // The one-row menu (frames, PDF) dismisses like a context menu; the open dialog stays put.
   React.useEffect(() => {
