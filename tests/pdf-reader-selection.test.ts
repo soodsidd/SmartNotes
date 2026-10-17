@@ -58,7 +58,7 @@ describe("PDF read-mode text selection (SN-193)", () => {
 
   test("makes the mobile selection-menu action tappable above annotation hit testing", () => {
     expect(READER_SOURCE).toContain('className="pdf-reader__selection-menu"');
-    expect(READER_SOURCE).toContain('style={{ ...menuWrapperProps.style, pointerEvents: "auto" }}');
+    expect(READER_SOURCE).toContain('style={{ ...menuWrapperProps.style, width: 0, height: 0, overflow: "visible", pointerEvents: "auto", zIndex: 12 }}');
     expect(READER_SOURCE).toContain("selected && !pdfInlineAiOpen");
   });
 
@@ -127,4 +127,50 @@ describe("PDF read-mode text selection (SN-193)", () => {
       ).toBe(false);
     }
   );
+});
+
+describe("PDF selection menu actions (SN-334)", () => {
+  test("offers Highlight, Record and Ask Companion from the floating selection menu", () => {
+    expect(READER_SOURCE).toMatch(
+      /<SelectionLayer[\s\S]*?<PdfPassageMenu[\s\S]*?above=\{Boolean\(placement\?\.suggestTop\)\}[\s\S]*?<PdfPassageActions[\s\S]*?onHighlight=\{highlightSelection\}[\s\S]*?highlightDisabled=\{!annotationsReady\}[\s\S]*?recordSelection\(pageIndex, true\)[\s\S]*?onAsk=[\s\S]*?askPdf\(pageIndex[\s\S]*?<AnnotationLayer/
+    );
+  });
+
+  test("adds Highlight to the right-click menu only for a live range, captured before page extraction", () => {
+    expect(READER_SOURCE).toMatch(
+      /const highlightCapture = hasSelection && annotationsReadyRef\.current \? captureSelectionForHighlight\(\) : null;\s*const \[selected, pageText\] = await Promise\.all/
+    );
+    expect(READER_SOURCE).toContain(
+      "pdfHighlight: highlightCapture ? () => void highlightCaptured(highlightCapture) : undefined"
+    );
+  });
+
+  test("creates highlights through EmbedPDF's annotation model and skips covered passages", () => {
+    expect(READER_SOURCE).toContain('annotationCapability?.getTool("highlight")?.defaults');
+    expect(READER_SOURCE).toMatch(
+      /if \(isSelectionAlreadyHighlighted\(page, existing, PdfAnnotationSubtype\.HIGHLIGHT\)\) continue;\s*scope\.createAnnotation\(page\.pageIndex, buildSelectionHighlight\(/
+    );
+    expect(READER_SOURCE).toContain("if (!scope || highlightBusyRef.current) return;");
+    // Sidecar only: annotations are never committed into the PDF bytes.
+    expect(READER_SOURCE).toContain("autoCommit: false");
+  });
+
+  test("tapping an existing highlight offers Record and Ask Companion beside comment controls", () => {
+    expect(READER_SOURCE).not.toContain("!content.trim() && !recordDestinationPath) return null");
+    expect(READER_SOURCE).toContain(
+      '<PdfPassageActions label="Highlight actions" onRecord={onRecord} onAsk={onAsk} />'
+    );
+    expect(READER_SOURCE).toMatch(
+      /onAsk=\{\(anchor\) => void \(async \(\) => \{\s*const \{ quote \} = await highlightQuote\(\);[\s\S]*?askHighlight\(context\.pageIndex/
+    );
+    expect(READER_SOURCE).toContain('data-testid="pdf-reader-anno-delete"');
+    expect(READER_SOURCE).toContain('data-testid="pdf-reader-anno-edit"');
+  });
+
+  test("offers Undo for a read-mode Highlight without entering Annotate", () => {
+    expect(READER_SOURCE).toContain('data-testid="pdf-reader-highlight-undo"');
+    expect(READER_SOURCE).toMatch(
+      /history\?\.forDocument\(documentId\)\.undo\("annotations"\);[\s\S]*?window\.setTimeout\(exportAndSave, 0\);\s*setHighlightNotice\(null\)/
+    );
+  });
 });

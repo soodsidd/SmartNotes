@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { MessageSquarePlus, Sparkles, X } from "lucide-react";
+import { Highlighter, MessageSquarePlus, NotebookPen, Sparkles, X } from "lucide-react";
 import { streamJupyterFastLanePrompt } from "@/lib/api/jupyter";
 import { inlineAiHandoff, parseInlineAiContext, type InlineAiInvocation } from "@/lib/inline-ai";
 import { invokePdfRecord } from "@/components/pdf-record-panel";
@@ -94,9 +94,10 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
         }
       }}>
       {invocation.menu ? <>
+        {invocation.pdfHighlight && <button className="inline-ai-menu-action" role="menuitem" data-testid="inline-ai-menu-highlight" onClick={() => { const highlight = invocation.pdfHighlight!; close(); highlight(); }}><Highlighter size={16} /> Highlight</button>}
+        {invocation.pdfRecord && <button className="inline-ai-menu-action" role="menuitem" onClick={() => { invokePdfRecord({ ...invocation.pdfRecord!, quick: true }); close(); }}><NotebookPen size={16} /> Record</button>}
+        {invocation.pdfRecord && <button className="inline-ai-menu-action" role="menuitem" onClick={() => { invokePdfRecord(invocation.pdfRecord!); close(); }}><NotebookPen size={16} /> Record options…</button>}
         <button className="inline-ai-menu-action" role="menuitem" onClick={() => setInvocation({ ...invocation, menu: false })}><Sparkles size={16} /> Ask Companion...</button>
-        {invocation.pdfRecord && <button className="inline-ai-menu-action" role="menuitem" onClick={() => { invokePdfRecord({ ...invocation.pdfRecord!, quick: true }); close(); }}>Record</button>}
-        {invocation.pdfRecord && <button className="inline-ai-menu-action" role="menuitem" onClick={() => { invokePdfRecord(invocation.pdfRecord!); close(); }}>Record options…</button>}
         {invocation.menuActions?.map(action => <button key={action.id} className="inline-ai-menu-action" role="menuitem" data-testid={`inline-ai-menu-${action.id}`} onClick={() => { close(); action.run(); }}><MessageSquarePlus size={16} /> {action.label}</button>)}
       </> : <>
         <header><span><Sparkles size={16} /> Companion</span><button aria-label="Close Companion popover" onClick={close}><X size={16} /></button></header>

@@ -52,7 +52,13 @@
 
 import { invokeInlineAi } from "@/lib/inline-ai";
 import { invokePdfRecord } from "@/components/pdf-record-panel";
+import { PdfPassageActions, PdfPassageMenu } from "@/components/pdf-passage-actions";
 import { exactPdfHighlightQuote } from "@/lib/pdf-record";
+import {
+  buildSelectionHighlight,
+  isSelectionAlreadyHighlighted,
+  type PdfHighlightLike,
+} from "@/lib/pdf-selection-highlight";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import {
@@ -149,6 +155,7 @@ import {
   AnnotationLayer,
   AnnotationPluginPackage,
   useAnnotation,
+  useAnnotationCapability,
 } from "@embedpdf/plugin-annotation/react";
 import {
   BookmarkPluginPackage,
@@ -1227,6 +1234,7 @@ function HighlightCommentMenu({
   onDelete,
   onClose,
   onRecord,
+  onAsk,
 }: {
   annotationId: string;
   content: string;
@@ -1236,7 +1244,9 @@ function HighlightCommentMenu({
   onSave: (content: string) => void;
   onDelete: () => void;
   onClose: () => void;
-  onRecord: () => void;
+  /** Omitted when no Record destination note is available. */
+  onRecord?: () => void;
+  onAsk: (anchor: DOMRect) => void;
 }) {
   const [draft, setDraft] = React.useState(content);
   const inputId = `hl-note-${annotationId}`;
@@ -1271,7 +1281,7 @@ function HighlightCommentMenu({
           </div>
         </div>
         {content ? <p className="pdf-reader__anno-comment-text">{content}</p> : null}
-        <button type="button" className="pdf-reader__anno-action" onClick={onRecord}>Record highlight</button>
+        <PdfPassageActions label="Highlight actions" onRecord={onRecord} onAsk={onAsk} />
       </div>
     );
   }
@@ -1301,7 +1311,7 @@ function HighlightCommentMenu({
           </button>
         </div>
       </div>
-      <button type="button" className="pdf-reader__anno-action" onClick={onRecord}>Record highlight</button>
+      <PdfPassageActions label="Highlight actions" onRecord={onRecord} onAsk={onAsk} />
       {canEdit ? (
         <>
           <label className="pdf-reader__anno-note-label" htmlFor={inputId}>
@@ -1538,6 +1548,51 @@ function ReaderSurface({
       }
     });
   }, [documentId, pdfInlineAiSource, selection]);
+  // SN-334: Highlight straight from the selection menu, without Annotate.
+  // Mirrors EmbedPDF's own text-markup handler (tool defaults + custom.text)
+  // through the normal createAnnotation path, so the sidecar save, History
+  // undo and highlight comment menu all apply. Selections already covered by
+  // a highlight are skipped so repeated invocation never stacks duplicates.
+  const { provides: annotationCapability } = useAnnotationCapability();
+  const highlightBusyRef = React.useRef(false);
+  // Mirrors annotationsReady (declared below) for invocation-time checks.
+  const annotationsReadyRef = React.useRef(false);
+  const [highlightNotice, setHighlightNotice] = React.useState<{ created: number } | null>(null);
+  React.useEffect(() => {
+    if (!highlightNotice) return;
+    const timer = window.setTimeout(() => setHighlightNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [highlightNotice]);
+  const captureSelectionForHighlight = React.useCallback(() => {
+    if (!selection) return null;
+    const pages = selection.getFormattedSelection(documentId);
+    if (!pages.length) return null;
+    return { pages, text: selection.getSelectedText(documentId).toPromise().catch(() => [] as string[]) };
+  }, [documentId, selection]);
+  const highlightCaptured = React.useCallback(async (captured: NonNullable<ReturnType<typeof captureSelectionForHighlight>>) => {
+    const scope = annotationRef.current;
+    if (!scope || highlightBusyRef.current) return;
+    highlightBusyRef.current = true;
+    try {
+      const text = (await captured.text).join("\n") || null;
+      const defaults = annotationCapability?.getTool("highlight")?.defaults ?? { type: PdfAnnotationSubtype.HIGHLIGHT };
+      let created = 0;
+      for (const page of captured.pages) {
+        const existing = scope.getAnnotations({ pageIndex: page.pageIndex }).map((item) => item.object as PdfHighlightLike);
+        if (isSelectionAlreadyHighlighted(page, existing, PdfAnnotationSubtype.HIGHLIGHT)) continue;
+        scope.createAnnotation(page.pageIndex, buildSelectionHighlight(page, defaults, crypto.randomUUID(), text) as never);
+        created += 1;
+      }
+      selection?.clear(documentId);
+      setHighlightNotice({ created });
+    } finally {
+      highlightBusyRef.current = false;
+    }
+  }, [annotationCapability, documentId, selection]);
+  const highlightSelection = React.useCallback(() => {
+    const captured = captureSelectionForHighlight();
+    if (captured) void highlightCaptured(captured);
+  }, [captureSelectionForHighlight, highlightCaptured]);
   const askPdf = React.useCallback(async (pageIndex: number, x: number, y: number, menu = true) => {
     const doc = activeDocument?.document;
     if (!doc || !retainedPdfiumEngine) return;
@@ -1546,6 +1601,7 @@ function ReaderSurface({
     const hasSelection = Boolean(selection?.getBoundingRects(documentId).length);
     const revision = selectionRevisionRef.current;
     const selectedTextTask = hasSelection ? selection?.getSelectedText(documentId).toPromise() : null;
+    const highlightCapture = hasSelection && annotationsReadyRef.current ? captureSelectionForHighlight() : null;
     const [selected, pageText] = await Promise.all([
       selectedTextTask?.catch(() => []) ?? Promise.resolve([]),
       retainedPdfiumEngine.extractText(doc, [pageIndex]).toPromise().catch(() => ""),
@@ -1556,6 +1612,7 @@ function ReaderSurface({
     inlineAiOpenRef.current = hasSelection;
     setPdfInlineAiOpen(true);
     invokeInlineAi({ x, y, menu, sourceId: pdfInlineAiSource,
+      pdfHighlight: highlightCapture ? () => void highlightCaptured(highlightCapture) : undefined,
       pdfRecord: pdfPath && recordDestinationPath ? { source: { pdfPath, pdfTitle: title, page: pageIndex + 1, quote: (hasSelection ? exactText : pageText) || null, quoteUnavailable: !(hasSelection ? exactText : pageText), quoteRecovered: !hasSelection && Boolean(pageText) }, defaultDestinationPath: recordDestinationPath } : undefined,
       onClose: () => {
         inlineAiOpenRef.current = false;
@@ -1563,7 +1620,7 @@ function ReaderSurface({
         if (hasSelection && revision === selectionRevisionRef.current) selection?.clear(documentId);
       },
       context: { surface: "pdf", target: hasSelection ? "Selection" : "PDF page", text: hasSelection ? text : pageText.slice(0, 16000), pageText: pageText.slice(0, 16000), tableText: "" } });
-  }, [activeDocument, documentId, pdfInlineAiSource, pdfPath, recordDestinationPath, selection, title]);
+  }, [activeDocument, captureSelectionForHighlight, documentId, highlightCaptured, pdfInlineAiSource, pdfPath, recordDestinationPath, selection, title]);
   const recordSelection = React.useCallback(async (pageIndex: number, quick: boolean) => {
     if (!pdfPath || !recordDestinationPath || !selection?.getBoundingRects(documentId).length) return;
     const revision = selectionRevisionRef.current;
@@ -1571,6 +1628,18 @@ function ReaderSurface({
     if (revision !== selectionRevisionRef.current) return;
     invokePdfRecord({ source: { pdfPath, pdfTitle: title, page: pageIndex + 1, quote: text || null, quoteUnavailable: !text }, defaultDestinationPath: recordDestinationPath, quick });
   }, [documentId, pdfPath, recordDestinationPath, selection, title]);
+  // Tapped highlight → Ask Companion with that highlight's own passage.
+  const askHighlight = React.useCallback(async (pageIndex: number, x: number, y: number, quote: string | null) => {
+    const doc = activeDocument?.document;
+    if (!doc || !retainedPdfiumEngine) return;
+    const pageText = (await retainedPdfiumEngine.extractText(doc, [pageIndex]).toPromise().catch(() => "")).slice(0, 16000);
+    inlineAiOpenRef.current = false;
+    setPdfInlineAiOpen(true);
+    invokeInlineAi({ x, y, menu: false, sourceId: pdfInlineAiSource,
+      pdfRecord: pdfPath && recordDestinationPath ? { source: { pdfPath, pdfTitle: title, page: pageIndex + 1, quote, quoteUnavailable: quote === null }, defaultDestinationPath: recordDestinationPath } : undefined,
+      onClose: () => setPdfInlineAiOpen(false),
+      context: { surface: "pdf", target: quote ? "Selection" : "PDF page", text: quote ? quote.slice(0, 16000) : pageText, pageText, tableText: "" } });
+  }, [activeDocument, pdfInlineAiSource, pdfPath, recordDestinationPath, title]);
   const { provides: history } = useHistoryCapability();
   const { plugin: viewportPlugin } = useViewportPlugin();
   const { provides: viewportCap } = useViewportCapability();
@@ -1598,6 +1667,7 @@ function ReaderSurface({
   const [spreadViewportEligible, setSpreadViewportEligible] = React.useState(false);
   const [activeTool, setActiveTool] = React.useState<ReaderTool>("pan");
   const [annotationsReady, setAnnotationsReady] = React.useState(false);
+  annotationsReadyRef.current = annotationsReady;
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [saveState, setSaveState] = React.useState<"idle" | "saving" | "saved">("idle");
   const [historyState, setHistoryState] = React.useState({
@@ -2534,9 +2604,20 @@ function ReaderSurface({
       if (obj.type !== PdfAnnotationSubtype.HIGHLIGHT) return null;
       const canComment = !context.contentLocked;
       const content = typeof obj.contents === "string" ? obj.contents : "";
-      // Quiet highlights remain quiet while reading. A highlight with a note
-      // is directly readable without entering Annotate.
-      if (!annotateMode && !content.trim() && !recordDestinationPath) return null;
+      // Creating a highlight stays quiet (no auto-select); an intentional tap
+      // always opens this dish so Record and Ask Companion are reachable
+      // without entering Annotate (SN-334).
+      const highlightQuote = async () => {
+        let quote = exactPdfHighlightQuote(obj.custom);
+        let quoteRecovered = false;
+        if (quote === null && pdfPath && obj.segmentRects?.length) {
+          try {
+            const response = await fetch("/api/pdf-record/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pdfPath, page: context.pageIndex + 1, segmentRects: obj.segmentRects }) });
+            if (response.ok) { quote = ((await response.json()) as { quote: string | null }).quote; quoteRecovered = quote !== null; }
+          } catch { /* Keep unavailable text explicit. */ }
+        }
+        return { quote, quoteRecovered };
+      };
       const anchorW = rect?.size.width ?? 0;
       const anchorH = rect?.size.height ?? 0;
 
@@ -2592,25 +2673,22 @@ function ReaderSurface({
                 annotation?.deselectAnnotation();
               }}
               onClose={() => annotation?.deselectAnnotation()}
-              onRecord={() => void (async () => {
-                if (!pdfPath || !recordDestinationPath) return;
-                let quote = exactPdfHighlightQuote(obj.custom);
-                let quoteRecovered = false;
-                if (quote === null && obj.segmentRects?.length) {
-                  try {
-                    const response = await fetch("/api/pdf-record/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pdfPath, page: context.pageIndex + 1, segmentRects: obj.segmentRects }) });
-                    if (response.ok) { quote = ((await response.json()) as { quote: string | null }).quote; quoteRecovered = quote !== null; }
-                  } catch { /* Keep unavailable text explicit. */ }
-                }
+              onRecord={pdfPath && recordDestinationPath ? () => void (async () => {
+                const { quote, quoteRecovered } = await highlightQuote();
                 invokePdfRecord({ source: { pdfPath, pdfTitle: title, page: context.pageIndex + 1, quote, quoteUnavailable: quote === null, quoteRecovered }, defaultDestinationPath: recordDestinationPath, quick: true });
                 annotation?.deselectAnnotation();
+              })() : undefined}
+              onAsk={(anchor) => void (async () => {
+                const { quote } = await highlightQuote();
+                annotation?.deselectAnnotation();
+                await askHighlight(context.pageIndex, anchor.left, anchor.bottom, quote);
               })()}
             />
           </div>
         </div>
       );
     },
-    [annotation, annotateMode, enterAnnotate, pdfPath, recordDestinationPath, title]
+    [annotation, annotateMode, askHighlight, enterAnnotate, pdfPath, recordDestinationPath, title]
   );
 
   const eraseInkAt = React.useCallback(
@@ -3086,6 +3164,29 @@ function ReaderSurface({
         </div>
       ) : null}
 
+      {highlightNotice ? (
+        <div className="pdf-reader__highlight-notice" role="status" data-testid="pdf-reader-highlight-notice">
+          <span>{highlightNotice.created ? "Highlighted" : "Already highlighted"}</span>
+          {highlightNotice.created && historyState.canUndo ? (
+            <button
+              type="button"
+              className="pdf-reader__anno-action"
+              data-testid="pdf-reader-highlight-undo"
+              onClick={() => {
+                // One history entry per highlighted page.
+                for (let i = 0; i < highlightNotice.created; i += 1) {
+                  history?.forDocument(documentId).undo("annotations");
+                }
+                window.setTimeout(exportAndSave, 0);
+                setHighlightNotice(null);
+              }}
+            >
+              Undo
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {searchOpen ? (
         <SearchPanel
           documentId={documentId}
@@ -3168,15 +3269,22 @@ function ReaderSurface({
                   <SelectionLayer
                     documentId={documentId}
                     pageIndex={pageIndex}
-                    selectionMenu={({ selected, menuWrapperProps }) => selected && !pdfInlineAiOpen ? <div {...menuWrapperProps} className="pdf-reader__selection-menu" style={{ ...menuWrapperProps.style, pointerEvents: "auto" }}>
-                      <button className="inline-ai-menu-action" onPointerDown={event => event.stopPropagation()} onClick={event => {
-                        event.stopPropagation();
-                        const rect = event.currentTarget.getBoundingClientRect();
-                        void askPdf(pageIndex, rect.left, rect.bottom, false);
-                      }}><Sparkles size={16} /> Ask Companion...</button>
-                      <button className="inline-ai-menu-action" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); void recordSelection(pageIndex, true); }}>Record</button>
-                      <button className="inline-ai-menu-action" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); void recordSelection(pageIndex, false); }}>Record options…</button>
-                    </div> : null}
+                    selectionMenu={({ selected, menuWrapperProps, rect, placement }) => selected && !pdfInlineAiOpen ? (
+                      // SN-334: the wrapper keeps EmbedPDF's anchor position
+                      // and hit testing (SN-333) but drops the selection-sized
+                      // box, so the action row floats beside the passage
+                      // instead of covering it.
+                      <div ref={menuWrapperProps.ref} className="pdf-reader__selection-menu" style={{ ...menuWrapperProps.style, width: 0, height: 0, overflow: "visible", pointerEvents: "auto", zIndex: 12 }}>
+                        <PdfPassageMenu anchorWidth={rect.size.width} anchorHeight={rect.size.height} above={Boolean(placement?.suggestTop)}>
+                          <PdfPassageActions
+                            onHighlight={highlightSelection}
+                            highlightDisabled={!annotationsReady}
+                            onRecord={pdfPath && recordDestinationPath ? () => void recordSelection(pageIndex, true) : undefined}
+                            onAsk={(anchor) => void askPdf(pageIndex, anchor.left, anchor.bottom, false)}
+                          />
+                        </PdfPassageMenu>
+                      </div>
+                    ) : null}
                   />
                   <AnnotationLayer
                     documentId={documentId}

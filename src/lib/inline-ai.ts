@@ -21,6 +21,11 @@ export interface InlineAiInvocation {
    * mode (e.g. design Preview "Add comment"). Host-only — never from a frame.
    */
   menuActions?: InlineAiMenuAction[];
+  /**
+   * SN-334: host-captured PDF selection highlighter. Shown first in the PDF
+   * menu (Highlight, Record, Ask Companion) only when a live range exists.
+   */
+  pdfHighlight?: () => void;
   /** Host-captured PDF source and fixed default note for Record. */
   pdfRecord?: { source: import("@/lib/pdf-record").PdfRecordSource; defaultDestinationPath: string };
 }

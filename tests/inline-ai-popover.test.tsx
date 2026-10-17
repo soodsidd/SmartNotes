@@ -148,3 +148,21 @@ it("offers PDF Record and sends the original quote with a completed answer", asy
   expect(recorded).toEqual([expect.objectContaining({ source: pdfRecord.source, defaultDestinationPath: "Notes/pdf.html", question: "Explain this text.", answer: "An AI explanation", quick: true })]);
   window.removeEventListener("smart-notes-pdf-record", listener);
 });
+
+it("orders the PDF selection menu Highlight, Record, Ask Companion and runs Highlight once", () => {
+  render(<InlineAiPopover pagePath="Notes/pdf.html" onContinue={jest.fn()} />);
+  const pdfHighlight = jest.fn();
+  const pdfRecord = { source: { pdfPath: "Notes/paper.pdf", pdfTitle: "Paper", page: 1, quote: "Passage" }, defaultDestinationPath: "Notes/pdf.html" };
+  act(() => invokeInlineAi({ context: { surface: "pdf", target: "Selection", text: "Passage", pageText: "Page", tableText: "" }, x: 10, y: 10, menu: true, pdfHighlight, pdfRecord }));
+  expect(screen.getAllByRole("menuitem").map((item) => item.textContent?.trim())).toEqual(["Highlight", "Record", "Record options…", "Ask Companion..."]);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Highlight" }));
+  expect(pdfHighlight).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+});
+
+it("omits Highlight from page-context menus that have no live PDF range", () => {
+  render(<InlineAiPopover pagePath="Notes/pdf.html" onContinue={jest.fn()} />);
+  act(() => invokeInlineAi({ context: { surface: "pdf", target: "PDF page", text: "Page", pageText: "Page", tableText: "" }, x: 10, y: 10, menu: true }));
+  expect(screen.queryByRole("menuitem", { name: "Highlight" })).toBeNull();
+  expect(screen.getByRole("menuitem", { name: /Ask Companion/ })).toBeVisible();
+});
