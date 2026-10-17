@@ -802,9 +802,14 @@ export async function savePage(input: SavePageInput) {
 }
 
 /** Append one captured PDF record under the page write lock. The durable marker
- * makes a retry after an ambiguous response idempotent. */
-export async function appendPdfRecord(input: import("@/lib/pdf-record").PdfRecordInput) {
-  const { pdfRecordAnchor, pdfRecordMarkup } = await import("@/lib/pdf-record");
+ * makes a retry after an ambiguous response idempotent. SN-336 image clips are
+ * written to a record-id-named asset first, so a retry overwrites rather than
+ * duplicating and a note never references a missing clip. */
+export async function appendPdfRecord(input: import("@/lib/pdf-record").PdfRecordInput, image?: Buffer) {
+  const { pdfRecordAnchor, pdfRecordAssetPath, pdfRecordMarkup } = await import("@/lib/pdf-record");
+  if (Boolean(input.clip) !== Boolean(image)) {
+    throw new VaultError("INVALID_RECORD", "An image Record needs both the clip and its rendered image.", 400);
+  }
   const { absolutePath } = resolveVaultPath(input.destinationPath, "page");
   return withPageWriteLock(absolutePath, async () => {
     const page = await readPage(input.destinationPath);
@@ -816,21 +821,28 @@ export async function appendPdfRecord(input: import("@/lib/pdf-record").PdfRecor
       throw new VaultError("RECORD_MISSING", "This Record was changed in the note. Open the note to review it.", 409);
     }
     if (page.body.includes(pdfRecordAnchor(input.id))) return { page, created: false };
-    const addition = pdfRecordMarkup(input);
+    if (image) {
+      const asset = resolveVaultPath(pdfRecordAssetPath(page.path, input.id), "section");
+      await fs.mkdir(path.dirname(asset.absolutePath), { recursive: true });
+      await fs.writeFile(asset.absolutePath, image);
+    }
+    const addition = pdfRecordMarkup({ ...input, destinationPath: page.path });
     const body = page.body.trim() === "<p></p>" ? addition : `${page.body}\n${addition}`;
     return { page: await savePageUnlocked({ path: page.path, title: page.title, body, pdfRecordIds: [...ids, input.id].join(",") }), created: true };
   });
 }
 
 export async function undoPdfRecord(destinationPath: string, id: string) {
-  const { removePdfRecord } = await import("@/lib/pdf-record");
+  const { pdfRecordAssetPath, removePdfRecord } = await import("@/lib/pdf-record");
   const { absolutePath } = resolveVaultPath(destinationPath, "page");
   return withPageWriteLock(absolutePath, async () => {
     const page = await readPage(destinationPath);
     const body = removePdfRecord(page.body, id);
     if (body === null) return { page, removed: false };
     const ids = String(page.metadata.pdf_record_ids ?? "").split(",").filter(value => value && value !== id);
-    return { page: await savePageUnlocked({ path: page.path, title: page.title, body, pdfRecordIds: ids.join(",") }), removed: true };
+    const saved = await savePageUnlocked({ path: page.path, title: page.title, body, pdfRecordIds: ids.join(",") });
+    await fs.rm(resolveVaultPath(pdfRecordAssetPath(page.path, id), "section").absolutePath, { force: true });
+    return { page: saved, removed: true };
   });
 }
 

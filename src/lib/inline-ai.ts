@@ -28,6 +28,8 @@ export interface InlineAiInvocation {
   pdfHighlight?: () => void;
   /** Host-captured PDF source and fixed default note for Record. */
   pdfRecord?: { source: import("@/lib/pdf-record").PdfRecordSource; defaultDestinationPath: string };
+  /** SN-336 page actions: explicit area crop and full-page image Record. */
+  pdfClip?: { area: () => void; page: () => void };
 }
 export interface InlineAiMenuAction {
   id: string;

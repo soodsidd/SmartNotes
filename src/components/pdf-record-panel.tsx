@@ -11,6 +11,8 @@ export interface PdfRecordInvocation {
   quick?: boolean;
   question?: string;
   answer?: string;
+  /** SN-336: PNG rendered from the PDF for an area or page Record (needs source.clip). */
+  image?: Blob;
 }
 
 export function invokePdfRecord(detail: PdfRecordInvocation) {
@@ -18,19 +20,30 @@ export function invokePdfRecord(detail: PdfRecordInvocation) {
 }
 
 type RecordState = "editing" | "saving" | "saved" | "error" | "undoing";
-type CurrentRecord = { input: PdfRecordInput; state: RecordState; error?: string; attempted: boolean };
+type CurrentRecord = { input: PdfRecordInput; image?: Blob; state: RecordState; error?: string; attempted: boolean };
 
 function sessionDestination(source: PdfRecordSource, fallback: string): string {
   try { return sessionStorage.getItem(`smart-notes-pdf-record:${source.pdfPath}`) || fallback; }
   catch { return fallback; }
 }
 
-async function recordRequest(input: PdfRecordInput, method: "POST" | "DELETE") {
-  const response = await fetch("/api/pdf-record", {
+function recordBody(input: PdfRecordInput, method: "POST" | "DELETE", image?: Blob): RequestInit {
+  if (method === "POST" && image) {
+    // Same record id on every retry: the server overwrites one asset, never duplicates.
+    const form = new FormData();
+    form.append("record", JSON.stringify(input));
+    form.append("image", image, `pdf-record-${input.id}.png`);
+    return { method, body: form };
+  }
+  return {
     method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(method === "POST" ? input : { id: input.id, destinationPath: input.destinationPath }),
-  });
+  };
+}
+
+async function recordRequest(input: PdfRecordInput, method: "POST" | "DELETE", image?: Blob) {
+  const response = await fetch("/api/pdf-record", recordBody(input, method, image));
   const result = await response.json().catch(() => ({})) as { error?: string; path?: string; removed?: boolean };
   if (!response.ok || result.path !== input.destinationPath || (method === "DELETE" && !result.removed)) {
     throw new Error(result.error || "The note write was not confirmed. Retry to check it safely.");
@@ -50,7 +63,7 @@ export function PdfRecordPanel({ onOpenNote }: { onOpenNote: (path: string) => v
     if (currentRef.current?.input.id !== record.input.id || currentRef.current.state === "saving") return;
     update({ ...record, state: "saving", attempted: true, error: undefined });
     try {
-      await recordRequest(record.input, "POST");
+      await recordRequest(record.input, "POST", record.image);
       if (currentRef.current?.input.id === record.input.id) update({ ...record, state: "saved", attempted: true });
     } catch (error) {
       if (currentRef.current?.input.id === record.input.id) update({ ...record, state: "error", attempted: true, error: error instanceof Error ? error.message : "Save failed. Retry." });
@@ -65,8 +78,10 @@ export function PdfRecordPanel({ onOpenNote }: { onOpenNote: (path: string) => v
       const destinationPath = sessionDestination(detail.source, detail.defaultDestinationPath);
       const record: CurrentRecord = {
         input: { ...detail.source, id: crypto.randomUUID(), destinationPath, question: detail.question, answer: detail.answer },
+        image: detail.source.clip ? detail.image : undefined,
         state: "editing", attempted: false,
       };
+      if (detail.source.clip && !detail.image) return;
       update(record);
       setDictationError("");
       if (detail.quick) void save(record);
@@ -115,12 +130,19 @@ export function PdfRecordPanel({ onOpenNote }: { onOpenNote: (path: string) => v
     try { recognition.start(); } catch { setDictationError("Dictation did not start. You can type your thought."); }
   }
 
+  const previewUrl = React.useMemo(() => current?.image ? URL.createObjectURL(current.image) : null, [current?.image]);
+  React.useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+
   if (!mounted || !current) return null;
   const { input, state } = current;
+  const clipLabel = input.clip?.kind === "page" ? `Page ${input.page} of ${input.pdfTitle}` : `Figure area from ${input.pdfTitle}, page ${input.page}`;
   const supportsDictation = Boolean((window as Window & { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition || (window as Window & { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition);
-  return createPortal(<div className="pdf-record-panel" role="dialog" aria-label="Record PDF passage" data-testid="pdf-record-panel">
+  return createPortal(<div className="pdf-record-panel" role="dialog" aria-label={input.clip ? (input.clip.kind === "page" ? "Record PDF page" : "Record PDF area") : "Record PDF passage"} data-testid="pdf-record-panel">
     <header><strong>Record · {input.pdfTitle}, page {input.page}</strong><button type="button" aria-label="Close Record panel" disabled={state === "saving" || state === "error" || state === "undoing"} onClick={() => update(null)}>×</button></header>
-    <p className="pdf-record-panel__quote">{input.quote === null ? "Source text unavailable from this PDF highlight." : input.quote}</p>
+    {input.clip ? <figure className="pdf-record-panel__clip">
+      {previewUrl && <img src={previewUrl} alt={clipLabel} data-testid="pdf-record-clip-preview" />}
+      <figcaption>{input.clip.kind === "page" ? "Full page" : "Selected area"} · {input.clip.width}×{input.clip.height}px, rendered from the PDF</figcaption>
+    </figure> : <p className="pdf-record-panel__quote">{input.quote === null ? "Source text unavailable from this PDF highlight." : input.quote}</p>}
     {state === "editing" && <>
       <label htmlFor="pdf-record-destination">Save in</label>
       <select id="pdf-record-destination" value={input.destinationPath} onChange={event => editInput({ destinationPath: event.target.value })}>

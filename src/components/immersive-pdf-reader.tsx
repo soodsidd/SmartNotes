@@ -53,7 +53,8 @@
 import { invokeInlineAi } from "@/lib/inline-ai";
 import { invokePdfRecord } from "@/components/pdf-record-panel";
 import { PdfPassageActions, PdfPassageMenu } from "@/components/pdf-passage-actions";
-import { exactPdfHighlightQuote } from "@/lib/pdf-record";
+import { exactPdfHighlightQuote, isIntentionalPdfCrop, pdfClipScale, pdfCropToPageRect, type PdfCropFraction } from "@/lib/pdf-record";
+import { PdfCropLayer } from "@/components/pdf-crop-layer";
 import {
   buildSelectionHighlight,
   findHighlightAtPoint,
@@ -66,6 +67,8 @@ import {
   ArrowLeft,
   Check,
   ChevronLeft,
+  Crop,
+  FileImage,
   ChevronRight,
   Eraser,
   ExternalLink,
@@ -96,6 +99,8 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -1539,6 +1544,8 @@ function ReaderSurface({
   const inlineAiOpenRef = React.useRef(false);
   const [pdfInlineAiOpen, setPdfInlineAiOpen] = React.useState(false);
   const pdfInlineAiSource = `pdf:${documentId}`;
+  // SN-336 Record area/page entry points, bound once the reader state exists.
+  const recordClipRef = React.useRef({ area: (_pageIndex: number) => {}, page: (_pageIndex: number) => {} });
   React.useEffect(() => {
     if (!selection) return;
     return selection.onSelectionChange(({ documentId: changedDocumentId }) => {
@@ -1615,6 +1622,7 @@ function ReaderSurface({
     invokeInlineAi({ x, y, menu, sourceId: pdfInlineAiSource,
       pdfHighlight: highlightCapture ? () => void highlightCaptured(highlightCapture) : undefined,
       pdfRecord: pdfPath && recordDestinationPath ? { source: { pdfPath, pdfTitle: title, page: pageIndex + 1, quote: (hasSelection ? exactText : pageText) || null, quoteUnavailable: !(hasSelection ? exactText : pageText), quoteRecovered: !hasSelection && Boolean(pageText) }, defaultDestinationPath: recordDestinationPath } : undefined,
+      pdfClip: pdfPath && recordDestinationPath ? { area: () => recordClipRef.current.area(pageIndex), page: () => recordClipRef.current.page(pageIndex) } : undefined,
       onClose: () => {
         inlineAiOpenRef.current = false;
         setPdfInlineAiOpen(false);
@@ -2162,6 +2170,72 @@ function ReaderSurface({
     setControlsVisible(true);
   }, [annotationsReady, pdfPath]);
 
+  // SN-336: Record area (explicit crop) and Record page. Clips are rendered by
+  // PDFium from the document itself — never a screenshot of the viewport — so
+  // reader chrome, night-mode inversion, zoom and phone size never leak in.
+  // User annotations are excluded; the PDF bytes are never touched.
+  const [cropTarget, setCropTarget] = React.useState<number | null>(null);
+  const cropActiveRef = React.useRef(false);
+  cropActiveRef.current = cropTarget !== null;
+  const [crop, setCrop] = React.useState<PdfCropFraction | null>(null);
+  const [clipStatus, setClipStatus] = React.useState<{ state: "rendering" } | { state: "error"; retry: () => void } | null>(null);
+  const clipBusyRef = React.useRef(false);
+  const renderClip = React.useCallback(async (pageIndex: number, area: PdfCropFraction | null): Promise<boolean> => {
+    const doc = activeDocument?.document;
+    const page = doc?.pages.find((item) => item.index === pageIndex);
+    if (!renderCap || !page || !pdfPath || !recordDestinationPath || clipBusyRef.current) return false;
+    clipBusyRef.current = true;
+    setClipStatus({ state: "rendering" });
+    try {
+      const rotation = ((page.rotation ?? 0) + (activeDocument?.rotation ?? 0)) % 4;
+      const rect = area
+        ? pdfCropToPageRect(area, page.size, rotation)
+        : { origin: { x: 0, y: 0 }, size: { width: page.size.width, height: page.size.height } };
+      const scaleFactor = pdfClipScale(rect.size);
+      const image = await renderCap.forDocument(documentId).renderPageRect({
+        pageIndex,
+        rect,
+        options: { scaleFactor, dpr: 1, rotation, imageType: "image/png", withAnnotations: false, withForms: false },
+      }).toPromise();
+      const turned = rotation % 2 === 1;
+      const width = Math.max(1, Math.round((turned ? rect.size.height : rect.size.width) * scaleFactor));
+      const height = Math.max(1, Math.round((turned ? rect.size.width : rect.size.height) * scaleFactor));
+      setClipStatus(null);
+      invokePdfRecord({
+        source: { pdfPath, pdfTitle: title, page: pageIndex + 1, quote: null, clip: { kind: area ? "area" : "page", width, height } },
+        defaultDestinationPath: recordDestinationPath,
+        image,
+      });
+      return true;
+    } catch {
+      setClipStatus({ state: "error", retry: () => void renderClip(pageIndex, area) });
+      return false;
+    } finally {
+      clipBusyRef.current = false;
+    }
+  }, [activeDocument, documentId, pdfPath, recordDestinationPath, renderCap, title]);
+  const startRecordArea = React.useCallback((pageIndex: number) => {
+    if (annotateMode) leaveAnnotate();
+    selection?.clear(documentId);
+    setSearchOpen(false);
+    setClipStatus(null);
+    setCrop(null);
+    setCropTarget(pageIndex);
+    setControlsVisible(true);
+  }, [annotateMode, documentId, leaveAnnotate, selection]);
+  const leaveRecordArea = React.useCallback(() => {
+    setCropTarget(null);
+    setCrop(null);
+  }, []);
+  const confirmRecordArea = React.useCallback(async () => {
+    if (cropTarget === null || !isIntentionalPdfCrop(crop)) return;
+    if (await renderClip(cropTarget, crop)) leaveRecordArea();
+  }, [crop, cropTarget, leaveRecordArea, renderClip]);
+  recordClipRef.current = { area: startRecordArea, page: (pageIndex) => void renderClip(pageIndex, null) };
+  React.useEffect(() => {
+    if (annotateMode) leaveRecordArea();
+  }, [annotateMode, leaveRecordArea]);
+
   // Escape leaves performance mode before Annotate/outline/reader close.
   // Annotation-focused Cmd/Ctrl+Z uses the
   // history plugin without hijacking text editing inside the comment field.
@@ -2184,6 +2258,11 @@ function ReaderSurface({
         else undoAnnotation();
         return;
       }
+      if (e.key === "Escape" && cropActiveRef.current) {
+        e.preventDefault();
+        leaveRecordArea();
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         const action = resolvePdfReaderEscapeAction(
@@ -2203,6 +2282,7 @@ function ReaderSurface({
     active,
     annotateMode,
     leaveAnnotate,
+    leaveRecordArea,
     onClose,
     performanceMode,
     onPerformanceModeChange,
@@ -2489,8 +2569,8 @@ function ReaderSurface({
         if (!inMenu && selectedNow) scope?.deselectAnnotation();
         return;
       }
-      // In Annotate mode the tap belongs to the tools; keep chrome pinned.
-      if (annotateMode) return;
+      // In Annotate or Record-area mode the tap belongs to the tools; keep chrome pinned.
+      if (annotateMode || cropActiveRef.current) return;
       // This tap just opened a comment — it is not a chrome toggle.
       if (selectedNow) return;
       setControlsVisible((v) => !v);
@@ -2525,7 +2605,7 @@ function ReaderSurface({
       }
       return;
     }
-    if (annotateMode || !event.isPrimary || tapTurnCandidateRef.current) return;
+    if (annotateMode || cropActiveRef.current || !event.isPrimary || tapTurnCandidateRef.current) return;
     tapTurnCandidateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -3104,6 +3184,27 @@ function ReaderSurface({
                 <Moon className="size-4" aria-hidden="true" />
                 Night mode
               </DropdownMenuCheckboxItem>
+              {pdfPath && recordDestinationPath ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    data-testid="pdf-reader-more-record-area"
+                    disabled={totalPages <= 0}
+                    onClick={() => startRecordArea(currentPage - 1)}
+                  >
+                    <Crop className="size-4" aria-hidden="true" />
+                    Record area on page {currentPage}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="pdf-reader-more-record-page"
+                    disabled={totalPages <= 0 || clipStatus?.state === "rendering"}
+                    onClick={() => void renderClip(currentPage - 1, null)}
+                  >
+                    <FileImage className="size-4" aria-hidden="true" />
+                    Record page {currentPage}
+                  </DropdownMenuItem>
+                </>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -3197,6 +3298,56 @@ function ReaderSurface({
         </div>
       ) : null}
 
+      {cropTarget !== null ? (
+        <div
+          className="pdf-reader__annotate-bar pdf-reader__crop-bar"
+          data-testid="pdf-reader-crop-bar"
+          role="toolbar"
+          aria-label="Record area"
+        >
+          <Crop className="size-4" aria-hidden="true" />
+          <span className="pdf-reader__annotate-hint pdf-reader__crop-hint" role="status">
+            {isIntentionalPdfCrop(crop)
+              ? `Area selected on page ${cropTarget + 1} · drag again to redraw`
+              : `Drag over a figure on page ${cropTarget + 1}`}
+          </span>
+          <span className="pdf-reader__annotate-spacer" aria-hidden="true" />
+          <button
+            type="button"
+            className="pdf-reader__annotate-tool"
+            data-testid="pdf-reader-crop-cancel"
+            onClick={leaveRecordArea}
+          >
+            <XIcon className="size-4" aria-hidden="true" />
+            <span>Cancel</span>
+          </button>
+          <button
+            type="button"
+            className="pdf-reader__annotate-done"
+            data-testid="pdf-reader-crop-confirm"
+            disabled={!isIntentionalPdfCrop(crop) || clipStatus?.state === "rendering"}
+            onClick={() => void confirmRecordArea()}
+          >
+            <Check className="size-4" aria-hidden="true" />
+            <span>{clipStatus?.state === "rendering" ? "Rendering…" : "Preview area"}</span>
+          </button>
+        </div>
+      ) : null}
+
+      {clipStatus ? (
+        <div className="pdf-reader__highlight-notice" role={clipStatus.state === "error" ? "alert" : "status"} data-testid="pdf-reader-clip-status">
+          <span>{clipStatus.state === "rendering" ? "Rendering from the PDF…" : "Could not render this PDF area. Nothing was saved."}</span>
+          {clipStatus.state === "error" ? (
+            <>
+              <button type="button" className="pdf-reader__anno-action" onClick={clipStatus.retry}>Retry</button>
+              <button type="button" className="pdf-reader__anno-action" aria-label="Dismiss render error" onClick={() => setClipStatus(null)}>
+                <XIcon className="size-4" aria-hidden="true" />
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       {highlightNotice ? (
         <div className="pdf-reader__highlight-notice" role="status" data-testid="pdf-reader-highlight-notice">
           <span>{highlightNotice.created ? "Highlighted" : "Already highlighted"}</span>
@@ -3258,7 +3409,8 @@ function ReaderSurface({
           data-night-mode={nightMode ? "on" : "off"}
           data-spread-requested={spreadRequested ? "on" : "off"}
           data-spread-effective={spreadEffective ? "on" : "off"}
-          data-tap-zones={annotateMode ? "off" : "on"}
+          data-tap-zones={annotateMode || cropTarget !== null ? "off" : "on"}
+          data-record-area={cropTarget !== null ? "on" : "off"}
           onPointerDownCapture={(event) => {
             rememberSelection();
             beginTapTurn(event);
@@ -3376,6 +3528,9 @@ function ReaderSurface({
                         );
                       }}
                     />
+                  ) : null}
+                  {cropTarget === pageIndex ? (
+                    <PdfCropLayer crop={crop} onCropChange={setCrop} pageNumber={pageIndex + 1} />
                   ) : null}
                 </div>
               );
