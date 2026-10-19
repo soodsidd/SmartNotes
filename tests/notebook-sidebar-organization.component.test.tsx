@@ -268,3 +268,71 @@ describe("notebook picker organization component", () => {
     expect(onUnarchiveNotebook).toHaveBeenCalledWith("Personal");
   });
 });
+
+describe("rail layout — sections under active notebook (SN-324)", () => {
+  it("shows sections under the active notebook in rail layout", () => {
+    renderSidebar({
+      sidebarLayout: "rail",
+      activeNotebookPath: "Work",
+      expandedNotebooks: new Set(["Work"]),
+    });
+    expect(screen.getByTestId("notebook-rail-row-Work")).toBeInTheDocument();
+    expect(screen.getByTestId("rail-section-row-Work/Research")).toBeInTheDocument();
+    expect(screen.getByTestId("rail-section-row-Work/Research")).toHaveTextContent("Research");
+    // Personal has no sections — no section rows for it
+    expect(screen.queryByTestId("rail-section-row-Personal")).not.toBeInTheDocument();
+  });
+
+  it("clicking a section row calls onSelectSection and onToggleSection", () => {
+    const onSelectSection = jest.fn();
+    const onToggleSection = jest.fn();
+    renderSidebar({
+      sidebarLayout: "rail",
+      activeNotebookPath: "Work",
+      expandedNotebooks: new Set(["Work"]),
+      expandedSections: new Set(),
+      onSelectSection,
+      onToggleSection,
+    });
+    fireEvent.click(screen.getByTestId("rail-section-row-Work/Research"));
+    expect(onSelectSection).toHaveBeenCalledWith("Work/Research");
+    expect(onToggleSection).toHaveBeenCalledWith("Work/Research");
+  });
+
+  it("does not call onToggleSection when section is already expanded", () => {
+    const onToggleSection = jest.fn();
+    renderSidebar({
+      sidebarLayout: "rail",
+      activeNotebookPath: "Work",
+      expandedNotebooks: new Set(["Work"]),
+      expandedSections: new Set(["Work/Research"]),
+      onToggleSection,
+    });
+    fireEvent.click(screen.getByTestId("rail-section-row-Work/Research"));
+    expect(onToggleSection).not.toHaveBeenCalled();
+  });
+
+  it("shows New Section button under expanded notebook with sections", () => {
+    const onCreateSection = jest.fn();
+    renderSidebar({
+      sidebarLayout: "rail",
+      activeNotebookPath: "Work",
+      expandedNotebooks: new Set(["Work"]),
+      onCreateSection,
+    });
+    const btn = screen.getByTestId("rail-new-section-Work");
+    expect(btn).toHaveTextContent("New Section");
+    fireEvent.click(btn);
+    expect(onCreateSection).toHaveBeenCalledWith("Work", "Work");
+  });
+
+  it("marks active section with aria-current", () => {
+    renderSidebar({
+      sidebarLayout: "rail",
+      activeNotebookPath: "Work",
+      activeSectionPath: "Work/Research",
+      expandedNotebooks: new Set(["Work"]),
+    });
+    expect(screen.getByTestId("rail-section-row-Work/Research")).toHaveAttribute("aria-current", "page");
+  });
+});

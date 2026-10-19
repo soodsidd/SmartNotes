@@ -6745,7 +6745,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           <aside
             ref={treeSidebarRailRef}
             className={cn(
-              "relative hidden min-h-0 shrink-0 border-r border-border bg-[color:var(--rail)] xl:flex xl:flex-col",
+              "relative hidden min-h-0 shrink-0 border-r border-border bg-surface xl:flex xl:flex-col",
               treeSidebarCollapsed && "w-11"
             )}
             style={treeSidebarCollapsed ? undefined : { width: treeSidebarWidth }}
@@ -8529,29 +8529,88 @@ export const Sidebar = React.memo(function Sidebar({
       ) : null}
 
       {isRailLayout ? (
-        /* Rail layout: slim notebook selection rows with no inline expansion */
+        /* Rail layout: notebooks with expandable sections under active/expanded notebook */
         <div className={cn(compactDesktop ? "space-y-0.5" : "space-y-1")}>
           {visibleNotebooks.map((notebook) => {
             const notebookActive = notebook.path === activeNotebookPath;
+            const notebookExpanded = notebookActive || expandedNotebooks.has(notebook.path);
+            const hasSections = notebook.sections.length > 0;
             return (
-              <button
-                key={notebook.path}
-                type="button"
-                data-testid={`notebook-rail-row-${notebook.path}`}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 text-[13px]" : "min-h-[34px] py-1 text-sm",
-                  notebookActive ? "bg-surface font-semibold" : "hover:bg-surface font-medium"
-                )}
-                onClick={() => onSelectNotebook(notebook.path)}
-                aria-current={notebookActive ? "page" : undefined}
-              >
-                <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: notebook.color }} aria-hidden />
-                <span className="min-w-0 flex-1 truncate">{notebook.name}</span>
-                {notebook.isPortable ? (
-                  <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Remote</span>
+              <div key={notebook.path} data-testid={`notebook-rail-row-${notebook.path}`}>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-1.5 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 text-[13px]" : "min-h-[34px] py-1 text-sm",
+                    notebookActive ? "bg-surface font-semibold" : "hover:bg-surface/70 font-medium"
+                  )}
+                  onClick={() => {
+                    onSelectNotebook(notebook.path);
+                    onToggleNotebook(notebook.path);
+                  }}
+                  aria-current={notebookActive ? "page" : undefined}
+                >
+                  {hasSections ? (
+                    notebookExpanded ? (
+                      <ChevronDown className={cn("shrink-0 text-muted-foreground", compactDesktop ? "size-3.5" : "size-4")} />
+                    ) : (
+                      <ChevronRight className={cn("shrink-0 text-muted-foreground", compactDesktop ? "size-3.5" : "size-4")} />
+                    )
+                  ) : (
+                    <span className={cn("shrink-0", compactDesktop ? "size-3.5" : "size-4")} />
+                  )}
+                  <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: notebook.color }} aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{notebook.name}</span>
+                  {notebook.isPortable ? (
+                    <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Remote</span>
+                  ) : null}
+                </button>
+                {notebookExpanded && hasSections ? (
+                  <div className={cn(compactDesktop ? "mt-0.5 space-y-0.5 pl-5" : "mt-0.5 space-y-0.5 pl-5")}>
+                    {notebook.sections.map((section) => {
+                      const sectionActive = section.path === activeSectionPath;
+                      return (
+                        <button
+                          key={section.path}
+                          type="button"
+                          data-testid={`rail-section-row-${section.path}`}
+                          className={cn(
+                            "flex w-full items-center gap-1.5 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 text-[13px]" : "min-h-[30px] py-0.5 text-sm",
+                            sectionActive
+                              ? "bg-accent/10 font-medium text-foreground ring-1 ring-inset ring-accent/30"
+                              : "text-muted-foreground hover:bg-surface/60 hover:text-foreground"
+                          )}
+                          onClick={() => {
+                            onSelectSection(section.path);
+                            if (!expandedSections.has(section.path)) onToggleSection(section.path);
+                          }}
+                          aria-current={sectionActive ? "page" : undefined}
+                        >
+                          {section.name === "Inbox" ? (
+                            <Inbox className={cn("shrink-0 text-accent", compactDesktop ? "size-3" : "size-3.5")} />
+                          ) : null}
+                          <span className="min-w-0 flex-1 truncate">{section.name}</span>
+                        </button>
+                      );
+                    })}
+                    {onCreateSection ? (
+                      <button
+                        type="button"
+                        data-testid={`rail-new-section-${notebook.path}`}
+                        className={cn(
+                          "flex w-full items-center gap-1.5 rounded px-1.5 text-left text-muted-foreground transition hover:bg-surface/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 text-[13px]" : "min-h-[30px] py-0.5 text-sm"
+                        )}
+                        onClick={() => onCreateSection(notebook.path, notebook.name)}
+                      >
+                        <Plus className={cn("shrink-0", compactDesktop ? "size-3" : "size-3.5")} />
+                        New Section
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
-              </button>
+              </div>
             );
           })}
           {visibleNotebooks.length === 0 && !isTreeLoading ? (
