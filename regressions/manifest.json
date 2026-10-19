@@ -5167,7 +5167,7 @@
       "testType": "e2e",
       "suite": "targeted",
       "risk": "low",
-      "cost": "medium",
+      "cost": "slow",
       "lifecycle": "pre-merge",
       "addedBy": "SN-321",
       "addedAt": "2026-10-16",

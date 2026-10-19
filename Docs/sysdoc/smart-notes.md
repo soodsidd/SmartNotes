@@ -1669,11 +1669,28 @@ Navigation:
 
 **Responsive boundary:** Layout switches at the xl breakpoint. `notebook-shell-reliable.tsx` renders both layouts and hides/shows them via CSS.
 
+**Dual-sidebar boundary (SN-324):** The two independently collapsible left panels exist only at xl and wider. Below xl, the top-bar burger still opens the unified notebook tree in a sheet; it retains notebook, section, and page selection even if either desktop panel was collapsed. Desktop panel widths do not constrain the mobile sheet.
+
 ### Lessons Learned
 
 - **Do not enlarge every top-bar icon in place.** Phone width cannot afford a full row of 44px icons; promote only frequent actions and park the rest behind a labeled More menu while keeping save/error state as readable text (SN-289).
 
-## 11. Theme & Design Tokens
+## 11. Desktop Sidebar Layout (SN-324)
+
+**Plain English:** On desktop (xl and wider), the left navigation has two adjacent panels. The Notebook Rail selects a notebook; the Page Tree Pane shows that notebook’s sections and pages. The burger in the rail and the existing page-tree panel control collapse their panels independently. Both widths and both collapse states survive a reload. Below xl, the top-bar burger opens the existing unified notebook tree, so notebook and page selection keep the mobile flow.
+
+**Structure and behavior:**
+- Notebook Rail (data-testid="notebook-rail-sidebar"): defaults to 200px and resizes between 160 and 320px. It lists open, non-archived notebooks with color and name; long names truncate. Its Menu button collapses it to a 44px strip containing a Menu expand button. The notebook picker and create action remain in its header. Loading and empty states reuse the sidebar’s existing messages.
+- Page Tree Pane (data-testid="tree-sidebar-rail"): defaults to 260px and resizes between 200 and 440px. It shows the selected notebook’s sections and pages and keeps the existing PanelLeft/PanelLeftClose collapse control. Its collapsed strip is 44px. Bibliography navigation is unchanged.
+- Both right-edge resize separators accept pointer dragging and keyboard focus. Left/Right arrows change width by 16px; Home/End jump to each pane’s minimum/maximum. A visible --ring focus indicator and aria-valuenow/min/max describe the control.
+- The Sidebar component’s sidebarLayout modes are "rail" (notebook selection), "page-tree" (selected notebook’s tree), and "unified" (mobile drawer). Page and section actions remain in the tree pane.
+- Paper-inline reading and print hide both desktop panels.
+
+**Persistence:** src/lib/app-settings.ts stores smart-notes-notebook-rail-collapsed, smart-notes-notebook-rail-width, smart-notes-tree-sidebar-collapsed, and smart-notes-tree-sidebar-width in browser app settings (localStorage). Each setting is independent. Invalid widths fall back to the pane default; stored widths clamp to their supported range.
+
+**Design:** docs/design-system/README.md documents the width metrics. Colors, type, spacing, selection, and focus use the existing Smart Notes tokens and compact tree pattern.
+
+## 12. Theme & Design Tokens
 
 **Plain English:** Smart Notes uses the **Clarity** visual system - soft cool off-white surfaces, quiet neutral grays, a restrained teal accent, and an all-sans type stack (Hanken Grotesk for UI and reading). Light and dark mode are a token swap on the same layout; reading density scales note body text independently. Device-local editor preferences (theme, density, spellcheck) live in Settings -> General and persist in localStorage - they do not rewrite vault note files.
 
@@ -1687,7 +1704,7 @@ Navigation:
 
 **Key-note gem (SN-229):** The notebook-tree gem uses Lucide `Gem` at the existing tree icon size (`size-3`) with `text-accent` (Clarity `--accent`). No new color, spacing, or type tokens.
 
-## 12. Testing
+## 13. Testing
 
 **Plain English:** The codebase has two kinds of tests: fast unit tests that run in Node.js or jsdom (for API logic, UI wiring, and utilities), and end-to-end (E2E) tests using Playwright that open a real browser and interact with the app.
 

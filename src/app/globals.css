@@ -2865,6 +2865,7 @@ mark {
     overflow: visible !important;
   }
 
+  [data-testid="notebook-rail-sidebar"],
   [data-testid="tree-sidebar-rail"],
   [data-testid="ai-sidebar-rail"],
   [data-testid="mobile-ai-sheet"],
@@ -3014,6 +3015,7 @@ mark {
 }
 /* SN-294: the paper chip expands in document flow. */
 .paper-reference { margin-block: 1rem; max-width: 100%; }
+[data-paper-inline="true"] [data-testid="notebook-rail-sidebar"],
 [data-paper-inline="true"] [data-testid="tree-sidebar-rail"],
 [data-paper-inline="true"] [data-testid="open-sidebar-btn"] { display: none; }
 /* ── Paper reading shell (SN-281) ─────────────────────────────────────────
