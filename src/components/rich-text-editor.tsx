@@ -2,6 +2,7 @@
 import { captureInlineAi, invokeInlineAi, type InlineAiContext } from "@/lib/inline-ai";
 
 import * as React from "react";
+import { PageTitleBar } from "@/components/page-title-bar";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import type { Editor } from "@tiptap/react";
@@ -202,6 +203,9 @@ interface RichTextEditorProps {
   onInkStrokeChange?: (size: AnnotationStrokeSize) => void;
   /** Note title for print header output. */
   pageTitle?: string;
+  pageCreatedAt?: string | null;
+  onPageTitleCommit?: (title: string) => void;
+  focusPageTitle?: boolean;
   /** Persisted drawable page extent from annotations sidecar metadata. */
   drawableBottom?: number;
   /** Full-frame ink capture for page_render screenshots (no sticky viewport clip). */
@@ -339,6 +343,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       onInkStrokeChange,
       pagePath = null,
       pageTitle = "",
+      pageCreatedAt,
+      onPageTitleCommit,
+      focusPageTitle = false,
       drawableBottom,
       inkCaptureMode = false,
       onDrawableBottomChange,
@@ -2631,6 +2638,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                   height: Math.max(mainFlowHeight, textHeight, 240),
                 }}
               />
+              <PageTitleBar pagePath={pagePath} title={pageTitle} createdAt={pageCreatedAt} readOnly={readOnly} focusOnCreate={focusPageTitle} onCommit={onPageTitleCommit} />
               {!readOnly && !isDrawMode && !inkCaptureMode && onMainFlowWidthChange ? (
                 <MainFlowWidthHandle
                   width={mainFlowWidth}

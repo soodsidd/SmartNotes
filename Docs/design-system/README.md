@@ -310,6 +310,8 @@ The dialog reuses `Dialog`, `Textarea`, `Input`, `Button`, and existing select s
 
 OneNote-style lines are a CSS background on the editor content frame (`[data-testid=editor-content-frame]`). They are not document content: they never change text layout and are never copied or exported. SN-297 adds these tokens to `src/styles/tokens.css`. They are page-paper values, not app chrome, so they do not reuse `--border` or `--chart-*`.
 
+The SN-326 page title bar uses the existing editor H1 typography (`--font-serif`, 2rem, weight 600), `--foreground` for its editable title, `--border` for its rule, `--muted-foreground` for the date and time, and `--ring` for focus. It uses the documented 8/16px spacing and 12px secondary text scale; no new design values or tokens were added.
+
 | Token | Light | Dark | Use |
 |-------|-------|------|-----|
 | `--page-line-light-blue` | `oklch(0.86 0.045 230)` | `oklch(0.38 0.045 230)` | Rule Line Color swatch 1 (default) |

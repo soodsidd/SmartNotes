@@ -6,22 +6,21 @@ export interface PageDraftLike {
   content: string;
 }
 
-function escapeHtmlForEditor(text: string) {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+export function stripLegacyPageTitle(content: string, title: string): string {
+  const match = content.match(/^\s*<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/i);
+  if (!match) return content;
+  const heading = match[1].replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').trim();
+  return heading === title.trim() ? content.slice(match[0].length) : content;
 }
 
 export function buildEffectiveEditorHtml(draft: PageDraftLike, previewContent?: string): string {
   const sourceContent = previewContent ?? draft.content;
   if (sourceContent.trimStart().startsWith("<") || sourceContent.trimStart().startsWith("<!")) {
-    return sourceContent;
+    return stripLegacyPageTitle(sourceContent, draft.title) || "<p></p>";
   }
 
   const body = sourceContent.trim() ? sourceContent : "<p></p>";
-  return `<h1>${escapeHtmlForEditor(draft.title)}</h1>${body}`;
+  return body;
 }
 
 export type PageSwapReadiness = "ready" | "pending-annotations";

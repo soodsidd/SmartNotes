@@ -74,6 +74,10 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
     onCreateNotebook: jest.fn(),
     onRevealNotebook: jest.fn(),
     onCreateSection: jest.fn(),
+    inlineSectionPath: null,
+    onCommitSectionName: jest.fn().mockResolvedValue(undefined),
+    inlinePageTitlePath: null,
+    onCommitPageTitle: jest.fn().mockResolvedValue(undefined),
     onRenameNotebook: jest.fn(),
     onDeleteNotebook: jest.fn(),
     onCloseNotebook: jest.fn(),
@@ -105,6 +109,16 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
 }
 
 describe("notebook picker organization component", () => {
+  it("edits a newly created section name in the tree", () => {
+    const onCommitSectionName = jest.fn().mockResolvedValue(undefined);
+    renderSidebar({ expandedNotebooks: new Set(["Work"]), inlineSectionPath: "Work/Research", onCommitSectionName });
+    const input = screen.getByRole("textbox", { name: "Section name" });
+    input.focus();
+    fireEvent.change(input, { target: { value: "Ideas" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCommitSectionName).toHaveBeenCalledWith("Work/Research", "Ideas");
+  });
+
   it("keeps organization chrome out of the tree and filters inside the picker", () => {
     renderSidebar();
     expect(screen.queryByTestId("notebook-picker-filter")).not.toBeInTheDocument();

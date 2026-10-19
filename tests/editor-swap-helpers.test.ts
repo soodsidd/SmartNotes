@@ -1,27 +1,29 @@
-import { buildEffectiveEditorHtml, planPageSwap } from "@/lib/editor-swap-helpers";
+import { buildEffectiveEditorHtml, planPageSwap, stripLegacyPageTitle } from "@/lib/editor-swap-helpers";
 import type { CachedPageEntry } from "@/lib/page-content-cache";
 
 describe("editor swap helpers", () => {
-  it("wraps plain content with an h1 title", () => {
+  it("leaves the page title to the single title bar", () => {
     expect(
       buildEffectiveEditorHtml({
         path: "Notebook/Section/page.html",
         title: "My Page",
         content: "Hello world",
       })
-    ).toBe("<h1>My Page</h1>Hello world");
+    ).toBe("Hello world");
   });
 
-  it("keeps saved html documents intact", () => {
+  it("removes a matching legacy title heading while preserving body headings", () => {
     const html = "<h1>Saved</h1><p>Body</p>";
 
     expect(
       buildEffectiveEditorHtml({
         path: "Notebook/Section/page.html",
-        title: "Ignored",
+        title: "Saved",
         content: html,
       })
-    ).toBe(html);
+    ).toBe("<p>Body</p>");
+    expect(stripLegacyPageTitle("<h1>Chapter</h1><p>Body</p>", "Saved"))
+      .toBe("<h1>Chapter</h1><p>Body</p>");
   });
 
   it("plans synchronous swaps when annotations are cached", () => {
@@ -41,7 +43,7 @@ describe("editor swap helpers", () => {
     );
 
     expect(plan.readiness).toBe("ready");
-    expect(plan.html).toBe("<h1>Cached</h1><p>Body</p>");
+    expect(plan.html).toBe("<p>Body</p>");
     expect(plan.annotationsScene).toEqual({ document: { store: {} } });
   });
 

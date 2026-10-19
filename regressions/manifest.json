@@ -2524,12 +2524,12 @@
     },
     {
       "id": "unit-editor-swap-helpers",
-      "name": "Editor Swap Helpers",
-      "description": "Jest: tests/editor-swap-helpers.test.ts",
+      "name": "Page title and inline create naming",
+      "description": "Jest: editor title normalization, the page title bar, and inline section naming.",
       "appType": "node",
-      "command": "npm test -- tests/editor-swap-helpers.test.ts",
+      "command": "npm test -- tests/editor-swap-helpers.test.ts tests/page-title-bar.component.test.tsx tests/notebook-sidebar-organization.component.test.tsx",
       "timeoutMs": 120000,
-      "enabled": false,
+      "enabled": true,
       "tags": [
         "unit",
         "node",
@@ -2547,10 +2547,16 @@
       "sourceFiles": [
         {
           "path": "tests/editor-swap-helpers.test.ts"
+        },
+        {
+          "path": "tests/page-title-bar.component.test.tsx"
+        },
+        {
+          "path": "tests/notebook-sidebar-organization.component.test.tsx"
         }
       ],
-      "intent": "Guards behavior introduced or fixed in SN-55 (editor-swap-helpers.test.ts).",
-      "whenToRun": "Pre-merge when touching the related feature area."
+      "intent": "Keeps one editable title with date/time chrome and protects create-then-inline-rename in the sidebar.",
+      "whenToRun": "Pre-merge when changing text page chrome or page/section creation."
     },
     {
       "id": "unit-editor-workspace-zoom",
