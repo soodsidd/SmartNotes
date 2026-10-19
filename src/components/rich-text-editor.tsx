@@ -497,6 +497,12 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     // Only surfaced on touch-first mobile/tablet browsers with capture support;
     // resolved after mount so SSR/desktop never render a camera-only path.
     const [cameraCaptureSupported, setCameraCaptureSupported] = React.useState(false);
+    // SN-340: multi-capture session state. cameraSessionActiveRef stays true
+    // while the user is taking photos; cameraGotFileRef is reset before each
+    // camera open so the window-focus cancel-detection can distinguish a
+    // confirmed capture from a cancel.
+    const cameraSessionActiveRef = React.useRef(false);
+    const cameraGotFileRef = React.useRef(false);
     React.useEffect(() => {
       setCameraCaptureSupported(supportsNativeCameraCapture());
     }, []);
@@ -608,6 +614,33 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     }
     const handleAssetFilesRef = React.useRef(handleAssetFiles);
     handleAssetFilesRef.current = handleAssetFiles;
+
+    // SN-340: open the native camera and, after the OS picker dismisses,
+    // decide whether to loop (photo taken) or end the session (cancelled).
+    // Uses a one-shot window-focus listener: the camera closes → window
+    // regains focus; a 300 ms grace period lets onChange fire first when the
+    // user confirmed a capture before the focus callback checks the flag.
+    function openNativeCamera() {
+      const input = cameraInputRef.current;
+      if (!input) return;
+      cameraGotFileRef.current = false;
+      const onWindowFocus = () => {
+        setTimeout(() => {
+          if (cameraGotFileRef.current) {
+            if (cameraSessionActiveRef.current) openNativeCamera();
+          } else {
+            cameraSessionActiveRef.current = false;
+          }
+        }, 300);
+      };
+      window.addEventListener("focus", onWindowFocus, { once: true });
+      input.click();
+    }
+
+    function startCameraSession() {
+      cameraSessionActiveRef.current = true;
+      openNativeCamera();
+    }
 
     function handleEditorClickCapture(e: React.MouseEvent) {
       if (readOnly || isDrawMode) return;
@@ -2173,7 +2206,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             editor={editor}
             onInsertTextBox={() => insertFloatingBox()}
             onInsertImage={() => fileInputRef.current?.click()}
-            onTakePhoto={cameraCaptureSupported ? () => cameraInputRef.current?.click() : undefined}
+            onTakePhoto={cameraCaptureSupported ? startCameraSession : undefined}
             onInsertAttachment={() => attachmentInputRef.current?.click()}
             onAttachPaper={onAttachPaper}
             onOpenLink={openLinkDialog}
@@ -2216,7 +2249,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             onInsertTextBox={() => insertFloatingBox()}
             mobile
             onInsertImage={() => fileInputRef.current?.click()}
-            onTakePhoto={cameraCaptureSupported ? () => cameraInputRef.current?.click() : undefined}
+            onTakePhoto={cameraCaptureSupported ? startCameraSession : undefined}
             onInsertAttachment={() => attachmentInputRef.current?.click()}
             onAttachPaper={onAttachPaper}
             onOpenLink={openLinkDialog}
@@ -2274,6 +2307,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           capture="environment"
           className="hidden"
           onChange={(e) => {
+            cameraGotFileRef.current = true;
             void handleAssetFiles(e.target.files);
             e.target.value = "";
           }}

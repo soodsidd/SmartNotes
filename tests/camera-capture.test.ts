@@ -82,9 +82,23 @@ describe("image-insert camera capture wiring (SN-140)", () => {
   });
 
   test("Take photo handler is only wired when capture support is detected", () => {
-    expect(EDITOR_SRC).toContain(
-      "cameraCaptureSupported ? () => cameraInputRef.current?.click() : undefined"
-    );
+    // SN-340: startCameraSession drives multi-capture sessions; the gate is still
+    // cameraCaptureSupported so desktop never sees the Take photo item.
+    expect(EDITOR_SRC).toContain("cameraCaptureSupported ? startCameraSession : undefined");
     expect(EDITOR_SRC).toContain("setCameraCaptureSupported(supportsNativeCameraCapture())");
+  });
+
+  test("camera onChange marks cameraGotFileRef before processing (SN-340)", () => {
+    const captureInputStart = EDITOR_SRC.indexOf('data-testid="camera-capture-input"');
+    expect(captureInputStart).toBeGreaterThan(-1);
+    const captureInputBlock = EDITOR_SRC.slice(captureInputStart, captureInputStart + 400);
+    expect(captureInputBlock).toContain("cameraGotFileRef.current = true");
+  });
+
+  test("multi-capture session functions are defined (SN-340)", () => {
+    expect(EDITOR_SRC).toContain("function openNativeCamera()");
+    expect(EDITOR_SRC).toContain("function startCameraSession()");
+    expect(EDITOR_SRC).toContain("cameraSessionActiveRef");
+    expect(EDITOR_SRC).toContain("cameraGotFileRef");
   });
 });
