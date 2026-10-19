@@ -9,7 +9,7 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Plugin } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -313,6 +313,27 @@ export interface UploadedEditorAsset {
 }
 
 /**
+ * Tiptap's setImage/insertContent leaves the freshly inserted image as a
+ * NodeSelection (ProseMirror's default after inserting a node). That is
+ * destructive for the "keep building a row of images" flow (SN-343):
+ * typing while a node is selected replaces it, and inserting a second image
+ * from that selection replaces the first image instead of landing beside it.
+ * Move the selection to the nearest text position right after the image —
+ * into the paragraph ProseMirror already creates/keeps after a block insert
+ * — so typing or inserting again continues the flow instead of clobbering
+ * what's already there.
+ */
+export function placeCursorAfterInsertedImage(editor: Editor): void {
+  const { selection } = editor.state;
+  if (!(selection instanceof NodeSelection) || selection.node.type.name !== "image") {
+    return;
+  }
+  const after = selection.from + selection.node.nodeSize;
+  const next = TextSelection.near(editor.state.doc.resolve(after), 1);
+  editor.view.dispatch(editor.state.tr.setSelection(next));
+}
+
+/**
  * Insert an uploaded asset and verify that the editor document actually owns
  * the returned vault URL before the UI reports success (SN-272).
  */
@@ -329,6 +350,11 @@ export function insertUploadedEditorAsset(
         .focus()
         .insertFileAttachment({ href: asset.url, fileName: asset.fileName })
         .run();
+
+  // SN-343: land the cursor beside the image instead of leaving it NodeSelected.
+  if (inserted && asset.isImage) {
+    placeCursorAfterInsertedImage(editor);
+  }
 
   const html = editor.getHTML();
   if (!inserted || !html.includes(asset.url)) {
