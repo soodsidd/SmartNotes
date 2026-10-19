@@ -349,7 +349,7 @@ import {
   resolveAttachmentDraftContent,
   shouldBlockPendingPageReload,
 } from "@/lib/page-reload";
-import { buildEffectiveEditorHtml, planPageSwap } from "@/lib/editor-swap-helpers";
+import { buildEffectiveEditorHtml, planPageSwap, stripLegacyPageTitle } from "@/lib/editor-swap-helpers";
 import {
   canUseKeepaliveBody,
   useConnectionStatus,
@@ -813,6 +813,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const pdfReader = pdfReaderState.target;
   const pdfReaderOpen = pdfReaderState.open;
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
+  const [inlineSectionPath, setInlineSectionPath] = React.useState<string | null>(null);
+  const [inlinePageTitlePath, setInlinePageTitlePath] = React.useState<string | null>(null);
   const [createNotebookDialogOpen, setCreateNotebookDialogOpen] = React.useState(false);
   const [openWorkspaceDialogOpen, setOpenWorkspaceDialogOpen] = React.useState(false);
   const [linkDesignDialog, setLinkDesignDialog] = React.useState<{
@@ -4843,10 +4845,33 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     }
   }, []);
 
-  const handleCreateSectionDialog = React.useCallback((notebookPath: string, notebookName: string) => {
-    setDialogValue("New Section");
-    setDialogState({ kind: "createSection", notebookPath, notebookName });
-  }, []);
+  const handleCreateSectionDialog = React.useCallback(async (notebookPath: string) => {
+    if (!(await flushSave())) return;
+    const names = new Set(treeRef.current.find((notebook) => notebook.path === notebookPath)?.sections.map((section) => section.name) ?? []);
+    let name = "New Section";
+    for (let index = 2; names.has(name); index += 1) name = `New Section ${index}`;
+    try {
+      const section = await createVaultSection({ notebookPath, name });
+      setExpandedNotebooks((current) => new Set([...current, notebookPath]));
+      await loadTree({ notebookPath, sectionPath: section.path });
+      setInlineSectionPath(section.path);
+      if (window.matchMedia("(max-width: 767px)").matches) setSidebarOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create section.");
+    }
+  }, [flushSave, loadTree]);
+
+  const handleCommitSectionName = React.useCallback(async (path: string, name: string) => {
+    const currentName = treeRef.current.flatMap((notebook) => notebook.sections).find((section) => section.path === path)?.name;
+    if (!name.trim() || name.trim() === currentName) { setInlineSectionPath(null); return; }
+    try {
+      const section = await renameVaultSection({ path, name: name.trim() });
+      setInlineSectionPath(null);
+      await loadTree({ notebookPath: section.notebookPath, sectionPath: section.path });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to rename section.");
+    }
+  }, [loadTree]);
 
   const handleRenameNotebookDialog = React.useCallback((path: string, name: string, isPortable?: boolean) => {
     setDialogValue(name);
@@ -4857,30 +4882,41 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setDialogState({ kind: "deleteNotebook", path, name, isPortable });
   }, []);
 
+  const handleCreatePage = React.useCallback(async (target: CreatePageTarget, noteType?: CreatePagePayload["noteType"]) => {
+    if (!(await flushSave())) return;
+    try {
+      const title = noteType === "jupyter" ? "Untitled notebook" : noteType === "log" ? "Untitled log" : noteType === "design" ? "Untitled design" : noteType === "spreadsheet" ? "Untitled spreadsheet" : "Untitled page";
+      const page = await createVaultPage({ sectionPath: target.sectionPath, notebookPath: target.notebookPath, title, noteType, parentId: target.parentId ?? null });
+      setExpandedNotebooks((current) => new Set([...current, page.notebookPath]));
+      if (page.sectionPath) setExpandedSections((current) => new Set([...current, page.sectionPath!]));
+      if (target.parentId) setExpandedPages((current) => new Set([...current, target.parentId!]));
+      await loadTree({ pagePath: page.path });
+      setInlinePageTitlePath(page.path);
+      if (noteType && window.matchMedia("(max-width: 767px)").matches) setSidebarOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create page.");
+    }
+  }, [flushSave, loadTree]);
+
   const handleCreatePageDialog = React.useCallback((target: CreatePageTarget) => {
-    setDialogValue("Untitled page");
-    setDialogState({ kind: "createPage", ...target });
-  }, []);
+    void handleCreatePage(target);
+  }, [handleCreatePage]);
 
   const handleCreateJupyterDialog = React.useCallback((target: CreatePageTarget) => {
-    setDialogValue("Untitled notebook");
-    setDialogState({ kind: "createPage", ...target, noteType: "jupyter" });
-  }, []);
+    void handleCreatePage(target, "jupyter");
+  }, [handleCreatePage]);
 
   const handleCreateLogDialog = React.useCallback((target: CreatePageTarget) => {
-    setDialogValue("Untitled log");
-    setDialogState({ kind: "createPage", ...target, noteType: "log" });
-  }, []);
+    void handleCreatePage(target, "log");
+  }, [handleCreatePage]);
 
   const handleCreateDesignDialog = React.useCallback((target: CreatePageTarget) => {
-    setDialogValue("Untitled design");
-    setDialogState({ kind: "createPage", ...target, noteType: "design" });
-  }, []);
+    void handleCreatePage(target, "design");
+  }, [handleCreatePage]);
 
   const handleCreateSpreadsheetDialog = React.useCallback((target: CreatePageTarget) => {
-    setDialogValue("Untitled spreadsheet");
-    setDialogState({ kind: "createPage", ...target, noteType: "spreadsheet" });
-  }, []);
+    void handleCreatePage(target, "spreadsheet");
+  }, [handleCreatePage]);
 
   const handleLinkDesign = React.useCallback((initialPath?: string, replacePath?: string) => {
     const notebook =
@@ -4970,27 +5006,23 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   }, []);
 
   const handleDirectCreatePage = React.useCallback(async (target: CreatePageTarget) => {
+    await handleCreatePage(target);
+  }, [handleCreatePage]);
+
+  const handleCommitPageTitle = React.useCallback(async (path: string, title: string) => {
+    const current = draftRef.current;
+    if (!current || current.path !== path) return;
+    setInlinePageTitlePath(null);
+    if (!title.trim() || title.trim() === current.title) return;
+    updateDraft({ title: title.trim(), content: stripLegacyPageTitle(current.content, current.title) });
+    if (!(await flushSave())) return;
     try {
-      const page = await createVaultPage({
-        sectionPath: target.sectionPath,
-        notebookPath: target.notebookPath,
-        title: "Untitled page",
-        parentId: target.parentId ?? null,
-      });
-      const vaultPage = apiDocumentToVaultPage(page);
-      setTree((currentTree) => appendPageToTree(currentTree, page, vaultPage));
-      setExpandedNotebooks((current) => new Set([...current, page.notebookPath]));
-      if (page.sectionPath) {
-        setExpandedSections((current) => new Set([...current, page.sectionPath!]));
-      }
-      if (target.parentId) {
-        setExpandedPages((current) => new Set([...current, target.parentId!]));
-      }
-      applySelection(selectionFromApiPage(tree, page));
-    } catch {
-      // silently fail; the tree will refresh on the next vault sync
+      const page = await renameVaultPage({ path: current.path, title: title.trim() });
+      await loadTree({ pagePath: page.path });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to rename page.");
     }
-  }, [applySelection, tree]);
+  }, [flushSave, loadTree, updateDraft]);
 
   const openDocxImportPicker = React.useCallback((sectionPath: string) => {
     setDocxImportTargetSectionPath(sectionPath);
@@ -6787,6 +6819,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                     onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
                     onRevealNotebook={handleRevealNotebook}
                     onCreateSection={handleCreateSectionDialog}
+                    inlineSectionPath={inlineSectionPath}
+                    onCommitSectionName={handleCommitSectionName}
+                    inlinePageTitlePath={inlinePageTitlePath}
+                    onCommitPageTitle={handleCommitPageTitle}
                     onRenameNotebook={handleRenameNotebookDialog}
                     onDeleteNotebook={handleDeleteNotebookDialog}
                     onCloseNotebook={closeNotebook}
@@ -6874,36 +6910,13 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 if (!activeSelection.notebook) {
                   return;
                 }
-
-                setDialogValue("New Section");
-                setDialogState({
-                  kind: "createSection",
-                  notebookPath: activeSelection.notebook.path,
-                  notebookName: activeSelection.notebook.name,
-                });
+                void handleCreateSectionDialog(activeSelection.notebook.path);
               }}
               onCreatePage={() => {
-                if (!activeCreateTarget) {
-                  return;
-                }
-
-                setDialogValue("Untitled page");
-                setDialogState({
-                  kind: "createPage",
-                  ...activeCreateTarget,
-                });
+                if (activeCreateTarget) handleCreatePageDialog(activeCreateTarget);
               }}
               onCreateJupyterPage={() => {
-                if (!activeCreateTarget) {
-                  return;
-                }
-
-                setDialogValue("Untitled notebook");
-                setDialogState({
-                  kind: "createPage",
-                  ...activeCreateTarget,
-                  noteType: "jupyter",
-                });
+                if (activeCreateTarget) handleCreateJupyterDialog(activeCreateTarget);
               }}
               onCreateDesignPage={() => {
                 if (!activeCreateTarget) {
@@ -7100,7 +7113,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 readOnly={Boolean(activeVersionPreview)}
                 previewContent={activeVersionPreview?.content}
                 previewAnnotationsJson={activeVersionPreview?.annotationsContent ?? undefined}
-                onTitleChange={(title) => updateDraft({ title })}
+                onTitleCommit={handleCommitPageTitle}
+                focusPageTitle={inlinePageTitlePath === draft.path}
                 onContentChange={(content) => updateDraft({ content })}
                 onAttachPaper={!paperInline && !isBibliographyPath(draft.path) && !activeVersionPreview ? () => { paperCaretRef.current = editorRef.current?.getSelectionPosition() ?? null; setPaperAttachOpen(true); } : undefined}
                 onPromotePdf={!paperInline && !isBibliographyPath(draft.path) && !activeVersionPreview ? (target) => setPromotePdfTarget(target) : undefined}
@@ -7130,15 +7144,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 activeSection={activeSelection.section}
                 onCreateNotebook={handleCreateNotebookDialog}
                 onCreatePage={() => {
-                  if (!activeCreateTarget) {
-                    return;
-                  }
-
-                  setDialogValue("Untitled page");
-                  setDialogState({
-                    kind: "createPage",
-                    ...activeCreateTarget,
-                  });
+                  if (activeCreateTarget) handleCreatePageDialog(activeCreateTarget);
                 }}
                 onOpenCapture={openCaptureDialog}
               />
@@ -7236,6 +7242,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
             onRevealNotebook={handleRevealNotebook}
             onCreateSection={handleCreateSectionDialog}
+            inlineSectionPath={inlineSectionPath}
+            onCommitSectionName={handleCommitSectionName}
+            inlinePageTitlePath={inlinePageTitlePath}
+            onCommitPageTitle={handleCommitPageTitle}
             onRenameNotebook={handleRenameNotebookDialog}
             onDeleteNotebook={handleDeleteNotebookDialog}
             onCloseNotebook={closeNotebook}
@@ -8016,6 +8026,40 @@ function TopBar({
   );
 }
 
+function InlineSectionName({ path, name, onCommit, kind = "section" }: { path: string; name: string; onCommit: (path: string, name: string) => Promise<void>; kind?: "section" | "page" }) {
+  const [value, setValue] = React.useState(name);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const cancelCommitRef = React.useRef(false);
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (inputRef.current?.getClientRects().length) {
+        inputRef.current.focus();
+        inputRef.current.select();
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+  return (
+    <input
+      ref={inputRef}
+      className="min-w-0 flex-1 rounded-sm border border-input bg-background px-1 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-testid={`${kind}-name-input-${path}`}
+      aria-label={kind === "section" ? "Section name" : "Page name"}
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onClick={(event) => event.stopPropagation()}
+      onBlur={() => {
+        if (cancelCommitRef.current) { cancelCommitRef.current = false; return; }
+        void onCommit(path, value);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
+        if (event.key === "Escape") { cancelCommitRef.current = true; setValue(name); void onCommit(path, name); event.currentTarget.blur(); }
+      }}
+    />
+  );
+}
+
 export const Sidebar = React.memo(function Sidebar({
   sidebarLayout = "unified",
   onCollapseRail,
@@ -8061,6 +8105,10 @@ export const Sidebar = React.memo(function Sidebar({
   onOpenWorkspace,
   onRevealNotebook,
   onCreateSection,
+  inlineSectionPath,
+  onCommitSectionName,
+  inlinePageTitlePath,
+  onCommitPageTitle,
   onRenameNotebook,
   onDeleteNotebook,
   onCloseNotebook,
@@ -8146,6 +8194,10 @@ export const Sidebar = React.memo(function Sidebar({
   onOpenWorkspace?: () => void;
   onRevealNotebook: (notebookPath: string) => void | Promise<void>;
   onCreateSection: (notebookPath: string, notebookName: string) => void;
+  inlineSectionPath: string | null;
+  onCommitSectionName: (path: string, name: string) => Promise<void>;
+  inlinePageTitlePath: string | null;
+  onCommitPageTitle: (path: string, title: string) => Promise<void>;
   onRenameNotebook: (path: string, name: string, isPortable?: boolean) => void;
   onDeleteNotebook: (path: string, name: string, isPortable?: boolean) => void;
   onCloseNotebook: (path: string) => void;
@@ -8803,7 +8855,8 @@ export const Sidebar = React.memo(function Sidebar({
                           <button
                             type="button"
                             className={cn(
-                              "flex min-w-0 flex-1 items-center gap-1.5 px-1 text-left",
+                              "flex min-w-0 items-center gap-1.5 px-1 text-left",
+                              inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? "shrink-0" : "flex-1",
                                   compactDesktop ? "min-h-[var(--desktop-tree-page-row-height)]" : "min-h-11"
                             )}
                             onClick={(event) => {
@@ -8841,7 +8894,7 @@ export const Sidebar = React.memo(function Sidebar({
                                 data-testid={`page-key-note-gem-${node.page.path}`}
                               />
                             ) : null}
-                            <p
+                            {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? null : <p
                               className={cn(
                                 "truncate font-medium",
                                 compactDesktop ? "text-[13px]" : "text-sm",
@@ -8853,8 +8906,11 @@ export const Sidebar = React.memo(function Sidebar({
                               )}
                             >
                               {node.page.title}
-                            </p>
+                            </p>}
                           </button>
+                          {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? (
+                            <InlineSectionName path={node.page.path} name={node.page.title} kind="page" onCommit={onCommitPageTitle} />
+                          ) : null}
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               data-page-menu="true"
@@ -9039,7 +9095,7 @@ export const Sidebar = React.memo(function Sidebar({
                         >
                           <button
                             type="button"
-                            className={cn("flex min-w-0 flex-1 items-center text-left", compactDesktop ? "gap-1.5" : "gap-2")}
+                            className={cn("flex min-w-0 items-center text-left", inlineSectionPath === section.path ? "shrink-0" : "flex-1", compactDesktop ? "gap-1.5" : "gap-2")}
                             onClick={() => {
                               onSelectSection(section.path);
                               onToggleSection(section.path);
@@ -9053,8 +9109,13 @@ export const Sidebar = React.memo(function Sidebar({
                             {section.name === "Inbox" ? (
                               <Inbox className={cn("text-accent", compactDesktop ? "size-3" : "size-3.5")} />
                             ) : null}
-                            <span className={cn("truncate text-foreground", compactDesktop ? "text-[13px]" : "text-sm")}>{section.name}</span>
+                            {inlineSectionPath !== section.path ? (
+                              <span className={cn("truncate text-foreground", compactDesktop ? "text-[13px]" : "text-sm")}>{section.name}</span>
+                            ) : null}
                           </button>
+                          {inlineSectionPath === section.path ? (
+                            <InlineSectionName path={section.path} name={section.name} onCommit={onCommitSectionName} />
+                          ) : null}
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               className={cn(
@@ -9417,7 +9478,8 @@ export const Sidebar = React.memo(function Sidebar({
                                     <button
                                       type="button"
                                       className={cn(
-                                        "flex min-w-0 flex-1 items-center gap-1.5 px-1 text-left",
+                                        "flex min-w-0 items-center gap-1.5 px-1 text-left",
+                                        inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? "shrink-0" : "flex-1",
                                             compactDesktop ? "min-h-[var(--desktop-tree-page-row-height)]" : "min-h-11"
                                       )}
                                       onClick={(event) => {
@@ -9455,7 +9517,7 @@ export const Sidebar = React.memo(function Sidebar({
                                           data-testid={`page-key-note-gem-${node.page.path}`}
                                         />
                                       ) : null}
-                                      <p className={cn(
+                                      {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? null : <p className={cn(
                                         "truncate font-medium",
                                         compactDesktop ? "text-[13px]" : "text-sm",
                                         isInkPage && "text-indigo-600 dark:text-indigo-400",
@@ -9463,8 +9525,11 @@ export const Sidebar = React.memo(function Sidebar({
                                         isDesignPage && "text-fuchsia-700 dark:text-fuchsia-300",
                                         isAppPage && "text-accent",
                                         isSpreadsheetPage && "text-chart-2",
-                                      )}>{node.page.title}</p>
+                                      )}>{node.page.title}</p>}
                                     </button>
+                                    {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? (
+                                      <InlineSectionName path={node.page.path} name={node.page.title} kind="page" onCommit={onCommitPageTitle} />
+                                    ) : null}
                                     <DropdownMenu>
                                       <DropdownMenuTrigger
                                         data-page-menu="true"
@@ -9970,7 +10035,8 @@ function EditorPanel({
   readOnly = false,
   previewContent,
   previewAnnotationsJson,
-  onTitleChange,
+  onTitleCommit,
+  focusPageTitle,
   onContentChange,
   onAttachPaper,
   onPromotePdf,
@@ -9988,7 +10054,8 @@ function EditorPanel({
   readOnly?: boolean;
   previewContent?: string;
   previewAnnotationsJson?: string;
-  onTitleChange: (title: string) => void;
+  onTitleCommit: (path: string, title: string) => void;
+  focusPageTitle: boolean;
   onContentChange: (content: string) => void;
   onAttachPaper?: () => void;
   onPromotePdf?: (target: PdfAttachmentTarget) => void;
@@ -10158,11 +10225,6 @@ function EditorPanel({
 
   function handleContentChange(content: string) {
     if (readOnly) return;
-    const match = content.match(/<h1[^>]*>(.*?)<\/h1>/is);
-    if (match?.[1]) {
-      const title = match[1].replace(/<[^>]+>/g, "").trim();
-      if (title) onTitleChange(title);
-    }
     onContentChange(content);
   }
 
@@ -10214,6 +10276,9 @@ function EditorPanel({
         onSelectionContextChange={onSelectionContextChange}
         placeholder="Start writing..."
         pageTitle={draft.title}
+        pageCreatedAt={draft.createdAt ?? draft.updatedAt}
+        onPageTitleCommit={(title) => onTitleCommit(draft.path, title)}
+        focusPageTitle={focusPageTitle}
         drawableBottom={drawableBottom}
         onDrawableBottomChange={handleDrawableBottomChange}
         onPdfAttachmentOpen={openPdfReader}
@@ -10486,19 +10551,19 @@ function draftFromTreePage(selection: TreeSelection): PageDraft {
 function buildHeaderContext(selection: TreeSelection, tree: VaultNotebook[]) {
   if (selection.page && isBibliographyPath(selection.page.path)) {
     const home = paperHomeNotebook(selection.page, tree);
-    return { title: selection.page.title, subtitle: `${home?.name ?? "Notebook"} / Bibliography` };
+    return { title: home?.name ?? "Notebook", subtitle: "Bibliography" };
   }
   if (selection.page && selection.section && selection.notebook) {
     return {
-      title: selection.page.title,
-      subtitle: `${selection.notebook.name} / ${selection.section.name}`,
+      title: selection.notebook.name,
+      subtitle: selection.section.name,
     };
   }
 
   if (selection.page && selection.notebook) {
     return {
-      title: selection.page.title,
-      subtitle: `${selection.notebook.name} / Root`,
+      title: selection.notebook.name,
+      subtitle: "Root",
     };
   }
 

@@ -977,6 +977,15 @@ Standard browser shortcuts apply (Cmd/Ctrl+B for bold, etc.) plus:
 - Font family is stored as CSS variable references so the four app-loaded fonts resolve correctly in-app while still falling back gracefully outside.
 - **Drag selection (SN-245):** The floating text-selection BubbleMenu is shown only below the md breakpoint. On desktop, the format ribbon already provides text actions, and hiding the floating menu keeps it from covering nearby paragraphs or table cells when the next drag starts. Draw mode still disables selection; returning to Edit and ending a workspace pan restores it. Exiting Draw switches back to Edit immediately: the ink `flush()` (PUT `/api/annotations`) runs in the background instead of gating the mode change, because awaiting it kept the editor `contenteditable=false` with `user-select: none` for as long as the save took (measured ~15 s under load; unbounded on a stalled connection). Gestures that suppress selection (middle-button workspace pan, tree/AI sidebar resize) clean up on `pointercancel` as well as `pointerup`, so a cancelled pen/touch gesture cannot leave `user-select: none` stuck on the scroll area or `document.body`.
 
+
+### Page title and inline create (SN-326)
+
+A text page shows one large editable title in the page surface, followed by a thin rule and its creation date on the left and local time on the right. The top app bar shows notebook and section location, not a second copy of the page title. Styling reuses the Clarity foreground, muted foreground, border, ring, font, and existing spacing/type scale documented in Docs/design-system/README.md.
+
+PageTitleBar renders inside the RichTextEditor content frame. The title is page metadata; the editor body starts below the title chrome. buildEffectiveEditorHtml removes a leading legacy H1 only when its text matches the page title, preserving a real body heading with different text. The print path continues to use its print-only page header and hides the screen title bar. New text pages focus and select the title input after creation. On blur or Enter, the shell saves the current draft, renames the vault page, and reloads the selection at its new path.
+
+New sections are created immediately with a unique default New Section name, then their visible tree row becomes a focused inline input. Enter or blur renames the section and refreshes the selection; Escape restores the default. Other new page types expose the same create-then-rename input in the tree. Standard page, child page, and top-bar actions share the direct create path. Creation and rename errors appear in a toast.
+
 ### Floating text boxes (SN-296)
 
 **Plain English:** Text pages support OneNote-style free-positioned rich text boxes on a canvas beside the main editor column.

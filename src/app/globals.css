@@ -396,6 +396,35 @@ select {
   max-width: var(--editor-main-flow-width, 672px);
 }
 
+.page-title-bar {
+  position: relative;
+  z-index: 2;
+  max-width: var(--editor-main-flow-width, 672px);
+  margin-bottom: 1rem;
+}
+.page-title-bar__input {
+  display: block;
+  width: 100%;
+  padding: 0 0 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.page-title-bar__input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.page-title-bar__rule { border-top: 1px solid var(--border); }
+.page-title-bar__metadata {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
 .editor-main-flow-outline {
   position: absolute;
   left: 0;
@@ -2905,6 +2934,7 @@ mark {
     display: block !important;
     margin: 0 0 1rem;
   }
+  .page-title-bar { display: none !important; }
 
   .print-page-header h1 {
     margin: 0;
