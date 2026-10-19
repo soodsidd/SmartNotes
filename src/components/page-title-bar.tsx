@@ -19,6 +19,7 @@ export function PageTitleBar({
 }) {
   const [value, setValue] = React.useState(title);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const cancelCommitRef = React.useRef(false);
   React.useEffect(() => setValue(title), [pagePath, title]);
   React.useEffect(() => {
     if (focusOnCreate && !readOnly) {
@@ -41,11 +42,12 @@ export function PageTitleBar({
         readOnly={readOnly || !onCommit}
         onChange={(event) => setValue(event.target.value)}
         onBlur={() => {
+          if (cancelCommitRef.current) { cancelCommitRef.current = false; return; }
           if (!readOnly && onCommit) onCommit(value.trim() || title);
         }}
         onKeyDown={(event) => {
           if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
-          if (event.key === "Escape") { setValue(title); event.currentTarget.blur(); }
+          if (event.key === "Escape") { cancelCommitRef.current = true; setValue(title); onCommit?.(title); event.currentTarget.blur(); }
         }}
       />
       <div className="page-title-bar__rule" />

@@ -7846,6 +7846,7 @@ function TopBar({
 function InlineSectionName({ path, name, onCommit, kind = "section" }: { path: string; name: string; onCommit: (path: string, name: string) => Promise<void>; kind?: "section" | "page" }) {
   const [value, setValue] = React.useState(name);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const cancelCommitRef = React.useRef(false);
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       if (inputRef.current?.getClientRects().length) {
@@ -7864,10 +7865,13 @@ function InlineSectionName({ path, name, onCommit, kind = "section" }: { path: s
       value={value}
       onChange={(event) => setValue(event.target.value)}
       onClick={(event) => event.stopPropagation()}
-      onBlur={() => void onCommit(path, value)}
+      onBlur={() => {
+        if (cancelCommitRef.current) { cancelCommitRef.current = false; return; }
+        void onCommit(path, value);
+      }}
       onKeyDown={(event) => {
         if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
-        if (event.key === "Escape") { setValue(name); event.currentTarget.blur(); }
+        if (event.key === "Escape") { cancelCommitRef.current = true; setValue(name); void onCommit(path, name); event.currentTarget.blur(); }
       }}
     />
   );

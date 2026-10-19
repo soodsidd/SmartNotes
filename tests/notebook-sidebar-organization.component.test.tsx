@@ -117,6 +117,13 @@ describe("notebook picker organization component", () => {
     fireEvent.change(input, { target: { value: "Ideas" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onCommitSectionName).toHaveBeenCalledWith("Work/Research", "Ideas");
+
+    onCommitSectionName.mockClear();
+    input.focus();
+    fireEvent.change(input, { target: { value: "Discarded" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onCommitSectionName).toHaveBeenCalledWith("Work/Research", "Research");
+    expect(onCommitSectionName).not.toHaveBeenCalledWith("Work/Research", "Discarded");
   });
 
   it("keeps organization chrome out of the tree and filters inside the picker", () => {

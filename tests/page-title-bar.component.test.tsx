@@ -19,5 +19,12 @@ describe("page title bar", () => {
     fireEvent.change(input, { target: { value: "Research notes" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onCommit).toHaveBeenCalledWith("Research notes");
+
+    onCommit.mockClear();
+    input.focus();
+    fireEvent.change(input, { target: { value: "Cancelled title" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onCommit).toHaveBeenCalledWith("Untitled page");
+    expect(onCommit).not.toHaveBeenCalledWith("Cancelled title");
   });
 });
