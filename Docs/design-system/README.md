@@ -1,5 +1,16 @@
 # Smart Notes Design System
 
+## Dual left sidebars (SN-324)
+
+The desktop notebook rail and page tree reuse `--rail`, `--border`, `--surface`,
+`--foreground`, `--muted-foreground`, `--accent`, and `--ring` with the existing
+compact tree typography and row heights. The notebook rail is 200px by default
+and resizes from 160–320px; the page tree is 260px by default and resizes from
+200–440px. Both collapse to the existing `w-11` (44px) strip. The notebook rail
+uses the Lucide `Menu` icon for its burger control; the page tree retains
+`PanelLeft` / `PanelLeftClose`. Focused resize handles use `--ring`, and
+Arrow keys adjust width by 16px. No new color, spacing, or typography tokens.
+
 ## PDF Record panel (SN-335)
 
 The selection menu, Companion Record chip, and floating save confirmation reuse

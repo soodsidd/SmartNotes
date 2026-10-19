@@ -1668,43 +1668,26 @@ Navigation:
 
 **Responsive boundary:** Layout switches at the xl breakpoint. `notebook-shell-reliable.tsx` renders both layouts and hides/shows them via CSS.
 
+**Dual-sidebar boundary (SN-324):** The two independently collapsible left panels exist only at xl and wider. Below xl, the top-bar burger still opens the unified notebook tree in a sheet; it retains notebook, section, and page selection even if either desktop panel was collapsed. Desktop panel widths do not constrain the mobile sheet.
+
 ### Lessons Learned
 
 - **Do not enlarge every top-bar icon in place.** Phone width cannot afford a full row of 44px icons; promote only frequent actions and park the rest behind a labeled More menu while keeping save/error state as readable text (SN-289).
 
 ## 11. Desktop Sidebar Layout (SN-324)
 
-**Plain English:** On desktop (`xl` breakpoint and above), the left side of the shell is split into two independently collapsible panels — a slim **Notebook Rail** on the far left and a **Page Tree Pane** to its right. This mirrors the OneNote layout: click a notebook in the rail to select it, and the page tree shows that notebook's sections and pages. Both panels persist their collapse state across sessions.
+**Plain English:** On desktop (xl and wider), the left navigation has two adjacent panels. The Notebook Rail selects a notebook; the Page Tree Pane shows that notebook’s sections and pages. The burger in the rail and the existing page-tree panel control collapse their panels independently. Both widths and both collapse states survive a reload. Below xl, the top-bar burger opens the existing unified notebook tree, so notebook and page selection keep the mobile flow.
 
-**Layout structure:**
+**Structure and behavior:**
+- Notebook Rail (data-testid="notebook-rail-sidebar"): defaults to 200px and resizes between 160 and 320px. It lists open, non-archived notebooks with color and name; long names truncate. Its Menu button collapses it to a 44px strip containing a Menu expand button. The notebook picker and create action remain in its header. Loading and empty states reuse the sidebar’s existing messages.
+- Page Tree Pane (data-testid="tree-sidebar-rail"): defaults to 260px and resizes between 200 and 440px. It shows the selected notebook’s sections and pages and keeps the existing PanelLeft/PanelLeftClose collapse control. Its collapsed strip is 44px. Bibliography navigation is unchanged.
+- Both right-edge resize separators accept pointer dragging and keyboard focus. Left/Right arrows change width by 16px; Home/End jump to each pane’s minimum/maximum. A visible --ring focus indicator and aria-valuenow/min/max describe the control.
+- The Sidebar component’s sidebarLayout modes are "rail" (notebook selection), "page-tree" (selected notebook’s tree), and "unified" (mobile drawer). Page and section actions remain in the tree pane.
+- Paper-inline reading and print hide both desktop panels.
 
-```
-[ Notebook Rail (fixed 200px) ] [ Page Tree Pane (resizable 260px default) ] [ Main Content ]
-```
+**Persistence:** src/lib/app-settings.ts stores smart-notes-notebook-rail-collapsed, smart-notes-notebook-rail-width, smart-notes-tree-sidebar-collapsed, and smart-notes-tree-sidebar-width in browser app settings (localStorage). Each setting is independent. Invalid widths fall back to the pane default; stored widths clamp to their supported range.
 
-- **Notebook Rail** (`data-testid="notebook-rail-sidebar"`): Fixed 200px wide, not resizable. Shows all open, non-archived notebooks as slim rows (color dot + name). Clicking a notebook calls `onSelectNotebook` and `onToggleNotebook`. Has its own collapse button (PanelLeftClose). When collapsed, renders `w-11` (44px) with a PanelLeft expand button.
-- **Page Tree Pane** (`data-testid="tree-sidebar-rail"`): Resizable (200–440px, default 260px). Shows sections and pages for the currently active notebook only. Header shows the active notebook name and color; has its own collapse button. When collapsed, renders `w-11` with a PanelLeft expand button. Has a right-edge drag handle for resizing.
-
-**Sidebar component modes (`Sidebar` exported from `notebook-shell-reliable.tsx`):**
-
-The `Sidebar` component accepts a `sidebarLayout?: "unified" | "rail" | "page-tree"` prop:
-- `"rail"`: Renders slim notebook selection rows without inline expansion. Header shows "Notebooks" + picker + create + collapse-rail buttons. Bibliography and drag-and-drop are hidden.
-- `"page-tree"`: Renders sections and pages for the active notebook only (no accordion toggle). Header shows the active notebook name + color dot + collapse button. Receives `pageTreeExpandedNotebooks` (always includes activeNotebookPath) so the active notebook's rows are always computed.
-- `"unified"` (default): Full combined tree — used for the mobile drawer sheet.
-
-**State persistence (`src/lib/app-settings.ts`):**
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `smart-notes-notebook-rail-collapsed` | boolean | false | Whether the notebook rail is collapsed |
-| `smart-notes-tree-sidebar-collapsed` | boolean | false | Whether the page tree pane is collapsed |
-| `smart-notes-tree-sidebar-width` | number | 260 | Page tree pane width in pixels |
-
-`NOTEBOOK_RAIL_WIDTH = 200` is a fixed constant (not persisted; rail is not resizable).
-
-**Paper inline / print mode:** Both `notebook-rail-sidebar` and `tree-sidebar-rail` are hidden in paper-inline reading mode and in print (`@media print`).
-
-**Rule for agents:** When adding notebook-level UI (new notebook context-menu items, notebook picker changes), add to both the `Sidebar` component (for the rail's picker/context menu) and ensure the page-tree pane header stays correct. Page-level and section-level changes only affect the `Sidebar` when `sidebarLayout="page-tree"` or `"unified"`.
+**Design:** docs/design-system/README.md documents the width metrics. Colors, type, spacing, selection, and focus use the existing Smart Notes tokens and compact tree pattern.
 
 ## 12. Theme & Design Tokens
 

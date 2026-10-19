@@ -7,7 +7,40 @@ export const TREE_SIDEBAR_MIN_WIDTH = 200;
 export const TREE_SIDEBAR_MAX_WIDTH = 440;
 
 export const NOTEBOOK_RAIL_COLLAPSED_KEY = "smart-notes-notebook-rail-collapsed";
-export const NOTEBOOK_RAIL_WIDTH = 200;
+export const NOTEBOOK_RAIL_WIDTH_KEY = "smart-notes-notebook-rail-width";
+export const NOTEBOOK_RAIL_DEFAULT_WIDTH = 200;
+export const NOTEBOOK_RAIL_MIN_WIDTH = 160;
+export const NOTEBOOK_RAIL_MAX_WIDTH = 320;
+
+export function clampNotebookRailWidth(width: number) {
+  return Math.min(NOTEBOOK_RAIL_MAX_WIDTH, Math.max(NOTEBOOK_RAIL_MIN_WIDTH, Math.round(width)));
+}
+
+export function readNotebookRailWidth() {
+  if (typeof window === "undefined") return NOTEBOOK_RAIL_DEFAULT_WIDTH;
+  const stored = Number(window.localStorage.getItem(NOTEBOOK_RAIL_WIDTH_KEY));
+  if (!Number.isFinite(stored) || stored <= 0) return NOTEBOOK_RAIL_DEFAULT_WIDTH;
+  return clampNotebookRailWidth(stored);
+}
+
+export function writeNotebookRailWidth(width: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(NOTEBOOK_RAIL_WIDTH_KEY, String(clampNotebookRailWidth(width)));
+}
+
+export function sidebarWidthFromKey(
+  key: string,
+  current: number,
+  minimum: number,
+  maximum: number,
+  clamp: (width: number) => number
+): number | null {
+  if (key === "Home") return minimum;
+  if (key === "End") return maximum;
+  if (key === "ArrowLeft") return clamp(current - 16);
+  if (key === "ArrowRight") return clamp(current + 16);
+  return null;
+}
 
 export function clampTreeSidebarWidth(width: number) {
   return Math.min(TREE_SIDEBAR_MAX_WIDTH, Math.max(TREE_SIDEBAR_MIN_WIDTH, Math.round(width)));

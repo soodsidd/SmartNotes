@@ -219,7 +219,15 @@ import {
   TREE_SIDEBAR_WIDTH_KEY,
   readNotebookRailCollapsed,
   writeNotebookRailCollapsed,
-  NOTEBOOK_RAIL_WIDTH,
+  readNotebookRailWidth,
+  writeNotebookRailWidth,
+  clampNotebookRailWidth,
+  sidebarWidthFromKey,
+  NOTEBOOK_RAIL_DEFAULT_WIDTH,
+  NOTEBOOK_RAIL_MIN_WIDTH,
+  NOTEBOOK_RAIL_MAX_WIDTH,
+  TREE_SIDEBAR_MIN_WIDTH,
+  TREE_SIDEBAR_MAX_WIDTH,
 } from "@/lib/app-settings";
 import {
   fetchPageVersionContent,
@@ -858,6 +866,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [archivedNotebooks, setArchivedNotebooks] = React.useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [notebookRailCollapsed, setNotebookRailCollapsed] = React.useState(false);
+  const [notebookRailWidth, setNotebookRailWidth] = React.useState(NOTEBOOK_RAIL_DEFAULT_WIDTH);
   const [treeSidebarCollapsed, setTreeSidebarCollapsed] = React.useState(false);
   const [treeSidebarWidth, setTreeSidebarWidth] = React.useState(TREE_SIDEBAR_DEFAULT_WIDTH);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -1109,8 +1118,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const watchedTurnIdRef = React.useRef<string | null>(null);
   const aiSidebarPointerCleanupRef = React.useRef<(() => void) | null>(null);
   const aiSidebarWidthHydratedRef = React.useRef(false);
-  const treeSidebarPointerCleanupRef = React.useRef<(() => void) | null>(null);
+  const leftSidebarPointerCleanupRef = React.useRef<(() => void) | null>(null);
+  const notebookRailWidthHydratedRef = React.useRef(false);
   const treeSidebarWidthHydratedRef = React.useRef(false);
+  const notebookRailRef = React.useRef<HTMLElement>(null);
   const treeSidebarRailRef = React.useRef<HTMLElement>(null);
   const aiSidebarRailRef = React.useRef<HTMLElement>(null);
 
@@ -1161,6 +1172,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   React.useEffect(() => {
     setNotebookRailCollapsed(readNotebookRailCollapsed());
+    setNotebookRailWidth(readNotebookRailWidth());
+    notebookRailWidthHydratedRef.current = true;
     setTreeSidebarCollapsed(readTreeSidebarCollapsed());
     setTreeSidebarWidth(readTreeSidebarWidth());
     treeSidebarWidthHydratedRef.current = true;
@@ -1175,6 +1188,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setTreeSidebarCollapsed(collapsed);
     writeTreeSidebarCollapsed(collapsed);
   }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !notebookRailWidthHydratedRef.current) return;
+    writeNotebookRailWidth(notebookRailWidth);
+  }, [notebookRailWidth]);
 
   React.useEffect(() => {
     if (typeof window === "undefined" || !treeSidebarWidthHydratedRef.current) {
@@ -5934,15 +5952,20 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     window.addEventListener("pointercancel", cleanup, { once: true });
   }, []);
 
-  const handleTreeSidebarResizeStart = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+  const handleLeftSidebarResizeStart = React.useCallback((
+    event: React.PointerEvent<HTMLDivElement>,
+    rail: HTMLElement | null,
+    defaultWidth: number,
+    clampWidth: (width: number) => number,
+    setWidth: React.Dispatch<React.SetStateAction<number>>
+  ) => {
     if (typeof window === "undefined") {
       return;
     }
 
     event.preventDefault();
     const startX = event.clientX;
-    const rail = treeSidebarRailRef.current;
-    const startWidth = rail?.offsetWidth ?? TREE_SIDEBAR_DEFAULT_WIDTH;
+    const startWidth = rail?.offsetWidth ?? defaultWidth;
     let pendingWidth = startWidth;
     let frame = 0;
     rail?.classList.add("transition-none");
@@ -5960,7 +5983,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     };
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
-      pendingWidth = clampTreeSidebarWidth(startWidth + (moveEvent.clientX - startX));
+      pendingWidth = clampWidth(startWidth + (moveEvent.clientX - startX));
       if (!frame) {
         frame = window.requestAnimationFrame(applyWidth);
       }
@@ -5977,12 +6000,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       rail?.classList.remove("transition-none");
-      setTreeSidebarWidth(pendingWidth);
-      treeSidebarPointerCleanupRef.current = null;
+      setWidth(pendingWidth);
+      leftSidebarPointerCleanupRef.current = null;
     };
 
-    treeSidebarPointerCleanupRef.current?.();
-    treeSidebarPointerCleanupRef.current = cleanup;
+    leftSidebarPointerCleanupRef.current?.();
+    leftSidebarPointerCleanupRef.current = cleanup;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     window.addEventListener("pointermove", handlePointerMove);
@@ -5990,10 +6013,18 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     window.addEventListener("pointercancel", cleanup, { once: true });
   }, []);
 
+  const handleNotebookRailResizeStart = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    handleLeftSidebarResizeStart(event, notebookRailRef.current, NOTEBOOK_RAIL_DEFAULT_WIDTH, clampNotebookRailWidth, setNotebookRailWidth);
+  }, [handleLeftSidebarResizeStart]);
+
+  const handleTreeSidebarResizeStart = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    handleLeftSidebarResizeStart(event, treeSidebarRailRef.current, TREE_SIDEBAR_DEFAULT_WIDTH, clampTreeSidebarWidth, setTreeSidebarWidth);
+  }, [handleLeftSidebarResizeStart]);
+
   React.useEffect(() => {
     return () => {
       aiSidebarPointerCleanupRef.current?.();
-      treeSidebarPointerCleanupRef.current?.();
+      leftSidebarPointerCleanupRef.current?.();
     };
   }, []);
 
@@ -6561,13 +6592,14 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         />
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {/* Notebook rail — slim fixed-width panel, independently collapsible */}
+          {/* Notebook rail — independently resizable and collapsible */}
           <aside
+            ref={notebookRailRef}
             className={cn(
-              "hidden min-h-0 shrink-0 border-r border-border bg-[color:var(--rail)] xl:flex xl:flex-col",
+              "relative hidden min-h-0 shrink-0 border-r border-border bg-[color:var(--rail)] xl:flex xl:flex-col",
               notebookRailCollapsed ? "w-11" : ""
             )}
-            style={notebookRailCollapsed ? undefined : { width: NOTEBOOK_RAIL_WIDTH }}
+            style={notebookRailCollapsed ? undefined : { width: notebookRailWidth }}
             data-testid="notebook-rail-sidebar"
             data-collapsed={notebookRailCollapsed ? "true" : "false"}
           >
@@ -6581,10 +6613,29 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   data-testid="notebook-rail-expand"
                   onClick={() => setNotebookRailCollapsedAndStore(false)}
                 >
-                  <PanelLeft className="size-4" />
+                  <Menu className="size-4" />
                 </Button>
               </div>
             ) : (
+              <>
+              <div
+                role="separator"
+                tabIndex={0}
+                aria-orientation="vertical"
+                aria-label="Resize notebook rail"
+                aria-valuemin={NOTEBOOK_RAIL_MIN_WIDTH}
+                aria-valuemax={NOTEBOOK_RAIL_MAX_WIDTH}
+                aria-valuenow={notebookRailWidth}
+                className="absolute inset-y-0 right-0 z-10 w-3 translate-x-1.5 cursor-col-resize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onPointerDown={handleNotebookRailResizeStart}
+                onKeyDown={(event) => {
+                  const width = sidebarWidthFromKey(event.key, notebookRailWidth, NOTEBOOK_RAIL_MIN_WIDTH, NOTEBOOK_RAIL_MAX_WIDTH, clampNotebookRailWidth);
+                  if (width === null) return;
+                  event.preventDefault();
+                  setNotebookRailWidth(width);
+                }}
+                data-testid="notebook-rail-resize-handle"
+              />
               <div className="min-h-0 flex-1">
                 <Sidebar
                   sidebarLayout="rail"
@@ -6658,6 +6709,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   onExportPagePackage={() => void handleExportCurrentPagePackage()}
                 />
               </div>
+              </>
             )}
           </aside>
 
@@ -6689,10 +6741,20 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               <>
                 <div
                   role="separator"
+                  tabIndex={0}
                   aria-orientation="vertical"
                   aria-label="Resize page tree"
-                  className="absolute inset-y-0 right-0 z-10 w-3 translate-x-1.5 cursor-col-resize"
+                  aria-valuemin={TREE_SIDEBAR_MIN_WIDTH}
+                  aria-valuemax={TREE_SIDEBAR_MAX_WIDTH}
+                  aria-valuenow={treeSidebarWidth}
+                  className="absolute inset-y-0 right-0 z-10 w-3 translate-x-1.5 cursor-col-resize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onPointerDown={handleTreeSidebarResizeStart}
+                  onKeyDown={(event) => {
+                    const width = sidebarWidthFromKey(event.key, treeSidebarWidth, TREE_SIDEBAR_MIN_WIDTH, TREE_SIDEBAR_MAX_WIDTH, clampTreeSidebarWidth);
+                    if (width === null) return;
+                    event.preventDefault();
+                    setTreeSidebarWidth(width);
+                  }}
                   data-testid="tree-sidebar-resize-handle"
                 />
                 <div className="min-h-0 flex-1">
@@ -8300,7 +8362,7 @@ export const Sidebar = React.memo(function Sidebar({
                 data-testid="notebook-rail-collapse"
                 onClick={onCollapseRail}
               >
-                <PanelLeftClose className={cn(compactDesktop ? "size-3.5" : "size-4")} />
+                <Menu className={cn(compactDesktop ? "size-3.5" : "size-4")} />
               </Button>
             ) : null}
           </div>
@@ -8419,11 +8481,11 @@ export const Sidebar = React.memo(function Sidebar({
                 type="button"
                 data-testid={`notebook-rail-row-${notebook.path}`}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded px-1.5 text-left transition",
+                  "flex w-full items-center gap-2 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 text-[13px]" : "min-h-[34px] py-1 text-sm",
                   notebookActive ? "bg-surface font-semibold" : "hover:bg-surface font-medium"
                 )}
-                onClick={() => { onSelectNotebook(notebook.path); onToggleNotebook(notebook.path); }}
+                onClick={() => onSelectNotebook(notebook.path)}
                 aria-current={notebookActive ? "page" : undefined}
               >
                 <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: notebook.color }} aria-hidden />

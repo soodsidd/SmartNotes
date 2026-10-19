@@ -14,6 +14,15 @@ import {
   writeTreeSidebarWidth,
   clampTreeSidebarWidth,
   TREE_SIDEBAR_DEFAULT_WIDTH,
+  readNotebookRailCollapsed,
+  writeNotebookRailCollapsed,
+  readNotebookRailWidth,
+  writeNotebookRailWidth,
+  clampNotebookRailWidth,
+  sidebarWidthFromKey,
+  NOTEBOOK_RAIL_COLLAPSED_KEY,
+  NOTEBOOK_RAIL_WIDTH_KEY,
+  NOTEBOOK_RAIL_DEFAULT_WIDTH,
 } from "@/lib/app-settings";
 import { applyDensity, resolveInitialDensity } from "@/components/density-provider";
 
@@ -54,8 +63,33 @@ describe("SN-43 app settings helpers", () => {
     writeTreeSidebarWidth(360);
     expect(readTreeSidebarWidth()).toBe(360);
     expect(window.localStorage.getItem(TREE_SIDEBAR_WIDTH_KEY)).toBe("360");
-    expect(clampTreeSidebarWidth(999)).toBe(480);
-    expect(clampTreeSidebarWidth(100)).toBe(220);
+    expect(clampTreeSidebarWidth(999)).toBe(440);
+    expect(clampTreeSidebarWidth(100)).toBe(200);
+  });
+
+  it("persists notebook rail collapse and width independently of the page tree", () => {
+    expect(readNotebookRailCollapsed()).toBe(false);
+    expect(readNotebookRailWidth()).toBe(NOTEBOOK_RAIL_DEFAULT_WIDTH);
+    writeNotebookRailCollapsed(true);
+    writeNotebookRailWidth(248);
+    writeTreeSidebarCollapsed(false);
+    writeTreeSidebarWidth(352);
+    expect(readNotebookRailCollapsed()).toBe(true);
+    expect(readTreeSidebarCollapsed()).toBe(false);
+    expect(readNotebookRailWidth()).toBe(248);
+    expect(readTreeSidebarWidth()).toBe(352);
+    expect(window.localStorage.getItem(NOTEBOOK_RAIL_COLLAPSED_KEY)).toBe("true");
+    expect(window.localStorage.getItem(NOTEBOOK_RAIL_WIDTH_KEY)).toBe("248");
+    expect(clampNotebookRailWidth(999)).toBe(320);
+    expect(clampNotebookRailWidth(0)).toBe(160);
+  });
+
+  it("supports keyboard resizing within each pane's bounds", () => {
+    expect(sidebarWidthFromKey("ArrowRight", 200, 160, 320, clampNotebookRailWidth)).toBe(216);
+    expect(sidebarWidthFromKey("ArrowLeft", 160, 160, 320, clampNotebookRailWidth)).toBe(160);
+    expect(sidebarWidthFromKey("Home", 260, 200, 440, clampTreeSidebarWidth)).toBe(200);
+    expect(sidebarWidthFromKey("End", 260, 200, 440, clampTreeSidebarWidth)).toBe(440);
+    expect(sidebarWidthFromKey("Enter", 260, 200, 440, clampTreeSidebarWidth)).toBeNull();
   });
 
   it("persists reading density across reloads", () => {
@@ -123,14 +157,15 @@ describe("SN-43 mobile draw toolbar selectors", () => {
 });
 
 describe("SN-43 settings modal wiring", () => {
-  it("places the gear trigger at the far right of the top bar", () => {
+  it("keeps settings accessible from the top bar More menu", () => {
     const fs = require("node:fs");
     const path = require("node:path");
     const shellSrc = fs.readFileSync(
       path.join(process.cwd(), "src/components/notebook-shell-reliable.tsx"),
       "utf8"
     );
-    expect(shellSrc).toContain("<AppSettingsTrigger onClick={onOpenSettings} />");
+    expect(shellSrc).toContain('data-testid="app-settings-trigger"');
+    expect(shellSrc).toContain("<DropdownMenuItem onClick={onOpenSettings}");
     expect(shellSrc).not.toContain("density-menu-trigger");
   });
 });
