@@ -152,7 +152,9 @@ export function createEditorExtensions(
     FontSize,
     Highlight.configure({ multicolor: false }),
     ImageLayout.configure({
-      inline: false,
+      // SN-343: inline atoms so caret/second insert land on the same line.
+      // Block images only allow a text position below the node, never beside it.
+      inline: true,
       allowBase64: false,
       HTMLAttributes: {
         class: "editor-image",
@@ -312,16 +314,18 @@ export interface UploadedEditorAsset {
   isImage: boolean;
 }
 
+/** Default width for freshly inserted images so two fit on one row (SN-343). */
+export const DEFAULT_INSERTED_IMAGE_WIDTH = "40%";
+
 /**
  * Tiptap's setImage/insertContent leaves the freshly inserted image as a
  * NodeSelection (ProseMirror's default after inserting a node). That is
  * destructive for the "keep building a row of images" flow (SN-343):
  * typing while a node is selected replaces it, and inserting a second image
  * from that selection replaces the first image instead of landing beside it.
- * Move the selection to the nearest text position right after the image —
- * into the paragraph ProseMirror already creates/keeps after a block insert
- * — so typing or inserting again continues the flow instead of clobbering
- * what's already there.
+ * Images are inline atoms, so the nearest text position after the image is
+ * on the same line inside the parent paragraph — move there so typing or
+ * another insert continues the row instead of clobbering what's already there.
  */
 export function placeCursorAfterInsertedImage(editor: Editor): void {
   const { selection } = editor.state;
@@ -330,7 +334,7 @@ export function placeCursorAfterInsertedImage(editor: Editor): void {
   }
   const after = selection.from + selection.node.nodeSize;
   const next = TextSelection.near(editor.state.doc.resolve(after), 1);
-  editor.view.dispatch(editor.state.tr.setSelection(next));
+  editor.view.dispatch(editor.state.tr.setSelection(next).scrollIntoView());
 }
 
 /**
@@ -344,14 +348,25 @@ export function insertUploadedEditorAsset(
   publishHtml: (html: string) => void
 ): string {
   const inserted = asset.isImage
-    ? editor.chain().focus().setImage({ src: asset.url, alt: originalFileName }).run()
+    ? editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "image",
+          attrs: {
+            src: asset.url,
+            alt: originalFileName,
+            width: DEFAULT_INSERTED_IMAGE_WIDTH,
+          },
+        })
+        .run()
     : editor
         .chain()
         .focus()
         .insertFileAttachment({ href: asset.url, fileName: asset.fileName })
         .run();
 
-  // SN-343: land the cursor beside the image instead of leaving it NodeSelected.
+  // SN-343: land the caret beside the image instead of leaving it NodeSelected.
   if (inserted && asset.isImage) {
     placeCursorAfterInsertedImage(editor);
   }

@@ -1165,26 +1165,30 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
   background: oklch(0.30 0.045 195 / 0.65);
 }
 
+/* SN-343: images are inline atoms — keep them in the text row, not full-width blocks. */
 .editor-image {
   max-width: 100%;
   height: auto;
-  display: block;
-  margin: 0.5rem 0;
+  display: inline-block;
+  margin: 0.25rem 0.35rem 0.25rem 0;
+  vertical-align: bottom;
   border-radius: 4px;
 }
 
 .editor-image[data-align="center"] {
+  display: block;
   margin-left: auto;
   margin-right: auto;
 }
 
 .editor-image[data-align="right"] {
+  display: block;
   margin-left: auto;
   margin-right: 0;
 }
 
 .editor-image[data-align="left"] {
-  margin-right: auto;
+  margin-right: 0.35rem;
   margin-left: 0;
 }
 
@@ -1192,6 +1196,12 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 .ProseMirror-selectednode.editor-image {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+[data-resize-container][data-node="image"] {
+  vertical-align: bottom;
+  margin: 0.25rem 0.35rem 0.25rem 0;
+  max-width: 100%;
 }
 
 [data-resize-container][data-node="image"] [data-resize-wrapper] {

@@ -46,7 +46,11 @@ describe("floating text boxes", () => {
       attrs: { x: 280, y: 190, width: 420, height: 60 },
       content: [
         { type: "paragraph", content: [{ type: "text", text: "Box text", marks: [{ type: "bold" }] }] },
-        { type: "image", attrs: { src: "/vault/notes/image.png", alt: "Pasted image" } },
+        // SN-343: images are inline atoms — nest inside a paragraph, not as a block sibling.
+        {
+          type: "paragraph",
+          content: [{ type: "image", attrs: { src: "/vault/notes/image.png", alt: "Pasted image" } }],
+        },
         { type: "table", content: Array.from({ length: 3 }, () => ({
           type: "tableRow", content: Array.from({ length: 3 }, () => ({
             type: "tableCell", content: [{ type: "paragraph" }],

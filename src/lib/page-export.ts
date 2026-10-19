@@ -275,8 +275,9 @@ body {
 .editor-content img {
   max-width: 100%;
   height: auto;
-  display: block;
-  margin: 0.5rem 0;
+  display: inline-block;
+  margin: 0.25rem 0.35rem 0.25rem 0;
+  vertical-align: bottom;
   border-radius: 4px;
 }
 

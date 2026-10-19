@@ -66,10 +66,16 @@ test("SN-343: cursor lands beside an inserted image so a second image/text follo
   await expect(selectedNode).toHaveCount(0);
 
   // AC: repeating insert-image from that cursor adds the next image beside
-  // the first instead of replacing it or disrupting the flow.
+  // the first (same paragraph row) instead of replacing it.
   await insertImageViaToolbar(page, "sn343-b.png");
   await expect(images).toHaveCount(2, { timeout: 10000 });
   await expect(selectedNode).toHaveCount(0);
+  const sameParagraph = await editor.evaluate((root) => {
+    const imgs = Array.from(root.querySelectorAll('img[src^="/vault/"]'));
+    if (imgs.length < 2) return false;
+    return imgs[0].closest("p") === imgs[1].closest("p") && imgs[0].closest("p") != null;
+  });
+  expect(sameParagraph).toBe(true);
 
   // AC: typing from the landed cursor continues the flow (text, not a
   // replaced/deleted image).

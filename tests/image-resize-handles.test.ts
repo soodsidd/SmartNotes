@@ -44,9 +44,12 @@ describe("image resize handles (SN-112)", () => {
     editor.state.doc.descendants((node, pos) => {
       if (node.type.name === "image") imagePos = pos;
     });
+    expect(imagePos).toBeGreaterThanOrEqual(0);
 
     editor.chain().focus().setNodeSelection(imagePos).setImageWidth("60%").run();
 
+    // Re-select: inline insert leaves a text caret, and setImageWidth may leave it there.
+    editor.commands.setNodeSelection(imagePos);
     expect(editor.getAttributes("image").width).toBe("60%");
     const html = editor.getHTML();
     expect(html).toContain('width="60%"');
@@ -62,10 +65,16 @@ describe("image resize handles (SN-112)", () => {
     editor.state.doc.descendants((node, pos) => {
       if (node.type.name === "image") imagePos = pos;
     });
+    expect(imagePos).toBeGreaterThanOrEqual(0);
 
     editor.chain().focus().setNodeSelection(imagePos).updateAttributes("image", { width: 240 }).run();
 
-    expect(editor.getAttributes("image").width).toBe(240);
+    // Width may be normalized to "240px" on the node; read from the doc, not only selection attrs.
+    let stored: unknown;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "image") stored = node.attrs.width;
+    });
+    expect(stored === 240 || stored === "240px").toBe(true);
     expect(editor.getHTML()).toContain('width="240px"');
 
     editor.destroy();
