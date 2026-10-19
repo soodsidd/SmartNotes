@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import { Editor } from "@tiptap/core";
 import { createEditorExtensions, setEditorHtmlSilent } from "@/lib/rich-text-editor-config";
-import { paperReferenceHtml, paperReferenceIds, paperPath } from "@/lib/papers";
+import { paperReferenceHtml, paperReferenceIds } from "@/lib/papers";
 import { buildPageTree, buildPageNestingActionLookup, flattenPageTree } from "@/lib/page-tree";
 import { flushPaperFrame } from "@/lib/inline-paper-save";
 import type { VaultPage } from "@/lib/vault-contract";
@@ -20,14 +20,11 @@ test("editor round-trips paper identity without saving inline body or presentati
   editor.destroy();
 });
 
-test("derived children open the canonical path and never become nesting targets", () => {
+test("paper references leave the page tree and nesting targets unchanged", () => {
   const parent: VaultPage = { id: "parent", path: "parent", title: "Parent", slug: "parent", content: paperReferenceHtml(id), preview: "", noteType: "text", createdAt: null, updatedAt: null, parentId: null };
-  const paper = { ...parent, id: paperPath(id), path: paperPath(id), title: "Paper", content: "canonical body", metadata: { paper_id: id } };
   const sibling = { ...parent, id: "sibling", path: "sibling", content: "" };
-  const nodes = flattenPageTree(buildPageTree([parent, sibling], [paper]), new Set([parent.path]));
-  expect(nodes).toHaveLength(3);
-  expect(nodes[1].page.paperReference?.canonicalPath).toBe(paper.path);
-  expect(nodes[1].page.content).toBe("");
+  const nodes = flattenPageTree(buildPageTree([parent, sibling]), new Set([parent.path]));
+  expect(nodes.map((node) => node.page.path)).toEqual([parent.path, sibling.path]);
   expect(buildPageNestingActionLookup(nodes).get("sibling")?.indentParentId).toBe(parent.path);
 });
 

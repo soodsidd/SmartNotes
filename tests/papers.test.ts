@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { bibliographyEntries, notebookReferencedPapers, paperBackTarget, paperChildren, paperHomeNotebook, paperPath, paperReferenceHtml, paperReferenceIds } from "@/lib/papers";
+import { bibliographyEntries, paperBackTarget, paperHomeNotebook, paperPath, paperReferenceHtml, paperReferenceIds } from "@/lib/papers";
 import { createPaper, createPage, readPage, savePage, renamePage, movePage, readVaultTree, deletePage, invalidateVaultTreeCache, renameNotebook, renameSection, savePageComments } from "@/server/vault/pages";
 
 describe("Bibliography identity and references", () => {
@@ -45,11 +45,11 @@ describe("Bibliography identity and references", () => {
     const renamedTree = (await readVaultTree({ skipCache: true })).tree;
     expect((await readPage(paper.path)).metadata.paper_home_notebook).toBe("Reading");
     expect(paperHomeNotebook(entries[0].page, renamedTree)?.name).toBe("Reading");
-    expect(notebookReferencedPapers(renamedTree, "Reading").map((entry) => entry.path)).toEqual([paper.path]);
+    expect(bibliographyEntries(renamedTree).filter((entry) => entry.referrers.some((referrer) => referrer.notebookPath === "Reading")).map((entry) => entry.page.path)).toEqual([paper.path]);
     await expect(movePage(paper.path, "Reading/Articles")).rejects.toMatchObject({ code: "BIBLIOGRAPHY_OWNERSHIP" });
   });
 
-  it("deduplicates virtual children; removes membership without deleting notes or ingest metadata", async () => {
+  it("deduplicates page referrers; removes membership without deleting notes or ingest metadata", async () => {
     const paper = await createPaper("One paper", "Research");
     const id = String(paper.metadata.paper_id);
     const parent = await createPage({ sectionPath: "Research/Articles", title: "Article" });
@@ -58,16 +58,13 @@ describe("Bibliography identity and references", () => {
     await savePage({ path: parent.path, title: parent.title, body: paperReferenceHtml(id).repeat(2) });
     let tree = (await readVaultTree({ skipCache: true })).tree;
     let entry = bibliographyEntries(tree)[0];
-    const parentSummary = tree[0].sections.flatMap((section) => section.pages)[0];
-    expect(paperChildren(parentSummary, [entry.page])).toEqual([expect.objectContaining({ content: "", paperReference: expect.objectContaining({ canonicalPath: paper.path }) })]);
     expect(entry.referrers).toHaveLength(1);
     await expect(deletePage(paper.path)).rejects.toMatchObject({ code: "PAPER_REFERENCED" });
     await savePage({ path: parent.path, title: parent.title, body: "<p>Reference removed</p>" });
     tree = (await readVaultTree({ skipCache: true })).tree;
     entry = bibliographyEntries(tree)[0];
     expect(entry.referrers).toHaveLength(0);
-    expect(notebookReferencedPapers(tree, "Research")).toEqual([]);
-    expect(paperChildren({ ...parentSummary, content: "" }, [entry.page])).toEqual([]);
+    expect(bibliographyEntries(tree).filter((paper) => paper.referrers.some((referrer) => referrer.notebookPath === "Research"))).toEqual([]);
     expect((await readPage(paper.path)).metadata.paper_id).toBe(id);
     expect(await fs.readFile(sidecarPath, "utf8")).toBe('{"referenceType":"paper","doi":"legacy"}');
   });

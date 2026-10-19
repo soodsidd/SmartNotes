@@ -1,5 +1,4 @@
 import { type VaultPage } from "@/lib/vault-contract";
-import { paperChildren } from "@/lib/papers";
 
 export interface PageTreeNode {
   page: VaultPage;
@@ -16,7 +15,7 @@ export interface PageNestingActionState {
 
 export type PageNestingActionLookup = Map<string, PageNestingActionState>;
 
-export function buildPageTree(pages: VaultPage[], papers?: VaultPage[]): PageTreeNode[] {
+export function buildPageTree(pages: VaultPage[]): PageTreeNode[] {
   const byPath = new Map<string, PageTreeNode>();
   const roots: PageTreeNode[] = [];
   for (const page of pages) {
@@ -30,12 +29,6 @@ export function buildPageTree(pages: VaultPage[], papers?: VaultPage[]): PageTre
       parent.children.push(node);
     } else {
       roots.push(node);
-    }
-  }
-  if (papers) {
-    for (const page of pages) {
-      const parent = byPath.get(page.path)!;
-      parent.children.push(...paperChildren(page, papers).map((child) => ({ page: child, children: [], depth: parent.depth + 1 })));
     }
   }
   return roots;

@@ -138,7 +138,7 @@ export function PaperAttachDialog({ open, onOpenChange, tree, vaultName, pagePdf
                 <span>Remove the original PDF chip from this page after promoting</span>
               </label>
             )}
-            <p className="text-xs text-muted-foreground">Stored once in the selected notebook and browsed in the central Bibliography. Notebook shortcuts show referenced papers only. Ordinary PDF attachments stay unchanged unless you opt to remove them.</p>
+            <p className="text-xs text-muted-foreground">Stored once in the central Bibliography. Pages that reference papers show a paper count you can use to filter the Bibliography. Ordinary PDF attachments stay unchanged unless you opt to remove them.</p>
             {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
             <Button type="submit" className="justify-self-start" disabled={pending || !selectedHome}>{pending ? "Creating…" : "Create and attach"}</Button>
           </form>}
