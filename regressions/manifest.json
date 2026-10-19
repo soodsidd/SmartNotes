@@ -271,6 +271,28 @@
       ]
     },
     {
+      "id": "unit-sn-343-image-insert-cursor",
+      "name": "SN-343 cursor lands beside an inserted image",
+      "description": "Jest: after insertUploadedEditorAsset inserts an image the selection is a TextSelection after it (not a NodeSelection), a second insert lands beside the first, typing keeps the image, and mid-paragraph inserts split text correctly.",
+      "intent": "Protects the continuous insert-image/typing flow so repeated inserts never replace the previous image.",
+      "whenToRun": "Pre-merge when changing image insertion, insertUploadedEditorAsset, or editor selection handling after inserts.",
+      "failureMeaning": "Inserting a second image may overwrite the first, or typing after an insert may delete the image.",
+      "appType": "node",
+      "command": "node node_modules/jest/bin/jest.js --runInBand tests/sn-343-image-insert-cursor.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "node", "editor", "image", "targeted"],
+      "feature": "editor",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-343",
+      "addedAt": "2026-10-18",
+      "sourceFiles": [{ "path": "tests/sn-343-image-insert-cursor.test.ts" }, { "path": "src/lib/rich-text-editor-config.ts" }]
+    },
+    {
       "id": "unit-sn-299-insert-table",
       "name": "SN-299 table dimensions, insertion, and HTML reload",
       "description": "Jest: validates table option bounds, header choice, main-flow and floating-box insertion, and HTML round trips.",
