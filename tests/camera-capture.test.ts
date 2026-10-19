@@ -2,6 +2,8 @@
  * @jest-environment node
  *
  * SN-140: native camera-capture detection + image-insert menu source guards.
+ * SN-340: multi-capture session — explicit "Take another / Done" bar replaces
+ *         the brittle window.focus + timeout approach.
  */
 
 import * as fs from "node:fs";
@@ -82,23 +84,54 @@ describe("image-insert camera capture wiring (SN-140)", () => {
   });
 
   test("Take photo handler is only wired when capture support is detected", () => {
-    // SN-340: startCameraSession drives multi-capture sessions; the gate is still
+    // SN-340: handleCameraTakePhoto drives the capture; the gate is still
     // cameraCaptureSupported so desktop never sees the Take photo item.
-    expect(EDITOR_SRC).toContain("cameraCaptureSupported ? startCameraSession : undefined");
+    expect(EDITOR_SRC).toContain("cameraCaptureSupported ? handleCameraTakePhoto : undefined");
     expect(EDITOR_SRC).toContain("setCameraCaptureSupported(supportsNativeCameraCapture())");
   });
 
-  test("camera onChange marks cameraGotFileRef before processing (SN-340)", () => {
+  test("camera onChange starts the session on successful capture (SN-340)", () => {
     const captureInputStart = EDITOR_SRC.indexOf('data-testid="camera-capture-input"');
     expect(captureInputStart).toBeGreaterThan(-1);
     const captureInputBlock = EDITOR_SRC.slice(captureInputStart, captureInputStart + 400);
-    expect(captureInputBlock).toContain("cameraGotFileRef.current = true");
+    // Successful capture must activate the session bar (no window.focus timing).
+    expect(captureInputBlock).toContain("setCameraSessionActive(true)");
+  });
+});
+
+describe("multi-capture session bar (SN-340)", () => {
+  test("session bar element is defined with correct testids", () => {
+    expect(EDITOR_SRC).toContain('data-testid="camera-session-bar"');
+    expect(EDITOR_SRC).toContain('data-testid="camera-session-take-another"');
+    expect(EDITOR_SRC).toContain('data-testid="camera-session-done"');
   });
 
-  test("multi-capture session functions are defined (SN-340)", () => {
-    expect(EDITOR_SRC).toContain("function openNativeCamera()");
-    expect(EDITOR_SRC).toContain("function startCameraSession()");
-    expect(EDITOR_SRC).toContain("cameraSessionActiveRef");
-    expect(EDITOR_SRC).toContain("cameraGotFileRef");
+  test("session bar uses cameraSessionActive state (not a ref)", () => {
+    expect(EDITOR_SRC).toContain("const [cameraSessionActive, setCameraSessionActive]");
+    // No brittle window.focus or fixed timeout in the capture path.
+    expect(EDITOR_SRC).not.toContain("cameraGotFileRef");
+    expect(EDITOR_SRC).not.toContain("cameraSessionActiveRef");
+  });
+
+  test("session bar Done button calls setCameraSessionActive(false)", () => {
+    const barStart = EDITOR_SRC.indexOf('data-testid="camera-session-done"');
+    expect(barStart).toBeGreaterThan(-1);
+    const barBlock = EDITOR_SRC.slice(barStart, barStart + 300);
+    expect(barBlock).toContain("setCameraSessionActive(false)");
+  });
+
+  test("session bar Take-another button re-clicks the camera input", () => {
+    const barStart = EDITOR_SRC.indexOf('data-testid="camera-session-take-another"');
+    expect(barStart).toBeGreaterThan(-1);
+    const barBlock = EDITOR_SRC.slice(barStart, barStart + 300);
+    expect(barBlock).toContain("cameraInputRef.current?.click()");
+  });
+
+  test("handleCameraTakePhoto is defined and window.focus approach is gone", () => {
+    expect(EDITOR_SRC).toContain("function handleCameraTakePhoto()");
+    expect(EDITOR_SRC).not.toContain("function openNativeCamera()");
+    expect(EDITOR_SRC).not.toContain("function startCameraSession()");
+    // Confirm window.focus timing was removed.
+    expect(EDITOR_SRC).not.toContain('window.addEventListener("focus"');
   });
 });
