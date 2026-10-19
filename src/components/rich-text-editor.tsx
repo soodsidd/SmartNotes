@@ -2260,6 +2260,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(e) => {
             void handleAssetFiles(e.target.files);

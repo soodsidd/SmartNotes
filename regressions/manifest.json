@@ -271,6 +271,31 @@
       ]
     },
     {
+      "id": "unit-sn-339-image-multi-select",
+      "name": "SN-339 Insert Image file picker allows multi-select",
+      "description": "Jest: the image file input carries the multiple attribute, the camera-capture input does not, and handleAssetFiles iterates all files in the batch.",
+      "intent": "Prevents the file picker from reverting to single-select and ensures all selected images are processed.",
+      "whenToRun": "Pre-merge when changing the image file input or the asset upload pipeline.",
+      "failureMeaning": "Users can only pick one image at a time instead of multiple.",
+      "appType": "node",
+      "command": "node node_modules/jest/bin/jest.js --runInBand tests/sn-339-image-multi-select.test.ts",
+      "timeoutMs": 60000,
+      "enabled": true,
+      "tags": ["unit", "node", "editor", "image", "targeted"],
+      "feature": "editor",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "low",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-339",
+      "addedAt": "2026-10-19",
+      "sourceFiles": [
+        { "path": "tests/sn-339-image-multi-select.test.ts" },
+        { "path": "src/components/rich-text-editor.tsx" }
+      ]
+    },
+    {
       "id": "unit-sn-343-image-insert-cursor",
       "name": "SN-343 cursor lands beside an inserted image",
       "description": "Jest: after insertUploadedEditorAsset inserts an image the selection is a TextSelection after it (not a NodeSelection), a second insert lands beside the first, typing keeps the image, and mid-paragraph inserts split text correctly.",
