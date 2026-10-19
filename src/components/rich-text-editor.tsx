@@ -497,12 +497,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     // Only surfaced on touch-first mobile/tablet browsers with capture support;
     // resolved after mount so SSR/desktop never render a camera-only path.
     const [cameraCaptureSupported, setCameraCaptureSupported] = React.useState(false);
-    // SN-340: multi-capture session state. cameraSessionActiveRef stays true
-    // while the user is taking photos; cameraGotFileRef is reset before each
-    // camera open so the window-focus cancel-detection can distinguish a
-    // confirmed capture from a cancel.
-    const cameraSessionActiveRef = React.useRef(false);
-    const cameraGotFileRef = React.useRef(false);
+    // SN-340: true while the camera session bar ("Take another / Done") is
+    // visible — i.e. after at least one photo has been captured.
+    const [cameraSessionActive, setCameraSessionActive] = React.useState(false);
     React.useEffect(() => {
       setCameraCaptureSupported(supportsNativeCameraCapture());
     }, []);
@@ -615,31 +612,11 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     const handleAssetFilesRef = React.useRef(handleAssetFiles);
     handleAssetFilesRef.current = handleAssetFiles;
 
-    // SN-340: open the native camera and, after the OS picker dismisses,
-    // decide whether to loop (photo taken) or end the session (cancelled).
-    // Uses a one-shot window-focus listener: the camera closes → window
-    // regains focus; a 300 ms grace period lets onChange fire first when the
-    // user confirmed a capture before the focus callback checks the flag.
-    function openNativeCamera() {
-      const input = cameraInputRef.current;
-      if (!input) return;
-      cameraGotFileRef.current = false;
-      const onWindowFocus = () => {
-        setTimeout(() => {
-          if (cameraGotFileRef.current) {
-            if (cameraSessionActiveRef.current) openNativeCamera();
-          } else {
-            cameraSessionActiveRef.current = false;
-          }
-        }, 300);
-      };
-      window.addEventListener("focus", onWindowFocus, { once: true });
-      input.click();
-    }
-
-    function startCameraSession() {
-      cameraSessionActiveRef.current = true;
-      openNativeCamera();
+    // SN-340: open the native camera for one capture. Re-opening is driven by
+    // the explicit "Take another" button in the session bar — no OS event
+    // timing required.
+    function handleCameraTakePhoto() {
+      cameraInputRef.current?.click();
     }
 
     function handleEditorClickCapture(e: React.MouseEvent) {
@@ -2206,7 +2183,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             editor={editor}
             onInsertTextBox={() => insertFloatingBox()}
             onInsertImage={() => fileInputRef.current?.click()}
-            onTakePhoto={cameraCaptureSupported ? startCameraSession : undefined}
+            onTakePhoto={cameraCaptureSupported ? handleCameraTakePhoto : undefined}
             onInsertAttachment={() => attachmentInputRef.current?.click()}
             onAttachPaper={onAttachPaper}
             onOpenLink={openLinkDialog}
@@ -2249,7 +2226,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             onInsertTextBox={() => insertFloatingBox()}
             mobile
             onInsertImage={() => fileInputRef.current?.click()}
-            onTakePhoto={cameraCaptureSupported ? startCameraSession : undefined}
+            onTakePhoto={cameraCaptureSupported ? handleCameraTakePhoto : undefined}
             onInsertAttachment={() => attachmentInputRef.current?.click()}
             onAttachPaper={onAttachPaper}
             onOpenLink={openLinkDialog}
@@ -2307,8 +2284,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           capture="environment"
           className="hidden"
           onChange={(e) => {
-            cameraGotFileRef.current = true;
             void handleAssetFiles(e.target.files);
+            setCameraSessionActive(true);
             e.target.value = "";
           }}
         />
@@ -2323,6 +2300,70 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             e.target.value = "";
           }}
         />
+
+        {/* SN-340: camera session bar — shown after the first capture; lets
+            the user take another photo or explicitly end the session. */}
+        {cameraSessionActive && (
+          <div
+            data-testid="camera-session-bar"
+            style={{
+              position: "fixed",
+              bottom: "1.5rem",
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              padding: "0.5rem 0.75rem",
+              backgroundColor: "var(--popover, var(--background))",
+              color: "var(--foreground)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md, 0.5rem)",
+              boxShadow: "var(--shadow-popover, 0 12px 30px -10px rgba(0 0 0 / 0.25))",
+              zIndex: 9999,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <Camera style={{ width: "0.875rem", height: "0.875rem", flexShrink: 0, color: "var(--muted-foreground)" }} />
+            <span style={{ fontSize: "0.75rem", color: "var(--muted-foreground)" }}>Photo added</span>
+            <button
+              type="button"
+              data-testid="camera-session-take-another"
+              onClick={() => cameraInputRef.current?.click()}
+              style={{
+                fontSize: "0.75rem",
+                color: "var(--accent-foreground)",
+                backgroundColor: "var(--accent)",
+                padding: "0 0.625rem",
+                borderRadius: "var(--radius-sm, 0.25rem)",
+                border: "none",
+                height: "44px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              Take another
+            </button>
+            <button
+              type="button"
+              data-testid="camera-session-done"
+              onClick={() => setCameraSessionActive(false)}
+              style={{
+                fontSize: "0.75rem",
+                color: "var(--muted-foreground)",
+                backgroundColor: "transparent",
+                padding: "0 0.625rem",
+                borderRadius: "var(--radius-sm, 0.25rem)",
+                border: "1px solid var(--border)",
+                height: "44px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              Done
+            </button>
+          </div>
+        )}
 
         {/* Link dialog */}
         {!readOnly && linkDialog.open && (

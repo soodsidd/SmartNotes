@@ -1,5 +1,15 @@
 # Smart Notes Design System
 
+## Camera session bar (SN-340)
+
+The fixed-position "Photo added / Take another / Done" bar that appears after each
+successful capture reuses `--popover` (background, with `--background` fallback),
+`--foreground`, `--border`, `--muted-foreground` (icon and label text),
+`--accent`, `--accent-foreground` ("Take another" button), `--shadow-popover`,
+`--radius-sm`, and `--radius-md`. Both buttons use the existing 44px phone touch
+target (`height: 44px`). Typography is `0.75rem` / `font-family: inherit`. No new
+design tokens were introduced.
+
 ## PDF Record panel (SN-335)
 
 The selection menu, Companion Record chip, and floating save confirmation reuse
