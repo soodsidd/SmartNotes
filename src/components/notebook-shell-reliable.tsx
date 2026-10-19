@@ -6689,6 +6689,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
                   onRevealNotebook={handleRevealNotebook}
                   onCreateSection={handleCreateSectionDialog}
+                  inlineSectionPath={inlineSectionPath}
+                  onCommitSectionName={handleCommitSectionName}
+                  inlinePageTitlePath={inlinePageTitlePath}
+                  onCommitPageTitle={handleCommitPageTitle}
                   onRenameNotebook={handleRenameNotebookDialog}
                   onDeleteNotebook={handleDeleteNotebookDialog}
                   onCloseNotebook={closeNotebook}
