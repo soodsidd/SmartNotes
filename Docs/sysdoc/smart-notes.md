@@ -1672,7 +1672,41 @@ Navigation:
 
 - **Do not enlarge every top-bar icon in place.** Phone width cannot afford a full row of 44px icons; promote only frequent actions and park the rest behind a labeled More menu while keeping save/error state as readable text (SN-289).
 
-## 11. Theme & Design Tokens
+## 11. Desktop Sidebar Layout (SN-324)
+
+**Plain English:** On desktop (`xl` breakpoint and above), the left side of the shell is split into two independently collapsible panels — a slim **Notebook Rail** on the far left and a **Page Tree Pane** to its right. This mirrors the OneNote layout: click a notebook in the rail to select it, and the page tree shows that notebook's sections and pages. Both panels persist their collapse state across sessions.
+
+**Layout structure:**
+
+```
+[ Notebook Rail (fixed 200px) ] [ Page Tree Pane (resizable 260px default) ] [ Main Content ]
+```
+
+- **Notebook Rail** (`data-testid="notebook-rail-sidebar"`): Fixed 200px wide, not resizable. Shows all open, non-archived notebooks as slim rows (color dot + name). Clicking a notebook calls `onSelectNotebook` and `onToggleNotebook`. Has its own collapse button (PanelLeftClose). When collapsed, renders `w-11` (44px) with a PanelLeft expand button.
+- **Page Tree Pane** (`data-testid="tree-sidebar-rail"`): Resizable (200–440px, default 260px). Shows sections and pages for the currently active notebook only. Header shows the active notebook name and color; has its own collapse button. When collapsed, renders `w-11` with a PanelLeft expand button. Has a right-edge drag handle for resizing.
+
+**Sidebar component modes (`Sidebar` exported from `notebook-shell-reliable.tsx`):**
+
+The `Sidebar` component accepts a `sidebarLayout?: "unified" | "rail" | "page-tree"` prop:
+- `"rail"`: Renders slim notebook selection rows without inline expansion. Header shows "Notebooks" + picker + create + collapse-rail buttons. Bibliography and drag-and-drop are hidden.
+- `"page-tree"`: Renders sections and pages for the active notebook only (no accordion toggle). Header shows the active notebook name + color dot + collapse button. Receives `pageTreeExpandedNotebooks` (always includes activeNotebookPath) so the active notebook's rows are always computed.
+- `"unified"` (default): Full combined tree — used for the mobile drawer sheet.
+
+**State persistence (`src/lib/app-settings.ts`):**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `smart-notes-notebook-rail-collapsed` | boolean | false | Whether the notebook rail is collapsed |
+| `smart-notes-tree-sidebar-collapsed` | boolean | false | Whether the page tree pane is collapsed |
+| `smart-notes-tree-sidebar-width` | number | 260 | Page tree pane width in pixels |
+
+`NOTEBOOK_RAIL_WIDTH = 200` is a fixed constant (not persisted; rail is not resizable).
+
+**Paper inline / print mode:** Both `notebook-rail-sidebar` and `tree-sidebar-rail` are hidden in paper-inline reading mode and in print (`@media print`).
+
+**Rule for agents:** When adding notebook-level UI (new notebook context-menu items, notebook picker changes), add to both the `Sidebar` component (for the rail's picker/context menu) and ensure the page-tree pane header stays correct. Page-level and section-level changes only affect the `Sidebar` when `sidebarLayout="page-tree"` or `"unified"`.
+
+## 12. Theme & Design Tokens
 
 **Plain English:** Smart Notes uses the **Clarity** visual system - soft cool off-white surfaces, quiet neutral grays, a restrained teal accent, and an all-sans type stack (Hanken Grotesk for UI and reading). Light and dark mode are a token swap on the same layout; reading density scales note body text independently. Device-local editor preferences (theme, density, spellcheck) live in Settings -> General and persist in localStorage - they do not rewrite vault note files.
 
@@ -1686,7 +1720,7 @@ Navigation:
 
 **Key-note gem (SN-229):** The notebook-tree gem uses Lucide `Gem` at the existing tree icon size (`size-3`) with `text-accent` (Clarity `--accent`). No new color, spacing, or type tokens.
 
-## 12. Testing
+## 13. Testing
 
 **Plain English:** The codebase has two kinds of tests: fast unit tests that run in Node.js or jsdom (for API logic, UI wiring, and utilities), and end-to-end (E2E) tests using Playwright that open a real browser and interact with the app.
 

@@ -2,9 +2,12 @@ import type { Density } from "@/components/density-provider";
 
 export const TREE_SIDEBAR_COLLAPSED_KEY = "smart-notes-tree-sidebar-collapsed";
 export const TREE_SIDEBAR_WIDTH_KEY = "smart-notes-tree-sidebar-width";
-export const TREE_SIDEBAR_DEFAULT_WIDTH = 280;
-export const TREE_SIDEBAR_MIN_WIDTH = 220;
-export const TREE_SIDEBAR_MAX_WIDTH = 480;
+export const TREE_SIDEBAR_DEFAULT_WIDTH = 260;
+export const TREE_SIDEBAR_MIN_WIDTH = 200;
+export const TREE_SIDEBAR_MAX_WIDTH = 440;
+
+export const NOTEBOOK_RAIL_COLLAPSED_KEY = "smart-notes-notebook-rail-collapsed";
+export const NOTEBOOK_RAIL_WIDTH = 200;
 
 export function clampTreeSidebarWidth(width: number) {
   return Math.min(TREE_SIDEBAR_MAX_WIDTH, Math.max(TREE_SIDEBAR_MIN_WIDTH, Math.round(width)));
@@ -72,4 +75,14 @@ export function readTreeSidebarCollapsed(): boolean {
 export function writeTreeSidebarCollapsed(collapsed: boolean) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(TREE_SIDEBAR_COLLAPSED_KEY, collapsed ? "true" : "false");
+}
+
+export function readNotebookRailCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(NOTEBOOK_RAIL_COLLAPSED_KEY) === "true";
+}
+
+export function writeNotebookRailCollapsed(collapsed: boolean) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(NOTEBOOK_RAIL_COLLAPSED_KEY, collapsed ? "true" : "false");
 }

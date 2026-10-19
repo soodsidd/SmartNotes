@@ -217,6 +217,9 @@ import {
   clampTreeSidebarWidth,
   TREE_SIDEBAR_DEFAULT_WIDTH,
   TREE_SIDEBAR_WIDTH_KEY,
+  readNotebookRailCollapsed,
+  writeNotebookRailCollapsed,
+  NOTEBOOK_RAIL_WIDTH,
 } from "@/lib/app-settings";
 import {
   fetchPageVersionContent,
@@ -854,6 +857,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [notebookGroups, setNotebookGroups] = React.useState<NotebookGroup[]>([]);
   const [archivedNotebooks, setArchivedNotebooks] = React.useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [notebookRailCollapsed, setNotebookRailCollapsed] = React.useState(false);
   const [treeSidebarCollapsed, setTreeSidebarCollapsed] = React.useState(false);
   const [treeSidebarWidth, setTreeSidebarWidth] = React.useState(TREE_SIDEBAR_DEFAULT_WIDTH);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -1156,9 +1160,15 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
 
   React.useEffect(() => {
+    setNotebookRailCollapsed(readNotebookRailCollapsed());
     setTreeSidebarCollapsed(readTreeSidebarCollapsed());
     setTreeSidebarWidth(readTreeSidebarWidth());
     treeSidebarWidthHydratedRef.current = true;
+  }, []);
+
+  const setNotebookRailCollapsedAndStore = React.useCallback((collapsed: boolean) => {
+    setNotebookRailCollapsed(collapsed);
+    writeNotebookRailCollapsed(collapsed);
   }, []);
 
   const setTreeCollapsed = React.useCallback((collapsed: boolean) => {
@@ -5013,6 +5023,15 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setTreeCollapsed(true);
   }, [setTreeCollapsed]);
 
+  // Ensure the active notebook is always treated as expanded in the page-tree pane,
+  // regardless of whether the user has toggled it in the unified mobile sidebar.
+  const pageTreeExpandedNotebooks = React.useMemo(() => {
+    if (!activeNotebookPath || expandedNotebooks.has(activeNotebookPath)) return expandedNotebooks;
+    const next = new Set(expandedNotebooks);
+    next.add(activeNotebookPath);
+    return next;
+  }, [expandedNotebooks, activeNotebookPath]);
+
   const reloadPendingPage = React.useCallback(async (pendingReload: PendingPageReload, currentDraft: PageDraft) => {
     setIsReloading(true);
     try {
@@ -6542,6 +6561,107 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         />
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
+          {/* Notebook rail — slim fixed-width panel, independently collapsible */}
+          <aside
+            className={cn(
+              "hidden min-h-0 shrink-0 border-r border-border bg-[color:var(--rail)] xl:flex xl:flex-col",
+              notebookRailCollapsed ? "w-11" : ""
+            )}
+            style={notebookRailCollapsed ? undefined : { width: NOTEBOOK_RAIL_WIDTH }}
+            data-testid="notebook-rail-sidebar"
+            data-collapsed={notebookRailCollapsed ? "true" : "false"}
+          >
+            {notebookRailCollapsed ? (
+              <div className="flex h-full flex-col items-center py-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Expand notebook rail"
+                  data-testid="notebook-rail-expand"
+                  onClick={() => setNotebookRailCollapsedAndStore(false)}
+                >
+                  <PanelLeft className="size-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1">
+                <Sidebar
+                  sidebarLayout="rail"
+                  onCollapseRail={() => setNotebookRailCollapsedAndStore(true)}
+                  variant="desktop"
+                  tree={treeWithOverrides}
+                  isTreeLoading={isLoadingTree}
+                  ghostVersions={ghostVersions}
+                  activeNotebookPath={activeNotebookPath}
+                  activeSectionPath={activeSectionPath}
+                  activePagePath={activePagePath}
+                  expandedNotebooks={expandedNotebooks}
+                  expandedSections={expandedSections}
+                  expandedPages={expandedPages}
+                  onToggleNotebook={handleSidebarToggleNotebook}
+                  onToggleSection={handleSidebarToggleSection}
+                  onTogglePage={handleSidebarTogglePage}
+                  onSelectNotebook={handleSidebarSelectNotebook}
+                  onSelectSection={handleSidebarSelectSection}
+                  onOpenPage={handleSidebarOpenPage}
+                  onNestPage={handleSidebarNestPage}
+                  onSetPageKeyNote={handleSidebarSetPageKeyNote}
+                  onReorderPages={handleSidebarReorderPages}
+                  onApplyPageDrop={handleSidebarApplyPageDrop}
+                  onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
+                  onCreateNotebook={handleCreateNotebookDialog}
+                  onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
+                  onRevealNotebook={handleRevealNotebook}
+                  onCreateSection={handleCreateSectionDialog}
+                  onRenameNotebook={handleRenameNotebookDialog}
+                  onDeleteNotebook={handleDeleteNotebookDialog}
+                  onCloseNotebook={closeNotebook}
+                  onOpenNotebook={openNotebook}
+                  closedNotebooks={closedNotebooks}
+                  pinnedNotebooks={pinnedNotebooks}
+                  pinnedPages={pinnedPages}
+                  onTogglePinnedNotebook={handleTogglePinnedNotebook}
+                  onTogglePinnedPage={handleTogglePinnedPage}
+                  notebookOrder={notebookOrder}
+                  notebookGroups={notebookGroups}
+                  archivedNotebooks={archivedNotebooks}
+                  onReorderNotebooks={handleReorderNotebooks}
+                  onCreateNotebookGroup={handleCreateNotebookGroup}
+                  onRenameNotebookGroup={handleRenameNotebookGroup}
+                  onDeleteNotebookGroup={handleDeleteNotebookGroup}
+                  onToggleNotebookGroup={handleToggleNotebookGroup}
+                  onMoveNotebookToGroup={handleMoveNotebookToGroup}
+                  onArchiveNotebook={handleArchiveNotebook}
+                  onUnarchiveNotebook={handleUnarchiveNotebook}
+                  onCreatePage={handleCreatePageDialog}
+                  onCreateJupyterNotebook={handleCreateJupyterDialog}
+                  onCreateLogPage={handleCreateLogDialog}
+                  onCreateDesignPage={handleCreateDesignDialog}
+                  onCreateSpreadsheetPage={handleCreateSpreadsheetDialog}
+                  onLinkDesign={(initialPath) => { handleLinkDesign(initialPath); }}
+                  onDirectCreatePage={handleDirectCreatePage}
+                  onImportDocx={openDocxImportPicker}
+                  onImportPagePackage={openPagePackageImportPicker}
+                  onRenameSection={handleRenameSectionDialog}
+                  onDeleteSection={handleDeleteSectionDialog}
+                  onRenamePage={handleRenamePageDialog}
+                  onMovePage={handleMovePageDialog}
+                  onDeletePage={handleDeletePageDialog}
+                  onTogglePageVersions={handleSidebarTogglePageVersions}
+                  onPreviewGhostVersion={handleSidebarPreviewGhostVersion}
+                  previewedVersionId={activeVersionPreview?.versionId ?? null}
+                  onRestoreGhostVersion={handleSidebarRestoreGhostVersion}
+                  onDismissGhostVersions={dismissGhostVersions}
+                  onExportPage={() => void handleExportCurrentPage()}
+                  onExportDocxPage={() => void handleExportCurrentPageDocx()}
+                  onExportPagePackage={() => void handleExportCurrentPagePackage()}
+                />
+              </div>
+            )}
+          </aside>
+
+          {/* Page tree pane — resizable, independently collapsible */}
           <aside
             ref={treeSidebarRailRef}
             className={cn(
@@ -6558,7 +6678,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Expand notebook tree"
+                  aria-label="Expand page tree"
                   data-testid="tree-sidebar-expand"
                   onClick={() => setTreeCollapsed(false)}
                 >
@@ -6570,13 +6690,14 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 <div
                   role="separator"
                   aria-orientation="vertical"
-                  aria-label="Resize notebook tree"
+                  aria-label="Resize page tree"
                   className="absolute inset-y-0 right-0 z-10 w-3 translate-x-1.5 cursor-col-resize"
                   onPointerDown={handleTreeSidebarResizeStart}
                   data-testid="tree-sidebar-resize-handle"
                 />
                 <div className="min-h-0 flex-1">
                   <Sidebar
+                    sidebarLayout="page-tree"
                     onOpenPaperChild={handleOpenPaperChild}
                     activePaperReferrerPath={paperReturnPath}
                     variant="desktop"
@@ -6586,7 +6707,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                     activeNotebookPath={activeNotebookPath}
                     activeSectionPath={activeSectionPath}
                     activePagePath={activePagePath}
-                    expandedNotebooks={expandedNotebooks}
+                    expandedNotebooks={pageTreeExpandedNotebooks}
                     expandedSections={expandedSections}
                     expandedPages={expandedPages}
                     onToggleNotebook={handleSidebarToggleNotebook}
@@ -7834,6 +7955,8 @@ function TopBar({
 }
 
 export const Sidebar = React.memo(function Sidebar({
+  sidebarLayout = "unified",
+  onCollapseRail,
   onOpenPaperChild,
   activePaperReferrerPath = null,
   variant = "mobile",
@@ -7905,6 +8028,8 @@ export const Sidebar = React.memo(function Sidebar({
   onExportDocxPage,
   onExportPagePackage,
 }: {
+  sidebarLayout?: "unified" | "rail" | "page-tree";
+  onCollapseRail?: () => void;
   variant?: "desktop" | "mobile";
   onOpenPaperChild?: (path: string, parentPath: string) => void;
   /** SN-292: referring page whose paper child row is the active one. */
@@ -8091,6 +8216,12 @@ export const Sidebar = React.memo(function Sidebar({
       ? `calc(${base}px + ${depth} * var(--desktop-tree-indent-step) + ${ghostIndentOffset}px)`
       : base + depth * 12 + ghostIndentOffset;
 
+  const isRailLayout = sidebarLayout === "rail";
+  const isPageTreeLayout = sidebarLayout === "page-tree";
+  const activeNotebook = (isRailLayout || isPageTreeLayout)
+    ? visibleNotebooks.find((nb) => nb.path === activeNotebookPath) ?? null
+    : null;
+
   return (
     <div
       className={cn("minimal-scrollbar h-full overflow-auto", compactDesktop ? "p-1.5" : "p-2")}
@@ -8098,51 +8229,130 @@ export const Sidebar = React.memo(function Sidebar({
       data-density-variant={variant}
       data-vault-ready={isTreeLoading ? "false" : "true"}
     >
-      <div className={cn("flex items-center justify-between gap-2 px-1.5", compactDesktop ? "mb-1" : "mb-2")}>
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Vault</p>
-          <p className={cn("mt-0.5 font-serif leading-none", compactDesktop ? "text-base" : "text-xl")}>Notebooks</p>
+      {isPageTreeLayout ? (
+        /* Page-tree pane header: show active notebook name + collapse button */
+        <div className={cn("flex items-center justify-between gap-1 px-1.5", compactDesktop ? "mb-1" : "mb-2")}>
+          <div className="min-w-0 flex-1">
+            {activeNotebook ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: activeNotebook.color }}
+                />
+                <p className={cn("truncate font-medium leading-none", compactDesktop ? "text-[13px]" : "text-sm")}>
+                  {activeNotebook.name}
+                </p>
+              </div>
+            ) : (
+              <p className={cn("text-muted-foreground", compactDesktop ? "text-[13px]" : "text-sm")}>No notebook selected</p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
+            {onCollapseTree ? (
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className={cn("shrink-0 text-muted-foreground", compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11")}
+                aria-label="Collapse page tree"
+                data-testid="tree-sidebar-collapse"
+                onClick={onCollapseTree}
+              >
+                <PanelLeftClose className={cn(compactDesktop ? "size-3.5" : "size-4")} />
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-0.5">
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            className={cn("shrink-0 text-muted-foreground", compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11")}
-            onClick={() => setPickerOpen(true)}
-            aria-label="Open notebook picker"
-            data-testid="open-closed-notebook-btn"
-          >
-            <FolderOpen className={cn(compactDesktop ? "size-3.5" : "size-4")} />
-          </Button>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            className={cn("shrink-0", compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11")}
-            onClick={onCreateNotebook}
-            data-testid="new-notebook-btn"
-            aria-label="New notebook"
-          >
-            <Plus className={cn(compactDesktop ? "size-3.5" : "size-4")} />
-          </Button>
-          {onCollapseTree ? (
+      ) : isRailLayout ? (
+        /* Notebook rail header: "Notebooks" label + picker + create + collapse */
+        <div className={cn("flex items-center justify-between gap-2 px-1.5", compactDesktop ? "mb-1" : "mb-2")}>
+          <p className={cn("font-serif leading-none truncate min-w-0", compactDesktop ? "text-base" : "text-xl")}>Notebooks</p>
+          <div className="flex shrink-0 items-center gap-0.5">
             <Button
               type="button"
               size="icon-sm"
               variant="ghost"
               className={cn("shrink-0 text-muted-foreground", compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11")}
-              aria-label="Collapse notebook tree"
-              data-testid="tree-sidebar-collapse"
-              onClick={onCollapseTree}
+              onClick={() => setPickerOpen(true)}
+              aria-label="Open notebook picker"
+              data-testid="open-closed-notebook-btn"
             >
-              <PanelLeftClose className={cn(compactDesktop ? "size-3.5" : "size-4")} />
+              <FolderOpen className={cn(compactDesktop ? "size-3.5" : "size-4")} />
             </Button>
-          ) : null}
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className={cn("shrink-0", compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11")}
+              onClick={onCreateNotebook}
+              data-testid="new-notebook-btn"
+              aria-label="New notebook"
+            >
+              <Plus className={cn(compactDesktop ? "size-3.5" : "size-4")} />
+            </Button>
+            {onCollapseRail ? (
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className={cn("shrink-0 text-muted-foreground", compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11")}
+                aria-label="Collapse notebook rail"
+                data-testid="notebook-rail-collapse"
+                onClick={onCollapseRail}
+              >
+                <PanelLeftClose className={cn(compactDesktop ? "size-3.5" : "size-4")} />
+              </Button>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : (
+        /* Unified header: "Notebooks" label + picker + create + collapse */
+        <div className={cn("flex items-center justify-between gap-2 px-1.5", compactDesktop ? "mb-1" : "mb-2")}>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Vault</p>
+            <p className={cn("mt-0.5 font-serif leading-none", compactDesktop ? "text-base" : "text-xl")}>Notebooks</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className={cn("shrink-0 text-muted-foreground", compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11")}
+              onClick={() => setPickerOpen(true)}
+              aria-label="Open notebook picker"
+              data-testid="open-closed-notebook-btn"
+            >
+              <FolderOpen className={cn(compactDesktop ? "size-3.5" : "size-4")} />
+            </Button>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className={cn("shrink-0", compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11")}
+              onClick={onCreateNotebook}
+              data-testid="new-notebook-btn"
+              aria-label="New notebook"
+            >
+              <Plus className={cn(compactDesktop ? "size-3.5" : "size-4")} />
+            </Button>
+            {onCollapseTree ? (
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className={cn("shrink-0 text-muted-foreground", compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11")}
+                aria-label="Collapse notebook tree"
+                data-testid="tree-sidebar-collapse"
+                onClick={onCollapseTree}
+              >
+                <PanelLeftClose className={cn(compactDesktop ? "size-3.5" : "size-4")} />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      )}
 
-      {onOpenWorkspace ? (
+      {!isPageTreeLayout && onOpenWorkspace ? (
         <Button
           type="button"
           size="sm"
@@ -8159,7 +8369,9 @@ export const Sidebar = React.memo(function Sidebar({
         </Button>
       ) : null}
 
-      <Bibliography tree={tree} loading={isTreeLoading} compact={compactDesktop} activePagePath={activePagePath} onOpen={onOpenPage} />
+      {!isRailLayout ? (
+        <Bibliography tree={tree} loading={isTreeLoading} compact={compactDesktop} activePagePath={activePagePath} onOpen={onOpenPage} />
+      ) : null}
 
       <OpenClosedNotebooksDialog
         open={pickerOpen}
@@ -8196,9 +8408,42 @@ export const Sidebar = React.memo(function Sidebar({
         </div>
       ) : null}
 
+      {isRailLayout ? (
+        /* Rail layout: slim notebook selection rows with no inline expansion */
+        <div className={cn(compactDesktop ? "space-y-0.5" : "space-y-1")}>
+          {visibleNotebooks.map((notebook) => {
+            const notebookActive = notebook.path === activeNotebookPath;
+            return (
+              <button
+                key={notebook.path}
+                type="button"
+                data-testid={`notebook-rail-row-${notebook.path}`}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded px-1.5 text-left transition",
+                  compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 text-[13px]" : "min-h-[34px] py-1 text-sm",
+                  notebookActive ? "bg-surface font-semibold" : "hover:bg-surface font-medium"
+                )}
+                onClick={() => { onSelectNotebook(notebook.path); onToggleNotebook(notebook.path); }}
+                aria-current={notebookActive ? "page" : undefined}
+              >
+                <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: notebook.color }} aria-hidden />
+                <span className="min-w-0 flex-1 truncate">{notebook.name}</span>
+                {notebook.isPortable ? (
+                  <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Remote</span>
+                ) : null}
+              </button>
+            );
+          })}
+          {visibleNotebooks.length === 0 && !isTreeLoading ? (
+            <div className="rounded border border-dashed border-border bg-background/60 px-3 py-4 text-center text-xs text-muted-foreground" data-testid="notebook-tree-empty">
+              {closedNotebooks.size > 0 ? "All notebooks are closed" : archivedNotebooks.size > 0 ? "All notebooks are archived" : "No notebooks yet"}
+            </div>
+          ) : null}
+        </div>
+      ) : (
       <div className={cn(compactDesktop ? "space-y-1" : "space-y-2")}>
-        {visibleNotebooks.map((notebook) => {
-          const notebookOpen = expandedNotebooks.has(notebook.path);
+        {(isPageTreeLayout ? (activeNotebook ? [activeNotebook] : []) : visibleNotebooks).map((notebook) => {
+          const notebookOpen = isPageTreeLayout ? true : expandedNotebooks.has(notebook.path);
           const notebookActive = notebook.path === activeNotebookPath;
           const rootTarget: CreatePageTarget = {
             notebookPath: notebook.path,
@@ -8215,6 +8460,7 @@ export const Sidebar = React.memo(function Sidebar({
               className="rounded border border-transparent bg-transparent"
               data-testid={`notebook-${notebook.path}`}
             >
+              {!isPageTreeLayout ? (
               <div
                 className={cn(
                   "flex items-center rounded transition",
@@ -8315,9 +8561,10 @@ export const Sidebar = React.memo(function Sidebar({
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
+              ) : null}
 
               {notebookOpen ? (
-                <div className={cn("mt-1", compactDesktop ? "space-y-0.5 pl-3" : "space-y-1 pl-4")}>
+                <div className={cn(isPageTreeLayout ? "" : (compactDesktop ? "mt-1" : "mt-1"), compactDesktop ? "space-y-0.5 pl-3" : "space-y-1 pl-4")}>
                   <NotebookBibliographyShortcut tree={tree} notebook={notebook} compact={compactDesktop} activePagePath={activePagePath} onOpen={onOpenPage} />
                   {(() => {
                     const notebookRows = pageRowsByNotebook.get(notebook.path);
@@ -9361,16 +9608,24 @@ export const Sidebar = React.memo(function Sidebar({
           );
         })}
 
-        {visibleNotebooks.length === 0 ? (
-          <div className="rounded border border-dashed border-border bg-background/60 px-4 py-6 text-center text-sm text-muted-foreground" data-testid="notebook-tree-empty">
-            {closedNotebooks.size > 0
-              ? "All notebooks are closed"
-              : archivedNotebooks.size > 0
-                ? "All notebooks are archived"
-                : "No notebooks yet"}
-          </div>
-        ) : null}
+        {isPageTreeLayout
+          ? (!activeNotebook && !isTreeLoading ? (
+              <div className="rounded border border-dashed border-border bg-background/60 px-4 py-6 text-center text-sm text-muted-foreground" data-testid="notebook-tree-empty">
+                Select a notebook from the rail
+              </div>
+            ) : null)
+          : (visibleNotebooks.length === 0 ? (
+              <div className="rounded border border-dashed border-border bg-background/60 px-4 py-6 text-center text-sm text-muted-foreground" data-testid="notebook-tree-empty">
+                {closedNotebooks.size > 0
+                  ? "All notebooks are closed"
+                  : archivedNotebooks.size > 0
+                    ? "All notebooks are archived"
+                    : "No notebooks yet"}
+              </div>
+            ) : null)
+        }
       </div>
+      )}
 
       {pageContextMenu ? (
         <div
