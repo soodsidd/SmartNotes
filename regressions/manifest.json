@@ -4894,13 +4894,13 @@
     },
     {
       "id": "unit-bibliography-papers",
-      "name": "Bibliography canonical identity and editor references",
-      "description": "Protects UUID ownership, references, editor round-trip, conditional inline saves, shared refresh, and unchanged referring pages.",
-      "intent": "Protects UUID ownership, references, editor round-trip, conditional inline saves, shared refresh, and unchanged referring pages.",
-      "whenToRun": "Pre-merge for Bibliography or paper reference changes. For the UI check, set SMART_NOTES_E2E_PREVIEW_URL to a sidecar-registered preview using the worktree .e2e-vault and .e2e-state.",
-      "failureMeaning": "Paper ownership, live shared editing, or reference navigation may be broken.",
+      "name": "Bibliography identity, page count navigation, and editor references",
+      "description": "Protects UUID ownership, real page nesting, paper counts and page filtering, editor references, and live shared editing.",
+      "intent": "A page's paper count opens the central Bibliography with only its referenced papers; clearing restores the full list without virtual paper children.",
+      "whenToRun": "Pre-merge for Bibliography, paper reference, or sidebar tree changes.",
+      "failureMeaning": "Paper ownership, page-scoped Bibliography navigation, tree nesting, or live shared editing may be broken.",
       "appType": "node",
-      "command": "npm test -- tests/papers.test.ts tests/paper-reference-editor.test.ts tests/inline-paper.test.ts tests/inline-paper-focus.test.ts tests/page-tree.test.ts tests/sn-280-editor-page-swap-isolation.test.ts",
+      "command": "npm test -- tests/papers.test.ts tests/paper-reference-editor.test.ts tests/bibliography-nav.test.tsx tests/inline-paper.test.ts tests/inline-paper-focus.test.ts tests/page-tree.test.ts tests/sn-280-editor-page-swap-isolation.test.ts",
       "timeoutMs": 300000,
       "enabled": true,
       "tags": [
@@ -4928,6 +4928,12 @@
         },
         {
           "path": "tests/inline-paper-focus.test.ts"
+        },
+        {
+          "path": "tests/page-tree.test.ts"
+        },
+        {
+          "path": "tests/bibliography-nav.test.tsx"
         }
       ]
     },

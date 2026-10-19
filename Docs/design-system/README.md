@@ -104,7 +104,7 @@ token was introduced.
 
 ## Shared paper notes (SN-279)
 
-Bibliography, virtual paper rows, reference controls, and ownership breadcrumbs
+Bibliography, page paper counts, reference controls, and ownership breadcrumbs
 reuse `--surface`, `--secondary`, `--border`, `--foreground`, `--muted-foreground`,
 `--accent`, `--ring`, standard Button/Input controls, existing tree indent/density,
 and 44px mobile touch targets. The inline panel stays in document flow.
@@ -114,9 +114,12 @@ and 44px mobile touch targets. The inline panel stays in document flow.
 Fork photos #7, #12 and #17. The only new value is `--paper` (light
 `oklch(0.62 0.15 50)`, dark `oklch(0.74 0.13 55)`; Tailwind `text-paper`): the
 orange paper glyph (Lucide `FileBadge`) on the pinned top-level **Bibliography**
-entry, each notebook's muted **Bibliography** shortcut, and every paper row. Rows
-reuse the tree page-row height, indent, `--accent` active ring and 13px compact
-title; the two Bibliography labels inherit the 16px "Open workspace" size. Put
+entry, each paper row, and the count control beside pages that reference papers.
+The count control uses `--paper` for its icon and number, the existing desktop
+tree affordance size, and the existing 44px mobile touch target. Activating it
+opens the central Bibliography with a page filter; the filter has a clear action.
+Rows reuse the tree page-row height, indent, `--accent` active ring and 13px compact
+title; the Bibliography label inherits the 16px "Open workspace" size. Put
 text sizes on an inner span: the unlayered global `button { font-size: inherit }`
 overrides utilities placed on a `<button>`. The paper page context bar
 (**Back to topic** · "Bibliography · shared paper page") is `text-xs`

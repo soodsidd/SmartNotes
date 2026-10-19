@@ -11,6 +11,7 @@ import {
   resolveTreeExpandPathsForPage,
 } from "@/lib/page-tree";
 import { type VaultPage } from "@/lib/vault-contract";
+import { paperReferenceHtml } from "@/lib/papers";
 
 function makePage(path: string, title: string, parentId: string | null): VaultPage {
   return {
@@ -27,6 +28,16 @@ function makePage(path: string, title: string, parentId: string | null): VaultPa
 }
 
 describe("page tree nesting actions", () => {
+  it("keeps real nested pages but creates no paper children or paper-only chevrons", () => {
+    const paperId = "12345678-1234-4567-8123-123456789abc";
+    const article = { ...makePage("article", "Article", null), content: paperReferenceHtml(paperId) };
+    const nested = makePage("nested", "Nested", "article");
+    const paperOnly = { ...makePage("paper-only", "Paper only", null), content: paperReferenceHtml(paperId) };
+    const tree = buildPageTree([article, nested, paperOnly]);
+    expect(tree[0].children.map((node) => node.page.path)).toEqual(["nested"]);
+    expect(tree[1].children).toEqual([]);
+    expect(flattenPageTree(tree, new Set(["article", "paper-only"])).map((node) => node.page.path)).toEqual(["article", "nested", "paper-only"]);
+  });
   it("indents under the immediately previous visible page when depth allows", () => {
     const flatNodes = flattenPageTree(
       buildPageTree([

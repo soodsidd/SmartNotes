@@ -65,7 +65,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor, type EditorSectionContext, type RichTextEditorHandle } from "@/components/rich-text-editor";
-import { Bibliography, NotebookBibliographyShortcut, PaperChildRow } from "@/components/bibliography";
+import { Bibliography, PaperCountButton } from "@/components/bibliography";
 import { PaperAttachDialog } from "@/components/paper-attach-dialog";
 import { PromotePdfDialog } from "@/components/promote-pdf-dialog";
 import {
@@ -74,7 +74,7 @@ import {
   promoteVaultPdfViaApi,
   type CreatePaperInput,
 } from "@/lib/paper-attach";
-import { BIBLIOGRAPHY_PATH, isBibliographyPath, paperBackTarget, paperHomeNotebook, paperReferenceHtml } from "@/lib/papers";
+import { BIBLIOGRAPHY_PATH, bibliographyEntries, isBibliographyPath, paperBackTarget, paperHomeNotebook, paperReferenceHtml } from "@/lib/papers";
 import {
   capturePaperReturnScroll,
   resolvePaperReturnScroll,
@@ -4444,14 +4444,6 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     void openPage(pagePath);
   }, [openPage]);
 
-  const handleOpenPaperChild = React.useCallback((pagePath: string, parentPath: string) => {
-    setPaperReturnPath(parentPath);
-    rememberPaperReturnScroll(parentPath);
-    // SN-292 (#17): keep the referring page open so its paper child row stays visible.
-    setExpandedPages((expanded) => expanded.has(parentPath) ? expanded : new Set([...expanded, parentPath]));
-    void openPage(pagePath);
-  }, [openPage, rememberPaperReturnScroll]);
-
   const goBackToTopic = React.useCallback((topic: string) => {
     pendingPaperReturnScrollRef.current =
       paperReturnScrollRef.current?.path === topic ? paperReturnScrollRef.current : null;
@@ -6577,8 +6569,6 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 />
                 <div className="min-h-0 flex-1">
                   <Sidebar
-                    onOpenPaperChild={handleOpenPaperChild}
-                    activePaperReferrerPath={paperReturnPath}
                     variant="desktop"
                     tree={treeWithOverrides}
                     isTreeLoading={isLoadingTree}
@@ -7028,8 +7018,6 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             <SheetTitle className="font-serif text-2xl">Notes</SheetTitle>
           </SheetHeader>
           <Sidebar
-            onOpenPaperChild={handleOpenPaperChild}
-            activePaperReferrerPath={paperReturnPath}
             tree={treeWithOverrides}
             isTreeLoading={isLoadingTree}
             activeNotebookPath={activeNotebookPath}
@@ -7834,8 +7822,6 @@ function TopBar({
 }
 
 export const Sidebar = React.memo(function Sidebar({
-  onOpenPaperChild,
-  activePaperReferrerPath = null,
   variant = "mobile",
   tree,
   isTreeLoading = false,
@@ -7906,9 +7892,6 @@ export const Sidebar = React.memo(function Sidebar({
   onExportPagePackage,
 }: {
   variant?: "desktop" | "mobile";
-  onOpenPaperChild?: (path: string, parentPath: string) => void;
-  /** SN-292: referring page whose paper child row is the active one. */
-  activePaperReferrerPath?: string | null;
   tree: VaultNotebook[];
   isTreeLoading?: boolean;
   activeNotebookPath: string | null;
@@ -8025,7 +8008,7 @@ export const Sidebar = React.memo(function Sidebar({
         continue;
       }
 
-      const pageTree = buildPageTree(notebook.pages, tree.find((entry) => entry.path === BIBLIOGRAPHY_PATH)?.pages ?? []);
+      const pageTree = buildPageTree(notebook.pages);
       const flatNodes = flattenPageTree(pageTree, expandedPages);
       byNotebookPath.set(notebook.path, {
         flatNodes,
@@ -8054,7 +8037,7 @@ export const Sidebar = React.memo(function Sidebar({
           continue;
         }
 
-        const pageTree = buildPageTree(section.pages, tree.find((entry) => entry.path === BIBLIOGRAPHY_PATH)?.pages ?? []);
+        const pageTree = buildPageTree(section.pages);
         const flatNodes = flattenPageTree(pageTree, expandedPages);
         bySectionPath.set(section.path, {
           flatNodes,
@@ -8083,7 +8066,21 @@ export const Sidebar = React.memo(function Sidebar({
   const notebookRootPageIndentBase = compactDesktop ? 4 : 8;
   const sectionPageIndentBase = compactDesktop ? 14 : 20;
   const ghostIndentOffset = compactDesktop ? 14 : 16;
-  const isActivePaperChild = (page: VaultPage) => Boolean(page.paperReference) && page.paperReference!.canonicalPath === activePagePath && (!activePaperReferrerPath || page.paperReference!.parentPath === activePaperReferrerPath);
+  const [bibliographyOpen, setBibliographyOpen] = React.useState(false);
+  const [bibliographyFilterPage, setBibliographyFilterPage] = React.useState<{ path: string; title: string } | null>(null);
+  const bibliographyRef = React.useRef<HTMLDivElement>(null);
+  const paperCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entry of bibliographyEntries(tree)) {
+      for (const referrer of entry.referrers) counts.set(referrer.path, (counts.get(referrer.path) ?? 0) + 1);
+    }
+    return counts;
+  }, [tree]);
+  const showPagePapers = (page: VaultPage) => {
+    setBibliographyFilterPage({ path: page.path, title: page.title });
+    setBibliographyOpen(true);
+    requestAnimationFrame(() => bibliographyRef.current?.scrollIntoView({ block: "nearest" }));
+  };
   const resolvePageIndent = (base: number, depth: number) =>
     compactDesktop ? `calc(${base}px + ${depth} * var(--desktop-tree-indent-step))` : base + depth * 12;
   const resolveGhostIndent = (base: number, depth: number) =>
@@ -8159,7 +8156,12 @@ export const Sidebar = React.memo(function Sidebar({
         </Button>
       ) : null}
 
-      <Bibliography tree={tree} loading={isTreeLoading} compact={compactDesktop} activePagePath={activePagePath} onOpen={onOpenPage} />
+      <div ref={bibliographyRef}>
+        <Bibliography tree={tree} loading={isTreeLoading} compact={compactDesktop} activePagePath={activePagePath} onOpen={onOpenPage} open={bibliographyOpen} filterPage={bibliographyFilterPage} onClearFilter={() => setBibliographyFilterPage(null)} onToggle={() => {
+          if (bibliographyFilterPage) { setBibliographyFilterPage(null); setBibliographyOpen(true); }
+          else setBibliographyOpen(!bibliographyOpen);
+        }} />
+      </div>
 
       <OpenClosedNotebooksDialog
         open={pickerOpen}
@@ -8318,14 +8320,12 @@ export const Sidebar = React.memo(function Sidebar({
 
               {notebookOpen ? (
                 <div className={cn("mt-1", compactDesktop ? "space-y-0.5 pl-3" : "space-y-1 pl-4")}>
-                  <NotebookBibliographyShortcut tree={tree} notebook={notebook} compact={compactDesktop} activePagePath={activePagePath} onOpen={onOpenPage} />
                   {(() => {
                     const notebookRows = pageRowsByNotebook.get(notebook.path);
                     const flatNodes = notebookRows?.flatNodes ?? [];
                     const nestingLookup = notebookRows?.nestingLookup ?? EMPTY_PAGE_NESTING_ACTION_LOOKUP;
 
                     return flatNodes.map((node) => {
-                      if (node.page.paperReference) return <PaperChildRow key={node.page.path} page={node.page} indentPx={resolvePageIndent(notebookRootPageIndentBase, node.depth)} compact={compactDesktop} active={isActivePaperChild(node.page)} onOpen={onOpenPaperChild ?? onOpenPage} />;
                       const nestingState = getPageNestingActionState(nestingLookup, node.page.path);
                       const active = node.page.path === activePagePath;
                       const isInkPage = node.page.noteType === "ink";
@@ -8546,6 +8546,7 @@ export const Sidebar = React.memo(function Sidebar({
                               {node.page.title}
                             </p>
                           </button>
+                          <PaperCountButton page={node.page} count={paperCounts.get(node.page.path) ?? 0} compact={compactDesktop} onClick={() => showPagePapers(node.page)} />
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               data-page-menu="true"
@@ -8928,7 +8929,6 @@ export const Sidebar = React.memo(function Sidebar({
                               }
 
                               return flatNodes.flatMap((node) => {
-                                if (node.page.paperReference) return [<PaperChildRow key={node.page.path} page={node.page} indentPx={resolvePageIndent(sectionPageIndentBase, node.depth)} compact={compactDesktop} active={isActivePaperChild(node.page)} onOpen={onOpenPaperChild ?? onOpenPage} />];
                                 const nestingState = getPageNestingActionState(nestingLookup, node.page.path);
                                 const active = node.page.path === activePagePath;
                                 const isInkPage = node.page.noteType === "ink";
@@ -9156,6 +9156,7 @@ export const Sidebar = React.memo(function Sidebar({
                                         isSpreadsheetPage && "text-chart-2",
                                       )}>{node.page.title}</p>
                                     </button>
+                                    <PaperCountButton page={node.page} count={paperCounts.get(node.page.path) ?? 0} compact={compactDesktop} onClick={() => showPagePapers(node.page)} />
                                     <DropdownMenu>
                                       <DropdownMenuTrigger
                                         data-page-menu="true"

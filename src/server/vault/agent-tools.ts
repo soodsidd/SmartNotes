@@ -887,7 +887,7 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
   {
     name: "paper_create",
     description:
-      "Create a canonical paper in Bibliography (a standard text page with a stable paper id). Pass referenceFromPath to also insert a paper reference into that article/page, which makes the paper appear as its child row.",
+      "Create a canonical paper in Bibliography (a standard text page with a stable paper id). Pass referenceFromPath to also insert a paper reference into that article/page, which adds it to that page's paper-count filter.",
     group: "paper",
     action: "create",
     parameters: {
@@ -899,7 +899,7 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
   {
     name: "paper_reference_add",
     description:
-      "Insert a reference to an existing Bibliography paper at the end of a page (idempotent: a page references each paper at most once). The paper becomes that page's child row; nothing is copied or moved.",
+      "Insert a reference to an existing Bibliography paper at the end of a page (idempotent: a page references each paper at most once). The paper appears in that page's Bibliography filter; nothing is copied or moved.",
     group: "paper",
     action: "reference_add",
     parameters: {

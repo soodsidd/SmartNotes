@@ -79,12 +79,6 @@ export function paperBackTarget(input: {
   return referrer?.path ?? null;
 }
 
-export function notebookReferencedPapers(tree: VaultNotebook[], notebookPath: string): VaultPage[] {
-  return bibliographyEntries(tree)
-    .filter((entry) => entry.referrers.some((referrer) => referrer.notebookPath === notebookPath))
-    .map((entry) => entry.page);
-}
-
 export function bibliographyEntries(tree: VaultNotebook[]) {
   const papers = tree.find((notebook) => notebook.path === BIBLIOGRAPHY_PATH)?.pages ?? [];
   const referrers = new Map<string, PaperReferrer[]>();
@@ -98,17 +92,4 @@ export function bibliographyEntries(tree: VaultNotebook[]) {
     }
   }
   return papers.map((page) => ({ page, id: String(page.metadata?.paper_id ?? ""), referrers: referrers.get(String(page.metadata?.paper_id)) ?? [] }));
-}
-
-export function paperChildren(parent: VaultPage, papers: VaultPage[]): VaultPage[] {
-  return paperReferenceIds(parent.content).map((id) => {
-    const canonical = papers.find((page) => page.metadata?.paper_id === id);
-    return {
-      id: `${parent.path}::paper:${id}`, path: `${parent.path}::paper:${id}`,
-      title: canonical?.title ?? "Unavailable paper", slug: id,
-      createdAt: null, updatedAt: canonical?.updatedAt ?? null,
-      preview: "Shared paper · Bibliography", content: "", parentId: parent.path,
-      noteType: "text", paperReference: { id, canonicalPath: paperPath(id), parentPath: parent.path, missing: !canonical },
-    };
-  });
 }
