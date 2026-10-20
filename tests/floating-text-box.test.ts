@@ -217,11 +217,53 @@ describe("floating text boxes", () => {
       image.getBoundingClientRect = () => rect(10, 420);
       callbacks.forEach((callback) => callback());
       expect(instance.getHTML()).toContain('data-width="440"');
+      // scrollHeight is 0 in jsdom so neededHeight = max(48, 0+16) = 48
       expect(instance.getHTML()).toContain('data-height="48"');
       // Image fits again: the box never shrinks on its own.
       image.getBoundingClientRect = () => rect(10, 200);
       callbacks.forEach((callback) => callback());
       expect(instance.getHTML()).toContain('data-width="440"');
+      instance.destroy();
+    } finally {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = original;
+    }
+  });
+
+  test("SN-344: content height drives the stored height so all text stays inside the border", () => {
+    const callbacks: Array<() => void> = [];
+    const original = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+      constructor(callback: () => void) { callbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    };
+    try {
+      const instance = editor('<div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Line 1</p><p>Line 2</p><p>Line 3</p></div></div>');
+      const content = instance.view.dom.querySelector<HTMLElement>(".floating-text-box__content")!;
+      const box = instance.view.dom.querySelector<HTMLElement>("[data-testid=\"floating-text-box\"]")!;
+      const rect = (left: number, width: number) => ({ left, right: left + width, width, top: 0, bottom: 0, height: 0, x: left, y: 0, toJSON() {} }) as DOMRect;
+      Object.defineProperty(content, "clientWidth", { configurable: true, value: 340 });
+      content.getBoundingClientRect = () => rect(10, 340);
+      // Simulate 3 paragraphs at 100px total content height.
+      Object.defineProperty(content, "scrollHeight", { configurable: true, value: 100 });
+      callbacks.forEach((callback) => callback());
+      // neededHeight = max(48, ceil(100)+16) = 116
+      expect(instance.getHTML()).toContain('data-height="116"');
+      expect(box.style.minHeight).toBe("116px");
+
+      // Content grows further (user keeps typing).
+      Object.defineProperty(content, "scrollHeight", { configurable: true, value: 200 });
+      callbacks.forEach((callback) => callback());
+      // neededHeight = max(48, ceil(200)+16) = 216
+      expect(instance.getHTML()).toContain('data-height="216"');
+      expect(box.style.minHeight).toBe("216px");
+
+      // Content shrinks (user deletes) — height re-fits down to min if needed.
+      Object.defineProperty(content, "scrollHeight", { configurable: true, value: 20 });
+      callbacks.forEach((callback) => callback());
+      // neededHeight = max(48, ceil(20)+16) = max(48, 36) = 48
+      expect(instance.getHTML()).toContain('data-height="48"');
+      expect(box.style.minHeight).toBe("48px");
       instance.destroy();
     } finally {
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = original;

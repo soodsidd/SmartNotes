@@ -3,6 +3,7 @@ import type { NodeView } from "@tiptap/pm/view";
 import {
   FLOATING_BOX_DEFAULT_HEIGHT,
   FLOATING_BOX_DEFAULT_WIDTH,
+  FLOATING_BOX_MIN_HEIGHT,
   fitFloatingBoxWidthToContent,
   moveFloatingBox,
   normalizeFloatingBoxGeometry,
@@ -100,9 +101,12 @@ export const FloatingTextBox = Node.create({
         if (prev.x === next.x && prev.y === next.y && prev.width === next.width && prev.height === next.height) return;
         editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, next));
       }
-      // Height is min-height, so it already follows content. Width is explicit,
-      // so grow it when an embedded image is resized wider than the box.
-      // Expanded tables are left to overflow on purpose (SN-278).
+      // Width is explicit, so grow it when an embedded image is resized wider
+      // than the box. Expanded tables are left to overflow on purpose (SN-278).
+      // Height is content-driven: measure scrollHeight on each resize and
+      // persist it so the stored min-height always matches the actual content.
+      // The outer box has padding:7px (top+bottom) + border:1px (top+bottom) =
+      // 16px of non-content vertical space (box-sizing: border-box).
       function fitToContent() {
         if (!editor.isEditable || contentDOM.clientWidth === 0) return;
         const area = contentDOM.getBoundingClientRect();
@@ -112,7 +116,13 @@ export const FloatingTextBox = Node.create({
           right = Math.max(right, image.getBoundingClientRect().right);
         });
         const needed = contentDOM.clientWidth + (right - area.right) / scale;
-        commit(fitFloatingBoxWidthToContent(geometry(), needed, contentDOM.clientWidth));
+        const widthFitted = fitFloatingBoxWidthToContent(geometry(), needed, contentDOM.clientWidth);
+        // SN-344: track content height so the stored attribute (used as min-height)
+        // always contains all text. Apply immediately so the border redraws
+        // without waiting for the ProseMirror transaction round-trip.
+        const neededHeight = Math.max(FLOATING_BOX_MIN_HEIGHT, Math.ceil(contentDOM.scrollHeight) + 16);
+        dom.style.minHeight = `${neededHeight}px`;
+        commit({ ...widthFitted, height: neededHeight });
       }
       const resizeObserver = typeof ResizeObserver === "function"
         ? new ResizeObserver(() => fitToContent())
