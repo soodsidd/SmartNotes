@@ -990,8 +990,6 @@ New sections are created immediately with a unique default New Section name, the
 
 ### Floating text boxes (SN-296)
 
-### Floating text boxes (SN-296)
-
 **Plain English:** Text pages support OneNote-style free-positioned rich text boxes on a canvas beside the main editor column.
 
 **Main flow frame:** The primary typed column is drawn with the same faint 1px border language as floating boxes. It never moves. The outline stays hidden when the main editor is unfocused, including on initial open, and appears when the main ProseMirror column is focused; it hides again on blur. A selection inside a floating box does not activate it. Print keeps the existing outline. Since SN-318 its width can be resized (see below); the default is still `EDITOR_MAIN_FLOW_WIDTH` = 672px. Ordinary ProseMirror blocks are capped at `--editor-main-flow-width`, and floating boxes stay absolutely positioned on the wider canvas. The outline frames the prose with the frame's own left padding on both sides. Its width is the column width plus twice the prose `offsetLeft` (`mainFlowInset`). Before SN-318 the outline started at the padding edge, so the prose ran 24px past its right border.
