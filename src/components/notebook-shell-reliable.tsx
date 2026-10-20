@@ -8499,6 +8499,7 @@ export const Sidebar = React.memo(function Sidebar({
   }, []);
 
   const compactDesktop = variant === "desktop";
+  const scopedListDesktopRowClass = "min-h-7 text-xs [@media(pointer:coarse)]:min-h-11";
   const notebookRootPageIndentBase = compactDesktop ? 4 : 8;
   const sectionPageIndentBase = compactDesktop ? 14 : 20;
   const ghostIndentOffset = compactDesktop ? 14 : 16;
@@ -8785,7 +8786,7 @@ export const Sidebar = React.memo(function Sidebar({
                         data-testid={`rail-root-pages-${notebook.path}`}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-md px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          compactDesktop ? "min-h-7 text-xs [@media(pointer:coarse)]:min-h-11" : "min-h-11 text-xs",
+                          compactDesktop ? scopedListDesktopRowClass : "min-h-11 text-xs",
                           notebookActive && !activeSectionPath ? "bg-surface font-semibold text-foreground" : "text-foreground hover:bg-surface/70"
                         )}
                         onClick={() => onSelectRootPages(notebook.path)}
@@ -8804,7 +8805,7 @@ export const Sidebar = React.memo(function Sidebar({
                           data-testid={`rail-section-row-${section.path}`}
                           className={cn(
                             "flex w-full items-center gap-2 rounded-md px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            compactDesktop ? "min-h-7 text-xs [@media(pointer:coarse)]:min-h-11" : "min-h-11 text-xs",
+                            compactDesktop ? scopedListDesktopRowClass : "min-h-11 text-xs",
                             sectionActive
                               ? "bg-surface font-semibold text-foreground"
                               : "text-foreground hover:bg-surface/70"
@@ -9020,7 +9021,8 @@ export const Sidebar = React.memo(function Sidebar({
                           key={node.page.path}
                           className={cn(
                             "group relative flex items-center gap-1 rounded pr-1 transition",
-                            compactDesktop ? "min-h-[var(--desktop-tree-page-row-height)] py-0" : "min-h-11 py-0.5",
+                            compactDesktop ? (isPageTreeLayout ? scopedListDesktopRowClass : "min-h-[var(--desktop-tree-page-row-height)]") : "min-h-11",
+                            compactDesktop ? "py-0" : "py-0.5",
                             active
                               ? "bg-accent/10 text-foreground ring-1 ring-inset ring-accent/30 before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-accent"
                               : "hover:bg-surface/70",
@@ -9160,7 +9162,7 @@ export const Sidebar = React.memo(function Sidebar({
                             className={cn(
                               "flex min-w-0 items-center gap-1.5 px-1 text-left",
                               inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? "shrink-0" : "flex-1",
-                                  compactDesktop ? "min-h-[var(--desktop-tree-page-row-height)]" : "min-h-11"
+                              compactDesktop ? (isPageTreeLayout ? scopedListDesktopRowClass : "min-h-[var(--desktop-tree-page-row-height)]") : "min-h-11"
                             )}
                             onClick={(event) => {
                               event.stopPropagation();
@@ -9199,8 +9201,9 @@ export const Sidebar = React.memo(function Sidebar({
                             ) : null}
                             {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? null : <p
                               className={cn(
-                                "truncate font-medium",
-                                compactDesktop ? "text-[13px]" : "text-sm",
+                                "truncate",
+                                isPageTreeLayout && compactDesktop ? (active ? "font-semibold" : "font-normal") : "font-medium",
+                                isPageTreeLayout && compactDesktop ? null : compactDesktop ? "text-[13px]" : "text-sm",
                                 isInkPage && "text-indigo-600 dark:text-indigo-400",
                                 isLogPage && "text-emerald-700 dark:text-emerald-300",
                                 isDesignPage && "text-fuchsia-700 dark:text-fuchsia-300",
@@ -9637,7 +9640,8 @@ export const Sidebar = React.memo(function Sidebar({
                                     key={node.page.path}
                                     className={cn(
                                       "group relative flex items-center gap-1 rounded pr-1 transition",
-                                      compactDesktop ? "min-h-[var(--desktop-tree-page-row-height)] py-0" : "min-h-11 py-0.5",
+                                      compactDesktop ? (isPageTreeLayout ? scopedListDesktopRowClass : "min-h-[var(--desktop-tree-page-row-height)]") : "min-h-11",
+                                      compactDesktop ? "py-0" : "py-0.5",
                                       active
                                         ? "bg-accent/10 text-foreground ring-1 ring-inset ring-accent/30 before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-accent"
                                         : "hover:bg-surface/70",
@@ -9786,7 +9790,7 @@ export const Sidebar = React.memo(function Sidebar({
                                       className={cn(
                                         "flex min-w-0 items-center gap-1.5 px-1 text-left",
                                         inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? "shrink-0" : "flex-1",
-                                            compactDesktop ? "min-h-[var(--desktop-tree-page-row-height)]" : "min-h-11"
+                                            compactDesktop ? (isPageTreeLayout ? scopedListDesktopRowClass : "min-h-[var(--desktop-tree-page-row-height)]") : "min-h-11"
                                       )}
                                       onClick={(event) => {
                                         event.stopPropagation();
@@ -9824,8 +9828,9 @@ export const Sidebar = React.memo(function Sidebar({
                                         />
                                       ) : null}
                                       {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? null : <p className={cn(
-                                        "truncate font-medium",
-                                        compactDesktop ? "text-[13px]" : "text-sm",
+                                        "truncate",
+                                        isPageTreeLayout && compactDesktop ? (active ? "font-semibold" : "font-normal") : "font-medium",
+                                        isPageTreeLayout && compactDesktop ? null : compactDesktop ? "text-[13px]" : "text-sm",
                                         isInkPage && "text-indigo-600 dark:text-indigo-400",
                                         isLogPage && "text-emerald-700 dark:text-emerald-300",
                                         isDesignPage && "text-fuchsia-700 dark:text-fuchsia-300",

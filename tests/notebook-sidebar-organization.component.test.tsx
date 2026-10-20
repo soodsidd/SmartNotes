@@ -151,6 +151,34 @@ describe("SN-324 dual-pane navigation", () => {
     }
   });
 
+  it("matches scoped desktop page and section text size, weight, and row height", () => {
+    const rail = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work", onSelectRootPages: jest.fn() });
+    const notebook = within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: /Work/ });
+    const section = screen.getByTestId("rail-section-row-Work/Research");
+    const rootPages = screen.getByTestId("rail-root-pages-Work");
+    const listClasses = ["text-xs", "min-h-7", "[@media(pointer:coarse)]:min-h-11"];
+    for (const row of [section, rootPages]) {
+      expect(row).toHaveClass(...listClasses, "text-foreground");
+      expect(row).not.toHaveClass("font-medium", "font-semibold");
+    }
+    expect(notebook).toHaveClass("text-[13px]", "min-h-9");
+    rail.unmount();
+
+    const sectionPages = renderSidebar({ sidebarLayout: "page-tree", variant: "desktop", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
+    const pageRow = screen.getByTestId("page-Work/Research/Parent");
+    const pageTitle = within(pageRow).getByText("Parent");
+    expect(pageRow).toHaveClass(...listClasses);
+    expect(pageTitle).toHaveClass("font-normal");
+    expect(pageTitle).not.toHaveClass("text-[13px]", "text-sm");
+    expect(pageRow.querySelector("button.min-h-7")).toBeInTheDocument();
+    sectionPages.unmount();
+
+    renderSidebar({ sidebarLayout: "page-tree", variant: "desktop", activeNotebookPath: "Work", activeSectionPath: null });
+    const rootPage = screen.getByTestId("page-Work/Roadmap");
+    expect(rootPage).toHaveClass(...listClasses);
+    expect(within(rootPage).getByText("Roadmap")).toHaveClass("font-normal");
+  });
+
   it("offers notebook root pages in the rail and selects that scope", () => {
     const onSelectRootPages = jest.fn();
     renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", onSelectRootPages });
