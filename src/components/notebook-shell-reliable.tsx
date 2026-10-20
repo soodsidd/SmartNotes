@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   AppWindow,
+  BookOpen,
   ChevronDown,
   ChevronRight,
   Sparkles,
@@ -228,6 +229,8 @@ import {
   NOTEBOOK_RAIL_MAX_WIDTH,
   TREE_SIDEBAR_MIN_WIDTH,
   TREE_SIDEBAR_MAX_WIDTH,
+  readMobilePaneMode,
+  writeMobilePaneMode,
 } from "@/lib/app-settings";
 import {
   fetchPageVersionContent,
@@ -867,6 +870,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [notebookGroups, setNotebookGroups] = React.useState<NotebookGroup[]>([]);
   const [archivedNotebooks, setArchivedNotebooks] = React.useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [mobilePaneMode, setMobilePaneMode] = React.useState<"rail" | "page-tree">("page-tree");
   const [notebookRailCollapsed, setNotebookRailCollapsed] = React.useState(false);
   const [notebookRailWidth, setNotebookRailWidth] = React.useState(NOTEBOOK_RAIL_DEFAULT_WIDTH);
   const [treeSidebarCollapsed, setTreeSidebarCollapsed] = React.useState(false);
@@ -1179,6 +1183,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setTreeSidebarCollapsed(readTreeSidebarCollapsed());
     setTreeSidebarWidth(readTreeSidebarWidth());
     treeSidebarWidthHydratedRef.current = true;
+    setMobilePaneMode(readMobilePaneMode());
   }, []);
 
   const setNotebookRailCollapsedAndStore = React.useCallback((collapsed: boolean) => {
@@ -1189,6 +1194,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const setTreeCollapsed = React.useCallback((collapsed: boolean) => {
     setTreeSidebarCollapsed(collapsed);
     writeTreeSidebarCollapsed(collapsed);
+  }, []);
+
+  const setMobilePaneModeAndStore = React.useCallback((mode: "rail" | "page-tree") => {
+    setMobilePaneMode(mode);
+    writeMobilePaneMode(mode);
   }, []);
 
   React.useEffect(() => {
@@ -7205,85 +7215,202 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           }}
         />
       ) : null}
+      {/* Mobile sidebar sheet — rotate model: one pane at a time, tab bar to switch */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="w-[92vw] max-w-[360px] border-r border-border bg-[color:var(--rail)] p-0">
-          <SheetHeader className="border-b border-border px-4 py-4">
+        <SheetContent side="left" className="flex w-[92vw] max-w-[360px] flex-col border-r border-border bg-[color:var(--rail)] p-0">
+          <SheetHeader className="shrink-0 border-b border-border px-4 py-3">
             <SheetTitle className="font-serif text-2xl">Notes</SheetTitle>
           </SheetHeader>
-          <Sidebar
-            tree={treeWithOverrides}
-            isTreeLoading={isLoadingTree}
-            activeNotebookPath={activeNotebookPath}
-            activeSectionPath={activeSectionPath}
-            activePagePath={activePagePath}
-            expandedNotebooks={expandedNotebooks}
-            expandedSections={expandedSections}
-            expandedPages={expandedPages}
-            onToggleNotebook={handleSidebarToggleNotebook}
-            onToggleSection={handleSidebarToggleSection}
-            onTogglePage={handleSidebarTogglePage}
-            onSelectNotebook={handleSidebarSelectNotebook}
-            onSelectSection={handleSidebarSelectSection}
-            onOpenPage={handleSidebarOpenPage}
-            onNestPage={handleSidebarNestPage}
-            onSetPageKeyNote={handleSidebarSetPageKeyNote}
-            onReorderPages={handleSidebarReorderPages}
-            onApplyPageDrop={handleSidebarApplyPageDrop}
-            onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
-            onCreateNotebook={handleCreateNotebookDialog}
-            onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
-            onRevealNotebook={handleRevealNotebook}
-            onCreateSection={handleCreateSectionDialog}
-            inlineSectionPath={inlineSectionPath}
-            onCommitSectionName={handleCommitSectionName}
-            inlinePageTitlePath={inlinePageTitlePath}
-            onCommitPageTitle={handleCommitPageTitle}
-            onRenameNotebook={handleRenameNotebookDialog}
-            onDeleteNotebook={handleDeleteNotebookDialog}
-            onCloseNotebook={closeNotebook}
-            onOpenNotebook={openNotebook}
-            closedNotebooks={closedNotebooks}
-            pinnedNotebooks={pinnedNotebooks}
-            pinnedPages={pinnedPages}
-            onTogglePinnedNotebook={handleTogglePinnedNotebook}
-            onTogglePinnedPage={handleTogglePinnedPage}
-            notebookOrder={notebookOrder}
-            notebookGroups={notebookGroups}
-            archivedNotebooks={archivedNotebooks}
-            onReorderNotebooks={handleReorderNotebooks}
-            onCreateNotebookGroup={handleCreateNotebookGroup}
-            onRenameNotebookGroup={handleRenameNotebookGroup}
-            onDeleteNotebookGroup={handleDeleteNotebookGroup}
-            onToggleNotebookGroup={handleToggleNotebookGroup}
-            onMoveNotebookToGroup={handleMoveNotebookToGroup}
-            onArchiveNotebook={handleArchiveNotebook}
-            onUnarchiveNotebook={handleUnarchiveNotebook}
-            onCreatePage={handleCreatePageDialog}
-            onCreateJupyterNotebook={handleCreateJupyterDialog}
-            onCreateLogPage={handleCreateLogDialog}
-            onCreateDesignPage={handleCreateDesignDialog}
-            onCreateSpreadsheetPage={handleCreateSpreadsheetDialog}
-            onLinkDesign={(initialPath) => {
-              handleLinkDesign(initialPath);
-            }}
-            onDirectCreatePage={handleDirectCreatePage}
-            onImportDocx={openDocxImportPicker}
-            onImportPagePackage={openPagePackageImportPicker}
-            onRenameSection={handleRenameSectionDialog}
-            onDeleteSection={handleDeleteSectionDialog}
-            onRenamePage={handleRenamePageDialog}
-            onMovePage={handleMovePageDialog}
-            onDeletePage={handleDeletePageDialog}
-            ghostVersions={ghostVersions}
-            onTogglePageVersions={handleSidebarTogglePageVersions}
-            onPreviewGhostVersion={handleSidebarPreviewGhostVersion}
-            previewedVersionId={activeVersionPreview?.versionId ?? null}
-            onRestoreGhostVersion={handleSidebarRestoreGhostVersion}
-            onDismissGhostVersions={dismissGhostVersions}
-            onExportPage={() => void handleExportCurrentPage()}
-            onExportDocxPage={() => void handleExportCurrentPageDocx()}
-            onExportPagePackage={() => void handleExportCurrentPagePackage()}
-          />
+          {/* Pane switcher — Notebooks (rail) | Pages (page-tree) */}
+          <div className="flex shrink-0 border-b border-border" role="tablist" aria-label="Sidebar pane">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobilePaneMode === "rail"}
+              data-testid="mobile-pane-tab-rail"
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                mobilePaneMode === "rail"
+                  ? "border-b-2 border-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setMobilePaneModeAndStore("rail")}
+            >
+              <BookOpen className="size-3.5 shrink-0" />
+              Notebooks
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobilePaneMode === "page-tree"}
+              data-testid="mobile-pane-tab-page-tree"
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                mobilePaneMode === "page-tree"
+                  ? "border-b-2 border-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setMobilePaneModeAndStore("page-tree")}
+            >
+              <FileText className="size-3.5 shrink-0" />
+              Pages
+            </button>
+          </div>
+          {/* Active pane content */}
+          <div className={cn("min-h-0 flex-1", mobilePaneMode === "page-tree" && "bg-surface")}>
+            {mobilePaneMode === "rail" ? (
+              <Sidebar
+                sidebarLayout="rail"
+                tree={treeWithOverrides}
+                isTreeLoading={isLoadingTree}
+                activeNotebookPath={activeNotebookPath}
+                activeSectionPath={activeSectionPath}
+                activePagePath={activePagePath}
+                expandedNotebooks={expandedNotebooks}
+                expandedSections={expandedSections}
+                expandedPages={expandedPages}
+                onToggleNotebook={handleSidebarToggleNotebook}
+                onToggleSection={handleSidebarToggleSection}
+                onTogglePage={handleSidebarTogglePage}
+                onSelectNotebook={handleSidebarSelectNotebook}
+                onSelectSection={(path) => {
+                  handleSidebarSelectSection(path);
+                  setMobilePaneModeAndStore("page-tree");
+                }}
+                onOpenPage={handleSidebarOpenPage}
+                onNestPage={handleSidebarNestPage}
+                onSetPageKeyNote={handleSidebarSetPageKeyNote}
+                onReorderPages={handleSidebarReorderPages}
+                onApplyPageDrop={handleSidebarApplyPageDrop}
+                onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
+                onCreateNotebook={handleCreateNotebookDialog}
+                onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
+                onRevealNotebook={handleRevealNotebook}
+                onCreateSection={handleCreateSectionDialog}
+                inlineSectionPath={inlineSectionPath}
+                onCommitSectionName={handleCommitSectionName}
+                inlinePageTitlePath={inlinePageTitlePath}
+                onCommitPageTitle={handleCommitPageTitle}
+                onRenameNotebook={handleRenameNotebookDialog}
+                onDeleteNotebook={handleDeleteNotebookDialog}
+                onCloseNotebook={closeNotebook}
+                onOpenNotebook={openNotebook}
+                closedNotebooks={closedNotebooks}
+                pinnedNotebooks={pinnedNotebooks}
+                pinnedPages={pinnedPages}
+                onTogglePinnedNotebook={handleTogglePinnedNotebook}
+                onTogglePinnedPage={handleTogglePinnedPage}
+                notebookOrder={notebookOrder}
+                notebookGroups={notebookGroups}
+                archivedNotebooks={archivedNotebooks}
+                onReorderNotebooks={handleReorderNotebooks}
+                onCreateNotebookGroup={handleCreateNotebookGroup}
+                onRenameNotebookGroup={handleRenameNotebookGroup}
+                onDeleteNotebookGroup={handleDeleteNotebookGroup}
+                onToggleNotebookGroup={handleToggleNotebookGroup}
+                onMoveNotebookToGroup={handleMoveNotebookToGroup}
+                onArchiveNotebook={handleArchiveNotebook}
+                onUnarchiveNotebook={handleUnarchiveNotebook}
+                onCreatePage={handleCreatePageDialog}
+                onCreateJupyterNotebook={handleCreateJupyterDialog}
+                onCreateLogPage={handleCreateLogDialog}
+                onCreateDesignPage={handleCreateDesignDialog}
+                onCreateSpreadsheetPage={handleCreateSpreadsheetDialog}
+                onLinkDesign={(initialPath) => { handleLinkDesign(initialPath); }}
+                onDirectCreatePage={handleDirectCreatePage}
+                onImportDocx={openDocxImportPicker}
+                onImportPagePackage={openPagePackageImportPicker}
+                onRenameSection={handleRenameSectionDialog}
+                onDeleteSection={handleDeleteSectionDialog}
+                onRenamePage={handleRenamePageDialog}
+                onMovePage={handleMovePageDialog}
+                onDeletePage={handleDeletePageDialog}
+                ghostVersions={ghostVersions}
+                onTogglePageVersions={handleSidebarTogglePageVersions}
+                onPreviewGhostVersion={handleSidebarPreviewGhostVersion}
+                previewedVersionId={activeVersionPreview?.versionId ?? null}
+                onRestoreGhostVersion={handleSidebarRestoreGhostVersion}
+                onDismissGhostVersions={dismissGhostVersions}
+                onExportPage={() => void handleExportCurrentPage()}
+                onExportDocxPage={() => void handleExportCurrentPageDocx()}
+                onExportPagePackage={() => void handleExportCurrentPagePackage()}
+              />
+            ) : (
+              <Sidebar
+                sidebarLayout="page-tree"
+                tree={treeWithOverrides}
+                isTreeLoading={isLoadingTree}
+                activeNotebookPath={activeNotebookPath}
+                activeSectionPath={activeSectionPath}
+                activePagePath={activePagePath}
+                expandedNotebooks={expandedNotebooks}
+                expandedSections={expandedSections}
+                expandedPages={expandedPages}
+                onToggleNotebook={handleSidebarToggleNotebook}
+                onToggleSection={handleSidebarToggleSection}
+                onTogglePage={handleSidebarTogglePage}
+                onSelectNotebook={handleSidebarSelectNotebook}
+                onSelectSection={handleSidebarSelectSection}
+                onOpenPage={handleSidebarOpenPage}
+                onNestPage={handleSidebarNestPage}
+                onSetPageKeyNote={handleSidebarSetPageKeyNote}
+                onReorderPages={handleSidebarReorderPages}
+                onApplyPageDrop={handleSidebarApplyPageDrop}
+                onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
+                onCreateNotebook={handleCreateNotebookDialog}
+                onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
+                onRevealNotebook={handleRevealNotebook}
+                onCreateSection={handleCreateSectionDialog}
+                inlineSectionPath={inlineSectionPath}
+                onCommitSectionName={handleCommitSectionName}
+                inlinePageTitlePath={inlinePageTitlePath}
+                onCommitPageTitle={handleCommitPageTitle}
+                onRenameNotebook={handleRenameNotebookDialog}
+                onDeleteNotebook={handleDeleteNotebookDialog}
+                onCloseNotebook={closeNotebook}
+                onOpenNotebook={openNotebook}
+                closedNotebooks={closedNotebooks}
+                pinnedNotebooks={pinnedNotebooks}
+                pinnedPages={pinnedPages}
+                onTogglePinnedNotebook={handleTogglePinnedNotebook}
+                onTogglePinnedPage={handleTogglePinnedPage}
+                notebookOrder={notebookOrder}
+                notebookGroups={notebookGroups}
+                archivedNotebooks={archivedNotebooks}
+                onReorderNotebooks={handleReorderNotebooks}
+                onCreateNotebookGroup={handleCreateNotebookGroup}
+                onRenameNotebookGroup={handleRenameNotebookGroup}
+                onDeleteNotebookGroup={handleDeleteNotebookGroup}
+                onToggleNotebookGroup={handleToggleNotebookGroup}
+                onMoveNotebookToGroup={handleMoveNotebookToGroup}
+                onArchiveNotebook={handleArchiveNotebook}
+                onUnarchiveNotebook={handleUnarchiveNotebook}
+                onCreatePage={handleCreatePageDialog}
+                onCreateJupyterNotebook={handleCreateJupyterDialog}
+                onCreateLogPage={handleCreateLogDialog}
+                onCreateDesignPage={handleCreateDesignDialog}
+                onCreateSpreadsheetPage={handleCreateSpreadsheetDialog}
+                onLinkDesign={(initialPath) => { handleLinkDesign(initialPath); }}
+                onDirectCreatePage={handleDirectCreatePage}
+                onImportDocx={openDocxImportPicker}
+                onImportPagePackage={openPagePackageImportPicker}
+                onRenameSection={handleRenameSectionDialog}
+                onDeleteSection={handleDeleteSectionDialog}
+                onRenamePage={handleRenamePageDialog}
+                onMovePage={handleMovePageDialog}
+                onDeletePage={handleDeletePageDialog}
+                ghostVersions={ghostVersions}
+                onTogglePageVersions={handleSidebarTogglePageVersions}
+                onPreviewGhostVersion={handleSidebarPreviewGhostVersion}
+                previewedVersionId={activeVersionPreview?.versionId ?? null}
+                onRestoreGhostVersion={handleSidebarRestoreGhostVersion}
+                onDismissGhostVersions={dismissGhostVersions}
+                onExportPage={() => void handleExportCurrentPage()}
+                onExportDocxPage={() => void handleExportCurrentPageDocx()}
+                onExportPagePackage={() => void handleExportCurrentPagePackage()}
+              />
+            )}
+          </div>
         </SheetContent>
       </Sheet>
 

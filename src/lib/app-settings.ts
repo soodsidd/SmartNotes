@@ -119,3 +119,16 @@ export function writeNotebookRailCollapsed(collapsed: boolean) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(NOTEBOOK_RAIL_COLLAPSED_KEY, collapsed ? "true" : "false");
 }
+
+export const MOBILE_PANE_MODE_KEY = "smart-notes-mobile-pane-mode";
+
+export function readMobilePaneMode(): "rail" | "page-tree" {
+  if (typeof window === "undefined") return "page-tree";
+  const stored = window.localStorage.getItem(MOBILE_PANE_MODE_KEY);
+  return stored === "rail" ? "rail" : "page-tree";
+}
+
+export function writeMobilePaneMode(mode: "rail" | "page-tree") {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(MOBILE_PANE_MODE_KEY, mode);
+}
