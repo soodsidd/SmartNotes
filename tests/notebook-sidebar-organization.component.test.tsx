@@ -5,7 +5,7 @@
 import "@testing-library/jest-dom";
 import * as React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { Sidebar } from "@/components/notebook-shell-reliable";
+import { Sidebar, notebookHasRootPagesRow, sectionTabColor } from "@/components/notebook-shell-reliable";
 import type { VaultNotebook, VaultPage } from "@/lib/vault-contract";
 
 jest.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
@@ -107,6 +107,55 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
   };
   return { ...render(<Sidebar {...props} />), props };
 }
+
+describe("SN-324 dual-pane navigation", () => {
+  it("shows token-colored section tabs and a surface highlight on the selected section", () => {
+    renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
+    const section = screen.getByTestId("rail-section-row-Work/Research");
+    expect(section).toHaveClass("bg-surface", "font-semibold");
+    expect(section).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("rail-section-tab-Work/Research")).toHaveStyle({ backgroundColor: sectionTabColor("Work/Research") });
+    expect(sectionTabColor("Work/Research")).toMatch(/^var\(--chart-[1-5]\)$/);
+  });
+
+  it("offers notebook root pages in the rail and selects that scope", () => {
+    const onSelectRootPages = jest.fn();
+    renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", onSelectRootPages });
+    fireEvent.click(screen.getByTestId("rail-root-pages-Work"));
+    expect(onSelectRootPages).toHaveBeenCalledWith("Work");
+    expect(notebookHasRootPagesRow({ pages: [], sections: [] })).toBe(true);
+    expect(notebookHasRootPagesRow({ pages: [], sections: tree[0].sections })).toBe(false);
+  });
+
+  it("shows pages only for the selected section and adds pages there", () => {
+    const onDirectCreatePage = jest.fn().mockResolvedValue(undefined);
+    renderSidebar({ sidebarLayout: "page-tree", activeNotebookPath: "Work", activeSectionPath: "Work/Research", onDirectCreatePage });
+    expect(screen.getByTestId("page-Work/Research/Parent")).toBeInTheDocument();
+    expect(screen.queryByTestId("page-Work/Roadmap")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("page-Personal/Travel")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("page-pane-add-page"));
+    expect(onDirectCreatePage).toHaveBeenCalledWith(expect.objectContaining({ notebookPath: "Work", sectionPath: "Work/Research" }));
+  });
+
+  it("shows root pages when the notebook has no selected section", () => {
+    renderSidebar({ sidebarLayout: "page-tree", activeNotebookPath: "Work", activeSectionPath: null });
+    expect(screen.getByTestId("page-pane-root-heading")).toHaveTextContent("Notebook pages");
+    expect(screen.getByTestId("page-Work/Roadmap")).toBeInTheDocument();
+    expect(screen.queryByTestId("page-Work/Research/Parent")).not.toBeInTheDocument();
+  });
+
+  it("keeps separate collapse controls for the two desktop panes", () => {
+    const onCollapseRail = jest.fn();
+    const onCollapseTree = jest.fn();
+    const rail = renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", onCollapseRail });
+    fireEvent.click(within(rail.container).getByTestId("notebook-rail-collapse"));
+    expect(onCollapseRail).toHaveBeenCalledTimes(1);
+    rail.unmount();
+    renderSidebar({ sidebarLayout: "page-tree", activeNotebookPath: "Work", onCollapseTree });
+    fireEvent.click(screen.getByTestId("tree-sidebar-collapse"));
+    expect(onCollapseTree).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("notebook picker organization component", () => {
   it("edits a newly created section name in the tree", () => {

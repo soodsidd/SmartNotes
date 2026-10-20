@@ -3,8 +3,12 @@
 ## Dual left sidebars (SN-324)
 
 The desktop notebook rail and page tree reuse `--rail`, `--border`, `--surface`,
-`--foreground`, `--muted-foreground`, `--accent`, and `--ring` with the existing
-compact tree typography and row heights. The notebook rail is 200px by default
+`--foreground`, `--muted-foreground`, `--chart-1` through `--chart-5`, and `--ring`
+with the existing compact tree typography. Rail notebook and section rows use
+the spacing scale's 36px minimum on desktop and 44px touch targets below xl. Sections in the
+muted `--rail` pane have slim, deterministic chart-token color tabs; the selected
+section uses a rounded `--surface` highlight. The page pane uses `--surface`
+and lists pages for one section or the notebook root. The notebook rail is 200px by default
 and resizes from 160–320px; the page tree is 260px by default and resizes from
 200–440px. Both collapse to the existing `w-11` (44px) strip. The notebook rail
 uses the Lucide `Menu` icon for its burger control; the page tree retains

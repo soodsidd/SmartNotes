@@ -870,6 +870,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [mobileSheetView, setMobileSheetView] = React.useState<"rail" | "section-pages">("rail");
   const [mobileDrillSectionPath, setMobileDrillSectionPath] = React.useState<string | null>(null);
+  const [mobileDrillNotebookPath, setMobileDrillNotebookPath] = React.useState<string | null>(null);
   const [notebookRailCollapsed, setNotebookRailCollapsed] = React.useState(false);
   const [notebookRailWidth, setNotebookRailWidth] = React.useState(NOTEBOOK_RAIL_DEFAULT_WIDTH);
   const [treeSidebarCollapsed, setTreeSidebarCollapsed] = React.useState(false);
@@ -1195,13 +1196,22 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   }, []);
 
   const drillToMobileSection = React.useCallback((sectionPath: string) => {
+    const notebook = tree.find((item) => item.sections.some((section) => section.path === sectionPath));
+    setMobileDrillNotebookPath(notebook?.path ?? null);
     setMobileDrillSectionPath(sectionPath);
+    setMobileSheetView("section-pages");
+  }, [tree]);
+
+  const drillToMobileRoot = React.useCallback((notebookPath: string) => {
+    setMobileDrillNotebookPath(notebookPath);
+    setMobileDrillSectionPath(null);
     setMobileSheetView("section-pages");
   }, []);
 
   const backToMobileRail = React.useCallback(() => {
     setMobileSheetView("rail");
     setMobileDrillSectionPath(null);
+    setMobileDrillNotebookPath(null);
   }, []);
 
   React.useEffect(() => {
@@ -4276,6 +4286,18 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     [applySelection, dismissGhostVersions, flushSave, snapshotLeavingPage, tree]
   );
 
+  const selectNotebookRoot = React.useCallback(
+    async (notebookPath: string) => {
+      const leavingPagePath = activePagePathRef.current;
+      if (!(await flushSave())) return;
+      if (leavingPagePath) await snapshotLeavingPage(leavingPagePath);
+      dismissGhostVersions();
+      const notebook = tree.find((item) => item.path === notebookPath);
+      if (notebook) applySelection({ notebook, section: null, page: notebook.pages[0] ?? null });
+    },
+    [applySelection, dismissGhostVersions, flushSave, snapshotLeavingPage, tree]
+  );
+
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") {
@@ -4475,6 +4497,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const handleSidebarSelectNotebook = React.useCallback((path: string) => {
     void selectNotebook(path);
   }, [selectNotebook]);
+
+  const handleSidebarSelectRootPages = React.useCallback((path: string) => {
+    void selectNotebookRoot(path);
+  }, [selectNotebookRoot]);
 
   const handleSidebarSelectSection = React.useCallback((path: string) => {
     void selectSection(path);
@@ -4704,17 +4730,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     });
   }, [tree, pageOrderOverrides]);
 
-  const mobileDrilledSectionTree = React.useMemo(() => {
-    if (!mobileDrillSectionPath) return treeWithOverrides;
-    return treeWithOverrides.map((nb) => ({
-      ...nb,
-      sections: nb.sections.filter((s) => s.path === mobileDrillSectionPath),
-      pages: [],
-    }));
-  }, [treeWithOverrides, mobileDrillSectionPath]);
-
   const mobileDrilledSectionName = React.useMemo(() => {
-    if (!mobileDrillSectionPath) return "";
+    if (!mobileDrillSectionPath) return NOTEBOOK_ROOT_PAGES_LABEL;
     for (const nb of treeWithOverrides) {
       const sec = nb.sections.find((s) => s.path === mobileDrillSectionPath);
       if (sec) return sec.name;
@@ -6710,6 +6727,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   onTogglePage={handleSidebarTogglePage}
                   onSelectNotebook={handleSidebarSelectNotebook}
                   onSelectSection={handleSidebarSelectSection}
+                  onSelectRootPages={handleSidebarSelectRootPages}
                   onOpenPage={handleSidebarOpenPage}
                   onNestPage={handleSidebarNestPage}
                   onSetPageKeyNote={handleSidebarSetPageKeyNote}
@@ -7239,7 +7257,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       {/* Mobile sidebar sheet — drill-down: rail → section pages */}
       <Sheet open={sidebarOpen} onOpenChange={(open) => {
         setSidebarOpen(open);
-        if (open) { setMobileSheetView("rail"); setMobileDrillSectionPath(null); }
+        if (open) { setMobileSheetView("rail"); setMobileDrillSectionPath(null); setMobileDrillNotebookPath(null); }
       }}>
         <SheetContent side="left" className="flex w-[92vw] max-w-[360px] flex-col border-r border-border bg-[color:var(--rail)] p-0">
           {mobileSheetView === "rail" ? (
@@ -7264,6 +7282,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 onSelectSection={(path) => {
                   handleSidebarSelectSection(path);
                   drillToMobileSection(path);
+                }}
+                onSelectRootPages={(path) => {
+                  handleSidebarSelectRootPages(path);
+                  drillToMobileRoot(path);
                 }}
                 onOpenPage={(path) => { handleSidebarOpenPage(path); setSidebarOpen(false); }}
                 onNestPage={handleSidebarNestPage}
@@ -7343,13 +7365,14 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               <div className="min-h-0 flex-1 bg-surface">
                 <Sidebar
                   sidebarLayout="page-tree"
-                  tree={mobileDrilledSectionTree}
+                  tree={treeWithOverrides}
+                  pageScope={mobileDrillNotebookPath ? { notebookPath: mobileDrillNotebookPath, sectionPath: mobileDrillSectionPath } : null}
                   isTreeLoading={isLoadingTree}
                   activeNotebookPath={activeNotebookPath}
                   activeSectionPath={activeSectionPath}
                   activePagePath={activePagePath}
                   expandedNotebooks={expandedNotebooks}
-                  expandedSections={new Set(mobileDrillSectionPath ? [mobileDrillSectionPath] : [])}
+                  expandedSections={expandedSections}
                   expandedPages={expandedPages}
                   onToggleNotebook={handleSidebarToggleNotebook}
                   onToggleSection={handleSidebarToggleSection}
@@ -8185,9 +8208,32 @@ function InlineSectionName({ path, name, onCommit, kind = "section" }: { path: s
   );
 }
 
+/** SN-324: page-pane scope — a section, or the notebook root (sectionPath null). */
+export type SidebarPageScope = { notebookPath: string; sectionPath: string | null };
+
+const SECTION_TAB_TOKENS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"] as const;
+
+/** SN-324: OneNote-style section tab colour, derived deterministically from design-system chart tokens. */
+export function sectionTabColor(sectionPath: string): string {
+  let hash = 0;
+  for (let index = 0; index < sectionPath.length; index += 1) {
+    hash = (hash * 31 + sectionPath.charCodeAt(index)) >>> 0;
+  }
+  return `var(${SECTION_TAB_TOKENS[hash % SECTION_TAB_TOKENS.length]})`;
+}
+
+/** SN-324: the rail lists a synthetic "Notebook pages" row for root pages (or as the only target of a section-less notebook). */
+export function notebookHasRootPagesRow(notebook: Pick<VaultNotebook, "pages" | "sections">): boolean {
+  return notebook.pages.length > 0 || notebook.sections.length === 0;
+}
+
+export const NOTEBOOK_ROOT_PAGES_LABEL = "Notebook pages";
+
 export const Sidebar = React.memo(function Sidebar({
   sidebarLayout = "unified",
   onCollapseRail,
+  pageScope,
+  onSelectRootPages,
   variant = "mobile",
   tree,
   isTreeLoading = false,
@@ -8263,6 +8309,9 @@ export const Sidebar = React.memo(function Sidebar({
 }: {
   sidebarLayout?: "unified" | "rail" | "page-tree";
   onCollapseRail?: () => void;
+  /** Page-tree layout only; defaults to the active notebook/section. */
+  pageScope?: SidebarPageScope | null;
+  onSelectRootPages?: (notebookPath: string) => void;
   variant?: "desktop" | "mobile";
   tree: VaultNotebook[];
   isTreeLoading?: boolean;
@@ -8370,6 +8419,17 @@ export const Sidebar = React.memo(function Sidebar({
     () => tree.filter((notebook) => notebook.path !== BIBLIOGRAPHY_PATH && !closedNotebooks.has(notebook.path) && !archivedNotebooks.has(notebook.path)),
     [archivedNotebooks, closedNotebooks, tree]
   );
+  // SN-324: the page-tree pane shows one scope only — the active section's pages,
+  // or the notebook's root pages when no section is selected.
+  const resolvedPageScope: SidebarPageScope | null = sidebarLayout !== "page-tree"
+    ? null
+    : pageScope !== undefined
+      ? pageScope
+      : activeNotebookPath
+        ? { notebookPath: activeNotebookPath, sectionPath: activeSectionPath }
+        : null;
+  const scopedNotebookPath = resolvedPageScope?.notebookPath ?? null;
+  const scopedSectionPath = resolvedPageScope?.sectionPath ?? null;
   const pageRowsByNotebook = React.useMemo(() => {
     const byNotebookPath = new Map<
       string,
@@ -8380,7 +8440,7 @@ export const Sidebar = React.memo(function Sidebar({
     >();
 
     for (const notebook of visibleNotebooks) {
-      if (!expandedNotebooks.has(notebook.path)) {
+      if (!expandedNotebooks.has(notebook.path) && notebook.path !== scopedNotebookPath) {
         continue;
       }
 
@@ -8393,7 +8453,7 @@ export const Sidebar = React.memo(function Sidebar({
     }
 
     return byNotebookPath;
-  }, [expandedNotebooks, expandedPages, visibleNotebooks, tree]);
+  }, [expandedNotebooks, expandedPages, scopedNotebookPath, visibleNotebooks, tree]);
   const pageRowsBySection = React.useMemo(() => {
     const bySectionPath = new Map<
       string,
@@ -8404,12 +8464,12 @@ export const Sidebar = React.memo(function Sidebar({
     >();
 
     for (const notebook of visibleNotebooks) {
-      if (!expandedNotebooks.has(notebook.path)) {
+      if (!expandedNotebooks.has(notebook.path) && notebook.path !== scopedNotebookPath) {
         continue;
       }
 
       for (const section of notebook.sections) {
-        if (!expandedSections.has(section.path)) {
+        if (!expandedSections.has(section.path) && section.path !== scopedSectionPath) {
           continue;
         }
 
@@ -8423,7 +8483,7 @@ export const Sidebar = React.memo(function Sidebar({
     }
 
     return bySectionPath;
-  }, [expandedNotebooks, expandedPages, expandedSections, visibleNotebooks, tree]);
+  }, [expandedNotebooks, expandedPages, expandedSections, scopedNotebookPath, scopedSectionPath, visibleNotebooks, tree]);
 
   React.useEffect(() => {
     const dismissMenus = () => {
@@ -8466,8 +8526,24 @@ export const Sidebar = React.memo(function Sidebar({
 
   const isRailLayout = sidebarLayout === "rail";
   const isPageTreeLayout = sidebarLayout === "page-tree";
-  const activeNotebook = (isRailLayout || isPageTreeLayout)
+  const activeNotebook = isRailLayout
     ? visibleNotebooks.find((nb) => nb.path === activeNotebookPath) ?? null
+    : isPageTreeLayout
+      ? visibleNotebooks.find((nb) => nb.path === scopedNotebookPath) ?? null
+      : null;
+  // A stale/deleted section scope falls back to the notebook root pages.
+  const scopedSection = isPageTreeLayout && activeNotebook && scopedSectionPath
+    ? activeNotebook.sections.find((section) => section.path === scopedSectionPath) ?? null
+    : null;
+  const scopedCreateTarget: CreatePageTarget | null = activeNotebook
+    ? {
+        notebookPath: activeNotebook.path,
+        notebookName: activeNotebook.name,
+        sectionPath: scopedSection?.path ?? null,
+        sectionName: scopedSection?.name ?? null,
+        parentId: null,
+        targetLabel: scopedSection?.name ?? activeNotebook.name,
+      }
     : null;
 
   return (
@@ -8478,19 +8554,22 @@ export const Sidebar = React.memo(function Sidebar({
       data-vault-ready={isTreeLoading ? "false" : "true"}
     >
       {isPageTreeLayout ? (
-        /* Page-tree pane header: show active notebook name + collapse button */
-        <div className={cn("flex items-center justify-between gap-1 px-1.5", compactDesktop ? "mb-1" : "mb-2")}>
+        /* Page-tree pane header: Add Page for the scoped section/root + collapse button */
+        <div className={cn("flex items-center justify-between gap-1 px-1", compactDesktop ? "mb-2" : "mb-3")}>
           <div className="min-w-0 flex-1">
-            {activeNotebook ? (
-              <div className="flex items-center gap-2 min-w-0">
-                <span
-                  className="size-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: activeNotebook.color }}
-                />
-                <p className={cn("truncate font-medium leading-none", compactDesktop ? "text-[13px]" : "text-sm")}>
-                  {activeNotebook.name}
-                </p>
-              </div>
+            {scopedCreateTarget ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className={cn("max-w-full justify-start bg-background", compactDesktop ? "h-7 px-2 text-xs" : "min-h-11")}
+                onClick={() => void onDirectCreatePage(scopedCreateTarget)}
+                aria-label={`Add page to ${scopedCreateTarget.targetLabel}`}
+                data-testid="page-pane-add-page"
+              >
+                <Plus className={cn("shrink-0 text-accent", compactDesktop ? "size-3.5" : "size-4")} />
+                Add Page
+              </Button>
             ) : (
               <p className={cn("text-muted-foreground", compactDesktop ? "text-[13px]" : "text-sm")}>No notebook selected</p>
             )}
@@ -8617,7 +8696,7 @@ export const Sidebar = React.memo(function Sidebar({
         </Button>
       ) : null}
 
-      {!isRailLayout ? (
+      {!isRailLayout && !isPageTreeLayout ? (
         <div ref={bibliographyRef}>
           <Bibliography tree={tree} loading={isTreeLoading} compact={compactDesktop} activePagePath={activePagePath} onOpen={onOpenPage} open={bibliographyOpen} filterPage={bibliographyFilterPage} onClearFilter={() => setBibliographyFilterPage(null)} onToggle={() => {
             if (bibliographyFilterPage) { setBibliographyFilterPage(null); setBibliographyOpen(true); }
@@ -8674,7 +8753,7 @@ export const Sidebar = React.memo(function Sidebar({
                   type="button"
                   className={cn(
                     "flex w-full items-center gap-1.5 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 text-[13px]" : "min-h-[34px] py-1 text-sm",
+                    compactDesktop ? "min-h-9 py-0.5 text-[13px]" : "min-h-11 py-1 text-sm",
                     notebookActive ? "bg-surface font-semibold" : "hover:bg-surface/70 font-medium"
                   )}
                   onClick={() => {
@@ -8698,21 +8777,37 @@ export const Sidebar = React.memo(function Sidebar({
                     <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Remote</span>
                   ) : null}
                 </button>
-                {notebookExpanded && hasSections ? (
-                  <div className={cn(compactDesktop ? "mt-0.5 space-y-0.5 pl-5" : "mt-0.5 space-y-0.5 pl-5")}>
+                {notebookExpanded ? (
+                  <div className="mt-1 space-y-0.5 pl-3">
+                    {notebookHasRootPagesRow(notebook) && onSelectRootPages ? (
+                      <button
+                        type="button"
+                        data-testid={`rail-root-pages-${notebook.path}`}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-md px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          compactDesktop ? "min-h-9 text-[13px]" : "min-h-11 text-sm",
+                          notebookActive && !activeSectionPath ? "bg-surface font-semibold text-foreground" : "text-muted-foreground hover:bg-surface/70 hover:text-foreground"
+                        )}
+                        onClick={() => onSelectRootPages(notebook.path)}
+                        aria-current={notebookActive && !activeSectionPath ? "page" : undefined}
+                      >
+                        <span className="h-5 w-1 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden />
+                        <span className="min-w-0 flex-1 truncate">{NOTEBOOK_ROOT_PAGES_LABEL}</span>
+                      </button>
+                    ) : null}
                     {notebook.sections.map((section) => {
-                      const sectionActive = section.path === activeSectionPath;
+                      const sectionActive = notebookActive && section.path === activeSectionPath;
                       return (
                         <button
                           key={section.path}
                           type="button"
                           data-testid={`rail-section-row-${section.path}`}
                           className={cn(
-                            "flex w-full items-center gap-1.5 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 text-[13px]" : "min-h-[30px] py-0.5 text-sm",
+                            "flex w-full items-center gap-2 rounded-md px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            compactDesktop ? "min-h-9 text-[13px]" : "min-h-11 text-sm",
                             sectionActive
-                              ? "bg-accent/10 font-medium text-foreground ring-1 ring-inset ring-accent/30"
-                              : "text-muted-foreground hover:bg-surface/60 hover:text-foreground"
+                              ? "bg-surface font-semibold text-foreground"
+                              : "text-muted-foreground hover:bg-surface/70 hover:text-foreground"
                           )}
                           onClick={() => {
                             onSelectSection(section.path);
@@ -8720,9 +8815,12 @@ export const Sidebar = React.memo(function Sidebar({
                           }}
                           aria-current={sectionActive ? "page" : undefined}
                         >
-                          {section.name === "Inbox" ? (
-                            <Inbox className={cn("shrink-0 text-accent", compactDesktop ? "size-3" : "size-3.5")} />
-                          ) : null}
+                          <span
+                            className="h-5 w-1 shrink-0 rounded-full"
+                            style={{ backgroundColor: sectionTabColor(section.path) }}
+                            aria-hidden
+                            data-testid={`rail-section-tab-${section.path}`}
+                          />
                           <span className="min-w-0 flex-1 truncate">{section.name}</span>
                         </button>
                       );
@@ -8733,7 +8831,7 @@ export const Sidebar = React.memo(function Sidebar({
                         data-testid={`rail-new-section-${notebook.path}`}
                         className={cn(
                           "flex w-full items-center gap-1.5 rounded px-1.5 text-left text-muted-foreground transition hover:bg-surface/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 text-[13px]" : "min-h-[30px] py-0.5 text-sm"
+                          compactDesktop ? "min-h-9 py-0.5 text-[13px]" : "min-h-11 py-0.5 text-sm"
                         )}
                         onClick={() => onCreateSection(notebook.path, notebook.name)}
                       >
@@ -8876,8 +8974,25 @@ export const Sidebar = React.memo(function Sidebar({
               ) : null}
 
               {notebookOpen ? (
-                <div className={cn(isPageTreeLayout ? "" : (compactDesktop ? "mt-1" : "mt-1"), compactDesktop ? "space-y-0.5 pl-3" : "space-y-1 pl-4")}>
-                  {(() => {
+                <div
+                  className={cn(isPageTreeLayout ? "" : (compactDesktop ? "mt-1" : "mt-1"), isPageTreeLayout ? "space-y-0.5" : compactDesktop ? "space-y-0.5 pl-3" : "space-y-1 pl-4")}
+                  data-testid={isPageTreeLayout ? "page-pane-scope" : undefined}
+                  data-scope={isPageTreeLayout ? (scopedSection?.path ?? "root") : undefined}
+                >
+                  {isPageTreeLayout && !scopedSection ? (
+                    <p
+                      className={cn("truncate px-1.5 font-semibold text-foreground", compactDesktop ? "pb-1 text-[13px]" : "pb-1.5 text-sm")}
+                      data-testid="page-pane-root-heading"
+                    >
+                      {NOTEBOOK_ROOT_PAGES_LABEL}
+                    </p>
+                  ) : null}
+                  {isPageTreeLayout && !scopedSection && notebook.pages.length === 0 ? (
+                    <div className="rounded border border-dashed border-border px-3 py-3 text-xs text-muted-foreground" data-testid="page-pane-root-empty">
+                      No pages yet
+                    </div>
+                  ) : null}
+                  {isPageTreeLayout && scopedSection ? null : (() => {
                     const notebookRows = pageRowsByNotebook.get(notebook.path);
                     const flatNodes = notebookRows?.flatNodes ?? [];
                     const nestingLookup = notebookRows?.nestingLookup ?? EMPTY_PAGE_NESTING_ACTION_LOOKUP;
@@ -9236,9 +9351,9 @@ export const Sidebar = React.memo(function Sidebar({
                     });
                   })()}
 
-                  {notebook.sections.map((section) => {
-                    const sectionOpen = expandedSections.has(section.path);
-                    const sectionActive = section.path === activeSectionPath;
+                  {(isPageTreeLayout ? (scopedSection ? [scopedSection] : []) : notebook.sections).map((section) => {
+                    const sectionOpen = isPageTreeLayout || expandedSections.has(section.path);
+                    const sectionActive = !isPageTreeLayout && section.path === activeSectionPath;
 
                     const isSectionDropTarget =
                       Boolean(draggedPagePath) &&
@@ -9294,11 +9409,16 @@ export const Sidebar = React.memo(function Sidebar({
                             type="button"
                             className={cn("flex min-w-0 items-center text-left", inlineSectionPath === section.path ? "shrink-0" : "flex-1", compactDesktop ? "gap-1.5" : "gap-2")}
                             onClick={() => {
+                              // Page-tree pane: the section row is the scope heading, not a toggle.
+                              if (isPageTreeLayout) return;
                               onSelectSection(section.path);
                               onToggleSection(section.path);
                             }}
+                            data-testid={isPageTreeLayout ? "page-pane-section-heading" : undefined}
                           >
-                            {sectionOpen ? (
+                            {isPageTreeLayout ? (
+                              <span className="h-4 w-1 shrink-0 rounded-full" style={{ backgroundColor: sectionTabColor(section.path) }} aria-hidden />
+                            ) : sectionOpen ? (
                               <ChevronDown className={cn("text-muted-foreground", compactDesktop ? "size-3" : "size-3.5")} />
                             ) : (
                               <ChevronRight className={cn("text-muted-foreground", compactDesktop ? "size-3" : "size-3.5")} />
@@ -9307,7 +9427,7 @@ export const Sidebar = React.memo(function Sidebar({
                               <Inbox className={cn("text-accent", compactDesktop ? "size-3" : "size-3.5")} />
                             ) : null}
                             {inlineSectionPath !== section.path ? (
-                              <span className={cn("truncate text-foreground", compactDesktop ? "text-[13px]" : "text-sm")}>{section.name}</span>
+                              <span className={cn("truncate text-foreground", isPageTreeLayout && "font-semibold", compactDesktop ? "text-[13px]" : "text-sm")}>{section.name}</span>
                             ) : null}
                           </button>
                           {inlineSectionPath === section.path ? (
@@ -9921,7 +10041,7 @@ export const Sidebar = React.memo(function Sidebar({
                     );
                   })}
 
-                  {!notebook.sections.length ? (
+                  {!isPageTreeLayout && !notebook.sections.length ? (
                     <div className="rounded border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
                       No sections yet
                     </div>
