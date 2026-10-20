@@ -8561,13 +8561,13 @@ export const Sidebar = React.memo(function Sidebar({
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
-                className={cn("max-w-full justify-start bg-background", compactDesktop ? "h-7 px-2 text-xs" : "min-h-11")}
+                variant="ghost"
+                className={cn("max-w-full justify-start font-normal text-xs text-muted-foreground", compactDesktop ? "h-7 px-2" : "min-h-11")}
                 onClick={() => void onDirectCreatePage(scopedCreateTarget)}
                 aria-label={`Add page to ${scopedCreateTarget.targetLabel}`}
                 data-testid="page-pane-add-page"
               >
-                <Plus className={cn("shrink-0 text-accent", compactDesktop ? "size-3.5" : "size-4")} />
+                <Plus className={cn("shrink-0", compactDesktop ? "size-3.5" : "size-4")} />
                 Add Page
               </Button>
             ) : (
@@ -8786,7 +8786,7 @@ export const Sidebar = React.memo(function Sidebar({
                         className={cn(
                           "flex w-full items-center gap-2 rounded-md px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           compactDesktop ? "min-h-9 text-[13px]" : "min-h-11 text-sm",
-                          notebookActive && !activeSectionPath ? "bg-surface font-semibold text-foreground" : "text-muted-foreground hover:bg-surface/70 hover:text-foreground"
+                          notebookActive && !activeSectionPath ? "bg-surface font-semibold text-foreground" : "text-foreground hover:bg-surface/70"
                         )}
                         onClick={() => onSelectRootPages(notebook.path)}
                         aria-current={notebookActive && !activeSectionPath ? "page" : undefined}
@@ -8807,7 +8807,7 @@ export const Sidebar = React.memo(function Sidebar({
                             compactDesktop ? "min-h-9 text-[13px]" : "min-h-11 text-sm",
                             sectionActive
                               ? "bg-surface font-semibold text-foreground"
-                              : "text-muted-foreground hover:bg-surface/70 hover:text-foreground"
+                              : "text-foreground hover:bg-surface/70"
                           )}
                           onClick={() => {
                             onSelectSection(section.path);
@@ -8830,8 +8830,8 @@ export const Sidebar = React.memo(function Sidebar({
                         type="button"
                         data-testid={`rail-new-section-${notebook.path}`}
                         className={cn(
-                          "flex w-full items-center gap-1.5 rounded px-1.5 text-left text-muted-foreground transition hover:bg-surface/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          compactDesktop ? "min-h-9 py-0.5 text-[13px]" : "min-h-11 py-0.5 text-sm"
+                          "flex w-full items-center gap-1.5 rounded px-1.5 text-left font-normal text-xs text-muted-foreground transition hover:bg-surface/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          compactDesktop ? "min-h-9 py-0.5" : "min-h-11 py-0.5"
                         )}
                         onClick={() => onCreateSection(notebook.path, notebook.name)}
                       >

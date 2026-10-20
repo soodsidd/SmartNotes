@@ -113,9 +113,30 @@ describe("SN-324 dual-pane navigation", () => {
     renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
     const section = screen.getByTestId("rail-section-row-Work/Research");
     expect(section).toHaveClass("bg-surface", "font-semibold");
+    expect(section).toHaveClass("text-foreground");
     expect(section).toHaveAttribute("aria-current", "page");
     expect(screen.getByTestId("rail-section-tab-Work/Research")).toHaveStyle({ backgroundColor: sectionTabColor("Work/Research") });
     expect(sectionTabColor("Work/Research")).toMatch(/^var\(--chart-[1-5]\)$/);
+  });
+
+  it("keeps inactive section names prominent and creation actions quieter at both densities", () => {
+    for (const variant of ["desktop", "mobile"] as const) {
+      const rail = renderSidebar({ sidebarLayout: "rail", variant, activeNotebookPath: "Work" });
+      const section = screen.getByTestId("rail-section-row-Work/Research");
+      const newSection = screen.getByTestId("rail-new-section-Work");
+      expect(section).toHaveClass("text-foreground");
+      expect(section).not.toHaveClass("text-muted-foreground");
+      expect(newSection).toHaveClass("text-xs", "font-normal", "text-muted-foreground");
+      expect(newSection).toHaveClass(variant === "desktop" ? "min-h-9" : "min-h-11");
+      rail.unmount();
+
+      const pages = renderSidebar({ sidebarLayout: "page-tree", variant, activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
+      const addPage = screen.getByTestId("page-pane-add-page");
+      expect(addPage).toHaveClass("text-xs", "font-normal", "text-muted-foreground");
+      expect(addPage).not.toHaveClass("border-border", "bg-background");
+      expect(addPage).toHaveClass(variant === "desktop" ? "h-7" : "min-h-11");
+      pages.unmount();
+    }
   });
 
   it("offers notebook root pages in the rail and selects that scope", () => {

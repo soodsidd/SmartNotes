@@ -7,8 +7,12 @@ The desktop notebook rail and page tree reuse `--rail`, `--border`, `--surface`,
 with the existing compact tree typography. Rail notebook and section rows use
 the spacing scale's 36px minimum on desktop and 44px touch targets below xl. Sections in the
 muted `--rail` pane have slim, deterministic chart-token color tabs; the selected
-section uses a rounded `--surface` highlight. The page pane uses `--surface`
-and lists pages for one section or the notebook root. The notebook rail is 200px by default
+section uses a rounded `--surface` highlight. Section names retain `--foreground`
+when inactive, while the selected section also uses semibold weight. The page pane
+uses `--surface` and lists pages for one section or the notebook root. New Section
+and Add Page use smaller `text-xs`, normal weight, and `--muted-foreground` so they
+read as secondary actions; below xl their touch targets remain 44px.
+The notebook rail is 200px by default
 and resizes from 160–320px; the page tree is 260px by default and resizes from
 200–440px. Both collapse to the existing `w-11` (44px) strip. The notebook rail
 uses the Lucide `Menu` icon for its burger control; the page tree retains
