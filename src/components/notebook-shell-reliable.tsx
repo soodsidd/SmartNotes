@@ -8499,6 +8499,7 @@ export const Sidebar = React.memo(function Sidebar({
   }, []);
 
   const compactDesktop = variant === "desktop";
+  const scopedListTextClass = "text-xs";
   const scopedListDesktopRowClass = "min-h-7 text-xs [@media(pointer:coarse)]:min-h-11";
   const notebookRootPageIndentBase = compactDesktop ? 4 : 8;
   const sectionPageIndentBase = compactDesktop ? 14 : 20;
@@ -8793,7 +8794,7 @@ export const Sidebar = React.memo(function Sidebar({
                         aria-current={notebookActive && !activeSectionPath ? "page" : undefined}
                       >
                         <span className="h-4 w-1 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden />
-                        <span className="min-w-0 flex-1 truncate">{NOTEBOOK_ROOT_PAGES_LABEL}</span>
+                        <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass)}>{NOTEBOOK_ROOT_PAGES_LABEL}</span>
                       </button>
                     ) : null}
                     {notebook.sections.map((section) => {
@@ -8822,7 +8823,7 @@ export const Sidebar = React.memo(function Sidebar({
                             aria-hidden
                             data-testid={`rail-section-tab-${section.path}`}
                           />
-                          <span className="min-w-0 flex-1 truncate">{section.name}</span>
+                          <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass)}>{section.name}</span>
                         </button>
                       );
                     })}
@@ -9203,7 +9204,7 @@ export const Sidebar = React.memo(function Sidebar({
                               className={cn(
                                 "truncate",
                                 isPageTreeLayout && compactDesktop ? (active ? "font-semibold" : "font-normal") : "font-medium",
-                                isPageTreeLayout && compactDesktop ? null : compactDesktop ? "text-[13px]" : "text-sm",
+                                isPageTreeLayout && compactDesktop ? scopedListTextClass : compactDesktop ? "text-[13px]" : "text-sm",
                                 isInkPage && "text-indigo-600 dark:text-indigo-400",
                                 isLogPage && "text-emerald-700 dark:text-emerald-300",
                                 isDesignPage && "text-fuchsia-700 dark:text-fuchsia-300",
@@ -9830,7 +9831,7 @@ export const Sidebar = React.memo(function Sidebar({
                                       {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? null : <p className={cn(
                                         "truncate",
                                         isPageTreeLayout && compactDesktop ? (active ? "font-semibold" : "font-normal") : "font-medium",
-                                        isPageTreeLayout && compactDesktop ? null : compactDesktop ? "text-[13px]" : "text-sm",
+                                        isPageTreeLayout && compactDesktop ? scopedListTextClass : compactDesktop ? "text-[13px]" : "text-sm",
                                         isInkPage && "text-indigo-600 dark:text-indigo-400",
                                         isLogPage && "text-emerald-700 dark:text-emerald-300",
                                         isDesignPage && "text-fuchsia-700 dark:text-fuchsia-300",
