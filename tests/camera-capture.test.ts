@@ -2,8 +2,9 @@
  * @jest-environment node
  *
  * SN-140: native camera-capture detection + image-insert menu source guards.
- * SN-340: multi-capture session — explicit "Take another / Done" bar replaces
- *         the brittle window.focus + timeout approach.
+ * SN-340: multi-capture batch-submit session using in-app getUserMedia.
+ *         Pending photos accumulate as thumbnails; Submit batch-inserts all;
+ *         Cancel discards all and closes the session.
  */
 
 import * as fs from "node:fs";
@@ -12,6 +13,11 @@ import { supportsNativeCameraCapture } from "@/lib/camera-capture";
 
 const EDITOR_SRC = fs.readFileSync(
   path.resolve(__dirname, "../src/components/rich-text-editor.tsx"),
+  "utf8"
+);
+
+const OVERLAY_SRC = fs.readFileSync(
+  path.resolve(__dirname, "../src/components/camera-session-overlay.tsx"),
   "utf8"
 );
 
@@ -63,75 +69,102 @@ describe("supportsNativeCameraCapture (SN-140)", () => {
 });
 
 describe("image-insert camera capture wiring (SN-140)", () => {
-  test("renders a hidden capture=environment image input", () => {
-    expect(EDITOR_SRC).toContain('data-testid="camera-capture-input"');
-    expect(EDITOR_SRC).toContain('capture="environment"');
-  });
-
   test("exposes a gated Take photo item in desktop and mobile insert menus", () => {
     expect(EDITOR_SRC).toContain('"toolbar-camera"');
     expect(EDITOR_SRC).toContain('"toolbar-camera-mobile"');
     expect(EDITOR_SRC).toContain('label="Take photo"');
-    // The menu item must be conditional on onTakePhoto so desktop hides it.
     expect(EDITOR_SRC).toContain("onTakePhoto ? (");
   });
 
-  test("capture path reuses the shared asset upload pipeline", () => {
-    const captureInputStart = EDITOR_SRC.indexOf('data-testid="camera-capture-input"');
-    expect(captureInputStart).toBeGreaterThan(-1);
-    const captureInputBlock = EDITOR_SRC.slice(captureInputStart, captureInputStart + 400);
-    expect(captureInputBlock).toContain("handleAssetFiles(e.target.files)");
-  });
-
   test("Take photo handler is only wired when capture support is detected", () => {
-    // SN-340: handleCameraTakePhoto drives the capture; the gate is still
-    // cameraCaptureSupported so desktop never sees the Take photo item.
     expect(EDITOR_SRC).toContain("cameraCaptureSupported ? handleCameraTakePhoto : undefined");
     expect(EDITOR_SRC).toContain("setCameraCaptureSupported(supportsNativeCameraCapture())");
   });
+});
 
-  test("camera onChange starts the session on successful capture (SN-340)", () => {
-    const captureInputStart = EDITOR_SRC.indexOf('data-testid="camera-capture-input"');
-    expect(captureInputStart).toBeGreaterThan(-1);
-    const captureInputBlock = EDITOR_SRC.slice(captureInputStart, captureInputStart + 400);
-    // Successful capture must activate the session bar (no window.focus timing).
-    expect(captureInputBlock).toContain("setCameraSessionActive(true)");
+describe("camera session model (SN-340)", () => {
+  test("editor opens the camera session overlay via cameraSessionOpen state", () => {
+    expect(EDITOR_SRC).toContain("const [cameraSessionOpen, setCameraSessionOpen]");
+    expect(EDITOR_SRC).toContain("function handleCameraTakePhoto()");
+    expect(EDITOR_SRC).toContain("setCameraSessionOpen(true)");
+  });
+
+  test("overlay is rendered conditionally on cameraCaptureSupported && cameraSessionOpen", () => {
+    expect(EDITOR_SRC).toContain("cameraCaptureSupported && cameraSessionOpen");
+    expect(EDITOR_SRC).toContain("<CameraSessionOverlay");
+    expect(EDITOR_SRC).toContain("onSubmit={handleCameraSessionSubmit}");
+    expect(EDITOR_SRC).toContain("onCancel={handleCameraSessionCancel}");
+  });
+
+  test("submit handler closes session then batch-uploads via handleAssetFilesRef", () => {
+    const fn = EDITOR_SRC.indexOf("function handleCameraSessionSubmit");
+    expect(fn).toBeGreaterThan(-1);
+    const block = EDITOR_SRC.slice(fn, fn + 400);
+    expect(block).toContain("setCameraSessionOpen(false)");
+    expect(block).toContain("handleAssetFilesRef.current(files)");
+    // rAF delay ensures editor regains focus before insert queue starts.
+    expect(block).toContain("requestAnimationFrame");
+    expect(block).toContain("editor?.commands.focus()");
+  });
+
+  test("cancel handler closes session without uploading", () => {
+    const fn = EDITOR_SRC.indexOf("function handleCameraSessionCancel");
+    expect(fn).toBeGreaterThan(-1);
+    const block = EDITOR_SRC.slice(fn, fn + 100);
+    expect(block).toContain("setCameraSessionOpen(false)");
+    // Must not call handleAssetFiles on cancel.
+    expect(block).not.toContain("handleAssetFiles");
+  });
+
+  test("no window.focus race or input-capture multi-shot hacks remain", () => {
+    expect(EDITOR_SRC).not.toContain('window.addEventListener("focus"');
+    expect(EDITOR_SRC).not.toContain("cameraGotFileRef");
+    expect(EDITOR_SRC).not.toContain("cameraSessionActiveRef");
+    expect(EDITOR_SRC).not.toContain("cameraSessionActive,");
   });
 });
 
-describe("multi-capture session bar (SN-340)", () => {
-  test("session bar element is defined with correct testids", () => {
-    expect(EDITOR_SRC).toContain('data-testid="camera-session-bar"');
-    expect(EDITOR_SRC).toContain('data-testid="camera-session-take-another"');
-    expect(EDITOR_SRC).toContain('data-testid="camera-session-done"');
+describe("CameraSessionOverlay component (SN-340)", () => {
+  test("overlay has required testids for shutter, submit, cancel, video", () => {
+    expect(OVERLAY_SRC).toContain('data-testid="camera-session-overlay"');
+    expect(OVERLAY_SRC).toContain('data-testid="camera-session-video"');
+    expect(OVERLAY_SRC).toContain('data-testid="camera-session-shutter"');
+    expect(OVERLAY_SRC).toContain('data-testid="camera-session-submit"');
+    expect(OVERLAY_SRC).toContain('data-testid="camera-session-cancel"');
+    expect(OVERLAY_SRC).toContain('data-testid="camera-session-thumbnails"');
   });
 
-  test("session bar uses cameraSessionActive state (not a ref)", () => {
-    expect(EDITOR_SRC).toContain("const [cameraSessionActive, setCameraSessionActive]");
-    // No brittle window.focus or fixed timeout in the capture path.
-    expect(EDITOR_SRC).not.toContain("cameraGotFileRef");
-    expect(EDITOR_SRC).not.toContain("cameraSessionActiveRef");
+  test("overlay uses getUserMedia with environment camera", () => {
+    expect(OVERLAY_SRC).toContain("getUserMedia");
+    expect(OVERLAY_SRC).toContain('facingMode: "environment"');
   });
 
-  test("session bar Done button calls setCameraSessionActive(false)", () => {
-    const barStart = EDITOR_SRC.indexOf('data-testid="camera-session-done"');
-    expect(barStart).toBeGreaterThan(-1);
-    const barBlock = EDITOR_SRC.slice(barStart, barStart + 300);
-    expect(barBlock).toContain("setCameraSessionActive(false)");
+  test("shutter capture writes to canvas and creates a File", () => {
+    expect(OVERLAY_SRC).toContain("canvas.getContext");
+    expect(OVERLAY_SRC).toContain("ctx.drawImage(video");
+    expect(OVERLAY_SRC).toContain("new File([blob]");
+    expect(OVERLAY_SRC).toContain("setPendingPhotos");
   });
 
-  test("session bar Take-another button re-clicks the camera input", () => {
-    const barStart = EDITOR_SRC.indexOf('data-testid="camera-session-take-another"');
-    expect(barStart).toBeGreaterThan(-1);
-    const barBlock = EDITOR_SRC.slice(barStart, barStart + 300);
-    expect(barBlock).toContain("cameraInputRef.current?.click()");
+  test("Submit passes all pending files to onSubmit", () => {
+    const fn = OVERLAY_SRC.indexOf("function handleSubmit");
+    expect(fn).toBeGreaterThan(-1);
+    const block = OVERLAY_SRC.slice(fn, fn + 200);
+    expect(block).toContain("onSubmit(pendingPhotos.map");
+    expect(block).toContain(".file)");
+    expect(block).toContain("getTracks().forEach");
   });
 
-  test("handleCameraTakePhoto is defined and window.focus approach is gone", () => {
-    expect(EDITOR_SRC).toContain("function handleCameraTakePhoto()");
-    expect(EDITOR_SRC).not.toContain("function openNativeCamera()");
-    expect(EDITOR_SRC).not.toContain("function startCameraSession()");
-    // Confirm window.focus timing was removed.
-    expect(EDITOR_SRC).not.toContain('window.addEventListener("focus"');
+  test("Cancel passes empty array and stops the stream", () => {
+    const fn = OVERLAY_SRC.indexOf("function handleCancel");
+    expect(fn).toBeGreaterThan(-1);
+    const block = OVERLAY_SRC.slice(fn, fn + 150);
+    expect(block).toContain("getTracks().forEach");
+    expect(block).toContain("onCancel()");
+  });
+
+  test("stream is stopped on unmount via useEffect cleanup", () => {
+    expect(OVERLAY_SRC).toContain("cancelled = true");
+    expect(OVERLAY_SRC).toContain("getTracks().forEach");
   });
 });

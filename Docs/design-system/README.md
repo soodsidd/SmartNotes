@@ -11,16 +11,15 @@ uses the Lucide `Menu` icon for its burger control; the page tree retains
 `PanelLeft` / `PanelLeftClose`. Focused resize handles use `--ring`, and
 Arrow keys adjust width by 16px. No new color, spacing, or typography tokens.
 
-## Camera session bar (SN-340)
+## Camera session overlay (SN-340 rework 2)
 
-The fixed-position "Photo added / Take another / Done" bar that appears after each
-successful capture reuses `--popover` (background, with `--background` fallback),
-`--foreground`, `--border`, `--muted-foreground` (icon and label text),
-`--accent`, `--accent-foreground` ("Take another" button), `--shadow-popover`,
-`--radius-sm`, and `--radius-md`. Both buttons use the existing 44px phone touch
-target (`height: 44px`). Typography is `0.75rem` / `font-family: inherit`. No new
-design tokens were introduced.
-
+The full-screen in-app camera session (`CameraSessionOverlay`) uses a dark
+camera-UI palette (`#000` background, `rgba(0,0,0,0.8)` control bars, white
+shutter ring) for the viewfinder area — these are camera-standard values, not
+design-system tokens. The only design-system tokens used are `--accent` and
+`--accent-foreground` for the **Add N** submit button (enabled state), matching
+the established 44px phone touch target (`height: 44px`). Typography is
+`0.8125rem` / `font-family: inherit`. No new design tokens were introduced.
 ## PDF Record panel (SN-335)
 
 The selection menu, Companion Record chip, and floating save confirmation reuse
