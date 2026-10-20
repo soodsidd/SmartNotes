@@ -1678,7 +1678,7 @@ Navigation:
 
 **Responsive boundary:** Layout switches at the xl breakpoint. `notebook-shell-reliable.tsx` renders both layouts and hides/shows them via CSS.
 
-**Dual-sidebar boundary (SN-324):** The two independently collapsible left panels exist only at xl and wider. Below xl, the top-bar burger still opens the unified notebook tree in a sheet; it retains notebook, section, and page selection even if either desktop panel was collapsed. Desktop panel widths do not constrain the mobile sheet.
+**Dual-sidebar boundary (SN-324):** The two sidebar panes exist on every breakpoint but behave differently. At xl+: side-by-side panels (notebook rail left, page-tree right) with independent collapse and resize. Below xl: a single burger-opened Sheet with a two-tab switcher — Notebooks tab shows the rail (grey `--rail` background), Pages tab shows the page-tree (`bg-surface`). Only one pane is visible at a time. Tapping a section in the Notebooks tab auto-switches to the Pages tab. The last-shown tab persists in localStorage (`smart-notes-mobile-pane-mode`, default `page-tree`). Desktop panel widths do not constrain the mobile sheet.
 
 ### Lessons Learned
 
@@ -1686,7 +1686,7 @@ Navigation:
 
 ## 11. Desktop Sidebar Layout (SN-324)
 
-**Plain English:** On desktop (xl and wider), the left navigation has two adjacent panels with contrasting surfaces. The Notebook Rail (grey `--rail` background) lists notebooks with expandable sections; clicking a section navigates to it and expands it in the adjacent pane. The Page Tree Pane (white `--surface` background) shows the active notebook’s sections and pages. Both panels collapse and resize independently; both states survive a reload. Below xl, the top-bar burger opens the unified notebook tree in a sheet.
+**Plain English:** The left navigation always has two panes — Notebooks (rail) and Pages (page-tree). On desktop (xl and wider) they sit side-by-side with contrasting surfaces; on mobile they live inside one Sheet and the user taps tabs to switch between them. Desktop: The Notebook Rail (grey `--rail` background) lists notebooks with expandable sections; clicking a section navigates to it and expands it in the adjacent pane. The Page Tree Pane (`bg-surface`, lighter) shows the active notebook’s sections and pages. Both panels collapse and resize independently; states survive a reload. Mobile: Burger opens a Sheet with a "Notebooks | Pages" tab bar. Notebooks tab shows the rail; Pages tab shows the page-tree. Tapping a section in the Notebooks tab auto-switches to the Pages tab. Last-shown tab is persisted (`smart-notes-mobile-pane-mode`).
 
 **Structure and behavior:**
 - Notebook Rail (data-testid="notebook-rail-sidebar"): defaults to 200px, resizes 160–320px, background `bg-[color:var(--rail)]`. Lists open non-archived notebooks with a colored dot. Notebooks that have sections show a ChevronRight/ChevronDown toggle. The active notebook is always expanded showing its sections as clickable rows; clicking any notebook row selects it and toggles expansion. Clicking a section row calls `onSelectSection` (highlighting it in both panes) and auto-expands that section in the page-tree pane. A "New Section" button appears at the bottom of each expanded section list. Menu/burger button in the header collapses the rail to a 44px strip with a Menu re-expand button.
