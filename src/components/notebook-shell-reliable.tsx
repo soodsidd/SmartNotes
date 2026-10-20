@@ -8690,13 +8690,13 @@ export const Sidebar = React.memo(function Sidebar({
           variant="outline"
           className={cn(
             "mb-2 w-full justify-start",
-            compactDesktop ? "h-7 px-2 text-xs" : "min-h-11"
+            compactDesktop ? "h-7 px-2" : "min-h-11"
           )}
           onClick={onOpenWorkspace}
           data-testid={`sidebar-open-workspace-${variant}`}
         >
-          <FolderOpen className="size-4" />
-          Open workspace
+          <FolderOpen className={cn(compactDesktop ? "size-3.5" : "size-4")} />
+          <span className="text-sm font-normal">Open workspace</span>
         </Button>
       ) : null}
 
