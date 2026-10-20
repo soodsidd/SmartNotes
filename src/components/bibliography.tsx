@@ -39,7 +39,7 @@ function PaperListRow({ page, active, compact, onOpen, testId }: { page: VaultPa
     onClick={() => onOpen(page.path)}
     data-testid={testId}
   >
-    <PaperIcon className="size-3" /><span className={cn("min-w-0 truncate font-medium", compact ? "text-[13px]" : "text-sm")}>{page.title}</span>
+    <PaperIcon className="size-3" /><span className={cn("min-w-0 truncate text-sm", active ? "font-medium" : "font-normal")}>{page.title}</span>
   </button>;
 }
 
@@ -70,7 +70,7 @@ export function Bibliography({ tree, loading, compact, activePagePath, onOpen, o
       onClick={onToggle}
       data-testid="bibliography-toggle"
     >
-      <PaperIcon className="size-4" /><span className="text-base">Bibliography</span>
+      <PaperIcon className="size-4 text-muted-foreground" /><span className="text-sm font-normal text-muted-foreground">Bibliography</span>
     </button>
     {open && <div className="mt-0.5 pl-4" data-testid="bibliography-library">
       {filterPage && <div className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground" data-testid="bibliography-page-filter">

@@ -4,11 +4,12 @@
 
 The desktop notebook rail and page tree reuse `--rail`, `--border`, `--surface`,
 `--foreground`, `--muted-foreground`, `--chart-1` through `--chart-5`, and `--ring`
-with the existing compact tree typography. Notebook titles use 13px and 36px rows
-on desktop; section, Notebook pages, and scoped page rows share 12px text and 28px
-rows. Apply the same explicit `text-xs` class to rail labels and scoped page
-title elements, including parent and child pages; row inheritance alone can let
-the two panes drift. Their inactive labels use regular weight; selected labels use semibold.
+with one nav label size: every notebook, section, Notebook pages, page, Bibliography,
+New section, and Add Page label uses `text-sm` (14px) on its inner label element, with
+28px desktop rows. Weight carries hierarchy (notebook medium/semibold when active; section
+and page regular/medium when selected; creation actions regular and muted). Never put
+text-size or weight utilities on `<button>`: the unlayered global `button { font: inherit }`
+overrides them.
 The scoped rows retain 44px touch targets on coarse pointers, and mobile rows
 retain 44px targets. Sections in the
 muted `--rail` pane have slim, deterministic chart-token color tabs; the selected

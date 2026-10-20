@@ -8499,8 +8499,10 @@ export const Sidebar = React.memo(function Sidebar({
   }, []);
 
   const compactDesktop = variant === "desktop";
-  const scopedListTextClass = "text-xs";
-  const scopedListDesktopRowClass = "min-h-7 text-xs [@media(pointer:coarse)]:min-h-11";
+  // One nav label size for both panes (matches owner reference). Sizes/weights live on inner spans:
+  // the unlayered global `button { font: inherit }` overrides text-*/font-* utilities placed on <button>.
+  const scopedListTextClass = "text-sm";
+  const scopedListDesktopRowClass = "min-h-7 [@media(pointer:coarse)]:min-h-11";
   const notebookRootPageIndentBase = compactDesktop ? 4 : 8;
   const sectionPageIndentBase = compactDesktop ? 14 : 20;
   const ghostIndentOffset = compactDesktop ? 14 : 16;
@@ -8564,16 +8566,16 @@ export const Sidebar = React.memo(function Sidebar({
                 type="button"
                 size="sm"
                 variant="ghost"
-                className={cn("max-w-full justify-start font-normal text-[11px] text-muted-foreground", compactDesktop ? "h-7 px-2" : "min-h-11")}
+                className={cn("max-w-full justify-start text-muted-foreground", compactDesktop ? "h-7 px-2" : "min-h-11")}
                 onClick={() => void onDirectCreatePage(scopedCreateTarget)}
                 aria-label={`Add page to ${scopedCreateTarget.targetLabel}`}
                 data-testid="page-pane-add-page"
               >
                 <Plus className={cn("shrink-0", compactDesktop ? "size-3.5" : "size-4")} />
-                Add Page
+                <span className="text-sm font-normal">Add Page</span>
               </Button>
             ) : (
-              <p className={cn("text-muted-foreground", compactDesktop ? "text-[13px]" : "text-sm")}>No notebook selected</p>
+              <p className="text-sm text-muted-foreground">No notebook selected</p>
             )}
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
@@ -8755,8 +8757,8 @@ export const Sidebar = React.memo(function Sidebar({
                   type="button"
                   className={cn(
                     "flex w-full items-center gap-1.5 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    compactDesktop ? "min-h-9 py-0.5 text-[13px]" : "min-h-11 py-1 text-sm",
-                    notebookActive ? "bg-surface font-semibold" : "hover:bg-surface/70 font-medium"
+                    compactDesktop ? "min-h-7 py-0.5 [@media(pointer:coarse)]:min-h-11" : "min-h-11 py-1",
+                    notebookActive ? "bg-surface" : "hover:bg-surface/70"
                   )}
                   onClick={() => {
                     onSelectNotebook(notebook.path);
@@ -8774,7 +8776,7 @@ export const Sidebar = React.memo(function Sidebar({
                     <span className={cn("shrink-0", compactDesktop ? "size-3.5" : "size-4")} />
                   )}
                   <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: notebook.color }} aria-hidden />
-                  <span className="min-w-0 flex-1 truncate">{notebook.name}</span>
+                  <span className={cn("min-w-0 flex-1 truncate text-sm", notebookActive ? "font-semibold" : "font-medium")}>{notebook.name}</span>
                   {notebook.isPortable ? (
                     <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Remote</span>
                   ) : null}
@@ -8787,14 +8789,14 @@ export const Sidebar = React.memo(function Sidebar({
                         data-testid={`rail-root-pages-${notebook.path}`}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-md px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          compactDesktop ? scopedListDesktopRowClass : "min-h-11 text-xs",
-                          notebookActive && !activeSectionPath ? "bg-surface font-semibold text-foreground" : "text-foreground hover:bg-surface/70"
+                          compactDesktop ? scopedListDesktopRowClass : "min-h-11",
+                          notebookActive && !activeSectionPath ? "bg-surface text-foreground" : "text-foreground hover:bg-surface/70"
                         )}
                         onClick={() => onSelectRootPages(notebook.path)}
                         aria-current={notebookActive && !activeSectionPath ? "page" : undefined}
                       >
                         <span className="h-4 w-1 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden />
-                        <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass)}>{NOTEBOOK_ROOT_PAGES_LABEL}</span>
+                        <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass, notebookActive && !activeSectionPath ? "font-medium" : "font-normal")}>{NOTEBOOK_ROOT_PAGES_LABEL}</span>
                       </button>
                     ) : null}
                     {notebook.sections.map((section) => {
@@ -8806,9 +8808,9 @@ export const Sidebar = React.memo(function Sidebar({
                           data-testid={`rail-section-row-${section.path}`}
                           className={cn(
                             "flex w-full items-center gap-2 rounded-md px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            compactDesktop ? scopedListDesktopRowClass : "min-h-11 text-xs",
+                            compactDesktop ? scopedListDesktopRowClass : "min-h-11",
                             sectionActive
-                              ? "bg-surface font-semibold text-foreground"
+                              ? "bg-surface text-foreground"
                               : "text-foreground hover:bg-surface/70"
                           )}
                           onClick={() => {
@@ -8823,7 +8825,7 @@ export const Sidebar = React.memo(function Sidebar({
                             aria-hidden
                             data-testid={`rail-section-tab-${section.path}`}
                           />
-                          <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass)}>{section.name}</span>
+                          <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass, sectionActive ? "font-medium" : "font-normal")}>{section.name}</span>
                         </button>
                       );
                     })}
@@ -8832,13 +8834,13 @@ export const Sidebar = React.memo(function Sidebar({
                         type="button"
                         data-testid={`rail-new-section-${notebook.path}`}
                         className={cn(
-                          "flex w-full items-center gap-1.5 rounded px-1.5 text-left font-normal text-[11px] text-muted-foreground transition hover:bg-surface/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "flex w-full items-center gap-2 rounded px-2 text-left text-muted-foreground transition hover:bg-surface/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           compactDesktop ? "min-h-7 py-0.5 [@media(pointer:coarse)]:min-h-11" : "min-h-11 py-0.5"
                         )}
                         onClick={() => onCreateSection(notebook.path, notebook.name)}
                       >
-                        <Plus className={cn("shrink-0", compactDesktop ? "size-3" : "size-3.5")} />
-                        New Section
+                        <Plus className={cn("shrink-0", compactDesktop ? "size-3.5" : "size-4")} />
+                        <span className="text-sm font-normal">New section</span>
                       </button>
                     ) : null}
                   </div>
@@ -8894,7 +8896,7 @@ export const Sidebar = React.memo(function Sidebar({
                     <ChevronRight className={cn("text-muted-foreground", compactDesktop ? "size-3.5" : "size-4")} />
                   )}
                   <span className="size-2.5 rounded-full" style={{ backgroundColor: notebook.color }} />
-                  <span className={cn("min-w-0 truncate font-medium", compactDesktop ? "text-[13px]" : "text-sm")}>{notebook.name}</span>
+                  <span className="min-w-0 truncate text-sm font-medium">{notebook.name}</span>
                   {notebook.isPortable ? (
                     <span className="truncate text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Remote</span>
                   ) : null}
@@ -9203,8 +9205,8 @@ export const Sidebar = React.memo(function Sidebar({
                             {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? null : <p
                               className={cn(
                                 "truncate",
-                                isPageTreeLayout && compactDesktop ? (active ? "font-semibold" : "font-normal") : "font-medium",
-                                isPageTreeLayout && compactDesktop ? scopedListTextClass : compactDesktop ? "text-[13px]" : "text-sm",
+                                isPageTreeLayout && compactDesktop ? (active ? "font-medium" : "font-normal") : "font-medium",
+                                scopedListTextClass,
                                 isInkPage && "text-indigo-600 dark:text-indigo-400",
                                 isLogPage && "text-emerald-700 dark:text-emerald-300",
                                 isDesignPage && "text-fuchsia-700 dark:text-fuchsia-300",
@@ -9419,7 +9421,7 @@ export const Sidebar = React.memo(function Sidebar({
                               <Inbox className={cn("text-accent", compactDesktop ? "size-3" : "size-3.5")} />
                             ) : null}
                             {inlineSectionPath !== section.path ? (
-                              <span className={cn("truncate text-foreground", compactDesktop ? "text-[13px]" : "text-sm")}>{section.name}</span>
+                              <span className="truncate text-sm text-foreground">{section.name}</span>
                             ) : null}
                           </button>
                           {inlineSectionPath === section.path ? (
@@ -9830,8 +9832,8 @@ export const Sidebar = React.memo(function Sidebar({
                                       ) : null}
                                       {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? null : <p className={cn(
                                         "truncate",
-                                        isPageTreeLayout && compactDesktop ? (active ? "font-semibold" : "font-normal") : "font-medium",
-                                        isPageTreeLayout && compactDesktop ? scopedListTextClass : compactDesktop ? "text-[13px]" : "text-sm",
+                                        isPageTreeLayout && compactDesktop ? (active ? "font-medium" : "font-normal") : "font-medium",
+                                        scopedListTextClass,
                                         isInkPage && "text-indigo-600 dark:text-indigo-400",
                                         isLogPage && "text-emerald-700 dark:text-emerald-300",
                                         isDesignPage && "text-fuchsia-700 dark:text-fuchsia-300",

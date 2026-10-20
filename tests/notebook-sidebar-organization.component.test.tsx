@@ -112,83 +112,85 @@ describe("SN-324 dual-pane navigation", () => {
   it("shows token-colored section tabs and a surface highlight on the selected section", () => {
     renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
     const section = screen.getByTestId("rail-section-row-Work/Research");
-    expect(section).toHaveClass("bg-surface", "font-semibold");
+    expect(section).toHaveClass("bg-surface");
+    expect(within(section).getByText("Research")).toHaveClass("text-sm", "font-medium");
     expect(section).toHaveClass("text-foreground");
     expect(section).toHaveAttribute("aria-current", "page");
     expect(screen.getByTestId("rail-section-tab-Work/Research")).toHaveStyle({ backgroundColor: sectionTabColor("Work/Research") });
     expect(sectionTabColor("Work/Research")).toMatch(/^var\(--chart-[1-5]\)$/);
   });
 
+  // Nav typography (owner reference, 2026-10-20): every nav label in both panes is text-sm (14px).
+  // Sizes and weights must sit on inner label elements: the unlayered global `button { font: inherit }`
+  // overrides text-*/font-* utilities placed on <button>, which is why earlier fixes never rendered.
+  const textSizeClasses = (element: Element) =>
+    Array.from(element.classList).filter((className) => /^text-(xs|sm|base|lg|\[)/.test(className));
+
   it("keeps inactive section names prominent and creation actions quieter at both densities", () => {
     for (const variant of ["desktop", "mobile"] as const) {
       const rail = renderSidebar({ sidebarLayout: "rail", variant, activeNotebookPath: "Work", onSelectRootPages: jest.fn() });
-      const notebook = within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: /Work/ });
+      const notebookRow = within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: /Work/ });
       const section = screen.getByTestId("rail-section-row-Work/Research");
       const rootPages = screen.getByTestId("rail-root-pages-Work");
       const newSection = screen.getByTestId("rail-new-section-Work");
-      expect(notebook).toHaveClass(variant === "desktop" ? "text-[13px]" : "text-sm");
-      expect(notebook).toHaveClass(variant === "desktop" ? "min-h-9" : "min-h-11");
-      expect(section).toHaveClass("text-foreground");
+      expect(within(notebookRow).getByText("Work")).toHaveClass("text-sm", "font-semibold");
+      expect(notebookRow).toHaveClass(variant === "desktop" ? "min-h-7" : "min-h-11");
+      expect(section).toHaveClass("text-foreground", variant === "desktop" ? "min-h-7" : "min-h-11");
       expect(section).not.toHaveClass("text-muted-foreground");
-      expect(section).toHaveClass("text-xs", variant === "desktop" ? "min-h-7" : "min-h-11");
-      expect(rootPages).toHaveClass("text-xs", variant === "desktop" ? "min-h-7" : "min-h-11");
-      expect(section).not.toHaveClass("text-[13px]", "text-sm");
-      expect(rootPages).not.toHaveClass("text-[13px]", "text-sm");
+      expect(rootPages).toHaveClass(variant === "desktop" ? "min-h-7" : "min-h-11");
+      expect(within(section).getByText("Research")).toHaveClass("text-sm", "font-normal");
       if (variant === "desktop") {
         expect(section).toHaveClass("[@media(pointer:coarse)]:min-h-11");
         expect(rootPages).toHaveClass("[@media(pointer:coarse)]:min-h-11");
       }
-      expect(newSection).toHaveClass("text-[11px]", "font-normal", "text-muted-foreground");
-      expect(newSection).toHaveClass(variant === "desktop" ? "min-h-7" : "min-h-11");
+      expect(newSection).toHaveClass("text-muted-foreground", variant === "desktop" ? "min-h-7" : "min-h-11");
+      expect(within(newSection).getByText("New section")).toHaveClass("text-sm", "font-normal");
       rail.unmount();
 
       const pages = renderSidebar({ sidebarLayout: "page-tree", variant, activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
       const addPage = screen.getByTestId("page-pane-add-page");
-      expect(addPage).toHaveClass("text-[11px]", "font-normal", "text-muted-foreground");
+      expect(addPage).toHaveClass("text-muted-foreground", variant === "desktop" ? "h-7" : "min-h-11");
       expect(addPage).not.toHaveClass("border-border", "bg-background");
-      expect(addPage).toHaveClass(variant === "desktop" ? "h-7" : "min-h-11");
+      expect(within(addPage).getByText("Add Page")).toHaveClass("text-sm", "font-normal");
       pages.unmount();
     }
   });
 
-  it("matches scoped desktop page and section text size, weight, and row height", () => {
+  it("uses one nav label size for notebooks, sections, pages, and creation actions", () => {
     const rail = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work", onSelectRootPages: jest.fn() });
-    const notebook = within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: /Work/ });
-    const section = screen.getByTestId("rail-section-row-Work/Research");
-    const rootPages = screen.getByTestId("rail-root-pages-Work");
-    const sectionLabel = within(section).getByText("Research");
-    const rootLabel = within(rootPages).getByText("Notebook pages");
-    const listClasses = ["text-xs", "min-h-7", "[@media(pointer:coarse)]:min-h-11"];
-    const textSizeClasses = (element: Element) => Array.from(element.classList).filter((className) => className.startsWith("text-") && !className.startsWith("text-foreground"));
-    for (const row of [section, rootPages]) {
-      expect(row).toHaveClass(...listClasses, "text-foreground");
+    const labels = [
+      within(within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: /Work/ })).getByText("Work"),
+      within(screen.getByTestId("rail-section-row-Work/Research")).getByText("Research"),
+      within(screen.getByTestId("rail-root-pages-Work")).getByText("Notebook pages"),
+      within(screen.getByTestId("rail-new-section-Work")).getByText("New section"),
+    ];
+    for (const label of labels) expect(textSizeClasses(label)).toEqual(["text-sm"]);
+    // No dead size/weight utilities on the row buttons themselves.
+    for (const row of [screen.getByTestId("rail-section-row-Work/Research"), screen.getByTestId("rail-root-pages-Work")]) {
+      expect(textSizeClasses(row)).toEqual([]);
       expect(row).not.toHaveClass("font-medium", "font-semibold");
     }
-    expect(textSizeClasses(sectionLabel)).toEqual(["text-xs"]);
-    expect(textSizeClasses(rootLabel)).toEqual(textSizeClasses(sectionLabel));
-    expect(notebook).toHaveClass("text-[13px]", "min-h-9");
     rail.unmount();
 
     const sectionPages = renderSidebar({ sidebarLayout: "page-tree", variant: "desktop", activeNotebookPath: "Work", activeSectionPath: "Work/Research", expandedPages: new Set(["Work/Research/Parent"]) });
     const pageRow = screen.getByTestId("page-Work/Research/Parent");
+    expect(pageRow).toHaveClass("min-h-7", "[@media(pointer:coarse)]:min-h-11");
     const pageTitle = within(pageRow).getByText("Parent");
     const childTitle = within(screen.getByTestId("page-Work/Research/Laser")).getByText("Laser calibration");
-    expect(pageRow).toHaveClass(...listClasses);
     expect(pageTitle).toHaveClass("font-normal");
-    for (const title of [pageTitle, childTitle]) {
-      expect(textSizeClasses(title)).toEqual(textSizeClasses(sectionLabel));
-      expect(title).not.toHaveClass("text-[13px]", "text-sm");
-    }
+    for (const title of [pageTitle, childTitle]) expect(textSizeClasses(title)).toEqual(["text-sm"]);
+    expect(textSizeClasses(within(screen.getByTestId("page-pane-add-page")).getByText("Add Page"))).toEqual(["text-sm"]);
     expect(pageRow.querySelector("button.min-h-7")).toBeInTheDocument();
     sectionPages.unmount();
 
     renderSidebar({ sidebarLayout: "page-tree", variant: "desktop", activeNotebookPath: "Work", activeSectionPath: null });
     const rootPage = screen.getByTestId("page-Work/Roadmap");
-    expect(rootPage).toHaveClass(...listClasses);
+    expect(rootPage).toHaveClass("min-h-7");
     const rootPageTitle = within(rootPage).getByText("Roadmap");
     expect(rootPageTitle).toHaveClass("font-normal");
-    expect(textSizeClasses(rootPageTitle)).toEqual(textSizeClasses(sectionLabel));
+    expect(textSizeClasses(rootPageTitle)).toEqual(["text-sm"]);
   });
+
 
   it("offers notebook root pages in the rail and selects that scope", () => {
     const onSelectRootPages = jest.fn();
@@ -465,7 +467,7 @@ describe("rail layout — sections under active notebook (SN-324)", () => {
       onCreateSection,
     });
     const btn = screen.getByTestId("rail-new-section-Work");
-    expect(btn).toHaveTextContent("New Section");
+    expect(btn).toHaveTextContent("New section");
     fireEvent.click(btn);
     expect(onCreateSection).toHaveBeenCalledWith("Work", "Work");
   });
