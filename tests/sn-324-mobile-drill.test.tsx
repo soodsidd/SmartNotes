@@ -40,16 +40,6 @@ const tree: VaultNotebook[] = [
   },
 ];
 
-/** Simulates the shell's mobileDrilledSectionTree computation */
-function drilledTree(sectionPath: string | null) {
-  if (!sectionPath) return tree;
-  return tree.map((nb) => ({
-    ...nb,
-    sections: nb.sections.filter((s) => s.path === sectionPath),
-    pages: [],
-  }));
-}
-
 type SheetView = "rail" | "section-pages";
 
 /** Minimal stateful harness matching the Shell's mobile sheet state machine */
@@ -57,15 +47,17 @@ function MobileDrillHarness({ onOpenPage = jest.fn() }: { onOpenPage?: (path: st
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [view, setView] = React.useState<SheetView>("rail");
   const [drillPath, setDrillPath] = React.useState<string | null>(null);
+  const [drillNotebookPath, setDrillNotebookPath] = React.useState<string | null>(null);
 
-  const openSheet = () => { setView("rail"); setDrillPath(null); setSheetOpen(true); };
+  const openSheet = () => { setView("rail"); setDrillPath(null); setDrillNotebookPath(null); setSheetOpen(true); };
   const closeSheet = () => setSheetOpen(false);
-  const drillTo = (path: string) => { setDrillPath(path); setView("section-pages"); };
-  const backToRail = () => { setView("rail"); setDrillPath(null); };
+  const drillTo = (path: string) => { setDrillNotebookPath("Work"); setDrillPath(path); setView("section-pages"); };
+  const drillToRoot = (path: string) => { setDrillNotebookPath(path); setDrillPath(null); setView("section-pages"); };
+  const backToRail = () => { setView("rail"); setDrillPath(null); setDrillNotebookPath(null); };
 
   const sectionName = drillPath
     ? tree.flatMap((nb) => nb.sections).find((s) => s.path === drillPath)?.name ?? drillPath
-    : "";
+    : "Notebook pages";
 
   const baseProps = {
     tree,
@@ -147,6 +139,7 @@ function MobileDrillHarness({ onOpenPage = jest.fn() }: { onOpenPage?: (path: st
                 {...baseProps}
                 sidebarLayout="rail"
                 onSelectSection={(path) => { baseProps.onSelectSection(path); drillTo(path); }}
+                onSelectRootPages={drillToRoot}
                 onOpenPage={(path) => { onOpenPage(path); closeSheet(); }}
               />
             </div>
@@ -157,7 +150,8 @@ function MobileDrillHarness({ onOpenPage = jest.fn() }: { onOpenPage?: (path: st
               <Sidebar
                 {...baseProps}
                 sidebarLayout="page-tree"
-                tree={drilledTree(drillPath)}
+                tree={tree}
+                pageScope={drillNotebookPath ? { notebookPath: drillNotebookPath, sectionPath: drillPath } : null}
                 expandedSections={new Set(drillPath ? [drillPath] : [])}
                 onOpenPage={(path) => { onOpenPage(path); closeSheet(); }}
               />
@@ -207,6 +201,17 @@ describe("SN-324 mobile drill-down model", () => {
     expect(screen.getByTestId("page-Work/Research/Note1")).toBeInTheDocument();
     expect(screen.getByTestId("page-Work/Research/Note2")).toBeInTheDocument();
     expect(screen.queryByTestId("page-Work/Design/Spec")).not.toBeInTheDocument();
+  });
+
+  it("root pages drill into the same sheet and Back returns to the rail", () => {
+    render(<MobileDrillHarness />);
+    fireEvent.click(screen.getByTestId("burger"));
+    fireEvent.click(screen.getByTestId("rail-root-pages-Work"));
+    expect(screen.getByTestId("sheet-section-pages-view")).toBeInTheDocument();
+    expect(screen.getByTestId("page-Work/Overview")).toBeInTheDocument();
+    expect(screen.queryByTestId("page-Work/Research/Note1")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("mobile-drill-back"));
+    expect(screen.getByTestId("sheet-rail-view")).toBeInTheDocument();
   });
 
   it("back button returns to rail view", () => {
