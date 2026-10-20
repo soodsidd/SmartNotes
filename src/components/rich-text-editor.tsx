@@ -69,9 +69,10 @@ import {
   setEditorHtmlSilent,
   TEXT_COLOR_PALETTE,
   uploadEditorAsset,
+  uploadEditorAssetFromBlob,
 } from "@/lib/rich-text-editor-config";
 import { handleFormatBarChromePointerDown } from "@/lib/format-bar-focus";
-import { describeAssetUploadFailure } from "@/lib/editor-asset-upload";
+import { describeAssetUploadFailure, readFileForUpload } from "@/lib/editor-asset-upload";
 import { formatLocalDate } from "@/lib/ai-sidebar";
 import {
   collectCollapsibleHeadingSections,
@@ -542,12 +543,14 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       [pageStateKey]
     );
 
-    async function insertUploadedAsset(file: File) {
+    async function insertUploadedAsset(file: File, preReadBlob?: Blob) {
       if (!editor) return;
       const uploadPagePath = pagePathRef.current;
       if (!uploadPagePath) return;
       const uploadGeneration = pageGenerationRef.current;
-      const { asset } = await uploadEditorAsset(uploadPagePath, file);
+      const { asset } = preReadBlob
+        ? await uploadEditorAssetFromBlob(uploadPagePath, preReadBlob, file.name)
+        : await uploadEditorAsset(uploadPagePath, file);
       // Abort after await if the mounted editor has navigated away (SN-280).
       // Images previously skipped the PDF persist-path gate and could publishHtml
       // onto the destination draft.
@@ -595,16 +598,43 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     }
 
     async function processAssetFiles(files: File[]) {
+      const supported: File[] = [];
       for (const file of files) {
-        const isSupported = file.type.startsWith("image/") || /\.pdf$/i.test(file.name);
-        if (!isSupported) {
+        if (file.type.startsWith("image/") || /\.pdf$/i.test(file.name)) {
+          supported.push(file);
+        } else {
           toast.error("Unsupported file type. Allowed: images and PDF.", { duration: 4000 });
+        }
+      }
+      if (!supported.length) return;
+
+      // Pre-read all file bytes concurrently. Local I/O is fast and independent
+      // of the serial snapshot queue (SN-283), so parallelism here is safe.
+      const reads = await Promise.allSettled(supported.map((f) => readFileForUpload(f)));
+      const total = supported.length;
+
+      for (let i = 0; i < supported.length; i++) {
+        const file = supported[i];
+        const readResult = reads[i];
+
+        if (readResult.status === "rejected") {
+          toast.error(describeAssetUploadFailure(readResult.reason), { duration: 6000 });
           continue;
         }
-        const toastId = toast.loading(`Uploading ${file.name}…`);
+
+        const progressLabel = total > 1 ? `image ${i + 1}/${total}` : file.name;
+        const toastId = toast.loading(`Uploading ${progressLabel}…`);
         try {
-          await insertUploadedAsset(file);
-          toast.success(`Attached ${file.name}`, { id: toastId, duration: 2500 });
+          await insertUploadedAsset(file, readResult.value);
+          toast.success(
+            total > 1 ? `Inserted ${progressLabel}` : `Attached ${file.name}`,
+            { id: toastId, duration: 2500 }
+          );
+          // One rAF between inserts so the editor view settles before the next
+          // image transaction fires (SN-339 render reliability).
+          if (i < supported.length - 1) {
+            await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
+          }
         } catch (err) {
           if (err instanceof EditorUploadPageAffinityError) {
             toast.dismiss(toastId);
