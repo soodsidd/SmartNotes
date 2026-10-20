@@ -192,6 +192,8 @@ describe("SN-324 mobile drill-down model", () => {
     fireEvent.click(screen.getByTestId("burger"));
     fireEvent.click(screen.getByTestId("rail-section-row-Work/Research"));
     expect(screen.getByTestId("drilled-section-name")).toHaveTextContent("Research");
+    expect(screen.queryByTestId("page-pane-section-heading")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Research")).toHaveLength(1);
   });
 
   it("section-pages view shows only pages of the drilled section", () => {
@@ -209,6 +211,7 @@ describe("SN-324 mobile drill-down model", () => {
     fireEvent.click(screen.getByTestId("rail-root-pages-Work"));
     expect(screen.getByTestId("sheet-section-pages-view")).toBeInTheDocument();
     expect(screen.getByTestId("page-Work/Overview")).toBeInTheDocument();
+    expect(screen.queryByTestId("page-pane-root-heading")).not.toBeInTheDocument();
     expect(screen.queryByTestId("page-Work/Research/Note1")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("mobile-drill-back"));
     expect(screen.getByTestId("sheet-rail-view")).toBeInTheDocument();
