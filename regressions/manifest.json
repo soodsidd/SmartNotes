@@ -273,8 +273,8 @@
     {
       "id": "unit-sn-339-image-multi-select",
       "name": "SN-339 Insert Image file picker allows multi-select",
-      "description": "Jest: the image file input carries the multiple attribute, the camera-capture input does not, and handleAssetFiles iterates all files in the batch.",
-      "intent": "Prevents the file picker from reverting to single-select and ensures all selected images are processed.",
+      "description": "Jest: image file input has multiple; native capture input removed (SN-340); processAssetFiles pre-reads blobs in parallel then uploads+inserts serially with rAF settle and batch progress labels.",
+      "intent": "Prevents the file picker from reverting to single-select, ensures all selected images are processed with render reliability, and guards the pre-read performance path.",
       "whenToRun": "Pre-merge when changing the image file input or the asset upload pipeline.",
       "failureMeaning": "Users can only pick one image at a time instead of multiple.",
       "appType": "node",

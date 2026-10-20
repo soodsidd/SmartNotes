@@ -307,6 +307,34 @@ export async function uploadEditorAsset(pagePath: string, file: File) {
   };
 }
 
+/** Upload a pre-read blob, skipping the file-read step for batch pre-reads. */
+export async function uploadEditorAssetFromBlob(
+  pagePath: string,
+  blob: Blob,
+  fileName: string
+) {
+  const formData = new FormData();
+  formData.append("file", blob, fileName);
+
+  let response: Response;
+  try {
+    response = await fetch(`/api/assets?path=${encodeURIComponent(pagePath)}`, {
+      method: "POST",
+      body: formData,
+    });
+  } catch (error) {
+    throw new Error(describeAssetUploadFailure(error));
+  }
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error || "Asset upload failed.");
+  }
+  return (await response.json()) as {
+    asset: { url: string; path: string; fileName: string; isImage: boolean };
+  };
+}
+
 export interface UploadedEditorAsset {
   url: string;
   path: string;
