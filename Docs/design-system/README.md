@@ -6,7 +6,9 @@ The desktop notebook rail and page tree reuse `--rail`, `--border`, `--surface`,
 `--foreground`, `--muted-foreground`, `--chart-1` through `--chart-5`, and `--ring`
 with the existing compact tree typography. Notebook titles use 13px and 36px rows
 on desktop; section, Notebook pages, and scoped page rows share 12px text and 28px
-rows. Their inactive labels use regular weight; selected labels use semibold.
+rows. Apply the same explicit `text-xs` class to rail labels and scoped page
+title elements, including parent and child pages; row inheritance alone can let
+the two panes drift. Their inactive labels use regular weight; selected labels use semibold.
 The scoped rows retain 44px touch targets on coarse pointers, and mobile rows
 retain 44px targets. Sections in the
 muted `--rail` pane have slim, deterministic chart-token color tabs; the selected
