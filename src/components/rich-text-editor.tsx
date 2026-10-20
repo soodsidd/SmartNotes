@@ -102,6 +102,7 @@ import { logDrawEvent } from "@/lib/draw-mode-debug";
 import { generateCommentId, type PageComment } from "@/lib/comment-types";
 import type { ImageAlign } from "@/lib/image-layout-extension";
 import { supportsNativeCameraCapture } from "@/lib/camera-capture";
+import { CameraSessionOverlay } from "@/components/camera-session-overlay";
 import {
   adjustEditorZoomFromWheel,
   applyScrollPan,
@@ -492,14 +493,12 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     );
     const editorColumnRef = React.useRef<HTMLDivElement>(null);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
-    const cameraInputRef = React.useRef<HTMLInputElement>(null);
     const attachmentInputRef = React.useRef<HTMLInputElement>(null);
     // Only surfaced on touch-first mobile/tablet browsers with capture support;
     // resolved after mount so SSR/desktop never render a camera-only path.
     const [cameraCaptureSupported, setCameraCaptureSupported] = React.useState(false);
-    // SN-340: true while the camera session bar ("Take another / Done") is
-    // visible — i.e. after at least one photo has been captured.
-    const [cameraSessionActive, setCameraSessionActive] = React.useState(false);
+    // SN-340: true while the in-app getUserMedia camera session overlay is open.
+    const [cameraSessionOpen, setCameraSessionOpen] = React.useState(false);
     React.useEffect(() => {
       setCameraCaptureSupported(supportsNativeCameraCapture());
     }, []);
@@ -612,11 +611,26 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     const handleAssetFilesRef = React.useRef(handleAssetFiles);
     handleAssetFilesRef.current = handleAssetFiles;
 
-    // SN-340: open the native camera for one capture. Re-opening is driven by
-    // the explicit "Take another" button in the session bar — no OS event
-    // timing required.
+    // SN-340: open the in-app getUserMedia camera session.
     function handleCameraTakePhoto() {
-      cameraInputRef.current?.click();
+      setCameraSessionOpen(true);
+    }
+
+    // After the overlay closes with files, give the browser one animation frame
+    // to fully unmount the camera overlay and restore DOM/focus state, then
+    // batch-insert all photos through the existing serial upload queue.
+    function handleCameraSessionSubmit(files: File[]) {
+      setCameraSessionOpen(false);
+      if (files.length > 0) {
+        requestAnimationFrame(() => {
+          editor?.commands.focus();
+          void handleAssetFilesRef.current(files);
+        });
+      }
+    }
+
+    function handleCameraSessionCancel() {
+      setCameraSessionOpen(false);
     }
 
     function handleEditorClickCapture(e: React.MouseEvent) {
@@ -2277,19 +2291,6 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           }}
         />
         <input
-          ref={cameraInputRef}
-          data-testid="camera-capture-input"
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => {
-            void handleAssetFiles(e.target.files);
-            setCameraSessionActive(true);
-            e.target.value = "";
-          }}
-        />
-        <input
           ref={attachmentInputRef}
           data-testid="attachment-file-input"
           type="file"
@@ -2301,68 +2302,12 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           }}
         />
 
-        {/* SN-340: camera session bar — shown after the first capture; lets
-            the user take another photo or explicitly end the session. */}
-        {cameraSessionActive && (
-          <div
-            data-testid="camera-session-bar"
-            style={{
-              position: "fixed",
-              bottom: "1.5rem",
-              left: "50%",
-              transform: "translateX(-50%)",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              padding: "0.5rem 0.75rem",
-              backgroundColor: "var(--popover, var(--background))",
-              color: "var(--foreground)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius-md, 0.5rem)",
-              boxShadow: "var(--shadow-popover, 0 12px 30px -10px rgba(0 0 0 / 0.25))",
-              zIndex: 9999,
-              whiteSpace: "nowrap",
-            }}
-          >
-            <Camera style={{ width: "0.875rem", height: "0.875rem", flexShrink: 0, color: "var(--muted-foreground)" }} />
-            <span style={{ fontSize: "0.75rem", color: "var(--muted-foreground)" }}>Photo added</span>
-            <button
-              type="button"
-              data-testid="camera-session-take-another"
-              onClick={() => cameraInputRef.current?.click()}
-              style={{
-                fontSize: "0.75rem",
-                color: "var(--accent-foreground)",
-                backgroundColor: "var(--accent)",
-                padding: "0 0.625rem",
-                borderRadius: "var(--radius-sm, 0.25rem)",
-                border: "none",
-                height: "44px",
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              Take another
-            </button>
-            <button
-              type="button"
-              data-testid="camera-session-done"
-              onClick={() => setCameraSessionActive(false)}
-              style={{
-                fontSize: "0.75rem",
-                color: "var(--muted-foreground)",
-                backgroundColor: "transparent",
-                padding: "0 0.625rem",
-                borderRadius: "var(--radius-sm, 0.25rem)",
-                border: "1px solid var(--border)",
-                height: "44px",
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              Done
-            </button>
-          </div>
+        {/* SN-340: in-app getUserMedia camera session (mobile/tablet only). */}
+        {cameraCaptureSupported && cameraSessionOpen && (
+          <CameraSessionOverlay
+            onSubmit={handleCameraSessionSubmit}
+            onCancel={handleCameraSessionCancel}
+          />
         )}
 
         {/* Link dialog */}
