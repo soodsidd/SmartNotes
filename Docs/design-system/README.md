@@ -5,9 +5,10 @@
 The desktop notebook rail and page tree reuse `--rail`, `--border`, `--surface`,
 `--foreground`, `--muted-foreground`, `--chart-1` through `--chart-5`, and `--ring`
 with the existing compact tree typography. Notebook titles use 13px and 36px rows
-on desktop; section and Notebook pages rows use 12px and 28px rows so their hierarchy
-matches the compact reference. The latter retain 44px touch targets below xl and
-on coarse pointers. Sections in the
+on desktop; section, Notebook pages, and scoped page rows share 12px text and 28px
+rows. Their inactive labels use regular weight; selected labels use semibold.
+The scoped rows retain 44px touch targets on coarse pointers, and mobile rows
+retain 44px targets. Sections in the
 muted `--rail` pane have slim, deterministic chart-token color tabs; the selected
 section uses a rounded `--surface` highlight. Section names retain `--foreground`
 when inactive, while the selected section also uses semibold weight. The page pane
@@ -245,7 +246,7 @@ SN-139 adds desktop-only density metrics in `src/styles/tokens.css` for the thre
 | `--desktop-editor-density-comfortable` | `18px` | Desktop Settings → Font size → Large editor prose |
 | `--desktop-editor-density-leading` | `1.62` | Desktop editor prose line-height |
 | `--desktop-chrome-height` | `48px` | Desktop top chrome height |
-| `--desktop-tree-page-row-height` | `30px` | Desktop page tree row minimum |
+| `--desktop-tree-page-row-height` | `30px` | Legacy unified desktop page tree row minimum; SN-324 scoped rail/page lists share 28px rows |
 | `--desktop-tree-section-row-height` | `28px` | Desktop notebook and section row minimum |
 | `--desktop-tree-affordance-size` | `26px` | Desktop tree overflow/collapse button size |
 | `--desktop-tree-indent-step` | `10px` | Desktop nested page indentation step |
