@@ -8562,7 +8562,7 @@ export const Sidebar = React.memo(function Sidebar({
                 type="button"
                 size="sm"
                 variant="ghost"
-                className={cn("max-w-full justify-start font-normal text-xs text-muted-foreground", compactDesktop ? "h-7 px-2" : "min-h-11")}
+                className={cn("max-w-full justify-start font-normal text-[11px] text-muted-foreground", compactDesktop ? "h-7 px-2" : "min-h-11")}
                 onClick={() => void onDirectCreatePage(scopedCreateTarget)}
                 aria-label={`Add page to ${scopedCreateTarget.targetLabel}`}
                 data-testid="page-pane-add-page"
@@ -8785,13 +8785,13 @@ export const Sidebar = React.memo(function Sidebar({
                         data-testid={`rail-root-pages-${notebook.path}`}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-md px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          compactDesktop ? "min-h-9 text-[13px]" : "min-h-11 text-sm",
+                          compactDesktop ? "min-h-7 text-xs [@media(pointer:coarse)]:min-h-11" : "min-h-11 text-xs",
                           notebookActive && !activeSectionPath ? "bg-surface font-semibold text-foreground" : "text-foreground hover:bg-surface/70"
                         )}
                         onClick={() => onSelectRootPages(notebook.path)}
                         aria-current={notebookActive && !activeSectionPath ? "page" : undefined}
                       >
-                        <span className="h-5 w-1 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden />
+                        <span className="h-4 w-1 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden />
                         <span className="min-w-0 flex-1 truncate">{NOTEBOOK_ROOT_PAGES_LABEL}</span>
                       </button>
                     ) : null}
@@ -8804,7 +8804,7 @@ export const Sidebar = React.memo(function Sidebar({
                           data-testid={`rail-section-row-${section.path}`}
                           className={cn(
                             "flex w-full items-center gap-2 rounded-md px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            compactDesktop ? "min-h-9 text-[13px]" : "min-h-11 text-sm",
+                            compactDesktop ? "min-h-7 text-xs [@media(pointer:coarse)]:min-h-11" : "min-h-11 text-xs",
                             sectionActive
                               ? "bg-surface font-semibold text-foreground"
                               : "text-foreground hover:bg-surface/70"
@@ -8816,7 +8816,7 @@ export const Sidebar = React.memo(function Sidebar({
                           aria-current={sectionActive ? "page" : undefined}
                         >
                           <span
-                            className="h-5 w-1 shrink-0 rounded-full"
+                            className="h-4 w-1 shrink-0 rounded-full"
                             style={{ backgroundColor: sectionTabColor(section.path) }}
                             aria-hidden
                             data-testid={`rail-section-tab-${section.path}`}
@@ -8830,8 +8830,8 @@ export const Sidebar = React.memo(function Sidebar({
                         type="button"
                         data-testid={`rail-new-section-${notebook.path}`}
                         className={cn(
-                          "flex w-full items-center gap-1.5 rounded px-1.5 text-left font-normal text-xs text-muted-foreground transition hover:bg-surface/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          compactDesktop ? "min-h-9 py-0.5" : "min-h-11 py-0.5"
+                          "flex w-full items-center gap-1.5 rounded px-1.5 text-left font-normal text-[11px] text-muted-foreground transition hover:bg-surface/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          compactDesktop ? "min-h-7 py-0.5 [@media(pointer:coarse)]:min-h-11" : "min-h-11 py-0.5"
                         )}
                         onClick={() => onCreateSection(notebook.path, notebook.name)}
                       >

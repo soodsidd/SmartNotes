@@ -121,18 +121,30 @@ describe("SN-324 dual-pane navigation", () => {
 
   it("keeps inactive section names prominent and creation actions quieter at both densities", () => {
     for (const variant of ["desktop", "mobile"] as const) {
-      const rail = renderSidebar({ sidebarLayout: "rail", variant, activeNotebookPath: "Work" });
+      const rail = renderSidebar({ sidebarLayout: "rail", variant, activeNotebookPath: "Work", onSelectRootPages: jest.fn() });
+      const notebook = within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: /Work/ });
       const section = screen.getByTestId("rail-section-row-Work/Research");
+      const rootPages = screen.getByTestId("rail-root-pages-Work");
       const newSection = screen.getByTestId("rail-new-section-Work");
+      expect(notebook).toHaveClass(variant === "desktop" ? "text-[13px]" : "text-sm");
+      expect(notebook).toHaveClass(variant === "desktop" ? "min-h-9" : "min-h-11");
       expect(section).toHaveClass("text-foreground");
       expect(section).not.toHaveClass("text-muted-foreground");
-      expect(newSection).toHaveClass("text-xs", "font-normal", "text-muted-foreground");
-      expect(newSection).toHaveClass(variant === "desktop" ? "min-h-9" : "min-h-11");
+      expect(section).toHaveClass("text-xs", variant === "desktop" ? "min-h-7" : "min-h-11");
+      expect(rootPages).toHaveClass("text-xs", variant === "desktop" ? "min-h-7" : "min-h-11");
+      expect(section).not.toHaveClass("text-[13px]", "text-sm");
+      expect(rootPages).not.toHaveClass("text-[13px]", "text-sm");
+      if (variant === "desktop") {
+        expect(section).toHaveClass("[@media(pointer:coarse)]:min-h-11");
+        expect(rootPages).toHaveClass("[@media(pointer:coarse)]:min-h-11");
+      }
+      expect(newSection).toHaveClass("text-[11px]", "font-normal", "text-muted-foreground");
+      expect(newSection).toHaveClass(variant === "desktop" ? "min-h-7" : "min-h-11");
       rail.unmount();
 
       const pages = renderSidebar({ sidebarLayout: "page-tree", variant, activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
       const addPage = screen.getByTestId("page-pane-add-page");
-      expect(addPage).toHaveClass("text-xs", "font-normal", "text-muted-foreground");
+      expect(addPage).toHaveClass("text-[11px]", "font-normal", "text-muted-foreground");
       expect(addPage).not.toHaveClass("border-border", "bg-background");
       expect(addPage).toHaveClass(variant === "desktop" ? "h-7" : "min-h-11");
       pages.unmount();
