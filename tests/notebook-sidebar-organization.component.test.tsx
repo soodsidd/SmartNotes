@@ -129,17 +129,40 @@ describe("SN-324 dual-pane navigation", () => {
 
   it("shows pages only for the selected section and adds pages there", () => {
     const onDirectCreatePage = jest.fn().mockResolvedValue(undefined);
-    renderSidebar({ sidebarLayout: "page-tree", activeNotebookPath: "Work", activeSectionPath: "Work/Research", onDirectCreatePage });
-    expect(screen.getByTestId("page-Work/Research/Parent")).toBeInTheDocument();
+    const onOpenPage = jest.fn();
+    renderSidebar({
+      sidebarLayout: "page-tree", activeNotebookPath: "Work", activeSectionPath: "Work/Research",
+      expandedPages: new Set(["Work/Research/Parent"]), onDirectCreatePage, onOpenPage,
+    });
+    const scope = screen.getByTestId("page-pane-scope");
+    const parent = within(scope).getByTestId("page-Work/Research/Parent");
+    const child = within(scope).getByTestId("page-Work/Research/Laser");
+    expect(screen.queryByTestId("page-pane-section-heading")).not.toBeInTheDocument();
+    expect(within(scope).queryByText("Research")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("section-menu-Work/Research")).not.toBeInTheDocument();
+    expect(parent).toHaveStyle({ paddingLeft: "8px" });
+    expect(child).toHaveStyle({ paddingLeft: "20px" });
     expect(screen.queryByTestId("page-Work/Roadmap")).not.toBeInTheDocument();
     expect(screen.queryByTestId("page-Personal/Travel")).not.toBeInTheDocument();
+    fireEvent.click(within(parent).getByRole("button", { name: /Parent/ }));
+    expect(onOpenPage).toHaveBeenCalledWith("Work/Research/Parent");
     fireEvent.click(screen.getByTestId("page-pane-add-page"));
     expect(onDirectCreatePage).toHaveBeenCalledWith(expect.objectContaining({ notebookPath: "Work", sectionPath: "Work/Research" }));
   });
 
+  it("starts scoped desktop pages at the pane edge while preserving child nesting", () => {
+    renderSidebar({
+      sidebarLayout: "page-tree", variant: "desktop", activeNotebookPath: "Work",
+      activeSectionPath: "Work/Research", expandedPages: new Set(["Work/Research/Parent"]),
+    });
+    expect(screen.queryByTestId("page-pane-section-heading")).not.toBeInTheDocument();
+    expect(screen.getByTestId("page-Work/Research/Parent")).toHaveAttribute("style", expect.stringContaining("calc(4px + 0 * var(--desktop-tree-indent-step))"));
+    expect(screen.getByTestId("page-Work/Research/Laser")).toHaveAttribute("style", expect.stringContaining("calc(4px + 1 * var(--desktop-tree-indent-step))"));
+  });
+
   it("shows root pages when the notebook has no selected section", () => {
     renderSidebar({ sidebarLayout: "page-tree", activeNotebookPath: "Work", activeSectionPath: null });
-    expect(screen.getByTestId("page-pane-root-heading")).toHaveTextContent("Notebook pages");
+    expect(screen.queryByTestId("page-pane-root-heading")).not.toBeInTheDocument();
     expect(screen.getByTestId("page-Work/Roadmap")).toBeInTheDocument();
     expect(screen.queryByTestId("page-Work/Research/Parent")).not.toBeInTheDocument();
   });

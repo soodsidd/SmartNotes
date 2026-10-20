@@ -8979,14 +8979,6 @@ export const Sidebar = React.memo(function Sidebar({
                   data-testid={isPageTreeLayout ? "page-pane-scope" : undefined}
                   data-scope={isPageTreeLayout ? (scopedSection?.path ?? "root") : undefined}
                 >
-                  {isPageTreeLayout && !scopedSection ? (
-                    <p
-                      className={cn("truncate px-1.5 font-semibold text-foreground", compactDesktop ? "pb-1 text-[13px]" : "pb-1.5 text-sm")}
-                      data-testid="page-pane-root-heading"
-                    >
-                      {NOTEBOOK_ROOT_PAGES_LABEL}
-                    </p>
-                  ) : null}
                   {isPageTreeLayout && !scopedSection && notebook.pages.length === 0 ? (
                     <div className="rounded border border-dashed border-border px-3 py-3 text-xs text-muted-foreground" data-testid="page-pane-root-empty">
                       No pages yet
@@ -9362,6 +9354,7 @@ export const Sidebar = React.memo(function Sidebar({
 
                     return (
                       <div key={section.path} data-testid={`section-${section.path}`}>
+                        {!isPageTreeLayout ? (
                         <div
                           className={cn(
                             "flex items-center rounded transition",
@@ -9409,16 +9402,11 @@ export const Sidebar = React.memo(function Sidebar({
                             type="button"
                             className={cn("flex min-w-0 items-center text-left", inlineSectionPath === section.path ? "shrink-0" : "flex-1", compactDesktop ? "gap-1.5" : "gap-2")}
                             onClick={() => {
-                              // Page-tree pane: the section row is the scope heading, not a toggle.
-                              if (isPageTreeLayout) return;
                               onSelectSection(section.path);
                               onToggleSection(section.path);
                             }}
-                            data-testid={isPageTreeLayout ? "page-pane-section-heading" : undefined}
                           >
-                            {isPageTreeLayout ? (
-                              <span className="h-4 w-1 shrink-0 rounded-full" style={{ backgroundColor: sectionTabColor(section.path) }} aria-hidden />
-                            ) : sectionOpen ? (
+                            {sectionOpen ? (
                               <ChevronDown className={cn("text-muted-foreground", compactDesktop ? "size-3" : "size-3.5")} />
                             ) : (
                               <ChevronRight className={cn("text-muted-foreground", compactDesktop ? "size-3" : "size-3.5")} />
@@ -9427,7 +9415,7 @@ export const Sidebar = React.memo(function Sidebar({
                               <Inbox className={cn("text-accent", compactDesktop ? "size-3" : "size-3.5")} />
                             ) : null}
                             {inlineSectionPath !== section.path ? (
-                              <span className={cn("truncate text-foreground", isPageTreeLayout && "font-semibold", compactDesktop ? "text-[13px]" : "text-sm")}>{section.name}</span>
+                              <span className={cn("truncate text-foreground", compactDesktop ? "text-[13px]" : "text-sm")}>{section.name}</span>
                             ) : null}
                           </button>
                           {inlineSectionPath === section.path ? (
@@ -9543,9 +9531,10 @@ export const Sidebar = React.memo(function Sidebar({
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
+                        ) : null}
 
                         {sectionOpen ? (
-                          <div className={cn("mt-1 space-y-0.5", compactDesktop && "mt-0.5")}>
+                          <div className={cn("space-y-0.5", !isPageTreeLayout && (compactDesktop ? "mt-0.5" : "mt-1"))}>
                             {(() => {
                               const sectionRows = pageRowsBySection.get(section.path);
                               const flatNodes = sectionRows?.flatNodes ?? [];
@@ -9555,7 +9544,8 @@ export const Sidebar = React.memo(function Sidebar({
                                 return (
                                   <div
                                     className={cn(
-                                      "ml-5 space-y-2 rounded border border-dashed px-3 py-3 text-xs text-muted-foreground transition",
+                                      "space-y-2 rounded border border-dashed px-3 py-3 text-xs text-muted-foreground transition",
+                                      !isPageTreeLayout && "ml-5",
                                       isSectionDropTarget
                                         ? "border-accent bg-accent/5 text-foreground"
                                         : "border-border"
@@ -9638,7 +9628,7 @@ export const Sidebar = React.memo(function Sidebar({
                                   node.page.path === dragOverPagePath &&
                                   (dragIntent === "reorder" || dragIntent === "unnest" || dragIntent === "move") &&
                                   !isDragging;
-                                const indentPx = resolvePageIndent(sectionPageIndentBase, node.depth);
+                                const indentPx = resolvePageIndent(isPageTreeLayout ? notebookRootPageIndentBase : sectionPageIndentBase, node.depth);
                                 const visibleGhosts =
                                   ghostVersions?.parentPagePath === node.page.path ? ghostVersions.versions : [];
 
@@ -9988,7 +9978,7 @@ export const Sidebar = React.memo(function Sidebar({
                                 );
 
                                 const ghostRows = visibleGhosts.map((version) => {
-                                  const ghostIndentPx = resolveGhostIndent(sectionPageIndentBase, node.depth);
+                                  const ghostIndentPx = resolveGhostIndent(isPageTreeLayout ? notebookRootPageIndentBase : sectionPageIndentBase, node.depth);
                                   const isPreviewing = previewedVersionId === version.id;
                                   return (
                                     <div
