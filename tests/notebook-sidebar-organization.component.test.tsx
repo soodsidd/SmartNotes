@@ -112,7 +112,8 @@ describe("SN-324 dual-pane navigation", () => {
   it("shows token-colored section tabs and a surface highlight on the selected section", () => {
     renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
     const section = screen.getByTestId("rail-section-row-Work/Research");
-    expect(section).toHaveClass("bg-surface");
+    // SN-346: the highlight sits on the row wrapper so it spans the ⋯ trigger too.
+    expect(section.parentElement).toHaveClass("bg-surface");
     expect(within(section).getByText("Research")).toHaveClass("text-sm", "font-medium");
     expect(section).toHaveClass("text-foreground");
     expect(section).toHaveAttribute("aria-current", "page");
@@ -129,7 +130,7 @@ describe("SN-324 dual-pane navigation", () => {
   it("keeps inactive section names prominent and creation actions quieter at both densities", () => {
     for (const variant of ["desktop", "mobile"] as const) {
       const rail = renderSidebar({ sidebarLayout: "rail", variant, activeNotebookPath: "Work", onSelectRootPages: jest.fn() });
-      const notebookRow = within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: /Work/ });
+      const notebookRow = within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: "Work" });
       const section = screen.getByTestId("rail-section-row-Work/Research");
       const rootPages = screen.getByTestId("rail-root-pages-Work");
       const newSection = screen.getByTestId("rail-new-section-Work");
@@ -159,7 +160,7 @@ describe("SN-324 dual-pane navigation", () => {
   it("uses one nav label size for notebooks, sections, pages, and creation actions", () => {
     const rail = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work", onSelectRootPages: jest.fn() });
     const labels = [
-      within(within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: /Work/ })).getByText("Work"),
+      within(within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: "Work" })).getByText("Work"),
       within(screen.getByTestId("rail-section-row-Work/Research")).getByText("Research"),
       within(screen.getByTestId("rail-root-pages-Work")).getByText("Notebook pages"),
       within(screen.getByTestId("rail-new-section-Work")).getByText("New section"),
@@ -480,5 +481,20 @@ describe("rail layout — sections under active notebook (SN-324)", () => {
       expandedNotebooks: new Set(["Work"]),
     });
     expect(screen.getByTestId("rail-section-row-Work/Research")).toHaveAttribute("aria-current", "page");
+  });
+});
+
+describe("SN-346 rail notebook and section menus", () => {
+  it("exposes delete/rename actions from the rail notebook and section rows", async () => {
+    const { props } = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work" });
+
+    fireEvent.click(screen.getByTestId("rail-notebook-menu-Work"));
+    fireEvent.click(await screen.findByText("Delete notebook"));
+    expect(props.onDeleteNotebook).toHaveBeenCalledWith("Work", "Work", undefined);
+
+    fireEvent.click(screen.getByTestId("rail-section-menu-Work/Research"));
+    expect(await screen.findByText("Rename section")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Delete section"));
+    expect(props.onDeleteSection).toHaveBeenCalledWith("Work/Research", "Research");
   });
 });

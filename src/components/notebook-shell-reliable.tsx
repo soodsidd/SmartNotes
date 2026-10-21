@@ -8550,6 +8550,125 @@ export const Sidebar = React.memo(function Sidebar({
       }
     : null;
 
+  const notebookRootTarget = (notebook: VaultNotebook): CreatePageTarget => ({
+    notebookPath: notebook.path,
+    notebookName: notebook.name,
+    sectionPath: null,
+    sectionName: null,
+    parentId: null,
+    targetLabel: notebook.name,
+  });
+  const sectionTarget = (notebook: VaultNotebook, section: VaultSection): CreatePageTarget => ({
+    notebookPath: notebook.path,
+    notebookName: notebook.name,
+    sectionPath: section.path,
+    sectionName: section.name,
+    parentId: null,
+    targetLabel: section.name,
+  });
+  // SN-346: notebook/section menu items are shared by the tree and rail layouts so they cannot drift.
+  const renderNotebookMenuItems = (notebook: VaultNotebook) => {
+    const rootTarget = notebookRootTarget(notebook);
+    return (
+      <>
+        <DropdownMenuItem onClick={() => onCreatePage(rootTarget)} data-testid={`notebook-create-page-${notebook.path}`}>
+          New page
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreateJupyterNotebook(rootTarget)} data-testid={`notebook-create-jupyter-${notebook.path}`}>
+          New Jupyter notebook
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreateLogPage(rootTarget)} data-testid={`notebook-create-log-${notebook.path}`}>
+          New log
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreateDesignPage(rootTarget)} data-testid={`notebook-create-design-${notebook.path}`}>
+          New design page
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreateSpreadsheetPage(rootTarget)} data-testid={`notebook-create-spreadsheet-${notebook.path}`}>
+          <Table2 className="mr-2 size-3.5 text-chart-2" />
+          New spreadsheet
+        </DropdownMenuItem>
+        {notebook.isPortable ? (
+          <DropdownMenuItem onClick={() => onLinkDesign(notebook.rootPath)} data-testid={`notebook-link-design-${notebook.path}`}>
+            <Link2 className="mr-2 size-3.5" />
+            Link design…
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onCreateSection(notebook.path, notebook.name)}>
+          New section
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onRenameNotebook(notebook.path, notebook.name, notebook.isPortable)}>
+          Rename notebook
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCloseNotebook(notebook.path)}>
+          Close notebook
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void onRevealNotebook(notebook.path)}>
+          Reveal in Explorer
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          onClick={() => onDeleteNotebook(notebook.path, notebook.name, notebook.isPortable)}
+          data-testid={`notebook-delete-${notebook.path}`}
+        >
+          {notebook.isPortable ? "Remove notebook" : "Delete notebook"}
+        </DropdownMenuItem>
+      </>
+    );
+  };
+  const renderSectionMenuItems = (notebook: VaultNotebook, section: VaultSection) => {
+    const target = sectionTarget(notebook, section);
+    return (
+      <>
+        <DropdownMenuItem onClick={() => onCreatePage(target)}>
+          New page
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreateJupyterNotebook(target)} data-testid={`section-create-jupyter-${section.path}`}>
+          New Jupyter notebook
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreateLogPage(target)} data-testid={`section-create-log-${section.path}`}>
+          New log
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreateDesignPage(target)} data-testid={`section-create-design-${section.path}`}>
+          New design page
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreateSpreadsheetPage(target)} data-testid={`section-create-spreadsheet-${section.path}`}>
+          <Table2 className="mr-2 size-3.5 text-chart-2" />
+          New spreadsheet
+        </DropdownMenuItem>
+        {notebook.isPortable ? (
+          <DropdownMenuItem onClick={() => onLinkDesign(notebook.rootPath)} data-testid={`section-link-design-${section.path}`}>
+            <Link2 className="mr-2 size-3.5" />
+            Link design…
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuItem onClick={() => onImportDocx(section.path)} data-testid={`section-import-docx-${section.path}`}>
+          <FileUp className="mr-2 size-3.5" />
+          Import DOCX
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onImportPagePackage(section.path)} data-testid={`section-import-package-${section.path}`}>
+          <FileUp className="mr-2 size-3.5" />
+          Import page package
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onRenameSection(section.path, section.name, notebook.path)}>
+          Rename section
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          onClick={() => onDeleteSection(section.path, section.name)}
+          data-testid={`section-delete-${section.path}`}
+        >
+          Delete section
+        </DropdownMenuItem>
+      </>
+    );
+  };
+  const railMenuTriggerClass = cn(
+    "inline-flex shrink-0 items-center justify-center rounded text-muted-foreground opacity-80 transition hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    compactDesktop ? "size-[var(--desktop-tree-affordance-size)] [@media(pointer:coarse)]:size-11" : "size-11"
+  );
+
   return (
     <div
       className={cn("minimal-scrollbar h-full overflow-auto", compactDesktop ? "p-1.5" : "p-2")}
@@ -8753,12 +8872,12 @@ export const Sidebar = React.memo(function Sidebar({
             const hasSections = notebook.sections.length > 0;
             return (
               <div key={notebook.path} data-testid={`notebook-rail-row-${notebook.path}`}>
+                <div className={cn("flex items-center rounded transition", notebookActive ? "bg-surface" : "hover:bg-surface/70")}>
                 <button
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-1.5 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    compactDesktop ? "min-h-7 py-0.5 [@media(pointer:coarse)]:min-h-11" : "min-h-11 py-1",
-                    notebookActive ? "bg-surface" : "hover:bg-surface/70"
+                    "flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    compactDesktop ? "min-h-7 py-0.5 [@media(pointer:coarse)]:min-h-11" : "min-h-11 py-1"
                   )}
                   onClick={() => {
                     onSelectNotebook(notebook.path);
@@ -8781,6 +8900,19 @@ export const Sidebar = React.memo(function Sidebar({
                     <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Remote</span>
                   ) : null}
                 </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className={railMenuTriggerClass}
+                    aria-label={`${notebook.name} notebook actions`}
+                    data-testid={`rail-notebook-menu-${notebook.path}`}
+                  >
+                    <MoreHorizontal className="size-3.5" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {renderNotebookMenuItems(notebook)}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                </div>
                 {notebookExpanded ? (
                   <div className="mt-1 space-y-0.5 pl-3">
                     {notebookHasRootPagesRow(notebook) && onSelectRootPages ? (
@@ -8802,16 +8934,19 @@ export const Sidebar = React.memo(function Sidebar({
                     {notebook.sections.map((section) => {
                       const sectionActive = notebookActive && section.path === activeSectionPath;
                       return (
-                        <button
+                        <div
                           key={section.path}
+                          className={cn(
+                            "flex items-center rounded-md transition",
+                            sectionActive ? "bg-surface text-foreground" : "text-foreground hover:bg-surface/70"
+                          )}
+                        >
+                        <button
                           type="button"
                           data-testid={`rail-section-row-${section.path}`}
                           className={cn(
-                            "flex w-full items-center gap-2 rounded-md px-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            compactDesktop ? scopedListDesktopRowClass : "min-h-11",
-                            sectionActive
-                              ? "bg-surface text-foreground"
-                              : "text-foreground hover:bg-surface/70"
+                            "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            compactDesktop ? scopedListDesktopRowClass : "min-h-11"
                           )}
                           onClick={() => {
                             onSelectSection(section.path);
@@ -8827,6 +8962,19 @@ export const Sidebar = React.memo(function Sidebar({
                           />
                           <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass, sectionActive ? "font-medium" : "font-normal")}>{section.name}</span>
                         </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            className={railMenuTriggerClass}
+                            aria-label={`${section.name} section actions`}
+                            data-testid={`rail-section-menu-${section.path}`}
+                          >
+                            <MoreHorizontal className="size-3.5" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {renderSectionMenuItems(notebook, section)}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        </div>
                       );
                     })}
                     {onCreateSection ? (
@@ -8912,66 +9060,7 @@ export const Sidebar = React.memo(function Sidebar({
                     <MoreHorizontal className={cn(compactDesktop ? "size-3.5" : "size-4")} />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => onCreatePage(rootTarget)}
-                      data-testid={`notebook-create-page-${notebook.path}`}
-                    >
-                      New page
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => onCreateJupyterNotebook(rootTarget)}
-                      data-testid={`notebook-create-jupyter-${notebook.path}`}
-                    >
-                      New Jupyter notebook
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => onCreateLogPage(rootTarget)}
-                      data-testid={`notebook-create-log-${notebook.path}`}
-                    >
-                      New log
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => onCreateDesignPage(rootTarget)}
-                      data-testid={`notebook-create-design-${notebook.path}`}
-                    >
-                      New design page
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => onCreateSpreadsheetPage(rootTarget)}
-                      data-testid={`notebook-create-spreadsheet-${notebook.path}`}
-                    >
-                      <Table2 className="mr-2 size-3.5 text-chart-2" />
-                      New spreadsheet
-                    </DropdownMenuItem>
-                    {notebook.isPortable ? (
-                      <DropdownMenuItem
-                        onClick={() => onLinkDesign(notebook.rootPath)}
-                        data-testid={`notebook-link-design-${notebook.path}`}
-                      >
-                        <Link2 className="mr-2 size-3.5" />
-                        Link design…
-                      </DropdownMenuItem>
-                    ) : null}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => onCreateSection(notebook.path, notebook.name)}>
-                      New section
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onRenameNotebook(notebook.path, notebook.name, notebook.isPortable)}>
-                      Rename notebook
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onCloseNotebook(notebook.path)}>
-                      Close notebook
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => void onRevealNotebook(notebook.path)}>
-                      Reveal in Explorer
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={() => onDeleteNotebook(notebook.path, notebook.name, notebook.isPortable)}
-                    >
-                      {notebook.isPortable ? "Remove notebook" : "Delete notebook"}
-                    </DropdownMenuItem>
+                    {renderNotebookMenuItems(notebook)}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -9438,102 +9527,7 @@ export const Sidebar = React.memo(function Sidebar({
                               <MoreHorizontal className="size-3.5" />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => onCreatePage({
-                                  notebookPath: notebook.path,
-                                  notebookName: notebook.name,
-                                  sectionPath: section.path,
-                                  sectionName: section.name,
-                                  parentId: null,
-                                  targetLabel: section.name,
-                                })}
-                              >
-                                New page
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => onCreateJupyterNotebook({
-                                  notebookPath: notebook.path,
-                                  notebookName: notebook.name,
-                                  sectionPath: section.path,
-                                  sectionName: section.name,
-                                  parentId: null,
-                                  targetLabel: section.name,
-                                })}
-                                data-testid={`section-create-jupyter-${section.path}`}
-                              >
-                                New Jupyter notebook
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => onCreateLogPage({
-                                  notebookPath: notebook.path,
-                                  notebookName: notebook.name,
-                                  sectionPath: section.path,
-                                  sectionName: section.name,
-                                  parentId: null,
-                                  targetLabel: section.name,
-                                })}
-                                data-testid={`section-create-log-${section.path}`}
-                              >
-                                New log
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => onCreateDesignPage({
-                                  notebookPath: notebook.path,
-                                  notebookName: notebook.name,
-                                  sectionPath: section.path,
-                                  sectionName: section.name,
-                                  parentId: null,
-                                  targetLabel: section.name,
-                                })}
-                                data-testid={`section-create-design-${section.path}`}
-                              >
-                                New design page
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => onCreateSpreadsheetPage({
-                                  notebookPath: notebook.path,
-                                  notebookName: notebook.name,
-                                  sectionPath: section.path,
-                                  sectionName: section.name,
-                                  targetLabel: section.name,
-                                })}
-                                data-testid={`section-create-spreadsheet-${section.path}`}
-                              >
-                                <Table2 className="mr-2 size-3.5 text-chart-2" />
-                                New spreadsheet
-                              </DropdownMenuItem>
-                              {notebook.isPortable ? (
-                                <DropdownMenuItem
-                                  onClick={() => onLinkDesign(notebook.rootPath)}
-                                  data-testid={`section-link-design-${section.path}`}
-                                >
-                                  <Link2 className="mr-2 size-3.5" />
-                                  Link design…
-                                </DropdownMenuItem>
-                              ) : null}
-                              <DropdownMenuItem
-                                onClick={() => onImportDocx(section.path)}
-                                data-testid={`section-import-docx-${section.path}`}
-                              >
-                                <FileUp className="mr-2 size-3.5" />
-                                Import DOCX
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => onImportPagePackage(section.path)}
-                                data-testid={`section-import-package-${section.path}`}
-                              >
-                                <FileUp className="mr-2 size-3.5" />
-                                Import page package
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => onRenameSection(section.path, section.name, notebook.path)}>
-                                Rename section
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={() => onDeleteSection(section.path, section.name)}
-                              >
-                                Delete section
-                              </DropdownMenuItem>
+                              {renderSectionMenuItems(notebook, section)}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
