@@ -8664,8 +8664,10 @@ export const Sidebar = React.memo(function Sidebar({
       </>
     );
   };
+  const sidebarMenuVisibilityClass = "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 data-[popup-open]:opacity-100 [@media(pointer:coarse)]:opacity-100";
   const railMenuTriggerClass = cn(
-    "inline-flex shrink-0 items-center justify-center rounded text-muted-foreground opacity-80 transition hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "inline-flex shrink-0 items-center justify-center rounded text-muted-foreground transition hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    sidebarMenuVisibilityClass,
     compactDesktop ? "size-[var(--desktop-tree-affordance-size)] [@media(pointer:coarse)]:size-11" : "size-11"
   );
 
@@ -8872,7 +8874,7 @@ export const Sidebar = React.memo(function Sidebar({
             const hasSections = notebook.sections.length > 0;
             return (
               <div key={notebook.path} data-testid={`notebook-rail-row-${notebook.path}`}>
-                <div className={cn("flex items-center rounded transition", notebookActive ? "bg-surface" : "hover:bg-surface/70")}>
+                <div className={cn("group flex items-center rounded transition", notebookActive ? "bg-surface" : "hover:bg-surface/70")}>
                 <button
                   type="button"
                   className={cn(
@@ -8937,7 +8939,7 @@ export const Sidebar = React.memo(function Sidebar({
                         <div
                           key={section.path}
                           className={cn(
-                            "flex items-center rounded-md transition",
+                            "group flex items-center rounded-md transition",
                             sectionActive ? "bg-surface text-foreground" : "text-foreground hover:bg-surface/70"
                           )}
                         >
@@ -9025,7 +9027,7 @@ export const Sidebar = React.memo(function Sidebar({
               {!isPageTreeLayout ? (
               <div
                 className={cn(
-                  "flex items-center rounded transition",
+                  "group flex items-center rounded transition",
                   compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] gap-1 px-1.5 py-0.5" : "gap-1.5 px-2 py-1",
                   notebookActive ? "bg-surface" : "hover:bg-surface"
                 )}
@@ -9052,7 +9054,8 @@ export const Sidebar = React.memo(function Sidebar({
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     className={cn(
-                      "inline-flex shrink-0 items-center justify-center rounded opacity-80 transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "inline-flex shrink-0 items-center justify-center rounded transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      sidebarMenuVisibilityClass,
                       compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11"
                     )}
                     data-testid={`notebook-menu-${notebook.path}`}
@@ -9314,7 +9317,8 @@ export const Sidebar = React.memo(function Sidebar({
                             <DropdownMenuTrigger
                               data-page-menu="true"
                               className={cn(
-                                "inline-flex shrink-0 items-center justify-center rounded opacity-70 transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                "inline-flex shrink-0 items-center justify-center rounded transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                sidebarMenuVisibilityClass,
                                 compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11"
                               )}
                               data-testid={`page-menu-${node.page.path}`}
@@ -9452,7 +9456,7 @@ export const Sidebar = React.memo(function Sidebar({
                         {!isPageTreeLayout ? (
                         <div
                           className={cn(
-                            "flex items-center rounded transition",
+                            "group flex items-center rounded transition",
                             compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] gap-1 px-1.5 py-0.5" : "gap-1.5 px-1.5 py-1",
                             sectionActive ? "bg-surface/80" : "hover:bg-surface/70",
                             isSectionDropTarget && "ring-1 ring-inset ring-accent bg-accent/5"
@@ -9519,7 +9523,8 @@ export const Sidebar = React.memo(function Sidebar({
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               className={cn(
-                                "inline-flex shrink-0 items-center justify-center rounded opacity-80 transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                "inline-flex shrink-0 items-center justify-center rounded transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                sidebarMenuVisibilityClass,
                                 compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11"
                               )}
                               data-testid={`section-menu-${section.path}`}
@@ -9843,7 +9848,8 @@ export const Sidebar = React.memo(function Sidebar({
                                       <DropdownMenuTrigger
                                         data-page-menu="true"
                                         className={cn(
-                                          "inline-flex shrink-0 items-center justify-center rounded opacity-70 transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                          "inline-flex shrink-0 items-center justify-center rounded transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                          sidebarMenuVisibilityClass,
                                           compactDesktop ? "size-[var(--desktop-tree-affordance-size)]" : "size-11"
                                         )}
                                         data-testid={`page-menu-${node.page.path}`}

@@ -485,6 +485,21 @@ describe("rail layout — sections under active notebook (SN-324)", () => {
 });
 
 describe("SN-346 rail notebook and section menus", () => {
+  it("reveals each sidebar ellipsis on its own row hover while preserving focus and touch access", () => {
+    const rail = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work" });
+    for (const testId of ["rail-notebook-menu-Work", "rail-section-menu-Work/Research"]) {
+      const trigger = screen.getByTestId(testId);
+      expect(trigger.parentElement).toHaveClass("group");
+      expect(trigger).toHaveClass("opacity-0", "group-hover:opacity-100", "focus-visible:opacity-100", "data-[popup-open]:opacity-100", "[@media(pointer:coarse)]:opacity-100");
+    }
+    rail.unmount();
+
+    renderSidebar({ sidebarLayout: "page-tree", variant: "desktop", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
+    const pageMenu = screen.getByTestId("page-menu-Work/Research/Parent");
+    expect(pageMenu).toHaveClass("opacity-0", "group-hover:opacity-100", "group-focus-within:opacity-100", "data-[popup-open]:opacity-100", "[@media(pointer:coarse)]:opacity-100");
+    expect(pageMenu.closest('[data-testid="page-Work/Research/Parent"]')).toHaveClass("group");
+  });
+
   it("exposes delete/rename actions from the rail notebook and section rows", async () => {
     const { props } = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work" });
 
