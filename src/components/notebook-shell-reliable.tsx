@@ -8137,6 +8137,7 @@ function TopBar({
     isReloading || isRefreshingNote || (!canRefreshNote && !pendingReload);
 
   return (
+    <>
     <header
       className="flex h-11 shrink-0 items-center justify-between gap-1.5 border-b border-border bg-background/95 pl-1 pr-2 backdrop-blur md:h-14 md:gap-2 md:pl-2 md:pr-4 xl:h-[var(--desktop-chrome-height)] xl:pr-3"
       data-print-chrome="true"
@@ -8398,6 +8399,28 @@ function TopBar({
         </DropdownMenu>
       </div>
     </header>
+    <div className="hidden shrink-0 items-center gap-1 border-b border-border bg-background px-3 py-1 xl:flex" data-print-chrome="true" data-testid="desktop-primary-actions">
+      <Button variant="ghost" size="sm" onClick={onCreateNotebook}>
+        <Plus className="mr-1.5 size-3.5" />New notebook
+      </Button>
+      {onOpenWorkspace ? <Button variant="ghost" size="sm" onClick={onOpenWorkspace}>
+        <FolderOpen className="mr-1.5 size-3.5" />Open workspace…
+      </Button> : null}
+      <Button variant="ghost" size="sm" onClick={onExportPage} disabled={!canExportPage}>
+        <Download className="mr-1.5 size-3.5" />Export page as HTML
+      </Button>
+      <Button variant="ghost" size="sm" onClick={pendingReload ? onReload : onRefreshNote} disabled={reloadDisabled} title={reloadLabel}>
+        {isReloading || isRefreshingNote ? <LoaderCircle className="mr-1.5 size-3.5 animate-spin" /> : <RotateCw className="mr-1.5 size-3.5" />}
+        {pendingReload ? reloadLabel : "Reload"}
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onPrintPage} disabled={!canExportPage}>
+        <Printer className="mr-1.5 size-3.5" />Print page
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onOpenSettings}>
+        <Settings className="mr-1.5 size-3.5" />Settings
+      </Button>
+    </div>
+    </>
   );
 }
 

@@ -3114,6 +3114,7 @@ mark {
 .paper-reading-topbar button:hover { background: var(--secondary); }
 .paper-reading-topbar button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 [data-paper-dock="true"] header[data-print-chrome="true"],
+[data-paper-dock="true"] [data-testid="desktop-primary-actions"],
 [data-paper-dock="true"] [data-testid="paper-ownership"] { display: none; }
 [data-paper-dock="true"] [data-testid="annotated-editor-panel"] { padding: 0; }
 /* Notes dock iframe is often < md; still show the desktop format bar to match photo #8. */
