@@ -79,8 +79,14 @@ test("SN-353/354/355: keyboard table growth, axis delete, header sort and filter
     const sort = page.getByTestId("table-header-sort");
     await data.locator("td").first().hover();
     await expect(sort).toHaveCount(0);
+    const headerHeight = () => data.locator("th").first().evaluate((cell) => cell.getBoundingClientRect().height);
+    const restingHeight = await headerHeight();
     await data.locator("th").first().hover();
     await expect(sort).toBeVisible();
+    // Hover must not reflow the header, or the cell slides out from under the pointer.
+    expect(await headerHeight()).toBe(restingHeight);
+    await sort.hover();
+    expect(await headerHeight()).toBe(restingHeight);
     const insideHeader = await sort.evaluate((button, cell) => {
       const icon = button.getBoundingClientRect();
       const header = (cell as HTMLElement).getBoundingClientRect();
@@ -91,8 +97,8 @@ test("SN-353/354/355: keyboard table growth, axis delete, header sort and filter
     await sort.click();
     const firstColumn = () => data.locator("tr td:first-child").allTextContents();
     await expect.poll(firstColumn).toEqual(["apple", "fig", "pear"]);
-    await data.locator("th").first().hover();
-    await page.getByTestId("table-header-sort").click();
+    // Tools stay anchored after sorting: a second click toggles without re-hovering.
+    await sort.click();
     await expect.poll(firstColumn).toEqual(["pear", "fig", "apple"]);
     await expect(data.locator("tr").first().locator("th").first()).toHaveText("Item");
 

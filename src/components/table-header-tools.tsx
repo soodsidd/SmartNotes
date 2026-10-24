@@ -103,14 +103,25 @@ export function TableHeaderTools({ editor }: { editor: Editor | null }) {
   const toolHeight = coarse ? 50 : 34;
   const left = Math.max(anchor.rect.left, anchor.rect.right - toolWidth - 2);
   const top = anchor.rect.top + Math.max(0, (anchor.rect.height - toolHeight) / 2);
+  // Re-anchor to the (possibly re-rendered) header so the tools stay put under the pointer:
+  // a second Sort click toggles direction without leaving and re-entering the cell.
+  const reanchor = (): HeaderAnchor | null => {
+    const next = editor.state.doc.nodeAt(anchor.tablePos);
+    if (!next || next.type.name !== "table") return null;
+    const map = TableMap.get(next);
+    if (anchor.column >= map.width) return null;
+    const cell = editor.view.nodeDOM(anchor.tablePos + 1 + map.map[anchor.column]);
+    return cell instanceof HTMLTableCellElement
+      ? { cell, tablePos: anchor.tablePos, column: anchor.column, rect: cell.getBoundingClientRect() } : null;
+  };
   const run = (command: ReturnType<typeof sortHeaderColumnCommand>) => {
     command(editor.state, editor.view.dispatch);
-    setAnchor(null);
+    setAnchor(reanchor());
     setFilterOpen(false);
   };
   const filter = (value: string | null) => {
     filterHeaderColumnCommand(anchor.tablePos, anchor.column, value)(editor.state, editor.view.dispatch);
-    setAnchor((current) => current ? { ...current } : null);
+    setAnchor(reanchor());
     setFilterOpen(false);
   };
 

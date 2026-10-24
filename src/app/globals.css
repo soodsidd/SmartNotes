@@ -989,10 +989,8 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
   outline: none;
 }
 
-/* SN-355: tools occupy the hovered header's right edge without changing editable DOM. */
-.editor-content th:hover {
-  padding-right: calc(2 * var(--table-ribbon-button-size) + 0.75em);
-}
+/* SN-355: tools overlay the hovered header's right edge, inside the cell (Excel-style).
+   No hover padding: any header reflow moves the cell out from under the pointer. */
 .table-header-tools {
   position: fixed;
   z-index: 40;
