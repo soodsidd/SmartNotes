@@ -8,6 +8,7 @@ import {
   compareCellText,
   computeSelectionStats,
   formatSelectionStats,
+  filterHeaderColumnCommand,
   moveColumnCommand,
   moveRowCommand,
   parseCellNumber,
@@ -19,6 +20,8 @@ import {
   selectionStatsForState,
   setTableModeCommand,
   sortTableCommand,
+  sortHeaderColumnCommand,
+  tableColumnValues,
   toTsv,
 } from "@/lib/table-ribbon";
 
@@ -116,6 +119,28 @@ describe("selection stats", () => {
 });
 
 describe("ribbon commands", () => {
+  test("header controls sort body rows and filter exact column values across HTML reload", () => {
+    const editor = makeEditor();
+    const table = editor.state.doc.nodeAt(0)!;
+    expect(tableColumnValues(table, 1)).toEqual(["2.5", "10", ""]);
+    expect(exec(editor, sortHeaderColumnCommand(0, 0))).toBe(true);
+    expect(columnTexts(editor, 0)).toEqual(["Name", "apple", "fig", "pear"]);
+    expect(exec(editor, sortHeaderColumnCommand(0, 0))).toBe(true);
+    expect(columnTexts(editor, 0)).toEqual(["Name", "pear", "fig", "apple"]);
+    expect(exec(editor, filterHeaderColumnCommand(0, 1, "10"))).toBe(true);
+    const rows = editor.view.dom.querySelectorAll("table tr");
+    expect(rows[0].getAttribute("style")).toBeNull();
+    expect([...rows].filter((row) => (row as HTMLElement).style.display === "none")).toHaveLength(2);
+    expect(editor.getHTML()).toContain("data-column-filters=");
+    roundTrip(editor);
+    expect(exec(editor, filterHeaderColumnCommand(0, 1, null))).toBe(true);
+    expect([...editor.view.dom.querySelectorAll("table tr")].filter((row) => (row as HTMLElement).style.display === "none")).toHaveLength(0);
+    // A filter left on a column that no longer exists must not hide every body row.
+    expect(exec(editor, filterHeaderColumnCommand(0, 1, "10"))).toBe(true);
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(0, undefined, { ...editor.state.doc.nodeAt(0)!.attrs, columnFilters: { 9: "x" } }));
+    expect([...editor.view.dom.querySelectorAll("table tr")].filter((row) => (row as HTMLElement).style.display === "none")).toHaveLength(0);
+    editor.destroy();
+  });
   test("Delete removes selected full columns or rows without changing retained cells", () => {
     const pressDelete = (editor: Editor) => editor.view.someProp("handleKeyDown", (handler) =>
       handler(editor.view, new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }))) ?? false;

@@ -421,6 +421,45 @@ export function selectCellsCommand(scope: "cell" | "row" | "column" | "table") {
   };
 }
 
+export function tableColumnValues(table: ProseMirrorNode, column: number): string[] {
+  const values = new Set<string>();
+  for (let row = headerRowCount(table); row < table.childCount; row++) {
+    values.add(table.child(row).maybeChild(column)?.textContent ?? "");
+  }
+  return [...values].sort(compareCellText);
+}
+
+export function sortHeaderColumnCommand(tablePos: number, column: number) {
+  return (state: EditorState, dispatch: Dispatch): boolean => {
+    const table = state.doc.nodeAt(tablePos);
+    if (!table || table.type.name !== "table" || headerRowCount(table) === 0 || table.childCount - headerRowCount(table) < 2) return false;
+    const map = TableMap.get(table);
+    if (column >= map.width || new Set(map.map).size !== map.width * map.height) return false;
+    const direction = table.attrs.sortColumn === column && table.attrs.sortDirection === "asc" ? "desc" : "asc";
+    const sorted = sortTableNode(table, column, direction);
+    const next = sorted.type.create({ ...sorted.attrs, sortColumn: column, sortDirection: direction }, sorted.content, sorted.marks);
+    if (dispatch) {
+      const tr = state.tr.replaceWith(tablePos, tablePos + table.nodeSize, next);
+      const cellPos = cellPositions(next, tablePos + 1, 0, column);
+      tr.setSelection(TextSelection.near(tr.doc.resolve(cellPos + 1)));
+      dispatch(tr);
+    }
+    return true;
+  };
+}
+
+export function filterHeaderColumnCommand(tablePos: number, column: number, value: string | null) {
+  return (state: EditorState, dispatch: Dispatch): boolean => {
+    const table = state.doc.nodeAt(tablePos);
+    if (!table || table.type.name !== "table" || headerRowCount(table) === 0 || column >= TableMap.get(table).width) return false;
+    const filters = { ...(table.attrs.columnFilters as Record<string, string> ?? {}) };
+    if (value === null) delete filters[column];
+    else filters[column] = value;
+    if (dispatch) dispatch(state.tr.setNodeMarkup(tablePos, undefined, { ...table.attrs, columnFilters: filters }));
+    return true;
+  };
+}
+
 /** Grow the table at the caret and move into the new cell. */
 export function growTableCommand(axis: "column" | "row") {
   return (state: EditorState, dispatch: Dispatch): boolean => {
@@ -561,7 +600,40 @@ export const TableRibbonSupport = Extension.create({
     return [
       {
         types: ["table"],
-        attributes: { gridMode: modeAttr("gridMode"), dataMode: modeAttr("dataMode"), expanded: modeAttr("expanded") },
+        attributes: {
+          gridMode: modeAttr("gridMode"), dataMode: modeAttr("dataMode"), expanded: modeAttr("expanded"),
+          columnFilters: {
+            default: {},
+            parseHTML: (element: HTMLElement) => {
+              try {
+                const value = JSON.parse(element.getAttribute("data-column-filters") || "{}");
+                return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+              } catch { return {}; }
+            },
+            renderHTML: (attributes: Record<string, unknown>) => Object.keys(attributes.columnFilters as object ?? {}).length
+              ? { "data-column-filters": JSON.stringify(attributes.columnFilters) } : {},
+          },
+          sortColumn: {
+            default: null,
+            parseHTML: (element: HTMLElement) => {
+              const raw = element.getAttribute("data-sort-column");
+              if (raw === null) return null;
+              const value = Number(raw);
+              return Number.isInteger(value) && value >= 0 ? value : null;
+            },
+            renderHTML: (attributes: Record<string, unknown>) => attributes.sortColumn !== null
+              ? { "data-sort-column": String(attributes.sortColumn) } : {},
+          },
+          sortDirection: {
+            default: null,
+            parseHTML: (element: HTMLElement) => {
+              const value = element.getAttribute("data-sort-direction");
+              return value === "asc" || value === "desc" ? value : null;
+            },
+            renderHTML: (attributes: Record<string, unknown>) => attributes.sortDirection
+              ? { "data-sort-direction": attributes.sortDirection } : {},
+          },
+        },
       },
       {
         types: ["tableCell", "tableHeader"],
@@ -608,6 +680,20 @@ export const TableRibbonSupport = Extension.create({
       const decorations: Decoration[] = [];
       doc.descendants((node, pos) => {
         if (node.type.name !== "table") return true;
+        const width = node.firstChild?.childCount ?? 0;
+        // Ignore filters for columns that no longer exist (e.g. after a column delete).
+        const filters = Object.entries(node.attrs.columnFilters as Record<string, string> ?? {})
+          .filter(([column]) => Number.isInteger(Number(column)) && Number(column) < width);
+        if (filters.length) {
+          let rowPos = pos + 1;
+          for (let row = 0; row < node.childCount; row++) {
+            const rowNode = node.child(row);
+            if (row >= headerRowCount(node) && filters.some(([column, value]) => rowNode.maybeChild(Number(column))?.textContent !== value)) {
+              decorations.push(Decoration.node(rowPos, rowPos + rowNode.nodeSize, { style: "display: none" }));
+            }
+            rowPos += rowNode.nodeSize;
+          }
+        }
         if (!node.attrs.dataMode) return false;
         node.descendants((cell, offset) => {
           const role = cell.type.spec.tableRole;
