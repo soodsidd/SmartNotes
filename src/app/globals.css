@@ -282,6 +282,20 @@ select {
   border-radius: 4px;
   box-shadow: 0 4px 16px rgba(0 0 0 / 0.12);
 }
+.bubble-font-select {
+  flex-shrink: 0;
+  height: 26px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+.bubble-font-select:focus-visible {
+  outline: 2px solid var(--ring);
+}
 .bubble-btn {
   display: inline-flex;
   flex-shrink: 0;
@@ -322,8 +336,12 @@ select {
   background: var(--border);
   margin: 0 2px;
 }
+@media (min-width: 768px) {
+  .bubble-toolbar .bubble-mobile-only { display: none; }
+}
 @media (pointer: coarse), (max-width: 767px) {
   .bubble-toolbar .bubble-btn { min-width: 44px; height: 44px; }
+  .bubble-toolbar .bubble-font-select { height: 44px; }
   .bubble-toolbar [data-testid="bubble-ask-companion"] { color: var(--accent); }
 }
 

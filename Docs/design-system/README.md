@@ -53,6 +53,15 @@ The text-page selection toolbar uses the existing `.bubble-toolbar` surface and
 the documented `--surface`, `--border`, `--foreground`, `--accent`, and
 `--font-sans` tokens; no new color, spacing, or typography values were added.
 
+## Selection font controls (SN-350)
+
+The selection toolbar's family and size selectors reuse the existing font
+choices and the toolbar's 26px desktop height and 44px touch height. They use
+`--surface`, `--border`, `--foreground`, `--ring`, `--radius-sm`, and
+`--font-sans` with the existing 12px toolbar text. The desktop chrome shows
+only family, size, Ask Companion, and Highlight; mobile retains the other
+selection actions in its scrollable toolbar. No new tokens were added.
+
 ## PDF Record area and page (SN-336)
 
 The crop layer, crop rectangle, crop toolbar and Record panel image preview reuse

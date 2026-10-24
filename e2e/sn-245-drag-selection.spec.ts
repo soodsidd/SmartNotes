@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { ensureNotebookTreeVisible } from "./helpers";
 
 const SECTION_PATH = "Personal Notebook/Quick Notes";
 
@@ -45,13 +44,11 @@ test("SN-245: drag selects and copies paragraph and table-cell text", async ({ p
   test.setTimeout(180_000);
   test.skip(testInfo.project.name !== "desktop", "Mouse drag selection");
   const title = "sn245-" + Date.now() + "-drag-selection";
-  await seedPage(page, title);
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const pagePath = await seedPage(page, title);
+  await page.goto(`/?page=${encodeURIComponent(pagePath)}`, { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 30_000 });
-  const tree = await ensureNotebookTreeVisible(page);
-  await tree.getByText(title, { exact: true }).first().click();
   const editor = page.getByTestId("rich-text-editor");
-  await expect(editor.locator("table td")).toHaveCount(2);
+  await expect(editor.locator("table td")).toHaveCount(2, { timeout: 30_000 });
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
 
   await dragText(page, '[data-testid="rich-text-editor"] > p:first-child', 10, 26);
@@ -62,17 +59,25 @@ test("SN-245: drag selects and copies paragraph and table-cell text", async ({ p
   await expect(bubble).toBeVisible();
   await expect(bubble.getByTestId("bubble-highlight")).toBeVisible();
   await expect(bubble.getByTestId("bubble-ask-companion")).toBeVisible();
-  await testInfo.attach("SN-349-selection-chrome", {
-    body: await page.screenshot(), contentType: "image/png",
-  });
+  const chromeShot = testInfo.outputPath("SN-349-selection-chrome.png");
+  await page.screenshot({ path: chromeShot });
+  await testInfo.attach("SN-349-selection-chrome", { path: chromeShot, contentType: "image/png" });
+  await expect(bubble.getByTestId("bubble-font-family")).toBeVisible();
+  await expect(bubble.getByTestId("bubble-font-size")).toBeVisible();
+  const fontShot = testInfo.outputPath("SN-350-selection-font.png");
+  await page.screenshot({ path: fontShot });
+  await testInfo.attach("SN-350-selection-font", { path: fontShot, contentType: "image/png" });
+  await bubble.getByTestId("bubble-font-family").selectOption("var(--font-mono)");
+  await bubble.getByTestId("bubble-font-size").selectOption("18px");
+  await expect(editor.locator('span[style*="font-family"]')).toContainText("before selection");
+  await expect(editor.locator('span[style*="font-size: 18px"]')).toContainText("before selection");
+  await bubble.getByTestId("bubble-highlight").click();
+  await expect(editor.locator("mark")).toContainText("before selection");
   await bubble.getByTestId("bubble-ask-companion").click();
   const ask = page.getByTestId("ask-companion-popover");
   await expect(ask.locator(".inline-ai-target")).toHaveText("Selection");
   await expect(ask.locator("blockquote")).toHaveText("before selection");
   await ask.getByRole("button", { name: "Close Companion popover" }).click();
-  await dragText(page, '[data-testid="rich-text-editor"] > p:first-child', 10, 26);
-  await bubble.getByTestId("bubble-highlight").click();
-  await expect(editor.locator("mark")).toContainText("before selection");
 
   await dragText(page, '[data-testid="rich-text-editor"] table td:first-child p', 5, 14);
   await expect.poll(() => page.evaluate(() => getSelection()?.toString())).toBe("selection");
