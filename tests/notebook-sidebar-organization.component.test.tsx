@@ -135,22 +135,22 @@ describe("SN-324 dual-pane navigation", () => {
       const rootPages = screen.getByTestId("rail-root-pages-Work");
       const newSection = screen.getByTestId("rail-new-section-Work");
       expect(within(notebookRow).getByText("Work")).toHaveClass("text-sm", "font-semibold");
-      expect(notebookRow).toHaveClass(variant === "desktop" ? "min-h-7" : "min-h-11");
-      expect(section).toHaveClass("text-foreground", variant === "desktop" ? "min-h-7" : "min-h-11");
+      expect(notebookRow).toHaveClass(variant === "desktop" ? "min-h-[var(--desktop-tree-section-row-height)]" : "min-h-11");
+      expect(section).toHaveClass("text-foreground", variant === "desktop" ? "min-h-[var(--desktop-tree-page-row-height)]" : "min-h-11");
       expect(section).not.toHaveClass("text-muted-foreground");
-      expect(rootPages).toHaveClass(variant === "desktop" ? "min-h-7" : "min-h-11");
+      expect(rootPages).toHaveClass(variant === "desktop" ? "min-h-[var(--desktop-tree-page-row-height)]" : "min-h-11");
       expect(within(section).getByText("Research")).toHaveClass("text-sm", "font-normal");
       if (variant === "desktop") {
         expect(section).toHaveClass("[@media(pointer:coarse)]:min-h-11");
         expect(rootPages).toHaveClass("[@media(pointer:coarse)]:min-h-11");
       }
-      expect(newSection).toHaveClass("text-muted-foreground", variant === "desktop" ? "min-h-7" : "min-h-11");
+      expect(newSection).toHaveClass("text-muted-foreground", variant === "desktop" ? "min-h-[var(--desktop-tree-section-row-height)]" : "min-h-11");
       expect(within(newSection).getByText("New section")).toHaveClass("text-sm", "font-normal");
       rail.unmount();
 
       const pages = renderSidebar({ sidebarLayout: "page-tree", variant, activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
       const addPage = screen.getByTestId("page-pane-add-page");
-      expect(addPage).toHaveClass("text-muted-foreground", variant === "desktop" ? "h-7" : "min-h-11");
+      expect(addPage).toHaveClass("text-muted-foreground", variant === "desktop" ? "h-9" : "min-h-11");
       expect(addPage).not.toHaveClass("border-border", "bg-background");
       expect(within(addPage).getByText("Add Page")).toHaveClass("text-sm", "font-normal");
       pages.unmount();
@@ -175,18 +175,18 @@ describe("SN-324 dual-pane navigation", () => {
 
     const sectionPages = renderSidebar({ sidebarLayout: "page-tree", variant: "desktop", activeNotebookPath: "Work", activeSectionPath: "Work/Research", expandedPages: new Set(["Work/Research/Parent"]) });
     const pageRow = screen.getByTestId("page-Work/Research/Parent");
-    expect(pageRow).toHaveClass("min-h-7", "[@media(pointer:coarse)]:min-h-11");
+    expect(pageRow).toHaveClass("min-h-[var(--desktop-tree-page-row-height)]", "[@media(pointer:coarse)]:min-h-11");
     const pageTitle = within(pageRow).getByText("Parent");
     const childTitle = within(screen.getByTestId("page-Work/Research/Laser")).getByText("Laser calibration");
     expect(pageTitle).toHaveClass("font-normal");
     for (const title of [pageTitle, childTitle]) expect(textSizeClasses(title)).toEqual(["text-sm"]);
     expect(textSizeClasses(within(screen.getByTestId("page-pane-add-page")).getByText("Add Page"))).toEqual(["text-sm"]);
-    expect(pageRow.querySelector("button.min-h-7")).toBeInTheDocument();
+    expect(pageRow.querySelector('button[class*="--desktop-tree-page-row-height"]')).toBeInTheDocument();
     sectionPages.unmount();
 
     renderSidebar({ sidebarLayout: "page-tree", variant: "desktop", activeNotebookPath: "Work", activeSectionPath: null });
     const rootPage = screen.getByTestId("page-Work/Roadmap");
-    expect(rootPage).toHaveClass("min-h-7");
+    expect(rootPage).toHaveClass("min-h-[var(--desktop-tree-page-row-height)]");
     const rootPageTitle = within(rootPage).getByText("Roadmap");
     expect(rootPageTitle).toHaveClass("font-normal");
     expect(textSizeClasses(rootPageTitle)).toEqual(["text-sm"]);

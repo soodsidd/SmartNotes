@@ -99,7 +99,7 @@ describe("reading density preference (SN-37)", () => {
     expect(tokens).toContain("--editor-density-comfortable: 20px");
     expect(css).toContain("@media (min-width: 1280px)");
     expect(tokens).toContain("--desktop-editor-density-compact: 12px");
-    expect(tokens).toContain("--desktop-editor-density-normal: 15px");
+    expect(tokens).toContain("--desktop-editor-density-normal: 16px");
     expect(tokens).toContain("--desktop-editor-density-comfortable: 18px");
   });
 

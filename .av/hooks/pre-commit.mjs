@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const repoPath = path.resolve(path.dirname(__filename), "..", "..");
 const registryDir = path.join(repoPath, ".av", "work-item-guards");
 const DEFAULT_BRANCH_NAMES = new Set(["main", "master"]);
+const GUARD_STALE_AFTER_MS = 14400000;
 
 function normalizeFsPath(value) {
   return String(value || "").trim().replace(/[\\/]+$/, "").replace(/\//g, "\\").toLowerCase();
@@ -20,18 +21,42 @@ function defaultBranchNames(mergeTarget) {
   return names;
 }
 
+function classifyGuard(guard, now = Date.now()) {
+  if (!guard || typeof guard !== "object") return { live: false };
+  const workItemId = String(guard.workItemId || "").trim();
+  if (!workItemId) return { live: false };
+  const worktreePath = String(guard.worktreePath || "").trim();
+  if (!worktreePath) return { live: false };
+  try {
+    if (!fs.existsSync(worktreePath)) return { live: false };
+  } catch {
+    return { live: false };
+  }
+  const heartbeatRaw = String(guard.lastHeartbeatAt || guard.installedAt || "").trim();
+  const heartbeatMs = Date.parse(heartbeatRaw);
+  if (!Number.isFinite(heartbeatMs)) return { live: false };
+  if (now - heartbeatMs > GUARD_STALE_AFTER_MS) return { live: false };
+  return { live: true };
+}
+
 function readActiveGuards() {
   if (!fs.existsSync(registryDir)) return [];
-  return fs.readdirSync(registryDir)
-    .filter((entry) => entry.endsWith(".json"))
-    .map((entry) => {
-      try {
-        return JSON.parse(fs.readFileSync(path.join(registryDir, entry), "utf8"));
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
+  const live = [];
+  for (const entry of fs.readdirSync(registryDir)) {
+    if (!entry.endsWith(".json")) continue;
+    let guard = null;
+    try {
+      guard = JSON.parse(fs.readFileSync(path.join(registryDir, entry), "utf8"));
+    } catch {
+      continue;
+    }
+    if (!classifyGuard(guard).live) {
+      try { fs.unlinkSync(path.join(registryDir, entry)); } catch { /* ignore */ }
+      continue;
+    }
+    live.push(guard);
+  }
+  return live;
 }
 
 function validateCommitContext({ topLevel, branchName, guards }) {

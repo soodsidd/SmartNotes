@@ -8502,7 +8502,7 @@ export const Sidebar = React.memo(function Sidebar({
   // One nav label size for both panes (matches owner reference). Sizes/weights live on inner spans:
   // the unlayered global `button { font: inherit }` overrides text-*/font-* utilities placed on <button>.
   const scopedListTextClass = "text-sm";
-  const scopedListDesktopRowClass = "min-h-7 [@media(pointer:coarse)]:min-h-11";
+  const scopedListDesktopRowClass = "min-h-[var(--desktop-tree-page-row-height)] [@media(pointer:coarse)]:min-h-11";
   const notebookRootPageIndentBase = compactDesktop ? 4 : 8;
   const sectionPageIndentBase = compactDesktop ? 14 : 20;
   const ghostIndentOffset = compactDesktop ? 14 : 16;
@@ -8687,7 +8687,7 @@ export const Sidebar = React.memo(function Sidebar({
                 type="button"
                 size="sm"
                 variant="ghost"
-                className={cn("max-w-full justify-start text-muted-foreground", compactDesktop ? "h-7 px-2" : "min-h-11")}
+                className={cn("max-w-full justify-start text-muted-foreground", compactDesktop ? "h-9 px-2" : "min-h-11")}
                 onClick={() => void onDirectCreatePage(scopedCreateTarget)}
                 aria-label={`Add page to ${scopedCreateTarget.targetLabel}`}
                 data-testid="page-pane-add-page"
@@ -8811,7 +8811,7 @@ export const Sidebar = React.memo(function Sidebar({
           variant="outline"
           className={cn(
             "mb-2 w-full justify-start",
-            compactDesktop ? "h-7 px-2" : "min-h-11"
+            compactDesktop ? "h-9 px-2" : "min-h-11"
           )}
           onClick={onOpenWorkspace}
           data-testid={`sidebar-open-workspace-${variant}`}
@@ -8867,7 +8867,7 @@ export const Sidebar = React.memo(function Sidebar({
 
       {isRailLayout ? (
         /* Rail layout: notebooks with expandable sections under active/expanded notebook */
-        <div className={cn(compactDesktop ? "space-y-0.5" : "space-y-1")}>
+        <div className={cn(compactDesktop ? "space-y-2" : "space-y-1")}>
           {visibleNotebooks.map((notebook) => {
             const notebookActive = notebook.path === activeNotebookPath;
             const notebookExpanded = notebookActive || expandedNotebooks.has(notebook.path);
@@ -8879,7 +8879,7 @@ export const Sidebar = React.memo(function Sidebar({
                   type="button"
                   className={cn(
                     "flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    compactDesktop ? "min-h-7 py-0.5 [@media(pointer:coarse)]:min-h-11" : "min-h-11 py-1"
+                    compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 [@media(pointer:coarse)]:min-h-11" : "min-h-11 py-1"
                   )}
                   onClick={() => {
                     onSelectNotebook(notebook.path);
@@ -8985,7 +8985,7 @@ export const Sidebar = React.memo(function Sidebar({
                         data-testid={`rail-new-section-${notebook.path}`}
                         className={cn(
                           "flex w-full items-center gap-2 rounded px-2 text-left text-muted-foreground transition hover:bg-surface/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          compactDesktop ? "min-h-7 py-0.5 [@media(pointer:coarse)]:min-h-11" : "min-h-11 py-0.5"
+                          compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 [@media(pointer:coarse)]:min-h-11" : "min-h-11 py-0.5"
                         )}
                         onClick={() => onCreateSection(notebook.path, notebook.name)}
                       >

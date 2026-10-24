@@ -3,6 +3,7 @@ import { captureInlineAi, invokeInlineAi, type InlineAiContext } from "@/lib/inl
 
 import * as React from "react";
 import { PageTitleBar } from "@/components/page-title-bar";
+import { useEditorFontSizes } from "@/components/use-editor-font-sizes";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import type { Editor } from "@tiptap/react";
@@ -3033,6 +3034,7 @@ function MobileFontSheet({
 }) {
   const currentFamily = editor?.getAttributes("textStyle").fontFamily as string | undefined;
   const currentSize = editor?.getAttributes("textStyle").fontSize as string | undefined;
+  const { defaultSize } = useEditorFontSizes(editor);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -3108,7 +3110,7 @@ function MobileFontSheet({
             )}
           >
             <span className="text-[11px] font-medium leading-none">Default</span>
-            <span className="text-[10px] text-muted-foreground leading-none">16px</span>
+            <span className="text-[10px] text-muted-foreground leading-none">{defaultSize}</span>
           </button>
         </div>
       </SheetContent>
@@ -3158,8 +3160,7 @@ function AaStyleDropdown({
   mobile?: boolean;
   onOpenFontSheet?: () => void;
 }) {
-  const activeSize = editor?.getAttributes("textStyle").fontSize as string | undefined;
-  const sizeLabel = FONT_SIZES.find((s) => s.value === activeSize)?.value ?? "16px";
+  const { selectionSize: sizeLabel } = useEditorFontSizes(editor);
   const blockActive =
     (editor?.isActive("heading") ?? false) ||
     (editor?.isActive("blockquote") ?? false) ||
