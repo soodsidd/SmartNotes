@@ -33,6 +33,25 @@ function menuItem(label: string): HTMLElement {
 }
 
 describe("JupyterDeepWorkToolbar (SN-257)", () => {
+  it("offers unlink only for a page-bound folder", () => {
+    const onUnlinkFolder = jest.fn();
+    render(
+      <JupyterDeepWorkToolbar
+        title="Master Repo"
+        identity={{ projectName: "LeRobot", accessMode: "editable" }}
+        focus={null}
+        sessionStatus="ready"
+        commandState={{ pending: null, failed: null }}
+        onCommand={() => undefined}
+        onUnlinkFolder={onUnlinkFolder}
+      />
+    );
+    expect(screen.getByText("LeRobot")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("jupyter-toolbar-overflow"));
+    fireEvent.click(screen.getByText("Unlink Deep Work folder"));
+    expect(onUnlinkFolder).toHaveBeenCalledTimes(1);
+  });
+
   it("shows only the slim primary chrome with identity, file state, annotations, and one overflow", () => {
     const onAnnotations = jest.fn();
     render(

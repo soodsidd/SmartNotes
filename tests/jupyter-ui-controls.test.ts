@@ -93,9 +93,10 @@ describe("jupyter UI controls (SN-101)", () => {
     );
 
     expect(src).toContain('socket.on("jupyter_notebook_updated", handleJupyterNotebookUpdated)');
-    expect(src).toContain("setJupyterReloadNonce((nonce) => nonce + 1)");
+    // SN-348: reload bumps the cached frame's generation (part of its key).
+    expect(src).toContain("reloadActiveJupyterFrame();");
     expect(src).toContain('if (currentDraft.noteType === "jupyter")');
     expect(src).toContain('data-testid="reload-btn"');
-    expect(src).toContain('key={`${draft.path}:${jupyterReloadNonce}`}');
+    expect(src).toContain('key={`${entry.identity}:${entry.generation}`}');
   });
 });

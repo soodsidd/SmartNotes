@@ -1,4 +1,5 @@
 import { vaultWriteFetch } from "@/lib/connection-status";
+import type { DeepWorkDescriptor } from "@/lib/deep-work";
 
 export interface VaultPageSummary {
   path: string;
@@ -116,6 +117,15 @@ export async function renamePage(path: string, title: string) {
     body: JSON.stringify({ path, title }),
   });
   return readJson<VaultPageDocument>(response);
+}
+
+export async function setJupyterPageWorkspace(path: string, workspace: DeepWorkDescriptor | null) {
+  const response = await vaultWriteFetch("/api/page", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "jupyterWorkspace", path, workspace }),
+  });
+  return readJson<{ page: VaultPageDocument }>(response);
 }
 
 export async function deletePage(path: string) {

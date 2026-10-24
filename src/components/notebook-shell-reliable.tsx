@@ -97,6 +97,14 @@ import {
 import type { AnnotationLayerHandle, AnnotationLayerProps, AnnotationStrokeSize, AnnotationTool } from "@/components/annotation-layer";
 import type { InkCanvasHandle, InkCanvasProps } from "@/components/ink-canvas";
 import type { JupyterNotebookViewProps } from "@/components/jupyter-notebook-view";
+import {
+  dropDeepWorkPendingJupyterFrames,
+  jupyterFrameIdentity,
+  pruneJupyterFrames,
+  reloadJupyterFrame,
+  touchJupyterFrame,
+  type JupyterFrameEntry,
+} from "@/lib/jupyter-frame-cache";
 import { jupyterFocusForPage, type JupyterFocusState } from "@/lib/jupyter-focus";
 import {
   fetchJupyterFastLaneSettings,
@@ -117,16 +125,25 @@ import {
   buildAscentVectorReturnUrl,
   deepWorkPendingPath,
   parseDeepWorkDescriptor,
+  workspaceDisplayNameFromPath,
   type DeepWorkDescriptor,
 } from "@/lib/deep-work";
 import {
   activeDeepWorkWorkspace,
   clearStickyDeepWork,
   readStickyDeepWork,
-  restorableStickyDeepWork,
   shouldLeaveDeepWorkForVaultSelection,
   writeStickyDeepWork,
 } from "@/lib/deep-work-sticky";
+import {
+  activeJupyterPageBindingTarget,
+  JUPYTER_PAGE_WORKSPACE_FALLBACK_MESSAGE,
+  JUPYTER_PAGE_WORKSPACE_KEY,
+  pageWorkspaceFromMetadata,
+  pageWorkspaceRecord,
+  resolveStickyBootPreference,
+  shouldFallbackBoundJupyterWorkspace,
+} from "@/lib/jupyter-page-workspace";
 import {
   canRemountJupyterSurface,
   deepWorkSourceRefreshDecision,
@@ -150,7 +167,7 @@ import { OpenClosedNotebooksDialog } from "@/components/open-closed-notebooks-di
 import { OpenWorkspaceDialog } from "@/components/open-workspace-dialog";
 import { revealNotebookInExplorer, revealPageInExplorer } from "@/lib/api/fs-native";
 import type { PortableNotebookRecord } from "@/lib/api/notebook-registry";
-import { linkDesignPage as linkDesignPageApi, relinkDesignPage as relinkDesignPageApi } from "@/lib/api/pages";
+import { linkDesignPage as linkDesignPageApi, relinkDesignPage as relinkDesignPageApi, setJupyterPageWorkspace } from "@/lib/api/pages";
 
 const InkCanvas = dynamic(
   () => import("@/components/ink-canvas").then((m) => m.InkCanvas),
@@ -760,48 +777,123 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     () => parseDeepWorkDescriptor(new URLSearchParams(searchKey)),
     [searchKey]
   );
-  // SN-262: the last owner-opened Deep Work disk root is durable UI state. It is
-  // read once, at mount, so the very first render already selects the workspace
-  // draft and the shell never flashes (or launches) the previously active vault
-  // Jupyter page on the way to restoring Deep Work. A URL-linked AV descriptor
-  // always wins over the sticky root.
-  const restoredStickyWorkspace = React.useMemo(
-    () =>
-      restorableStickyDeepWork({
-        linkedWorkspace: linkedProjectWorkspace,
-        sticky: typeof window === "undefined" || paperInline ? null : readStickyDeepWork(window.localStorage),
-      }),
+  // SN-262/SN-347: the last owner-opened Deep Work disk root is durable UI
+  // state, read once at mount. When that sticky root is already bound to a
+  // vault Jupyter page (jupyter_workspace), boot selects that page instead of
+  // a synthetic deep-work-pending orphan. A URL-linked AV descriptor always
+  // wins over sticky restore.
+  const stickyBootPreference = React.useMemo(() => {
+    const lastPagePath =
+      typeof window === "undefined" ? null : window.localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
+    const preference = resolveStickyBootPreference({
+      linkedWorkspace: linkedProjectWorkspace,
+      sticky: typeof window === "undefined" || paperInline ? null : readStickyDeepWork(window.localStorage),
+      tree: initialVault?.tree,
+      lastPagePath,
+    });
+    // Keep the first vault apply on the bound page; otherwise a stale
+    // last-active path would replace the sticky→bound-page boot selection.
+    if (
+      typeof window !== "undefined" &&
+      !paperInline &&
+      preference.kind === "bound-page"
+    ) {
+      try {
+        window.localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, preference.match.pagePath);
+      } catch {
+        // Best effort — selection still seeds from initialVault below.
+      }
+    }
+    return preference;
     // Mount-only: a later URL change must not re-run sticky restore mid-session.
-    []
-  );
+  }, []);
+  const restoredStickyWorkspace =
+    stickyBootPreference.kind === "sticky" ? stickyBootPreference.workspace : null;
+  const bootBoundPageSelection = React.useMemo(() => {
+    if (stickyBootPreference.kind !== "bound-page" || !initialVault?.tree) return null;
+    return resolveSelection(initialVault.tree, {
+      pagePath: stickyBootPreference.match.pagePath,
+      sectionPath: stickyBootPreference.match.sectionPath,
+      notebookPath: stickyBootPreference.match.notebookPath,
+    });
+  }, []);
   const [openedWorkspace, setOpenedWorkspace] = React.useState<DeepWorkDescriptor | null>(
     restoredStickyWorkspace
   );
   const projectWorkspace = openedWorkspace ?? linkedProjectWorkspace;
   const projectWorkspaceRef = React.useRef<DeepWorkDescriptor | null>(projectWorkspace);
-  const initialWorkspaceDraft = React.useMemo(
-    () => projectWorkspace ? deepWorkDraft(projectWorkspace) : null,
-    [projectWorkspace]
-  );
+  const initialWorkspaceDraft = React.useMemo(() => {
+    if (projectWorkspace) return deepWorkDraft(projectWorkspace);
+    if (bootBoundPageSelection?.page && bootBoundPageSelection.notebook) {
+      return draftFromTreePage(bootBoundPageSelection);
+    }
+    return null;
+  }, [projectWorkspace]);
   const startupBaselineMode = searchParams?.get("startupBaseline") === "1";
   const serverVault = startupBaselineMode ? undefined : initialVault;
   const [tree, setTree] = React.useState<VaultNotebook[]>(serverVault?.tree ?? []);
   const [vaultRoot, setVaultRoot] = React.useState(serverVault?.root ?? "");
-  const [activeNotebookPath, setActiveNotebookPath] = React.useState<string | null>(null);
-  const [activeSectionPath, setActiveSectionPath] = React.useState<string | null>(null);
-  const [activePagePath, setActivePagePath] = React.useState<string | null>(initialWorkspaceDraft?.path ?? null);
+  const [activeNotebookPath, setActiveNotebookPath] = React.useState<string | null>(
+    bootBoundPageSelection?.notebook?.path ?? null
+  );
+  const [activeSectionPath, setActiveSectionPath] = React.useState<string | null>(
+    bootBoundPageSelection?.section?.path ?? null
+  );
+  const [activePagePath, setActivePagePath] = React.useState<string | null>(
+    initialWorkspaceDraft?.path ?? bootBoundPageSelection?.page?.path ?? null
+  );
   const [draft, setDraft] = React.useState<PageDraft | null>(initialWorkspaceDraft);
+  // SN-347: a page-bound Deep Work folder (persisted in the page's own
+  // frontmatter) is trusted optimistically, exactly like the SN-262 sticky
+  // root — it re-enters the ordinary /api/jupyter/workspace/session launch
+  // (JupyterNotebookView's own POST) rather than a separate pre-flight check.
+  // `pageWorkspaceFallback` records a *definitive* launch failure for one
+  // (page, root) pair so this render falls back to the page's own notebook;
+  // a transient failure deliberately leaves it alone (SN-270 boundary) so the
+  // in-view Retry button retries the same bound workspace instead of giving up.
+  // SN-348: keep the bound descriptor referentially stable across renders.
+  // The frame cache and JupyterNotebookView effects key on this object, so a
+  // fresh copy per render caused a setState/remount loop that never let Lab load.
+  const boundWorkspaceMetadataKey = draft?.noteType === "jupyter"
+    ? JSON.stringify(draft.metadata?.[JUPYTER_PAGE_WORKSPACE_KEY] ?? null)
+    : null;
+  const boundWorkspaceRequest = React.useMemo(
+    () => boundWorkspaceMetadataKey === null
+      ? null
+      : pageWorkspaceFromMetadata({ [JUPYTER_PAGE_WORKSPACE_KEY]: JSON.parse(boundWorkspaceMetadataKey) ?? undefined }),
+    [boundWorkspaceMetadataKey]
+  );
+  const malformedBoundWorkspace = Boolean(draft?.noteType === "jupyter" &&
+    Object.prototype.hasOwnProperty.call(draft.metadata, JUPYTER_PAGE_WORKSPACE_KEY) && !boundWorkspaceRequest);
+  const [pageWorkspaceFallback, setPageWorkspaceFallback] = React.useState<{
+    pagePath: string;
+    rootPath: string;
+  } | null>(null);
+  const boundWorkspaceFailed = Boolean(
+    pageWorkspaceFallback?.pagePath === draft?.path &&
+    pageWorkspaceFallback?.rootPath === boundWorkspaceRequest?.rootPath
+  );
+  const activeBoundWorkspace =
+    boundWorkspaceRequest && !boundWorkspaceFailed
+      ? boundWorkspaceRequest
+      : null;
   const draftPathForPaperTopic = draft?.path ?? null;
   React.useEffect(() => {
     if (draftPathForPaperTopic && !isBibliographyPath(draftPathForPaperTopic)) setPaperTopicPath(draftPathForPaperTopic);
   }, [draftPathForPaperTopic]);
-  // SN-262: an opened/sticky Deep Work root owns the Jupyter surface only while
-  // its own pending draft is the active page. Selecting a vault `.jupyter` note
-  // must launch that note-owned session, not the disk workspace.
+  // SN-262/SN-347: an opened/sticky or page-bound Deep Work root owns the
+  // Jupyter surface only while its own pending draft (sticky/AV) or the bound
+  // page itself (SN-347) is the active page. Selecting a different vault
+  // `.jupyter` note must launch that note's own session, not someone else's
+  // disk workspace.
   const activeProjectWorkspace = React.useMemo(
-    () => activeDeepWorkWorkspace(projectWorkspace, draft?.path ?? null),
-    [draft?.path, projectWorkspace]
+    () => activeBoundWorkspace ?? activeDeepWorkWorkspace(projectWorkspace, draft?.path ?? null),
+    [activeBoundWorkspace, draft?.path, projectWorkspace]
   );
+  const activeBoundWorkspaceRef = React.useRef<DeepWorkDescriptor | null>(activeBoundWorkspace);
+  React.useEffect(() => {
+    activeBoundWorkspaceRef.current = activeBoundWorkspace;
+  }, [activeBoundWorkspace]);
   const [workspaceSession, setWorkspaceSession] = React.useState<JupyterSessionView | null>(null);
   // Embedded paper frames share the tab's sessionStorage; only the top shell restores a reader.
   // Restore after mount so SSR HTML and the first client render match (React #418/#422).
@@ -1013,7 +1105,37 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const [ghostContextMenu, setGhostContextMenu] = React.useState<GhostContextMenuState | null>(null);
   const [inkReloadNonce, setInkReloadNonce] = React.useState(0);
   const [spreadsheetReloadNonce, setSpreadsheetReloadNonce] = React.useState(0);
-  const [jupyterReloadNonce, setJupyterReloadNonce] = React.useState(0);
+  const [jupyterFrameCache, setJupyterFrameCache] = React.useState<
+    JupyterFrameEntry<JupyterNotebookViewProps["workspace"]>[]
+  >([]);
+  const activeJupyterFrameIdentity = draft?.noteType === "jupyter"
+    ? jupyterFrameIdentity(draft.path, activeProjectWorkspace?.rootPath)
+    : null;
+  const activeJupyterFrameIdentityRef = React.useRef(activeJupyterFrameIdentity);
+  activeJupyterFrameIdentityRef.current = activeJupyterFrameIdentity;
+  const reloadActiveJupyterFrame = React.useCallback(() => {
+    const identity = activeJupyterFrameIdentityRef.current;
+    if (identity) setJupyterFrameCache((current) => reloadJupyterFrame(current, identity));
+  }, []);
+  React.useEffect(() => {
+    setJupyterFrameCache((current) => {
+      const validPaths = new Set(tree.flatMap((notebook) => [
+        ...notebook.pages.map((page) => page.path),
+        ...notebook.sections.flatMap((section) => section.pages.map((page) => page.path)),
+      ]));
+      // SN-348: only the armed Deep Work root's synthetic page stays cacheable;
+      // leaving an opened workspace (SN-266) releases its frame.
+      if (projectWorkspace) validPaths.add(deepWorkPendingPath(projectWorkspace));
+      const retained = vaultRoot && tree.length > 0 ? pruneJupyterFrames(current, validPaths) : current;
+      if (draft?.noteType !== "jupyter" || !activeJupyterFrameIdentity) return retained;
+      return touchJupyterFrame(retained, {
+        identity: activeJupyterFrameIdentity,
+        pagePath: draft.path,
+        title: draft.title,
+        workspace: activeProjectWorkspace ?? undefined,
+      });
+    });
+  }, [activeJupyterFrameIdentity, activeProjectWorkspace, draft?.noteType, draft?.path, draft?.title, projectWorkspace, tree, vaultRoot]);
   // SN-270: an in-place refresh request for the focused Deep Work document.
   // Deliberately NOT folded into the Jupyter view's React key - see
   // src/lib/deep-work-refresh.ts for why a remount loses the root.
@@ -2407,18 +2529,25 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       if (!event.path) return;
       const current = draftRef.current;
       if (!current || current.noteType !== "jupyter" || current.path !== event.path) return;
-      // SN-270: `jupyterReloadNonce` is part of the Jupyter view's React key, so
-      // bumping it remounts the surface. That is fine for a note-owned .jupyter
-      // page, which has no session identity to lose, but for a Deep Work root it
-      // would relaunch the workspace session and throw away the capability, the
-      // active file, and the rooted server. Deep Work refreshes in place instead
-      // (see handleWorkspaceSourceUpdated).
-      if (!canRemountJupyterSurface(Boolean(activeDeepWorkWorkspace(projectWorkspaceRef.current, current.path)))) {
+      // SN-270/SN-347: the frame generation is part of the Jupyter view's React
+      // key, so bumping it remounts the surface. That is fine for a note-owned
+      // .jupyter page, which has no session identity to lose, but for a Deep
+      // Work root — opened/sticky or page-bound (SN-347) — it would relaunch
+      // the workspace session and throw away the capability, the active file,
+      // and the rooted server. Deep Work refreshes in place instead (see
+      // handleWorkspaceSourceUpdated). A page-bound surface is also the one
+      // case where the edited notebook.ipynb is not even the visible document.
+      if (
+        !canRemountJupyterSurface(
+          Boolean(activeDeepWorkWorkspace(projectWorkspaceRef.current, current.path)) ||
+            Boolean(activeBoundWorkspaceRef.current)
+        )
+      ) {
         return;
       }
       setPendingPageReload((pending) => (pending?.page.path === event.path ? null : pending));
       setReloadSafetyMessage(null);
-      setJupyterReloadNonce((nonce) => nonce + 1);
+      reloadActiveJupyterFrame();
     };
 
     // SN-270: a Companion (or any external) write landed inside a Deep Work root.
@@ -2430,9 +2559,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     const handleWorkspaceSourceUpdated = (event: DeepWorkSourceUpdatedEvent) => {
       const current = draftRef.current;
       const decision = deepWorkSourceRefreshDecision({
-        deepWorkActive: Boolean(
-          activeDeepWorkWorkspace(projectWorkspaceRef.current, current?.path ?? null)
-        ),
+        deepWorkActive:
+          Boolean(activeDeepWorkWorkspace(projectWorkspaceRef.current, current?.path ?? null)) ||
+          Boolean(activeBoundWorkspaceRef.current),
         sessionRootPath: workspaceSessionRef.current?.rootPath ?? null,
         activeWorkspacePath: activeJupyterFocusRef.current?.workspacePath ?? null,
         activeDocumentDirty: activeJupyterFocusRef.current?.isDirty ?? null,
@@ -2464,7 +2593,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       socketRef.current = null;
       setSyncConnectionState("disconnected");
     };
-  }, [checkActivePageForExternalUpdate, clearCompanionActiveTurnPointer, updateAiMessage]);
+  }, [checkActivePageForExternalUpdate, clearCompanionActiveTurnPointer, reloadActiveJupyterFrame, updateAiMessage]);
 
   React.useEffect(() => {
     let ignore = false;
@@ -3160,6 +3289,15 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const applySelection = React.useCallback(
     (selection: TreeSelection) => {
       const nextPath = selection.page?.path ?? null;
+      if (nextPath !== draftRef.current?.path) {
+        // SN-347: a definitive launch-failure fallback is scoped to one
+        // (page, root) pair. Leaving the page clears it so reselecting later
+        // (or rebinding) gets a fresh attempt instead of an inherited failure.
+        setPageWorkspaceFallback(null);
+        setWorkspaceSession(null);
+        setActiveJupyterFocus(null);
+        setWorkspaceDocumentReload(null);
+      }
       if (shouldLeaveDeepWorkForVaultSelection(projectWorkspaceRef.current, nextPath)) {
         // SN-266: selecting a vault note has the same live-session boundary as
         // Back to notes. Keep the sticky root in localStorage, but disarm it now
@@ -3170,6 +3308,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         setActiveJupyterFocus(null);
         setWorkspaceDocumentReload(null);
         workspaceReturnStateRef.current = null;
+        // SN-347/SN-348: drop the orphan Deep Work frame immediately so a
+        // launching/dead sticky frame cannot stay visible during the handoff
+        // to the vault page's own (possibly bound) Lab surface.
+        setJupyterFrameCache((current) => dropDeepWorkPendingJupyterFrames(current));
       }
       if (nextPath !== draftRef.current?.path) {
         designRemoteWriteFenceRef.current = false;
@@ -5195,11 +5337,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setIsReloading(true);
     try {
       await loadTree();
+      if (currentDraft?.noteType === "jupyter") reloadActiveJupyterFrame();
       setPendingVaultReload(null);
     } finally {
       setIsReloading(false);
     }
-  }, [flushSave, loadTree, reloadPendingPage]);
+  }, [flushSave, loadTree, reloadActiveJupyterFrame, reloadPendingPage]);
 
   // SN-85: re-fetch the current note's latest saved content and rehydrate the
   // editor in place — no Next.js app reload, independent of the SW update flow.
@@ -5238,7 +5381,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         if (!saved) {
           return;
         }
-        setJupyterReloadNonce((nonce) => nonce + 1);
+        reloadActiveJupyterFrame();
         return;
       }
 
@@ -5275,7 +5418,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     } finally {
       setIsRefreshingNote(false);
     }
-  }, [flushSave, hydrateDraft, isRefreshingNote, replaceTreePage]);
+  }, [flushSave, hydrateDraft, isRefreshingNote, reloadActiveJupyterFrame, replaceTreePage]);
 
   const closeDialog = React.useCallback(() => {
     setDialogState(null);
@@ -6350,7 +6493,40 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
 
   const effectivePrintSettings = sessionPrintSettings ?? loadPrintSettings();
-  const handleOpenWorkspace = React.useCallback((workspace: DeepWorkDescriptor) => {
+  const handleOpenWorkspace = React.useCallback(async (workspace: DeepWorkDescriptor) => {
+    workspace = { ...workspace, projectName: workspaceDisplayNameFromPath(workspace.rootPath) };
+    const currentPage = draftRef.current;
+    if (currentPage && activeJupyterPageBindingTarget({
+      pagePath: currentPage?.path ?? null,
+      activePagePath: activePagePathRef.current,
+      noteType: currentPage?.noteType ?? null,
+      avLinked: Boolean(linkedProjectWorkspace),
+    })) {
+      try {
+        await setJupyterPageWorkspace(currentPage.path, workspace);
+        syncTreePage(currentPage.path, (page) => ({
+          ...page,
+          metadata: { ...page.metadata, [JUPYTER_PAGE_WORKSPACE_KEY]: pageWorkspaceRecord(workspace) },
+        }));
+        if (draftRef.current?.path === currentPage.path) {
+          const next = {
+            ...draftRef.current,
+            metadata: { ...draftRef.current.metadata, [JUPYTER_PAGE_WORKSPACE_KEY]: pageWorkspaceRecord(workspace) },
+          };
+          draftRef.current = next;
+          setDraft(next);
+          // A fresh (re)bind always deserves its own launch attempt, even if
+          // this exact (page, root) pair previously failed.
+          setPageWorkspaceFallback(null);
+          setWorkspaceSession(null);
+          setActiveJupyterFocus(null);
+          setWorkspaceDocumentReload(null);
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not bind the Deep Work folder to this page.");
+      }
+      return;
+    }
     // Capture the note the owner is leaving. Keyed on the *active* surface, not
     // on `openedWorkspace`: with a sticky root (SN-262) a workspace can be
     // remembered while a vault note is the page actually on screen.
@@ -6384,7 +6560,50 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setPendingPageReload(null);
     setPendingVaultReload(null);
     setReloadSafetyMessage(null);
-  }, [activeNotebookPath, activePagePath, activeProjectWorkspace, activeSectionPath, draft]);
+  }, [activeNotebookPath, activePagePath, activeProjectWorkspace, activeSectionPath, draft, linkedProjectWorkspace, syncTreePage]);
+
+  const handleUnlinkJupyterFolder = React.useCallback(async () => {
+    const current = draftRef.current;
+    if (!current || current.noteType !== "jupyter" || current.path.startsWith("deep-work-")) return;
+    try {
+      await setJupyterPageWorkspace(current.path, null);
+      syncTreePage(current.path, (page) => {
+        const metadata = { ...page.metadata };
+        delete metadata[JUPYTER_PAGE_WORKSPACE_KEY];
+        return { ...page, metadata };
+      });
+      if (draftRef.current?.path === current.path) {
+        const metadata = { ...draftRef.current.metadata };
+        delete metadata[JUPYTER_PAGE_WORKSPACE_KEY];
+        const next = { ...draftRef.current, metadata };
+        draftRef.current = next;
+        setDraft(next);
+        setPageWorkspaceFallback(null);
+        setWorkspaceSession(null);
+        setActiveJupyterFocus(null);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not unlink the Deep Work folder.");
+    }
+  }, [syncTreePage]);
+
+  // SN-347/SN-270: the page-bound root's own launch (JupyterNotebookView's
+  // POST to /api/jupyter/workspace/session) is the single source of
+  // validation truth — no separate pre-flight check. A *definitive* failure
+  // (missing/invalid/symlinked root) falls back to the page's own notebook; a
+  // transient one (dropped connection, 5xx) is left alone so the in-view
+  // Retry button retries the same bound workspace instead of giving up on it.
+  const handleJupyterWorkspaceLaunchError = React.useCallback(
+    (error: { code?: string; status?: number } | null | undefined) => {
+      const current = draftRef.current;
+      const request = current?.noteType === "jupyter" ? pageWorkspaceFromMetadata(current.metadata) : null;
+      if (!current || !request) return;
+      if (!shouldFallbackBoundJupyterWorkspace(error)) return;
+      setPageWorkspaceFallback({ pagePath: current.path, rootPath: request.rootPath });
+      toast.error(JUPYTER_PAGE_WORKSPACE_FALLBACK_MESSAGE);
+    },
+    []
+  );
 
   // SN-262: a Deep Work root restored from sticky state has no in-session
   // "previous note" to go back to, so fall back to the durable last-active vault
@@ -6411,6 +6630,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setWorkspaceSession(null);
     setActiveJupyterFocus(null);
     setWorkspaceDocumentReload(null);
+    setJupyterFrameCache((current) => dropDeepWorkPendingJupyterFrames(current));
     setActiveNotebookPath(previous?.activeNotebookPath ?? null);
     setActiveSectionPath(previous?.activeSectionPath ?? null);
     setActivePagePath(previous?.activePagePath ?? null);
@@ -6735,7 +6955,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   onApplyPageDrop={handleSidebarApplyPageDrop}
                   onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
                   onCreateNotebook={handleCreateNotebookDialog}
-                  onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
+                  onOpenWorkspace={activeProjectWorkspace && !activeBoundWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
                   onRevealNotebook={handleRevealNotebook}
                   onCreateSection={handleCreateSectionDialog}
                   inlineSectionPath={inlineSectionPath}
@@ -6859,7 +7079,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                     onApplyPageDrop={handleSidebarApplyPageDrop}
                     onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
                     onCreateNotebook={handleCreateNotebookDialog}
-                    onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
+                    onOpenWorkspace={activeProjectWorkspace && !activeBoundWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
                     onRevealNotebook={handleRevealNotebook}
                     onCreateSection={handleCreateSectionDialog}
                     inlineSectionPath={inlineSectionPath}
@@ -6976,7 +7196,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 handleLinkDesign(notebook?.rootPath ?? undefined);
               }}
               onOpenCapture={openCaptureDialog}
-              onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
+              onOpenWorkspace={activeProjectWorkspace && !activeBoundWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
             />
             {draft && isBibliographyPath(draft.path) && (() => {
               // SN-292 (#7): context bar under the standard header.
@@ -7032,50 +7252,15 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   focusedShellHref={focusedLogUrl(draft.path)}
                 />
               ) : draft.noteType === "jupyter" ? (
-                <JupyterNotebookView
-                  key={`${draft.path}:${jupyterReloadNonce}`}
-                  pagePath={draft.path}
-                  title={draft.title}
-                  workspace={activeProjectWorkspace ? {
-                    rootPath: activeProjectWorkspace.rootPath,
-                    projectId: activeProjectWorkspace.projectId,
-                    repoId: activeProjectWorkspace.repoId,
-                    branch: activeProjectWorkspace.branch,
-                    requestedAccess: activeProjectWorkspace.requestedAccess,
-                    ownerOpen: activeProjectWorkspace.ownerOpen,
-                    defaultBranchEditConfirmed: activeProjectWorkspace.defaultBranchEditConfirmed,
-                    projectName: activeProjectWorkspace.projectName,
-                    workItemId: activeProjectWorkspace.workItemId,
-                    worktreeLabel: activeProjectWorkspace.worktreeLabel,
-                    returnUrl: activeProjectWorkspace.returnUrl,
-                    activeFile: activeProjectWorkspace.activeFile,
-                    activeLine: activeProjectWorkspace.activeLine,
-                  } : undefined}
-                  onOpenSidebar={() => setSidebarOpen(true)}
-                  onBack={
-                    activeProjectWorkspace?.returnUrl
-                      ? () => returnToAscentVector("workspace")
-                      : activeProjectWorkspace && openedWorkspace
-                        ? handleLeaveOpenedWorkspace
-                        : undefined
-                  }
-                  backLabel={
-                    activeProjectWorkspace?.returnUrl
-                      ? "Return to Ascent Vector"
-                      : activeProjectWorkspace && openedWorkspace
-                        ? "Back to notes"
-                        : undefined
-                  }
-                  onViewDiff={
-                    workspaceSession?.returnUrl
-                      ? () => returnToAscentVector("diff")
-                      : undefined
-                  }
-                  onFocusChange={setActiveJupyterFocus}
-                  onWorkspaceReady={setWorkspaceSession}
-                  externalReload={activeProjectWorkspace ? workspaceDocumentReload : null}
-                  onAskInCompanion={handleJupyterAskInCompanion}
-                />
+                <div className="flex flex-col">
+                  {malformedBoundWorkspace || boundWorkspaceFailed ? (
+                    <div role="alert" className="border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      {malformedBoundWorkspace
+                        ? "The saved Deep Work folder binding is invalid. Showing this page's notebook; unlink it or choose another folder."
+                        : JUPYTER_PAGE_WORKSPACE_FALLBACK_MESSAGE}
+                    </div>
+                  ) : null}
+                </div>
               ) : draft.noteType === "app" ? (
                 <AppPageView
                   key={draft.path}
@@ -7192,6 +7377,48 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 onOpenCapture={openCaptureDialog}
               />
             )}
+            {jupyterFrameCache.map((entry) => {
+              const visible = draft?.noteType === "jupyter" && entry.identity === activeJupyterFrameIdentity;
+              return (
+                <div
+                  key={`${entry.identity}:${entry.generation}`}
+                  data-testid="jupyter-frame-host"
+                  hidden={!visible}
+                  className={cn("min-h-0 flex-1 flex-col", visible ? "flex" : "hidden")}
+                >
+                  <JupyterNotebookView
+                    pagePath={entry.pagePath}
+                    title={entry.title}
+                    workspace={entry.workspace}
+                    isActive={visible}
+                    onOpenSidebar={visible ? () => setSidebarOpen(true) : undefined}
+                    onBack={visible ? (
+                      activeProjectWorkspace?.returnUrl
+                        ? () => returnToAscentVector("workspace")
+                        : activeProjectWorkspace && openedWorkspace
+                          ? handleLeaveOpenedWorkspace
+                          : undefined
+                    ) : undefined}
+                    backLabel={visible ? (
+                      activeProjectWorkspace?.returnUrl
+                        ? "Return to Ascent Vector"
+                        : activeProjectWorkspace && openedWorkspace
+                          ? "Back to notes"
+                          : undefined
+                    ) : undefined}
+                    onViewDiff={visible && workspaceSession?.returnUrl ? () => returnToAscentVector("diff") : undefined}
+                    onUnlinkFolder={visible && (boundWorkspaceRequest || malformedBoundWorkspace) ? () => void handleUnlinkJupyterFolder() : undefined}
+                    onWorkspaceLaunchError={visible && activeBoundWorkspace ? handleJupyterWorkspaceLaunchError : undefined}
+                    // SN-348: the view only reports focus/session while visible and
+                    // clears both in effect cleanup when hidden, so no guard here.
+                    onFocusChange={setActiveJupyterFocus}
+                    onWorkspaceReady={setWorkspaceSession}
+                    externalReload={visible && activeProjectWorkspace ? workspaceDocumentReload : null}
+                    onAskInCompanion={visible ? handleJupyterAskInCompanion : undefined}
+                  />
+                </div>
+              );
+            })}
             </div>
           </div>
 
@@ -7294,7 +7521,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 onApplyPageDrop={handleSidebarApplyPageDrop}
                 onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
                 onCreateNotebook={handleCreateNotebookDialog}
-                onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
+                onOpenWorkspace={activeProjectWorkspace && !activeBoundWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
                 onRevealNotebook={handleRevealNotebook}
                 onCreateSection={handleCreateSectionDialog}
                 inlineSectionPath={inlineSectionPath}
@@ -7386,7 +7613,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   onApplyPageDrop={handleSidebarApplyPageDrop}
                   onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
                   onCreateNotebook={handleCreateNotebookDialog}
-                  onOpenWorkspace={activeProjectWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
+                  onOpenWorkspace={activeProjectWorkspace && !activeBoundWorkspace ? undefined : () => setOpenWorkspaceDialogOpen(true)}
                   onRevealNotebook={handleRevealNotebook}
                   onCreateSection={handleCreateSectionDialog}
                   inlineSectionPath={inlineSectionPath}
