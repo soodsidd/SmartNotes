@@ -1863,9 +1863,6 @@ function AiConversation({
               positionerClassName={floatingLayerZ}
             />}
             <CompanionKeepToggle checked={keepConversation} onChange={onKeepConversationChange} />
-            {onComputerAccessChange ? (
-              <CompanionComputerToggle checked={computerAccess} onChange={onComputerAccessChange} />
-            ) : null}
             <CompanionDensityMenu density={density} onDensityChange={updateDensity} positionerClassName={floatingLayerZ} />
             <button
               type="button"
@@ -2211,6 +2208,9 @@ function AiConversation({
                   disabled={Boolean(disabled || isTurnActive)}
                   floatingLayerZ={floatingLayerZ}
                 />
+                {onComputerAccessChange ? (
+                  <CompanionComputerToggle checked={computerAccess} onChange={onComputerAccessChange} />
+                ) : null}
                 {isTurnActive || isAttaching ? (
                   <span className={cn("shrink-0 text-[10px]", isTurnActive ? "text-[color:var(--accent)]" : "text-muted-foreground")}>
                     {isTurnActive ? "Working…" : "Attaching…"}

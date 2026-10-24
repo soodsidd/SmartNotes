@@ -266,7 +266,7 @@ function buildComputerAccessGuidance(enabled, options = {}) {
       '## Computer access: OFF',
       'The owner has not enabled Computer access for this Companion turn. You have no desktop/computer-use control and no shell on the owner\'s PC.',
       '- Do not claim or attempt desktop control, screenshots of the owner\'s screen, or running shell/PowerShell commands on their machine.',
-      '- If the request needs on-PC inspection, say Computer access is off and that the owner can tick the "Computer" checkbox in the Companion header to arm it for the next turn (no chat restart needed). You may still suggest commands they can run themselves.',
+      '- If the request needs on-PC inspection, say Computer access is off and that the owner can tick the "Computer" checkbox in the Companion composer (desktop) or header row (mobile) to arm it for the next turn (no chat restart needed). You may still suggest commands they can run themselves.',
     ].join('\n');
   }
   const screenshotScript = options.screenshotScript || path.join(__dirname, 'desktop-screenshot.ps1');
