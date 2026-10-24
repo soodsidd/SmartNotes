@@ -115,8 +115,28 @@ describe("SN-352 sidebar context menus", () => {
     fireEvent(screen.getByTestId("tree"), event);
     expect(event.defaultPrevented).toBe(true);
     const menu = screen.getByTestId("sidebar-blank-context-menu");
+    expect(menu).toHaveAttribute("data-pane", "rail");
+    expect(within(menu).queryByRole("menuitem", { name: "New page" })).not.toBeInTheDocument();
     fireEvent.click(within(menu).getByRole("menuitem", { name: "New notebook" }));
     expect(props.onCreateNotebook).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("sidebar-blank-context-menu")).not.toBeInTheDocument();
+  });
+
+  it("routes blank rail New section to the active notebook", () => {
+    const { props } = renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work" });
+    fireEvent.contextMenu(screen.getByTestId("tree"));
+    const menu = screen.getByTestId("sidebar-blank-context-menu");
+    fireEvent.click(within(menu).getByTestId("blank-menu-new-section"));
+    expect(props.onCreateSection).toHaveBeenCalledWith("Work", expect.any(String));
+  });
+
+  it("keeps the native menu for inline text inputs", () => {
+    renderSidebar({ sidebarLayout: "rail" });
+    const input = document.createElement("input");
+    screen.getByTestId("tree").appendChild(input);
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    fireEvent(input, event);
+    expect(event.defaultPrevented).toBe(false);
     expect(screen.queryByTestId("sidebar-blank-context-menu")).not.toBeInTheDocument();
   });
 
@@ -124,6 +144,8 @@ describe("SN-352 sidebar context menus", () => {
     const { props } = renderSidebar({ sidebarLayout: "page-tree", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
     fireEvent.contextMenu(screen.getByTestId("tree"));
     const menu = screen.getByTestId("sidebar-blank-context-menu");
+    expect(menu).toHaveAttribute("data-pane", "page-tree");
+    expect(within(menu).queryByRole("menuitem", { name: /New section|New notebook/ })).not.toBeInTheDocument();
     fireEvent.click(within(menu).getByRole("menuitem", { name: "New page" }));
     expect(props.onCreatePage).toHaveBeenCalledWith(expect.objectContaining({ notebookPath: "Work", sectionPath: "Work/Research" }));
     fireEvent.contextMenu(screen.getByTestId("tree"));

@@ -6914,6 +6914,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             )}
             style={notebookRailCollapsed ? undefined : { width: notebookRailWidth }}
             data-testid="notebook-rail-sidebar"
+            onContextMenu={suppressSidebarChromeContextMenu}
             data-collapsed={notebookRailCollapsed ? "true" : "false"}
           >
             {notebookRailCollapsed ? (
@@ -7040,6 +7041,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             )}
             style={treeSidebarCollapsed ? undefined : { width: treeSidebarWidth }}
             data-testid="tree-sidebar-rail"
+            onContextMenu={suppressSidebarChromeContextMenu}
             data-collapsed={treeSidebarCollapsed ? "true" : "false"}
           >
             {treeSidebarCollapsed ? (
@@ -8981,13 +8983,15 @@ export const Sidebar = React.memo(function Sidebar({
           setBlankContextMenu(null);
           return;
         }
+        // Inline rename/title inputs keep the native cut/copy/paste menu.
+        if (isEditableContextTarget(event.target)) return;
         event.preventDefault();
         setPageContextMenu(null);
         setGhostContextMenu(null);
         setSidebarContextMenu(null);
         setBlankContextMenu({
-          x: Math.max(0, Math.min(event.clientX, window.innerWidth - 208)),
-          y: Math.max(0, Math.min(event.clientY, window.innerHeight - 120)),
+          x: event.clientX,
+          y: event.clientY,
         });
       }}
     >
@@ -10389,33 +10393,111 @@ export const Sidebar = React.memo(function Sidebar({
       </div>
       )}
 
-      {blankContextMenu ? (
+      {blankContextMenu ? (() => {
+        const itemClass = "flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
+        const run = (action: () => void) => () => { setBlankContextMenu(null); action(); };
+        const separator = <div role="separator" className="-mx-1 my-1 h-px bg-border" />;
+        return (
         <div
           className="fixed z-50 min-w-48 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
           style={{ top: blankContextMenu.y, left: blankContextMenu.x }}
           onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+          ref={fitMenuToViewport}
+          key={`${blankContextMenu.x}:${blankContextMenu.y}`}
           role="menu"
-          aria-label="Sidebar actions"
+          aria-label={isPageTreeLayout ? "Page pane actions" : "Notebook rail actions"}
           data-testid="sidebar-blank-context-menu"
+          data-pane={isPageTreeLayout ? "page-tree" : "rail"}
         >
-          {isPageTreeLayout && scopedCreateTarget ? (
-            <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => { setBlankContextMenu(null); onCreatePage(scopedCreateTarget); }}>
-              New page
-            </button>
-          ) : null}
-          <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => { setBlankContextMenu(null); onCreateNotebook(); }}>
-            New notebook
-          </button>
-          {!isPageTreeLayout ? (
-            <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => { setBlankContextMenu(null); setPickerOpen(true); }}>
-              Open notebook…
-            </button>
-          ) : null}
+          {isPageTreeLayout ? (
+            <>
+              <button type="button" role="menuitem" className={itemClass} disabled={!scopedCreateTarget}
+                data-testid="blank-menu-new-page"
+                onClick={run(() => { if (scopedCreateTarget) onCreatePage(scopedCreateTarget); })}>
+                New page
+              </button>
+              <button type="button" role="menuitem" className={itemClass} disabled={!scopedCreateTarget}
+                data-testid="blank-menu-new-jupyter"
+                onClick={run(() => { if (scopedCreateTarget) onCreateJupyterNotebook(scopedCreateTarget); })}>
+                New Jupyter notebook
+              </button>
+              <button type="button" role="menuitem" className={itemClass} disabled={!scopedCreateTarget}
+                data-testid="blank-menu-new-log"
+                onClick={run(() => { if (scopedCreateTarget) onCreateLogPage(scopedCreateTarget); })}>
+                New log
+              </button>
+              <button type="button" role="menuitem" className={itemClass} disabled={!scopedCreateTarget}
+                data-testid="blank-menu-new-spreadsheet"
+                onClick={run(() => { if (scopedCreateTarget) onCreateSpreadsheetPage(scopedCreateTarget); })}>
+                New spreadsheet
+              </button>
+              {scopedSection ? (
+                <>
+                  {separator}
+                  <button type="button" role="menuitem" className={itemClass}
+                    data-testid="blank-menu-import-docx"
+                    onClick={run(() => onImportDocx(scopedSection.path))}>
+                    Import DOCX
+                  </button>
+                  <button type="button" role="menuitem" className={itemClass}
+                    data-testid="blank-menu-import-package"
+                    onClick={run(() => onImportPagePackage(scopedSection.path))}>
+                    Import page package
+                  </button>
+                </>
+              ) : null}
+              {onCollapseTree ? (
+                <>
+                  {separator}
+                  <button type="button" role="menuitem" className={itemClass}
+                    data-testid="blank-menu-collapse-pages"
+                    onClick={run(onCollapseTree)}>
+                    Collapse page pane
+                  </button>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <button type="button" role="menuitem" className={itemClass} disabled={!activeNotebook}
+                data-testid="blank-menu-new-section"
+                onClick={run(() => { if (activeNotebook) onCreateSection(activeNotebook.path, activeNotebook.name); })}>
+                {activeNotebook ? `New section in ${activeNotebook.name}` : "New section"}
+              </button>
+              <button type="button" role="menuitem" className={itemClass}
+                data-testid="blank-menu-new-notebook"
+                onClick={run(onCreateNotebook)}>
+                New notebook
+              </button>
+              {separator}
+              <button type="button" role="menuitem" className={itemClass}
+                data-testid="blank-menu-open-notebook"
+                onClick={run(() => setPickerOpen(true))}>
+                Open notebook…
+              </button>
+              {onOpenWorkspace ? (
+                <button type="button" role="menuitem" className={itemClass}
+                  data-testid="blank-menu-open-workspace"
+                  onClick={run(onOpenWorkspace)}>
+                  Open workspace…
+                </button>
+              ) : null}
+              {onCollapseRail ? (
+                <>
+                  {separator}
+                  <button type="button" role="menuitem" className={itemClass}
+                    data-testid="blank-menu-collapse-rail"
+                    onClick={run(onCollapseRail)}>
+                    Collapse notebook rail
+                  </button>
+                </>
+              ) : null}
+            </>
+          )}
         </div>
-      ) : null}
+        );
+      })() : null}
 
       {sidebarContextMenu ? (
         <div
@@ -11091,6 +11173,28 @@ function apiDocumentToVaultPage(page: ApiPageDocument): VaultPage {
     designLinked: page.designLinked,
     sourceMissing: page.sourceMissing,
   };
+}
+
+// SN-352: the browser context menu must never win inside the sidebars. The tree
+// opens its own pane-specific menus; any chrome outside it (collapsed strip,
+// resize handle) just suppresses the native menu. Editable fields are exempt.
+function isEditableContextTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest("input, textarea, [contenteditable='true'], [contenteditable='']"));
+}
+
+// Keep a pointer-anchored fixed menu fully on screen (flip/clamp after measuring).
+function fitMenuToViewport(node: HTMLElement | null) {
+  if (!node) return;
+  const margin = 8;
+  const rect = node.getBoundingClientRect();
+  if (rect.bottom > window.innerHeight - margin) node.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+  if (rect.right > window.innerWidth - margin) node.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+}
+
+function suppressSidebarChromeContextMenu(event: React.MouseEvent) {
+  if (event.defaultPrevented || isEditableContextTarget(event.target)) return;
+  event.preventDefault();
 }
 
 function appendPageToTree(
