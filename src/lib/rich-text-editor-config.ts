@@ -135,7 +135,7 @@ export function createEditorExtensions(
     FormattingShortcuts,
     TaskList,
     TaskItem.configure({ nested: true }),
-    Table.configure({ resizable: false, View: ScrollableTableView }),
+    Table.configure({ resizable: true, View: ScrollableTableView, handleWidth: 8, cellMinWidth: 48 }),
     TableRow,
     TableCell,
     TableHeader,

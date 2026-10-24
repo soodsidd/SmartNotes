@@ -98,6 +98,7 @@ import { cn } from "@/lib/utils";
 import { MAX_INSERT_TABLE_DIMENSION, tableCellCount, tableDimension } from "@/lib/table-insert";
 import { TableRibbon } from "@/components/table-ribbon";
 import { TableHeaderTools } from "@/components/table-header-tools";
+import { TableResizeControls } from "@/components/table-resize-controls";
 import { buildTableContextMenuGroups, focusClickedTableCell, tableMenuStateFor } from "@/lib/table-context-menu";
 import { resolvePdfAttachmentTarget, type PdfAttachmentTarget } from "@/lib/pdf-attachment";
 import type { PageContentExport } from "@/lib/page-export";
@@ -2295,6 +2296,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         ) : null}
         {!readOnly && !hideFormatToolbar && annotationMode !== "draw" ? <TableRibbon editor={editor} mobile /> : null}
         {!readOnly && annotationMode !== "draw" ? <TableHeaderTools editor={editor} /> : null}
+        {!readOnly && annotationMode !== "draw" ? <TableResizeControls editor={editor} /> : null}
 
         {!readOnly && !hideFormatToolbar && annotationMode === "draw" ? (
           <div

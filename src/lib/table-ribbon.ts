@@ -640,6 +640,20 @@ export const TableRibbonSupport = Extension.create({
         },
       },
       {
+        types: ["tableRow"],
+        attributes: {
+          rowHeight: {
+            default: null,
+            parseHTML: (element: HTMLElement) => {
+              const value = Number(element.getAttribute("data-row-height"));
+              return Number.isFinite(value) && value >= 1 ? value : null;
+            },
+            renderHTML: (attributes: Record<string, unknown>) => attributes.rowHeight
+              ? { "data-row-height": String(attributes.rowHeight), style: `height: ${attributes.rowHeight}px` } : {},
+          },
+        },
+      },
+      {
         types: ["tableCell", "tableHeader"],
         attributes: {
           align: {

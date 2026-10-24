@@ -890,6 +890,7 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 
 /* Table */
 .editor-content .tableWrapper {
+  position: relative;
   max-width: 100%;
   margin: 1em 0;
   overflow-x: auto;
@@ -908,9 +909,12 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 }
 .editor-content .tableWrapper table {
   margin: 0;
+  table-layout: fixed;
 }
 .editor-content th,
 .editor-content td {
+  position: relative;
+  box-sizing: border-box;
   border: 1px solid var(--border);
   padding: 0.4em 0.75em;
   text-align: left;
@@ -938,6 +942,52 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
   z-index: 2;
 }
 .editor-content .selectedCell { position: relative; }
+
+/* SN-357: divider drag and four whole-table corner handles. */
+.editor-content .column-resize-handle {
+  position: absolute;
+  right: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 20;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  pointer-events: none;
+}
+.editor-content.resize-cursor { cursor: col-resize; }
+.table-resize-corner {
+  position: absolute;
+  z-index: 30;
+  width: var(--table-ribbon-icon-size);
+  height: var(--table-ribbon-icon-size);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--popover);
+  box-shadow: var(--shadow-popover);
+  cursor: nwse-resize;
+  opacity: 0;
+  touch-action: none;
+}
+.tableWrapper:hover .table-resize-corner,
+.table-resize-corner:focus-visible { opacity: 1; }
+.table-resize-corner:focus-visible { outline: 2px solid var(--ring); }
+.table-resize-corner--ne,
+.table-resize-corner--sw { cursor: nesw-resize; }
+.table-row-divider {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 19;
+  height: 8px;
+  transform: translateY(-50%);
+  cursor: row-resize;
+  background: transparent;
+}
+.table-row-divider:hover,
+.table-row-divider:focus-visible {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  outline: none;
+}
 
 /* SN-355: tools occupy the hovered header's right edge without changing editable DOM. */
 .editor-content th:hover {
