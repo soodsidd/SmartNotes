@@ -6,6 +6,13 @@ import type { Editor } from "@tiptap/core";
 import { contentColumnWidths, contentRowHeights, setTableSizes, tablePosition, TABLE_MIN_COLUMN_WIDTH } from "@/lib/table-resize";
 
 type Corner = "nw" | "ne" | "sw" | "se";
+type Zone = { kind: "corner"; corner: Corner } | { kind: "row"; row: number };
+interface Hot { table: HTMLTableElement; zone: Zone }
+
+/** Pointer distance (px) from a table corner that reveals that corner's handle. */
+const CORNER_REACH = 10;
+/** Pointer distance (px) from a row border that reveals the row divider. */
+const ROW_REACH = 4;
 
 function columnWidths(table: HTMLTableElement): number[] {
   return Array.from(table.querySelectorAll("colgroup > col"), (col) =>
@@ -20,32 +27,82 @@ function fitRow(editor: Editor, table: HTMLTableElement, rowIndex: number) {
   setTableSizes(editor, tablePos, undefined, heights);
 }
 
-/** Column drag uses TipTap's persisted colwidth plugin; these controls add fit and whole-table resize. */
+/**
+ * The table's on-screen box: a table wider than its scrolling wrapper is clipped, so handles sit
+ * on the visible edge (a grown table can always be shrunk back from the corner it was grown by).
+ */
+function visibleRect(table: HTMLTableElement) {
+  const rect = table.getBoundingClientRect();
+  const view = (table.closest(".tableWrapper") ?? table).getBoundingClientRect();
+  return { left: Math.max(rect.left, view.left), right: Math.min(rect.right, view.right), top: rect.top, bottom: rect.bottom };
+}
+
+function hotZone(table: HTMLTableElement, x: number, y: number): Zone | null {
+  const rect = visibleRect(table);
+  if (x < rect.left - CORNER_REACH || x > rect.right + CORNER_REACH || y < rect.top - CORNER_REACH || y > rect.bottom + CORNER_REACH) return null;
+  const nearX = Math.abs(x - rect.left) <= CORNER_REACH ? "w" : Math.abs(x - rect.right) <= CORNER_REACH ? "e" : null;
+  const nearY = Math.abs(y - rect.top) <= CORNER_REACH ? "n" : Math.abs(y - rect.bottom) <= CORNER_REACH ? "s" : null;
+  if (nearX && nearY) return { kind: "corner", corner: `${nearY}${nearX}` as Corner };
+  if (x < rect.left || x > rect.right) return null;
+  const rows = Array.from(table.rows);
+  for (let index = 0; index < rows.length; index++) {
+    if (Math.abs(y - rows[index].getBoundingClientRect().bottom) <= ROW_REACH) return { kind: "row", row: index };
+  }
+  return null;
+}
+
+/**
+ * SN-357 resize chrome. Column drag is TipTap's colwidth plugin (thin divider line); this adds
+ * row-divider fit and whole-table corner resize as a body-level fixed overlay positioned from live
+ * rects and shown only for the hot zone under the pointer. Never render React into ProseMirror's
+ * table DOM: the node view does not own those children and positions computed at render go stale.
+ */
 export function TableResizeControls({ editor }: { editor: Editor | null }) {
-  const [wrappers, setWrappers] = React.useState<HTMLDivElement[]>([]);
+  const [hot, setHot] = React.useState<Hot | null>(null);
+  const [, setTick] = React.useState(0);
+  const dragging = React.useRef(false);
 
   React.useEffect(() => {
     if (!editor) return;
-    const refresh = () => {
-      const next = Array.from(editor.view.dom.querySelectorAll<HTMLDivElement>(".tableWrapper"));
-      setWrappers(next);
+    const root = editor.view.dom;
+    const onMove = (event: PointerEvent) => {
+      if (dragging.current) return;
+      if (event.buttons !== 0) { setHot(null); return; }
+      // Recompute every move (corners win over row dividers); each zone covers its own chrome.
+      for (const table of Array.from(root.querySelectorAll<HTMLTableElement>(".tableWrapper table"))) {
+        const zone = hotZone(table, event.clientX, event.clientY);
+        if (zone) {
+          setHot((current) => current?.table === table && JSON.stringify(current.zone) === JSON.stringify(zone) ? current : { table, zone });
+          return;
+        }
+      }
+      setHot((current) => current ? null : current);
     };
-    refresh();
-    editor.on("update", refresh);
-    return () => { editor.off("update", refresh); };
-  }, [editor]);
-
-  React.useEffect(() => {
-    if (!editor) return;
+    const clear = () => { if (!dragging.current) setHot(null); };
+    const rerender = () => setTick((tick) => tick + 1);
+    // Columns without a stored width absorb any divider drag; freeze them all at their rendered
+    // widths so a drag resizes exactly the dragged column (Excel-like) and the table width follows.
+    // Freeze when the pointer reaches a divider (plugin just set resize-cursor), never in mousedown:
+    // the colwidth change redraws the cells, detaching the mousedown target, and ProseMirror then
+    // drops the event before the resize plugin sees it. Visually identical, so kept out of undo.
+    const onMouseMove = (event: MouseEvent) => {
+      if (event.buttons !== 0 || !root.classList.contains("resize-cursor")) return;
+      const table = (event.target as Element | null)?.closest?.("table");
+      if (!(table instanceof HTMLTableElement) || !root.contains(table)) return;
+      const cols = Array.from(table.querySelectorAll("colgroup > col")) as HTMLTableColElement[];
+      if (cols.length && cols.every((col) => col.style.width)) return;
+      const tablePos = tablePosition(editor, table);
+      if (tablePos !== null) setTableSizes(editor, tablePos, columnWidths(table), undefined, { history: false });
+    };
     const onDoubleClick = (event: MouseEvent) => {
       const cell = event.target instanceof Element ? event.target.closest("th,td") : null;
       const table = cell?.closest("table");
-      if (!(cell instanceof HTMLTableCellElement) || !(table instanceof HTMLTableElement) || !editor.view.dom.contains(table)) return;
+      if (!(cell instanceof HTMLTableCellElement) || !(table instanceof HTMLTableElement) || !root.contains(table)) return;
       const tablePos = tablePosition(editor, table);
       if (tablePos === null) return;
       const rect = cell.getBoundingClientRect();
       const atColumnDivider = Math.abs(event.clientX - rect.right) <= 8;
-      const atRowDivider = Math.abs(event.clientY - rect.bottom) <= 8;
+      const atRowDivider = Math.abs(event.clientY - rect.bottom) <= ROW_REACH;
       if (!atColumnDivider && !atRowDivider) return;
       event.preventDefault();
       event.stopPropagation();
@@ -56,18 +113,27 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
         widths[column] = contentColumnWidths(table)[column];
         setTableSizes(editor, tablePos, widths);
       } else {
-        const rowIndex = (cell.parentElement as HTMLTableRowElement).rowIndex;
-        fitRow(editor, table, rowIndex);
+        fitRow(editor, table, (cell.parentElement as HTMLTableRowElement).rowIndex);
       }
     };
-    editor.view.dom.addEventListener("dblclick", onDoubleClick, true);
-    return () => editor.view.dom.removeEventListener("dblclick", onDoubleClick, true);
+    document.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("scroll", clear, true);
+    window.addEventListener("resize", clear);
+    editor.on("transaction", rerender);
+    root.addEventListener("mousemove", onMouseMove);
+    root.addEventListener("dblclick", onDoubleClick, true);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      window.removeEventListener("scroll", clear, true);
+      window.removeEventListener("resize", clear);
+      editor.off("transaction", rerender);
+      root.removeEventListener("mousemove", onMouseMove);
+      root.removeEventListener("dblclick", onDoubleClick, true);
+    };
   }, [editor]);
 
-  const startResize = (event: React.PointerEvent<HTMLButtonElement>, wrapper: HTMLDivElement, corner: Corner) => {
+  const startResize = (event: React.PointerEvent<HTMLElement>, table: HTMLTableElement, corner: Corner) => {
     if (!editor || event.button !== 0) return;
-    const table = wrapper.querySelector("table");
-    if (!(table instanceof HTMLTableElement)) return;
     const tablePos = tablePosition(editor, table);
     if (tablePos === null) return;
     event.preventDefault();
@@ -84,6 +150,7 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
       ...heights.map((height, index) => (minHeights[index] ?? 1) / height));
     const xSign = corner.endsWith("e") ? 1 : -1;
     const ySign = corner.startsWith("s") ? 1 : -1;
+    dragging.current = true;
     const move = (pointer: PointerEvent) => {
       const dx = xSign * (pointer.clientX - startX) / Math.max(rect.width, 1);
       const dy = ySign * (pointer.clientY - startY) / Math.max(rect.height, 1);
@@ -92,33 +159,39 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
       setTableSizes(editor, tablePos, widths.map((width) => width * scale), heights.map((height) => height * scale));
     };
     const finish = () => {
+      dragging.current = false;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
+      setHot(null);
     };
     window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", finish, { once: true });
-    window.addEventListener("pointercancel", finish, { once: true });
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
   };
 
-  return <>{wrappers.map((wrapper) => createPortal(
-    <>{Array.from(wrapper.querySelector("table")?.rows ?? [], (row, index) => {
-      const table = row.closest("table") as HTMLTableElement;
-      const top = row.getBoundingClientRect().bottom - wrapper.getBoundingClientRect().top + wrapper.scrollTop;
-      return <button key={`row-${index}`} type="button" contentEditable={false} className="table-row-divider"
-        style={{ top }} data-testid={`table-row-divider-${index}`} aria-label={`Fit row ${index + 1} to content`}
-        title="Double-click to fit row to content" onMouseDown={(event) => event.preventDefault()}
-        onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); if (editor) fitRow(editor, table, index); }} />;
-    })}{(["nw", "ne", "sw", "se"] as const).map((corner) => {
-      const table = wrapper.querySelector("table");
-      const bounds = table?.getBoundingClientRect();
-      const wrapperBounds = wrapper.getBoundingClientRect();
-      const left = bounds ? (corner.endsWith("e") ? bounds.right - wrapperBounds.left + wrapper.scrollLeft - 16 : bounds.left - wrapperBounds.left + wrapper.scrollLeft) : 0;
-      const top = bounds ? (corner.startsWith("s") ? bounds.bottom - wrapperBounds.top + wrapper.scrollTop - 16 : bounds.top - wrapperBounds.top + wrapper.scrollTop) : 0;
-      return <button key={corner} type="button" contentEditable={false} className={`table-resize-corner table-resize-corner--${corner}`}
-        style={{ left, top }} data-testid={`table-resize-${corner}`} aria-label={`Resize table from ${corner} corner`}
-        title="Drag to resize the whole table" onPointerDown={(event) => startResize(event, wrapper, corner)} />;
-    })}</>,
-    wrapper,
-  ))}</>;
+  if (!editor || !hot || !hot.table.isConnected) return null;
+  const rect = visibleRect(hot.table);
+  if (hot.zone.kind === "corner") {
+    const { corner } = hot.zone;
+    const left = corner.endsWith("e") ? rect.right : rect.left;
+    const top = corner.startsWith("s") ? rect.bottom : rect.top;
+    return createPortal(
+      <span data-table-resize-chrome="" className={`table-resize-corner table-resize-corner--${corner}`} style={{ left, top }}
+        data-testid={`table-resize-${corner}`} role="separator" aria-label={`Resize table from ${corner} corner`}
+        title="Drag to resize the whole table" onPointerDown={(event) => startResize(event, hot.table, corner)} />,
+      document.body,
+    );
+  }
+  const row = hot.table.rows[hot.zone.row];
+  if (!row) return null;
+  const rowIndex = hot.zone.row;
+  const table = hot.table;
+  return createPortal(
+    <span data-table-resize-chrome="" className="table-row-divider" style={{ left: rect.left, top: row.getBoundingClientRect().bottom, width: rect.right - rect.left }}
+      data-testid={`table-row-divider-${rowIndex}`} role="separator" aria-label={`Fit row ${rowIndex + 1} to content`}
+      title="Double-click to fit row to content" onMouseDown={(event) => event.preventDefault()}
+      onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); fitRow(editor, table, rowIndex); }} />,
+    document.body,
+  );
 }

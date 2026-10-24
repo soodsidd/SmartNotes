@@ -943,50 +943,54 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 }
 .editor-content .selectedCell { position: relative; }
 
-/* SN-357: divider drag and four whole-table corner handles. */
+/* SN-357: resize chrome is quiet. Nothing renders until the pointer reaches a divider or corner;
+   then only that one affordance shows as a thin accent line / small square (body-level overlay). */
 .editor-content .column-resize-handle {
   position: absolute;
-  right: -4px;
+  right: -1px;
   top: 0;
   bottom: 0;
-  width: 8px;
+  width: 2px;
   z-index: 20;
-  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: var(--accent);
   pointer-events: none;
 }
 .editor-content.resize-cursor { cursor: col-resize; }
 .table-resize-corner {
-  position: absolute;
-  z-index: 30;
-  width: var(--table-ribbon-icon-size);
-  height: var(--table-ribbon-icon-size);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--popover);
-  box-shadow: var(--shadow-popover);
+  position: fixed;
+  z-index: 35;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
   cursor: nwse-resize;
-  opacity: 0;
   touch-action: none;
 }
-.tableWrapper:hover .table-resize-corner,
-.table-resize-corner:focus-visible { opacity: 1; }
-.table-resize-corner:focus-visible { outline: 2px solid var(--ring); }
+.table-resize-corner::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--background);
+}
 .table-resize-corner--ne,
 .table-resize-corner--sw { cursor: nesw-resize; }
 .table-row-divider {
+  position: fixed;
+  z-index: 35;
+  height: 7px;
+  transform: translateY(-50%);
+  cursor: row-resize;
+}
+.table-row-divider::after {
+  content: "";
   position: absolute;
   left: 0;
   right: 0;
-  z-index: 19;
-  height: 8px;
+  top: 50%;
+  height: 2px;
   transform: translateY(-50%);
-  cursor: row-resize;
-  background: transparent;
-}
-.table-row-divider:hover,
-.table-row-divider:focus-visible {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  outline: none;
+  background: var(--accent);
 }
 
 /* SN-355: tools overlay the hovered header's right edge, inside the cell (Excel-style).

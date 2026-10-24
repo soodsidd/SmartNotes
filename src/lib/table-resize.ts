@@ -15,7 +15,7 @@ export function tablePosition(editor: Editor, element: HTMLTableElement): number
 }
 
 /** Commit explicit widths and heights to table nodes so page HTML retains them. */
-export function setTableSizes(editor: Editor, tablePos: number, widths?: number[], heights?: number[]): boolean {
+export function setTableSizes(editor: Editor, tablePos: number, widths?: number[], heights?: number[], options: { history?: boolean } = {}): boolean {
   const table = editor.state.doc.nodeAt(tablePos);
   if (!table || table.type.name !== "table") return false;
   const map = TableMap.get(table);
@@ -47,6 +47,7 @@ export function setTableSizes(editor: Editor, tablePos: number, widths?: number[
       rowPos += row.nodeSize;
     });
   }
+  if (changed && options.history === false) tr.setMeta("addToHistory", false);
   if (changed) editor.view.dispatch(tr);
   return changed;
 }

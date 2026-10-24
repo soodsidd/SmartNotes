@@ -112,7 +112,7 @@ Ribbon controls are icon-only (lucide) with tooltips and `aria-label`s, separate
 
 Table header Sort/Filter tools (SN-355) appear inside the hovered header cell as a `--popover` / `--border` / `--radius-sm` / `--shadow-popover` pill of two `--table-ribbon-button-size` lucide icon buttons (`--muted-foreground`, hover `--secondary`, active sort/filter `--accent`, `--ring` focus, 44px on coarse pointers). The filter menu reuses the same surface with 12px text and `--secondary` for the checked value. No new design values.
 
-Table resize controls (SN-357) use the existing `--table-ribbon-icon-size` for the four corner handles, `--popover` / `--border` / `--radius-sm` / `--shadow-popover` for their surface, and `--ring` for focus. Column and row divider hit zones are 8px; hovering a divider uses an `--accent` tint. The 8px hit zone is the only new dimension.
+Table resize controls (SN-357) are hidden until the pointer reaches a divider or corner, and then show only that affordance: column and row dividers as a 2px `--accent` line (row hit strip 7px, revealed within 4px of a row border); corner handles as an 8px square with a 1px `--accent` border on `--background` and 2px radius, centred in a transparent 20px hit box, revealed within 10px of the corner. No popover surface or shadow. New dimensions: the 2px divider line, 7px row hit strip, and the 20px corner hit box with its 8px visible square.
 
 ## Job Inbox App mobile-first ribbon (SN-309)
 
