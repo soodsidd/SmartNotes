@@ -1014,6 +1014,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
   const [aiScope, setAiScope] = React.useState<AiScope>("whole");
   const [keepConversation, setKeepConversation] = React.useState(false);
+  // SN-356: Companion threads whose owner ticked "Computer" access. In-memory
+  // only (never persisted) so every reload / new session starts disarmed.
+  const [computerAccessThreads, setComputerAccessThreads] = React.useState<ReadonlySet<string>>(() => new Set());
+  const computerAccessThreadsRef = React.useRef<ReadonlySet<string>>(computerAccessThreads);
+  computerAccessThreadsRef.current = computerAccessThreads;
   const [aiSectionContext, setAiSectionContext] = React.useState<EditorSectionContext | null>(null);
   const [aiProviders, setAiProviders] = React.useState<Array<{ id: string; name: string; models?: string[]; modelLabels?: Record<string, string> }>>([]);
   const [aiActiveProviderId, setAiActiveProviderId] = React.useState("");
@@ -1733,6 +1738,17 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // thread after the new page/scope transcript is already displayed.
   companionStorePathRef.current = companionStorePath;
   companionScopeKeyRef.current = companionScopeKey;
+  const companionComputerAccess = companionThreadKey ? computerAccessThreads.has(companionThreadKey) : false;
+  const handleComputerAccessChange = React.useCallback((enabled: boolean) => {
+    if (!companionThreadKey) return;
+    setComputerAccessThreads((previous) => {
+      if (previous.has(companionThreadKey) === enabled) return previous;
+      const next = new Set(previous);
+      if (enabled) next.add(companionThreadKey);
+      else next.delete(companionThreadKey);
+      return next;
+    });
+  }, [companionThreadKey]);
 
   React.useEffect(() => {
     keepConversationRef.current = keepConversation;
@@ -5921,6 +5937,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           browserOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
           providerId: aiActiveProviderId,
           model: aiActiveModel,
+          // SN-356: read at send time so a mid-session toggle arms/disarms
+          // the very next turn on this thread.
+          computerAccess: computerAccessThreadsRef.current.has(submitThreadKey),
           images: imageAttachments.map((attachment) => ({
             name: attachment.name,
             path: attachment.path,
@@ -6787,6 +6806,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     scopeOptions: aiScopeOptions,
     keepConversation,
     onKeepConversationChange: handleKeepConversationChange,
+    computerAccess: companionComputerAccess,
+    onComputerAccessChange: handleComputerAccessChange,
     activeProviderLabel: aiProviderLabel,
     activeModelLabel: aiActiveModel,
     activeEffort: aiActiveEffort,

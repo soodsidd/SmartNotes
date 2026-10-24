@@ -25,7 +25,15 @@ const crypto = require('crypto');
 const fs     = require('fs');
 const path   = require('path');
 const os     = require('os');
-const { resolveSandbox, claudeSandboxArgs, codexExecArgs, cursorHeadlessArgs } = require('./sandbox');
+const {
+  resolveSandbox,
+  claudeSandboxArgs,
+  codexExecArgs,
+  cursorHeadlessArgs,
+  applyComputerAccess,
+  computerAccessSessionKey,
+  buildComputerAccessGuidance,
+} = require('./sandbox');
 const { createTraceLogger } = require('./trace-log');
 const { createProviderCatalog } = require('./provider-catalog');
 
@@ -852,6 +860,8 @@ function createChatModule(httpServer, io, userConfig = {}) {
   function clearProviderSessions(scopeKey = buildScopeKey(appId, '')) {
     for (const provider of Object.keys(sessionState)) {
       clearProviderSession(provider, scopeKey);
+      // SN-356: armed Computer-access turns run on a sibling provider session.
+      clearProviderSession(provider, computerAccessSessionKey(scopeKey, true));
     }
   }
 
@@ -1823,7 +1833,13 @@ function createChatModule(httpServer, io, userConfig = {}) {
     const normalizedSystemPrompt = typeof systemPrompt === 'string' ? systemPrompt : '';
     const hasSystemPrompt = normalizedSystemPrompt.trim().length > 0;
     const workingDirectory = runOptions.workingDirectory || cfg.workingDirectory;
-    const sessionScopeKey = getSessionScopeKey(runOptions.scopeKey || buildScopeKey(appId, ''), runOptions.threadKey);
+    const computerAccess = runOptions.computerAccess === true;
+    // SN-356: per-turn overlay; the module-level sandboxCfg is never mutated.
+    const turnSandboxCfg = applyComputerAccess(sandboxCfg, computerAccess);
+    const sessionScopeKey = computerAccessSessionKey(
+      getSessionScopeKey(runOptions.scopeKey || buildScopeKey(appId, ''), runOptions.threadKey),
+      computerAccess
+    );
     let tracedCommand = '';
 
     job.provider = provider;
@@ -1845,6 +1861,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       has_system_prompt: hasSystemPrompt,
       system_prompt_via_file: provider === 'claude' && hasSystemPrompt,
       verbose: verboseEnabled,
+      computer_access: computerAccess,
       project_id: job.projectId || '',
       scope_key: sessionScopeKey,
       working_directory: workingDirectory,
@@ -1878,7 +1895,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
         // Sandbox flags BEFORE --system-prompt: on Windows (shell: true), a
         // multi-line system prompt mangles later args via cmd.exe tokenisation,
         // causing --dangerously-skip-permissions to be silently dropped.
-        ...claudeSandboxArgs(sandboxCfg),
+        ...claudeSandboxArgs(turnSandboxCfg),
       ];
       if (hasSystemPrompt) {
         const systemPromptDelivery = buildClaudeSystemPromptArgs(normalizedSystemPrompt, chatId);
@@ -1907,7 +1924,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       // break Windows argument parsing if flags follow the prompt text.
       args = ['copilot', '--', '--output-format', 'json', '-s'];
       // ── Sandbox: only auto-approve if profile allows ──
-      if (sandboxCfg.ghcopilot.autoApprove) args.push('--yolo');
+      if (turnSandboxCfg.ghcopilot.autoApprove) args.push('--yolo');
       // Resume previous session for conversation continuity
       if (existingSession) args.push('--resume', existingSession);
       const m = model || resolveProviderModel(settings, 'ghcopilot', getProviderModelSuggestions('ghcopilot', settings, { claudeCommand: which('claude'), codexSpec: getCodexCommandSpec(settings.codexCommand), cursorSpec: getCursorAgentSpec() }));
@@ -1935,7 +1952,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       args = [
         ...argsPrefix,
         '--json',
-        ...codexExecArgs(sandboxCfg, {
+        ...codexExecArgs(turnSandboxCfg, {
           webSearchSupported: codexSupportsWebSearchConfig(spec),
           resume: !!existingSession,
         }),
@@ -1972,7 +1989,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
         '--output-format', 'stream-json',
         '--stream-partial-output',
         '--trust',
-        ...cursorHeadlessArgs(sandboxCfg),
+        ...cursorHeadlessArgs(turnSandboxCfg),
       ];
       if (existingSession) args.push('--resume', existingSession);
       const m = model || resolveProviderModel(settings, 'cursor', getProviderModelSuggestions('cursor', settings, { claudeCommand: which('claude'), codexSpec: getCodexCommandSpec(settings.codexCommand), cursorSpec }));
@@ -2600,7 +2617,11 @@ function createChatModule(httpServer, io, userConfig = {}) {
         if (data.thread_key !== undefined && (!threadKey || threadKey.length > 2048 || /[\x00-\x1f]/.test(threadKey))) {
           return sendJson(res, 400, { error: 'Invalid thread_key' });
         }
-        const sessionScopeKey = getSessionScopeKey(activeScope.scopeKey, threadKey);
+        // SN-356: Computer access is an explicit per-turn opt-in from the
+        // Companion checkbox. Absent/false = off. Deep Work turns are bound to a
+        // capability-scoped workspace and never receive PC access.
+        const computerAccess = data.computer_access === true && deepWorkCapability === null;
+        const sessionScopeKey = computerAccessSessionKey(getSessionScopeKey(activeScope.scopeKey, threadKey), computerAccess);
         const chatId = requestedTurnId || crypto.randomUUID();
         const pdfTextResults = await Promise.all(sanitizedPdfAttachments.map(doc => extractPdfText(doc.path)));
         const supersededTurnIds = cancelRunningTurnsInScope(activeScope.scopeKey, threadKey);
@@ -2614,6 +2635,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
           document_count: sanitizedPdfAttachments.length,
           has_link_content: !!data.link_content,
           has_app_context: !!appContext,
+          computer_access: computerAccess,
           browser_origin: companionApiTarget.browserOrigin,
           host_api_base_url: companionApiTarget.apiBaseUrl,
           host_api_port: companionApiTarget.port,
@@ -2634,6 +2656,8 @@ function createChatModule(httpServer, io, userConfig = {}) {
           if (activeScope.project.instructions) sysText += `\n${activeScope.project.instructions}`;
         }
         if (appContext) sysText += `\n\n${appContext}`;
+        const computerAccessGuidance = buildComputerAccessGuidance(computerAccess);
+        sysText += `\n\n${computerAccessGuidance}`;
         if (data.page_context) sysText += `\n\nThe user is on this page: ${data.page_context}`;
 
         const parts = [];
@@ -2679,6 +2703,9 @@ function createChatModule(httpServer, io, userConfig = {}) {
         if (appContext) {
           parts.push('', appContext);
         }
+        // Every provider (incl. compact-role Codex/Copilot prompts) must see
+        // this turn's Computer access state, so it rides in the message body too.
+        parts.push('', computerAccessGuidance);
         if (data.page_context) {
           parts.push('', `Current note content:\n${data.page_context}`);
         }
@@ -2706,6 +2733,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
             model: (data.model || '').trim(),
             project_id: activeScope.project?.id || '',
             working_directory: activeScope.workingDirectory,
+            computer_access: computerAccess,
           },
           doneEmitted: false,
           errorEmitted: false,
@@ -2729,6 +2757,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
               model: (data.model || '').trim(),
               project_id: activeScope.project?.id || '',
               working_directory: activeScope.workingDirectory,
+              computer_access: computerAccess,
             },
           }),
         };
@@ -2740,6 +2769,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
           threadKey,
           projectId: activeScope.project?.id || '',
           boundPort: companionApiTarget.port,
+          computerAccess,
         }));
         sendJson(res, 200, { status: 'ok', chat_id: chatId, turn_id: chatId });
       }).catch(err => sendJson(res, 400, { error: err.message }));

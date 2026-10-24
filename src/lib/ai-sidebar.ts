@@ -318,6 +318,8 @@ export function buildAiTurnRequest(params: {
   model?: string;
   images?: AiTurnImageAttachment[];
   documents?: AiTurnPdfAttachment[];
+  /** SN-356: owner ticked Companion's "Computer" checkbox for this turn. */
+  computerAccess?: boolean;
 }) {
   const payload: {
     turn_id?: string;
@@ -331,6 +333,7 @@ export function buildAiTurnRequest(params: {
     model?: string;
     images?: AiTurnImageAttachment[];
     documents?: AiTurnPdfAttachment[];
+    computer_access?: true;
   } = {
     message: params.message,
     history: params.history,
@@ -375,6 +378,11 @@ export function buildAiTurnRequest(params: {
   const browserOrigin = params.browserOrigin?.trim();
   if (browserOrigin) {
     payload.browser_origin = browserOrigin;
+  }
+
+  // Off by default: the flag is only sent on turns the owner explicitly armed.
+  if (params.computerAccess === true) {
+    payload.computer_access = true;
   }
 
   return payload;

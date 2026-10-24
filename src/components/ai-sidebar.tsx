@@ -8,7 +8,7 @@ import rehypeKatexImport from "rehype-katex";
 // rehype-katex bundles an older vfile; cast away the type mismatch (works at runtime)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rehypeKatex = rehypeKatexImport as any;
-import { AlertCircle, AlignJustify, ArrowDown, Check, ChevronDown, Code2, Copy, FileText, Paperclip, Send, Settings, Sparkles, Square, X } from "lucide-react";
+import { AlertCircle, AlignJustify, ArrowDown, Check, ChevronDown, Code2, Copy, FileText, Monitor, Paperclip, Send, Settings, Sparkles, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -395,6 +395,51 @@ function CompanionKeepToggle({
   );
 }
 
+/**
+ * SN-356: explicit, per-session opt-in for Companion computer access (shell +
+ * desktop screenshot on the owner's PC). Off by default; toggling applies to
+ * the next turn of the same session without restarting the chat.
+ */
+function CompanionComputerToggle({
+  checked,
+  onChange,
+  mobile,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  mobile?: boolean;
+}) {
+  return (
+    <label
+      className={cn(
+        SIDEBAR_CHIP_CLASS,
+        "cursor-pointer select-none",
+        checked && "border-[color:var(--accent)] text-foreground",
+        mobile ? "min-h-11 min-w-0 px-3" : "px-1.5"
+      )}
+      title={
+        checked
+          ? "Computer access is on — Companion may run commands and take screenshots on this PC on your next turns. Untick to revoke."
+          : "Computer access is off. Tick to let Companion inspect this PC (shell commands, desktop screenshot) on your next turns."
+      }
+      data-testid={mobile ? "companion-computer-toggle-mobile-label" : "companion-computer-toggle-label"}
+      data-armed={checked ? "true" : "false"}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        style={{ accentColor: "var(--accent)" }}
+        className="size-3 cursor-pointer rounded"
+        data-testid={mobile ? "companion-computer-toggle-mobile" : "companion-computer-toggle"}
+        aria-label="Computer access"
+      />
+      <Monitor className="size-3 shrink-0" aria-hidden="true" />
+      <span>Computer</span>
+    </label>
+  );
+}
+
 function AiScopeControl({
   scopeLabel,
   tokenLabel,
@@ -618,6 +663,9 @@ interface AiConversationProps {
   scopeOptions: AiScopeOption[];
   keepConversation: boolean;
   onKeepConversationChange: (checked: boolean) => void;
+  /** SN-356: per-session Computer access opt-in (off by default). */
+  computerAccess?: boolean;
+  onComputerAccessChange?: (checked: boolean) => void;
   activeProviderLabel: string;
   activeModelLabel: string;
   activeEffort?: string;
@@ -1424,6 +1472,8 @@ function AiConversation({
   scopeOptions,
   keepConversation,
   onKeepConversationChange,
+  computerAccess = false,
+  onComputerAccessChange,
   activeProviderLabel,
   activeModelLabel,
   activeEffort,
@@ -1813,6 +1863,9 @@ function AiConversation({
               positionerClassName={floatingLayerZ}
             />}
             <CompanionKeepToggle checked={keepConversation} onChange={onKeepConversationChange} />
+            {onComputerAccessChange ? (
+              <CompanionComputerToggle checked={computerAccess} onChange={onComputerAccessChange} />
+            ) : null}
             <CompanionDensityMenu density={density} onDensityChange={updateDensity} positionerClassName={floatingLayerZ} />
             <button
               type="button"
@@ -1875,6 +1928,9 @@ function AiConversation({
             positionerClassName={floatingLayerZ}
           />
           <CompanionKeepToggle checked={keepConversation} onChange={onKeepConversationChange} mobile />
+          {onComputerAccessChange ? (
+            <CompanionComputerToggle checked={computerAccess} onChange={onComputerAccessChange} mobile />
+          ) : null}
           {activeProviderId && providerSupportsEffort(activeProviderId) && onEffortChange ? (
             <DropdownMenu>
               <DropdownMenuTrigger className={SIDEBAR_CHIP_CLASS}>
