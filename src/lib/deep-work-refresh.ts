@@ -52,7 +52,7 @@ export type DeepWorkRefreshDecision =
   /** The owner has unsaved work in this document; never revert it silently. */
   | { kind: "blocked-dirty"; path: string };
 
-function normalizeRoot(value: unknown): string | null {
+export function normalizeDeepWorkRootPath(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed || trimmed.length > 2048) return null;
@@ -68,9 +68,9 @@ function normalizeRoot(value: unknown): string | null {
  * session, so this is normally an exact match; normalization only absorbs
  * separator and trailing-slash drift, plus Windows drive-letter case.
  */
-function sameRoot(a: unknown, b: unknown): boolean {
-  const left = normalizeRoot(a);
-  const right = normalizeRoot(b);
+export function sameDeepWorkRootPath(a: unknown, b: unknown): boolean {
+  const left = normalizeDeepWorkRootPath(a);
+  const right = normalizeDeepWorkRootPath(b);
   return left !== null && right !== null && left === right;
 }
 
@@ -102,9 +102,9 @@ export function deepWorkSourceRefreshDecision(input: {
   event: DeepWorkSourceUpdatedEvent | null | undefined;
 }): DeepWorkRefreshDecision {
   if (!input.deepWorkActive) return { kind: "ignore", reason: "no-deep-work" };
-  const sessionRoot = normalizeRoot(input.sessionRootPath);
+  const sessionRoot = normalizeDeepWorkRootPath(input.sessionRootPath);
   if (!sessionRoot) return { kind: "ignore", reason: "session-not-ready" };
-  if (!input.event || !sameRoot(input.event.rootPath, sessionRoot)) {
+  if (!input.event || !sameDeepWorkRootPath(input.event.rootPath, sessionRoot)) {
     return { kind: "ignore", reason: "other-workspace" };
   }
   const eventPath = normalizeJupyterWorkspacePath(input.event.path);

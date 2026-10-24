@@ -277,7 +277,9 @@ describe("SN-262 sticky Deep Work disk workspace", () => {
     );
 
     it("seeds the opened workspace from sticky state at mount so no vault page is selected first", () => {
-      expect(SHELL_SOURCE).toContain("restorableStickyDeepWork({");
+      // SN-347: sticky restore goes through resolveStickyBootPreference so a
+      // root already bound to a vault page selects that page instead of an orphan.
+      expect(SHELL_SOURCE).toContain("resolveStickyBootPreference({");
       expect(SHELL_SOURCE).toContain(
         // SN-279: inline paper frames never restore Deep Work.
         "sticky: typeof window === \"undefined\" || paperInline ? null : readStickyDeepWork(window.localStorage),"
@@ -285,6 +287,8 @@ describe("SN-262 sticky Deep Work disk workspace", () => {
       expect(SHELL_SOURCE).toMatch(
         /React\.useState<DeepWorkDescriptor \| null>\(\s*restoredStickyWorkspace\s*\)/
       );
+      expect(SHELL_SOURCE).toContain('stickyBootPreference.kind === "sticky"');
+      expect(SHELL_SOURCE).toContain('stickyBootPreference.kind !== "bound-page"');
     });
 
     it("persists the root on a successful open and re-validates a restored root", () => {

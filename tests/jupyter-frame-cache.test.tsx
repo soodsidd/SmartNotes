@@ -18,6 +18,7 @@ jest.mock("@/lib/api/jupyter", () => ({
 import { JupyterNotebookView, type JupyterNotebookBridgeController } from "@/components/jupyter-notebook-view";
 import { JUPYTER_FOCUS_MESSAGE_SOURCE, type JupyterFocusState } from "@/lib/jupyter-focus";
 import {
+  dropDeepWorkPendingJupyterFrames,
   JUPYTER_FRAME_CACHE_LIMIT,
   jupyterFrameIdentity,
   pruneJupyterFrames,
@@ -76,6 +77,17 @@ describe("Jupyter frame cache (SN-348)", () => {
     expect(pruneJupyterFrames(entries, new Set(["kept"])).map((entry) => entry.pagePath)).toEqual(["kept"]);
     expect(pruneJupyterFrames(entries, new Set(["kept", "deep-work-x"])).map((entry) => entry.pagePath))
       .toEqual(["kept", "deep-work-x"]);
+  });
+
+  it("drops Deep Work pending frames immediately on vault-page handoff (SN-347)", () => {
+    let entries: Entry[] = [];
+    entries = touchJupyterFrame(entries, frame("deep-work-pending:C%3A%5CProjects%5CLeRobot", "C:/Projects/LeRobot"));
+    entries = touchJupyterFrame(entries, frame("AI/Robotic Arm/Master Repo.html", "C:/Projects/LeRobot"));
+    expect(dropDeepWorkPendingJupyterFrames(entries).map((entry) => entry.pagePath)).toEqual([
+      "AI/Robotic Arm/Master Repo.html",
+    ]);
+    const vaultOnly = dropDeepWorkPendingJupyterFrames(entries);
+    expect(dropDeepWorkPendingJupyterFrames(vaultOnly)).toBe(vaultOnly);
   });
 });
 

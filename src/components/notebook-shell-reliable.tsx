@@ -98,6 +98,7 @@ import type { AnnotationLayerHandle, AnnotationLayerProps, AnnotationStrokeSize,
 import type { InkCanvasHandle, InkCanvasProps } from "@/components/ink-canvas";
 import type { JupyterNotebookViewProps } from "@/components/jupyter-notebook-view";
 import {
+  dropDeepWorkPendingJupyterFrames,
   jupyterFrameIdentity,
   pruneJupyterFrames,
   reloadJupyterFrame,
@@ -131,7 +132,6 @@ import {
   activeDeepWorkWorkspace,
   clearStickyDeepWork,
   readStickyDeepWork,
-  restorableStickyDeepWork,
   shouldLeaveDeepWorkForVaultSelection,
   writeStickyDeepWork,
 } from "@/lib/deep-work-sticky";
@@ -141,6 +141,7 @@ import {
   JUPYTER_PAGE_WORKSPACE_KEY,
   pageWorkspaceFromMetadata,
   pageWorkspaceRecord,
+  resolveStickyBootPreference,
   shouldFallbackBoundJupyterWorkspace,
 } from "@/lib/jupyter-page-workspace";
 import {
@@ -776,46 +777,71 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     () => parseDeepWorkDescriptor(new URLSearchParams(searchKey)),
     [searchKey]
   );
-  // SN-262: the last owner-opened Deep Work disk root is durable UI state. It is
-  // read once, at mount, so the very first render already selects the workspace
-  // draft and the shell never flashes (or launches) the previously active vault
-  // Jupyter page on the way to restoring Deep Work. A URL-linked AV descriptor
-  // always wins over the sticky root.
-  const restoredStickyWorkspace = React.useMemo(
-    () => {
-      const lastPagePath = typeof window === "undefined" ? null : window.localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
-      const lastPage = initialVault?.tree.flatMap((notebook) => [
-        ...notebook.pages,
-        ...notebook.sections.flatMap((section) => section.pages),
-      ]).find((page) => page.path === lastPagePath);
-      // The selected Jupyter page owns its bound folder on reload. A separate
-      // remembered standalone root must not replace that vault selection.
-      if (lastPage?.noteType === "jupyter" &&
-        Object.prototype.hasOwnProperty.call(lastPage.metadata ?? {}, JUPYTER_PAGE_WORKSPACE_KEY)) return null;
-      return restorableStickyDeepWork({
-        linkedWorkspace: linkedProjectWorkspace,
-        sticky: typeof window === "undefined" || paperInline ? null : readStickyDeepWork(window.localStorage),
-      });
-    },
+  // SN-262/SN-347: the last owner-opened Deep Work disk root is durable UI
+  // state, read once at mount. When that sticky root is already bound to a
+  // vault Jupyter page (jupyter_workspace), boot selects that page instead of
+  // a synthetic deep-work-pending orphan. A URL-linked AV descriptor always
+  // wins over sticky restore.
+  const stickyBootPreference = React.useMemo(() => {
+    const lastPagePath =
+      typeof window === "undefined" ? null : window.localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
+    const preference = resolveStickyBootPreference({
+      linkedWorkspace: linkedProjectWorkspace,
+      sticky: typeof window === "undefined" || paperInline ? null : readStickyDeepWork(window.localStorage),
+      tree: initialVault?.tree,
+      lastPagePath,
+    });
+    // Keep the first vault apply on the bound page; otherwise a stale
+    // last-active path would replace the sticky→bound-page boot selection.
+    if (
+      typeof window !== "undefined" &&
+      !paperInline &&
+      preference.kind === "bound-page"
+    ) {
+      try {
+        window.localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, preference.match.pagePath);
+      } catch {
+        // Best effort — selection still seeds from initialVault below.
+      }
+    }
+    return preference;
     // Mount-only: a later URL change must not re-run sticky restore mid-session.
-    []
-  );
+  }, []);
+  const restoredStickyWorkspace =
+    stickyBootPreference.kind === "sticky" ? stickyBootPreference.workspace : null;
+  const bootBoundPageSelection = React.useMemo(() => {
+    if (stickyBootPreference.kind !== "bound-page" || !initialVault?.tree) return null;
+    return resolveSelection(initialVault.tree, {
+      pagePath: stickyBootPreference.match.pagePath,
+      sectionPath: stickyBootPreference.match.sectionPath,
+      notebookPath: stickyBootPreference.match.notebookPath,
+    });
+  }, []);
   const [openedWorkspace, setOpenedWorkspace] = React.useState<DeepWorkDescriptor | null>(
     restoredStickyWorkspace
   );
   const projectWorkspace = openedWorkspace ?? linkedProjectWorkspace;
   const projectWorkspaceRef = React.useRef<DeepWorkDescriptor | null>(projectWorkspace);
-  const initialWorkspaceDraft = React.useMemo(
-    () => projectWorkspace ? deepWorkDraft(projectWorkspace) : null,
-    [projectWorkspace]
-  );
+  const initialWorkspaceDraft = React.useMemo(() => {
+    if (projectWorkspace) return deepWorkDraft(projectWorkspace);
+    if (bootBoundPageSelection?.page && bootBoundPageSelection.notebook) {
+      return draftFromTreePage(bootBoundPageSelection);
+    }
+    return null;
+  }, [projectWorkspace]);
   const startupBaselineMode = searchParams?.get("startupBaseline") === "1";
   const serverVault = startupBaselineMode ? undefined : initialVault;
   const [tree, setTree] = React.useState<VaultNotebook[]>(serverVault?.tree ?? []);
   const [vaultRoot, setVaultRoot] = React.useState(serverVault?.root ?? "");
-  const [activeNotebookPath, setActiveNotebookPath] = React.useState<string | null>(null);
-  const [activeSectionPath, setActiveSectionPath] = React.useState<string | null>(null);
-  const [activePagePath, setActivePagePath] = React.useState<string | null>(initialWorkspaceDraft?.path ?? null);
+  const [activeNotebookPath, setActiveNotebookPath] = React.useState<string | null>(
+    bootBoundPageSelection?.notebook?.path ?? null
+  );
+  const [activeSectionPath, setActiveSectionPath] = React.useState<string | null>(
+    bootBoundPageSelection?.section?.path ?? null
+  );
+  const [activePagePath, setActivePagePath] = React.useState<string | null>(
+    initialWorkspaceDraft?.path ?? bootBoundPageSelection?.page?.path ?? null
+  );
   const [draft, setDraft] = React.useState<PageDraft | null>(initialWorkspaceDraft);
   // SN-347: a page-bound Deep Work folder (persisted in the page's own
   // frontmatter) is trusted optimistically, exactly like the SN-262 sticky
@@ -3273,6 +3299,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         setActiveJupyterFocus(null);
         setWorkspaceDocumentReload(null);
         workspaceReturnStateRef.current = null;
+        // SN-347/SN-348: drop the orphan Deep Work frame immediately so a
+        // launching/dead sticky frame cannot stay visible during the handoff
+        // to the vault page's own (possibly bound) Lab surface.
+        setJupyterFrameCache((current) => dropDeepWorkPendingJupyterFrames(current));
       }
       if (nextPath !== draftRef.current?.path) {
         designRemoteWriteFenceRef.current = false;
@@ -6591,6 +6621,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setWorkspaceSession(null);
     setActiveJupyterFocus(null);
     setWorkspaceDocumentReload(null);
+    setJupyterFrameCache((current) => dropDeepWorkPendingJupyterFrames(current));
     setActiveNotebookPath(previous?.activeNotebookPath ?? null);
     setActiveSectionPath(previous?.activeSectionPath ?? null);
     setActivePagePath(previous?.activePagePath ?? null);

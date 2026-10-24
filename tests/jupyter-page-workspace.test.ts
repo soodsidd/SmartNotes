@@ -6,13 +6,16 @@ import { PATCH } from "@/app/api/page/route";
 import { createPage, readPage } from "@/server/vault/pages";
 import {
   activeJupyterPageBindingTarget,
+  findVaultPageBoundToRoot,
   JUPYTER_PAGE_WORKSPACE_KEY,
   jupyterLabWorkspaceUrl,
   pageWorkspaceFromMetadata,
   pageWorkspaceRecord,
+  resolveStickyBootPreference,
   shouldFallbackBoundJupyterWorkspace,
 } from "@/lib/jupyter-page-workspace";
 import type { DeepWorkDescriptor } from "@/lib/deep-work";
+import type { VaultNotebook } from "@/lib/vault-contract";
 
 const pagePath = "AI/Robotic Arm/Master Repo.html";
 const workspace: DeepWorkDescriptor = {
@@ -101,5 +104,90 @@ describe("Jupyter page Deep Work binding (SN-347)", () => {
     expect(jupyterLabWorkspaceUrl(original, pagePath, "C:\\Projects\\Other")).not.toBe(first);
     expect(jupyterLabWorkspaceUrl("/proxy/lab/tree/notebook.ipynb?token=secret", pagePath))
       .toContain("/lab/workspaces/sn-");
+  });
+
+  it("prefers a vault page that already binds the sticky root over an orphan Deep Work draft", () => {
+    const boundRecord = pageWorkspaceRecord(workspace);
+    const tree: VaultNotebook[] = [
+      {
+        id: "ai",
+        path: "AI",
+        name: "AI",
+        color: "#000",
+        pages: [],
+        sections: [
+          {
+            id: "arm",
+            path: "AI/Robotic Arm",
+            name: "Robotic Arm",
+            pages: [
+              {
+                id: "master",
+                path: pagePath,
+                title: "Master Repo",
+                slug: "master-repo",
+                createdAt: null,
+                updatedAt: null,
+                preview: "",
+                content: "",
+                parentId: null,
+                noteType: "jupyter",
+                metadata: { [JUPYTER_PAGE_WORKSPACE_KEY]: boundRecord },
+              },
+              {
+                id: "other",
+                path: "AI/Robotic Arm/Other.html",
+                title: "Other",
+                slug: "other",
+                createdAt: null,
+                updatedAt: null,
+                preview: "",
+                content: "",
+                parentId: null,
+                noteType: "text",
+                metadata: {},
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    expect(findVaultPageBoundToRoot(tree, workspace.rootPath)?.pagePath).toBe(pagePath);
+    expect(findVaultPageBoundToRoot(tree, "C:\\Projects\\Other")).toBeNull();
+    // Separator / case drift on Windows still matches the bound page.
+    expect(findVaultPageBoundToRoot(tree, "C:/projects/lerobot")?.pagePath).toBe(pagePath);
+
+    const sticky = { ...workspace, projectName: "LeRobot" };
+    expect(
+      resolveStickyBootPreference({
+        sticky,
+        tree,
+        lastPagePath: "AI/Robotic Arm/Other.html",
+      })
+    ).toEqual({
+      kind: "bound-page",
+      match: expect.objectContaining({
+        pagePath,
+        notebookPath: "AI",
+        sectionPath: "AI/Robotic Arm",
+      }),
+    });
+    expect(resolveStickyBootPreference({ sticky, tree: [], lastPagePath: null })).toEqual({
+      kind: "sticky",
+      workspace: sticky,
+    });
+    expect(resolveStickyBootPreference({ sticky, linkedWorkspace: sticky, tree })).toEqual({ kind: "none" });
+    expect(resolveStickyBootPreference({ sticky: null, tree })).toEqual({ kind: "none" });
+
+    const shell = require("node:fs").readFileSync(
+      path.resolve(__dirname, "../src/components/notebook-shell-reliable.tsx"),
+      "utf8"
+    ) as string;
+    expect(shell).toContain("resolveStickyBootPreference({");
+    expect(shell).toContain("stickyBootPreference.kind !== \"bound-page\"");
+    expect(shell).toContain("dropDeepWorkPendingJupyterFrames");
+    const selection = shell.slice(shell.indexOf("const applySelection"), shell.indexOf("const applySelection") + 1600);
+    expect(selection).toContain("dropDeepWorkPendingJupyterFrames(current)");
   });
 });

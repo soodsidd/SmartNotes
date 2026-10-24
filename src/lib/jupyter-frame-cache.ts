@@ -57,3 +57,13 @@ export function pruneJupyterFrames<T>(entries: JupyterFrameEntry<T>[], validPage
   const next = entries.filter((entry) => validPagePaths.has(entry.pagePath));
   return next.length === entries.length ? entries : next;
 }
+
+/**
+ * SN-347/SN-348: drop synthetic Deep Work pending frames immediately when the
+ * owner selects a vault page. Waiting for the next cache effect can leave a
+ * launching/dead orphan frame as the visible surface during the handoff.
+ */
+export function dropDeepWorkPendingJupyterFrames<T>(entries: JupyterFrameEntry<T>[]): JupyterFrameEntry<T>[] {
+  const next = entries.filter((entry) => !entry.pagePath.startsWith("deep-work-"));
+  return next.length === entries.length ? entries : next;
+}
