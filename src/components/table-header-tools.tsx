@@ -14,7 +14,26 @@ interface HeaderAnchor {
   rect: DOMRect;
 }
 
-/** Keep controls visually inside the header without mutating ProseMirror's cell DOM. */
+/**
+ * Pixels kept clear at the header's right edge for the column-resize divider. prosemirror-tables
+ * probes posAtCoords handleWidth (8px) inward from the pointer to find the edge cell; if that point
+ * lands on these tools (outside the editor) the header divider cannot be grabbed.
+ */
+const DIVIDER_CLEARANCE = 14;
+const HIDE_DELAY_MS = 150;
+
+function within(rect: DOMRect, x: number, y: number): boolean {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+/**
+ * Keep controls visually inside the header without mutating ProseMirror's cell DOM.
+ * Visibility is one document-level pointermove hit test: the anchored header cell, the
+ * tools, or the open menu keep them shown. Do not pair the editor root's native
+ * pointerleave with the portal's React onPointerEnter: React dispatches the portal enter
+ * before the native leave, so the hide timer is never cancelled and the tools flash in a
+ * show/hide loop under a resting pointer (SN-355 rework 2).
+ */
 export function TableHeaderTools({ editor }: { editor: Editor | null }) {
   const [anchor, setAnchor] = React.useState<HeaderAnchor | null>(null);
   const [filterOpen, setFilterOpen] = React.useState(false);
@@ -22,56 +41,70 @@ export function TableHeaderTools({ editor }: { editor: Editor | null }) {
   const menuRef = React.useRef<HTMLDivElement>(null);
   const filterButtonRef = React.useRef<HTMLButtonElement>(null);
   const hideTimer = React.useRef<number | null>(null);
+  const anchorRef = React.useRef<HeaderAnchor | null>(null);
+  const filterOpenRef = React.useRef(false);
+  anchorRef.current = anchor;
+  filterOpenRef.current = filterOpen;
 
   const cancelHide = React.useCallback(() => {
     if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
     hideTimer.current = null;
   }, []);
   const hideSoon = React.useCallback(() => {
-    cancelHide();
+    if (hideTimer.current !== null || filterOpenRef.current) return;
     hideTimer.current = window.setTimeout(() => {
-      if (!filterOpen) setAnchor(null);
-    }, 120);
-  }, [cancelHide, filterOpen]);
+      hideTimer.current = null;
+      if (!filterOpenRef.current) setAnchor(null);
+    }, HIDE_DELAY_MS);
+  }, []);
 
   React.useEffect(() => {
     if (!editor) return;
     const root = editor.view.dom;
-    const onPointerOver = (event: PointerEvent) => {
-      const cell = event.target instanceof Element ? event.target.closest("th") : null;
+    const headerAt = (target: EventTarget | null): HeaderAnchor | null => {
+      const cell = target instanceof Element ? target.closest("th") : null;
       const tableElement = cell?.closest("table");
       if (!(cell instanceof HTMLTableCellElement) || !root.contains(cell)
-        || !(tableElement instanceof HTMLTableElement) || cell.parentElement !== tableElement.rows[0]) {
-        hideSoon();
-        return;
-      }
+        || !(tableElement instanceof HTMLTableElement) || cell.parentElement !== tableElement.rows[0]) return null;
       const $pos = editor.state.doc.resolve(editor.view.posAtDOM(cell, 0));
       let tablePos = -1;
       for (let depth = $pos.depth; depth > 0; depth--) {
         if ($pos.node(depth).type.name === "table") { tablePos = $pos.before(depth); break; }
       }
-      if (tablePos < 0) return;
-      const table = editor.state.doc.nodeAt(tablePos);
-      if (!table) return;
+      const table = tablePos < 0 ? null : editor.state.doc.nodeAt(tablePos);
+      if (!table) return null;
       const map = TableMap.get(table);
-      if (new Set(map.map).size !== map.width * map.height) return;
-      cancelHide();
-      setAnchor((current) => current?.cell === cell ? current : {
-        cell, tablePos, column: cell.cellIndex, rect: cell.getBoundingClientRect(),
-      });
-      if (anchor?.cell !== cell) setFilterOpen(false);
+      if (new Set(map.map).size !== map.width * map.height) return null;
+      return { cell, tablePos, column: cell.cellIndex, rect: cell.getBoundingClientRect() };
     };
-    root.addEventListener("pointerover", onPointerOver);
-    root.addEventListener("pointerleave", hideSoon);
+    const onPointerMove = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && (toolsRef.current?.contains(target) || menuRef.current?.contains(target))) { cancelHide(); return; }
+      const current = anchorRef.current;
+      // Overlays (resize chrome, selection) may sit over the cell: keep by geometry too.
+      if (current?.cell.isConnected && within(current.cell.getBoundingClientRect(), event.clientX, event.clientY)) {
+        cancelHide();
+        return;
+      }
+      // Never pop tools mid-drag (cell selection, column resize).
+      const header = event.buttons === 0 ? headerAt(event.target) : null;
+      if (header) {
+        cancelHide();
+        setFilterOpen(false);
+        setAnchor(header);
+        return;
+      }
+      if (current) hideSoon();
+    };
+    document.addEventListener("pointermove", onPointerMove, { passive: true });
     return () => {
-      root.removeEventListener("pointerover", onPointerOver);
-      root.removeEventListener("pointerleave", hideSoon);
+      document.removeEventListener("pointermove", onPointerMove);
       cancelHide();
     };
-  }, [editor, cancelHide, hideSoon, anchor?.cell]);
+  }, [editor, cancelHide, hideSoon]);
 
   React.useEffect(() => {
-    if (!anchor) return;
+    if (!editor || !anchor) return;
     const update = () => {
       if (!anchor.cell.isConnected) { setAnchor(null); return; }
       setAnchor((current) => current ? { ...current, rect: current.cell.getBoundingClientRect() } : null);
@@ -83,13 +116,15 @@ export function TableHeaderTools({ editor }: { editor: Editor | null }) {
     };
     window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
+    editor.on("transaction", update);
     document.addEventListener("pointerdown", outside);
     return () => {
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
+      editor.off("transaction", update);
       document.removeEventListener("pointerdown", outside);
     };
-  }, [anchor?.cell]);
+  }, [editor, anchor?.cell]);
 
   if (!editor || !anchor) return null;
   const table = editor.state.doc.nodeAt(anchor.tablePos);
@@ -101,7 +136,8 @@ export function TableHeaderTools({ editor }: { editor: Editor | null }) {
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   const toolWidth = coarse ? 94 : 62;
   const toolHeight = coarse ? 50 : 34;
-  const left = Math.max(anchor.rect.left, anchor.rect.right - toolWidth - 2);
+  // Inset from the right edge so the column-resize divider zone stays grabbable.
+  const left = Math.max(anchor.rect.left, anchor.rect.right - toolWidth - DIVIDER_CLEARANCE);
   const top = anchor.rect.top + Math.max(0, (anchor.rect.height - toolHeight) / 2);
   // Re-anchor to the (possibly re-rendered) header so the tools stay put under the pointer:
   // a second Sort click toggles direction without leaving and re-entering the cell.
@@ -126,9 +162,9 @@ export function TableHeaderTools({ editor }: { editor: Editor | null }) {
   };
 
   return <>{createPortal(
-    <div ref={toolsRef} className="table-header-tools" style={{ left, top }} onPointerEnter={cancelHide} onPointerLeave={hideSoon} onPointerDown={(event) => event.preventDefault()}>
+    <div ref={toolsRef} className="table-header-tools" style={{ left, top }} data-testid="table-header-tools" onPointerDown={(event) => event.preventDefault()}>
       <div className="table-header-tools__buttons">
-        <button type="button" aria-label={`Sort ${label} column`} title={`Sort ${label} column`} data-testid="table-header-sort" data-active={table.attrs.sortColumn === anchor.column || undefined} onClick={() => run(sortHeaderColumnCommand(anchor.tablePos, anchor.column))}>
+        <button type="button" aria-label={`Sort ${label} column`} title={`Sort ${label} column`} data-testid="table-header-sort" data-active={table.attrs.sortColumn === anchor.column || undefined} data-direction={table.attrs.sortColumn === anchor.column ? table.attrs.sortDirection ?? undefined : undefined} onClick={() => run(sortHeaderColumnCommand(anchor.tablePos, anchor.column))}>
           <ArrowDownUp aria-hidden="true" />
         </button>
         <button ref={filterButtonRef} type="button" aria-label={`Filter ${label} column`} title={`Filter ${label} column`} data-testid="table-header-filter" data-active={currentValue !== undefined || undefined} aria-expanded={filterOpen} onClick={() => setFilterOpen((open) => !open)}>
