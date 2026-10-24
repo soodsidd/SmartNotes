@@ -2640,9 +2640,10 @@ function createChatModule(httpServer, io, userConfig = {}) {
           return sendJson(res, 400, { error: 'Invalid thread_key' });
         }
         // SN-356: Computer access is an explicit per-turn opt-in from the
-        // Companion checkbox. Absent/false = off. Deep Work turns are bound to a
-        // capability-scoped workspace and never receive PC access.
-        const computerAccess = data.computer_access === true && deepWorkCapability === null;
+        // Companion checkbox. Absent/false = off. It applies to Deep Work turns
+        // too: the owner's checkbox is the only authority, and silently forcing
+        // Deep Work turns off made a checked box arm nothing (rework cycle 2).
+        const computerAccess = data.computer_access === true;
         const sessionScopeKey = computerAccessSessionKey(getSessionScopeKey(activeScope.scopeKey, threadKey), computerAccess);
         const chatId = requestedTurnId || crypto.randomUUID();
         const pdfTextResults = await Promise.all(sanitizedPdfAttachments.map(doc => extractPdfText(doc.path)));
@@ -2658,6 +2659,8 @@ function createChatModule(httpServer, io, userConfig = {}) {
           has_link_content: !!data.link_content,
           has_app_context: !!appContext,
           computer_access: computerAccess,
+          computer_access_requested: data.computer_access === true,
+          deep_work: deepWorkCapability !== null,
           browser_origin: companionApiTarget.browserOrigin,
           host_api_base_url: companionApiTarget.apiBaseUrl,
           host_api_port: companionApiTarget.port,

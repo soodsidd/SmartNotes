@@ -147,6 +147,11 @@ describe("SN-356 mid-session toggle through /api/chat/send", () => {
       recoverInterruptedOnStartup: false,
       uploadDir: path.join(root, "uploads"),
       sandbox: "editor",
+      resolveDeepWorkTurn: async () => ({
+        scopeKey: "deep-work:sn356-root",
+        workingDirectory: root,
+        companionBridgeRoot: path.join(root, "dw-bridge"),
+      }),
     });
     pendingRuns = [];
     immediate = jest.spyOn(global, "setImmediate").mockImplementation((callback) => {
@@ -242,6 +247,36 @@ describe("SN-356 mid-session toggle through /api/chat/send", () => {
     expect(config.permissions.deny).toEqual(expect.arrayContaining(["Shell(*)", "Write(**)", "Mcp(*:*)"]));
     expect(off.stdin).toMatch(/Computer access: OFF/);
     expect(off.record.request.computer_access).toBe(false);
+  });
+
+  it("arms a Deep Work turn when the box is checked (rework cycle 2: Off -> On -> Off)", async () => {
+    const capability = `dwc_${"a".repeat(43)}`;
+    const thread = {
+      provider: "cursor",
+      thread_key: `${capability}::whole`,
+      app_context: ["Smart Notes Deep Work operating context:", `- workspaceCapability: ${capability}`].join("\n"),
+    };
+    const off = await send({ ...thread, message: "Inspect cameras" });
+    expect(argValue(off.args, "--mode")).toBe("ask");
+    expect(off.stdin).toMatch(/Computer access: OFF/);
+    expect(off.record.request.computer_access).toBe(false);
+
+    const on = await send({ ...thread, message: "ok try again", computer_access: true });
+    expect(on.record.request.computer_access).toBe(true);
+    expect(on.args).toContain("--force");
+    expect(on.args).not.toContain("--mode");
+    expect(on.spawnOptions.env.CURSOR_CONFIG_DIR).toBeUndefined();
+    expect(on.stdin).toMatch(/Computer access: ON/);
+    expect(on.stdin).not.toMatch(/## Computer access: OFF/);
+    // The Deep Work "do not probe processes" connection rule is explicitly superseded for PC inspection.
+    expect(on.stdin).toMatch(/supersedes any connection-context rule against probing processes/);
+
+    const offAgain = await send({ ...thread, message: "and now?" });
+    expect(offAgain.record.request.computer_access).toBe(false);
+    expect(argValue(offAgain.args, "--mode")).toBe("ask");
+    expect(offAgain.args).not.toContain("--force");
+    expect(offAgain.args).not.toContain("--resume");
+    expect(offAgain.stdin).toMatch(/Computer access: OFF/);
   });
 
   it("denies Copilot shell after an armed turn", async () => {
