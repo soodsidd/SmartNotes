@@ -8675,6 +8675,7 @@ export const Sidebar = React.memo(function Sidebar({
   const [dragDropSide, setDragDropSide] = React.useState<"before" | "after" | null>(null);
   const [pageContextMenu, setPageContextMenu] = React.useState<PageContextMenuState | null>(null);
   const [ghostContextMenu, setGhostContextMenu] = React.useState<GhostContextMenuState | null>(null);
+  const [blankContextMenu, setBlankContextMenu] = React.useState<{ x: number; y: number } | null>(null);
   const [sidebarContextMenu, setSidebarContextMenu] = React.useState<{
     notebook: VaultNotebook;
     section?: VaultSection;
@@ -8688,6 +8689,7 @@ export const Sidebar = React.memo(function Sidebar({
     event.stopPropagation();
     setPageContextMenu(null);
     setGhostContextMenu(null);
+    setBlankContextMenu(null);
     setSidebarContextMenu({
       notebook, section,
       x: Math.max(0, Math.min(event.clientX, window.innerWidth - 208)),
@@ -8779,6 +8781,7 @@ export const Sidebar = React.memo(function Sidebar({
     const dismissMenus = () => {
       setPageContextMenu(null);
       setGhostContextMenu(null);
+      setBlankContextMenu(null);
       setSidebarContextMenu(null);
     };
     const dismissOnEscape = (event: KeyboardEvent) => {
@@ -8973,6 +8976,20 @@ export const Sidebar = React.memo(function Sidebar({
       data-testid="tree"
       data-density-variant={variant}
       data-vault-ready={isTreeLoading ? "false" : "true"}
+      onContextMenu={(event) => {
+        if (event.defaultPrevented) {
+          setBlankContextMenu(null);
+          return;
+        }
+        event.preventDefault();
+        setPageContextMenu(null);
+        setGhostContextMenu(null);
+        setSidebarContextMenu(null);
+        setBlankContextMenu({
+          x: Math.max(0, Math.min(event.clientX, window.innerWidth - 208)),
+          y: Math.max(0, Math.min(event.clientY, window.innerHeight - 120)),
+        });
+      }}
     >
       {isPageTreeLayout ? (
         /* Page-tree pane header: Add Page for the scoped section/root + collapse button */
@@ -10306,6 +10323,7 @@ export const Sidebar = React.memo(function Sidebar({
                                       onContextMenu={(event) => {
                                         event.preventDefault();
                                         event.stopPropagation();
+                                        setBlankContextMenu(null);
                                         setPageContextMenu(null);
                                         setGhostContextMenu({
                                           parentPagePath: node.page.path,
@@ -10370,6 +10388,34 @@ export const Sidebar = React.memo(function Sidebar({
         }
       </div>
       )}
+
+      {blankContextMenu ? (
+        <div
+          className="fixed z-50 min-w-48 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{ top: blankContextMenu.y, left: blankContextMenu.x }}
+          onClick={(event) => event.stopPropagation()}
+          role="menu"
+          aria-label="Sidebar actions"
+          data-testid="sidebar-blank-context-menu"
+        >
+          {isPageTreeLayout && scopedCreateTarget ? (
+            <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => { setBlankContextMenu(null); onCreatePage(scopedCreateTarget); }}>
+              New page
+            </button>
+          ) : null}
+          <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => { setBlankContextMenu(null); onCreateNotebook(); }}>
+            New notebook
+          </button>
+          {!isPageTreeLayout ? (
+            <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => { setBlankContextMenu(null); setPickerOpen(true); }}>
+              Open notebook…
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {sidebarContextMenu ? (
         <div

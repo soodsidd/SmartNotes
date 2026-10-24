@@ -109,11 +109,34 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
 }
 
 describe("SN-352 sidebar context menus", () => {
+  it("opens app actions on blank rail space and suppresses the browser menu", () => {
+    const { props } = renderSidebar({ sidebarLayout: "rail" });
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    fireEvent(screen.getByTestId("tree"), event);
+    expect(event.defaultPrevented).toBe(true);
+    const menu = screen.getByTestId("sidebar-blank-context-menu");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "New notebook" }));
+    expect(props.onCreateNotebook).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("sidebar-blank-context-menu")).not.toBeInTheDocument();
+  });
+
+  it("targets the selected scope on blank page-pane space and dismisses with Escape", () => {
+    const { props } = renderSidebar({ sidebarLayout: "page-tree", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
+    fireEvent.contextMenu(screen.getByTestId("tree"));
+    const menu = screen.getByTestId("sidebar-blank-context-menu");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "New page" }));
+    expect(props.onCreatePage).toHaveBeenCalledWith(expect.objectContaining({ notebookPath: "Work", sectionPath: "Work/Research" }));
+    fireEvent.contextMenu(screen.getByTestId("tree"));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("sidebar-blank-context-menu")).not.toBeInTheDocument();
+  });
+
   it("opens notebook actions on right-click and targets New section without selecting", () => {
     const { props } = renderSidebar({ sidebarLayout: "rail", expandedNotebooks: new Set(["Work"]) });
     const row = screen.getByTestId("notebook-rail-row-Work");
     fireEvent.contextMenu(within(row).getByRole("button", { name: "Work" }), { clientX: 90, clientY: 80 });
     const menu = screen.getByTestId("sidebar-context-menu-Work");
+    expect(screen.queryByTestId("sidebar-blank-context-menu")).not.toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: "New section" })).toBeVisible();
     expect(within(menu).getByRole("menuitem", { name: "New page" })).toBeVisible();
     expect(props.onSelectNotebook).not.toHaveBeenCalled();
