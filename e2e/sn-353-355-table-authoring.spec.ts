@@ -49,25 +49,26 @@ test("SN-353/354/355: keyboard table growth, axis delete, header sort and filter
     await editor.getByText("Anchor line").click();
     await page.keyboard.press("End");
 
-    // SN-353: Ctrl+Alt+T inserts a 1x2 header table.
+    // SN-353: Ctrl+Alt+T inserts a 2-column, 1-row header table.
     await page.keyboard.press("Control+Alt+t");
     const grown = editor.locator("table").first();
-    await expect(grown.locator("tr")).toHaveCount(2);
-    await expect(grown.locator("tr").first().locator("th")).toHaveCount(1);
-    await expect(grown.locator("tr").nth(1).locator("td")).toHaveCount(1);
-    await page.keyboard.type("H1");
-    await page.keyboard.press("Tab");
+    await expect(grown.locator("tr")).toHaveCount(1);
     await expect(grown.locator("tr").first().locator("th")).toHaveCount(2);
+    await page.keyboard.type("H1");
+    await grown.locator("th").nth(1).click();
     await page.keyboard.type("H2");
+    await page.keyboard.press("Tab");
+    await expect(grown.locator("tr").first().locator("th")).toHaveCount(3);
+    await page.keyboard.type("H3");
     await page.keyboard.press("Enter");
-    await expect(grown.locator("tr")).toHaveCount(3);
-    await page.keyboard.type("B2");
-    await expect(grown.locator("tr").nth(1).locator("td").nth(1)).toHaveText("B2");
+    await expect(grown.locator("tr")).toHaveCount(2);
+    await page.keyboard.type("B3");
+    await expect(grown.locator("tr").nth(1).locator("td").nth(2)).toHaveText("B3");
     const thBg = await grown.locator("th").first().evaluate((el) => getComputedStyle(el).backgroundColor);
     const tdBg = await grown.locator("td").first().evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(thBg).not.toBe(tdBg);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, "sn353-grown-table.png") });
-    await expect.poll(async () => (await savedContent()).includes("B2"), { timeout: 30_000 }).toBe(true);
+    await expect.poll(async () => (await savedContent()).includes("B3"), { timeout: 30_000 }).toBe(true);
 
     // SN-355: hover header reveals sort/filter; icons hidden otherwise.
     const data = editor.locator("table").nth(1);

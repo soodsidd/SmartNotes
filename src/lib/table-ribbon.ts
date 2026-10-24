@@ -465,7 +465,7 @@ export function growTableCommand(axis: "column" | "row") {
   return (state: EditorState, dispatch: Dispatch): boolean => {
     if (!state.selection.empty || state.selection instanceof CellSelection) return false;
     const context = getTableContext(state);
-    if (!context || (axis === "column" && context.rect.right !== context.map.width)) return false;
+    if (!context || (axis === "column" && (context.map.height !== 1 || context.rect.right !== context.map.width))) return false;
     const row = context.rect.top + (axis === "row" ? 1 : 0);
     const col = context.rect.left + (axis === "column" ? 1 : 0);
     const command = axis === "column" ? addColumnAfter : addRowAfter;
@@ -473,6 +473,10 @@ export function growTableCommand(axis: "column" | "row") {
       const table = tr.doc.nodeAt(context.tablePos);
       if (!table) return;
       const pos = cellPositions(table, context.tableStart, row, col);
+      if (axis === "column" && context.table.firstChild?.firstChild?.type.name === "tableHeader") {
+        const cell = tr.doc.nodeAt(pos);
+        if (cell) tr.setNodeMarkup(pos, state.schema.nodes.tableHeader, cell.attrs);
+      }
       tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 1))).scrollIntoView();
       dispatch(tr);
     }));
