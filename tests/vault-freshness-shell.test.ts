@@ -66,8 +66,8 @@ describe("vault freshness shell wiring (SN-91)", () => {
   it("refreshes the active Jupyter frame when notebook cell tools update notebook.ipynb", () => {
     expect(shellSrc).toContain('socket.on("jupyter_notebook_updated", handleJupyterNotebookUpdated)');
     expect(shellSrc).toContain('current.noteType !== "jupyter"');
-    expect(shellSrc).toContain("setJupyterReloadNonce((nonce) => nonce + 1)");
-    expect(shellSrc).toContain('key={`${draft.path}:${jupyterReloadNonce}`}');
+    expect(shellSrc).toContain("reloadActiveJupyterFrame();");
+    expect(shellSrc).toContain('key={`${entry.identity}:${entry.generation}`}');
   });
 
   it("marks externally changed log forms for reload and remounts their Form view", () => {

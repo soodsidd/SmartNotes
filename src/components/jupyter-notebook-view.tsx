@@ -87,6 +87,8 @@ export interface JupyterAskInCompanionPayload {
 export interface JupyterNotebookViewProps {
   pagePath: string;
   title?: string;
+  /** Cached frames stay mounted while another page is visible. */
+  isActive?: boolean;
   /** Project-backed Deep Work launch descriptor. Omit for a note-owned `.jupyter` session. */
   workspace?: JupyterWorkspaceSessionRequest & {
     projectName: string;
@@ -233,6 +235,7 @@ function unsupportedBrowserReason(): string | null {
 export function JupyterNotebookView({
   pagePath,
   title,
+  isActive = true,
   workspace,
   onOpenSidebar,
   onBack,
@@ -296,6 +299,8 @@ export function JupyterNotebookView({
   const onWorkspaceReadyRef = React.useRef(onWorkspaceReady);
   const onAskInCompanionRef = React.useRef(onAskInCompanion);
   const onWorkspaceLaunchErrorRef = React.useRef(onWorkspaceLaunchError);
+  const isActiveRef = React.useRef(isActive);
+  isActiveRef.current = isActive;
   onFocusChangeRef.current = onFocusChange;
   onContextMenuRef.current = onContextMenu;
   onAnswerAppliedRef.current = onAnswerApplied;
@@ -307,7 +312,7 @@ export function JupyterNotebookView({
   const applyAnswer = React.useCallback<JupyterNotebookBridgeController["applyAnswer"]>((answer, focus, requestId, selectionOverride) => {
     const target = focus ?? latestFocusRef.current;
     const frameWindow = iframeRef.current?.contentWindow;
-    if (!target || target.pagePath !== pagePath || !frameWindow) return null;
+    if (!isActiveRef.current || !target || target.pagePath !== pagePath || !frameWindow) return null;
     const id = requestId ?? globalThis.crypto?.randomUUID?.() ?? `jupyter-answer-${Date.now()}`;
     const message = createJupyterApplyAnswerMessage(id, answer, target, selectionOverride);
     if (!message) return null;
@@ -645,14 +650,19 @@ export function JupyterNotebookView({
   runInlineActionRef.current = runInlineAction;
 
   React.useEffect(() => {
+    // SN-348: register only while visible; clear only in cleanup. React runs
+    // every cleanup before any effect body in a commit, so a hidden frame can
+    // never null out the visible frame's registration.
+    if (!isActive) return;
     onBridgeReadyRef.current?.({ applyAnswer, dispatchCommand });
     return () => onBridgeReadyRef.current?.(null);
-  }, [applyAnswer, dispatchCommand]);
+  }, [applyAnswer, dispatchCommand, isActive]);
 
   React.useEffect(() => {
+    if (!isActive) return;
     onWorkspaceReadyRef.current?.(workspace && state.phase === "ready" ? state.session : null);
     return () => onWorkspaceReadyRef.current?.(null);
-  }, [state, workspace]);
+  }, [isActive, state, workspace]);
 
   React.useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -664,6 +674,7 @@ export function JupyterNotebookView({
       }
       const focus = parseJupyterFocusMessage(event.data, pagePath);
       if (focus) {
+        if (!isActiveRef.current) return;
         latestFocusRef.current = focus;
         setActiveFocus(focus);
         onFocusChangeRef.current?.(focus);
@@ -672,6 +683,7 @@ export function JupyterNotebookView({
       }
       const contextMenu = parseJupyterContextMenuMessage(event.data, pagePath);
       if (contextMenu) {
+        if (!isActiveRef.current) return;
         latestFocusRef.current = contextMenu.focus;
         setActiveFocus(contextMenu.focus);
         onFocusChangeRef.current?.(contextMenu.focus);
@@ -700,6 +712,7 @@ export function JupyterNotebookView({
       }
       const keybindingEvent = parseJupyterInlineAiKeybindingMessage(event.data, pagePath);
       if (keybindingEvent) {
+        if (!isActiveRef.current) return;
         latestFocusRef.current = keybindingEvent.focus;
         setActiveFocus(keybindingEvent.focus);
         onFocusChangeRef.current?.(keybindingEvent.focus);
@@ -726,12 +739,13 @@ export function JupyterNotebookView({
         return;
       }
       if (parseJupyterOverlayDismissMessage(event.data, pagePath)) {
+        if (!isActiveRef.current) return;
         dismissInlineSurfaceFromPassiveEvent();
         return;
       }
       const answerResult = parseJupyterApplyAnswerResult(event.data, pagePath);
       if (answerResult) {
-        if (answerResult.focus) {
+        if (answerResult.focus && isActiveRef.current) {
           latestFocusRef.current = answerResult.focus;
           setActiveFocus(answerResult.focus);
           onFocusChangeRef.current?.(answerResult.focus);
@@ -754,7 +768,7 @@ export function JupyterNotebookView({
         ) {
           initialFocusSentRef.current = initialFocusAttemptRef.current.file;
         }
-        if (commandResult.focus) {
+        if (commandResult.focus && isActiveRef.current) {
           latestFocusRef.current = commandResult.focus;
           setActiveFocus(commandResult.focus);
           onFocusChangeRef.current?.(commandResult.focus);
@@ -770,6 +784,21 @@ export function JupyterNotebookView({
     return () => window.removeEventListener("message", handleMessage);
   }, [dismissInlineSurfaceFromPassiveEvent, focusAnchor, pagePath, runInlineAction, showSelectionActions, workspaceAccessMode]);
 
+  // SN-348: hiding a cached frame drops its inline surface and focus. Done in
+  // cleanup (not the hidden branch's effect body) for the same ordering reason
+  // as the bridge registration above.
+  React.useEffect(() => {
+    if (!isActive) return;
+    return () => {
+      inlineRequestRef.current?.abort();
+      inlineRequestRef.current = null;
+      setInlineSurface(null);
+      latestFocusRef.current = null;
+      setActiveFocus(null);
+      onFocusChangeRef.current?.(null);
+    };
+  }, [isActive]);
+
   React.useEffect(() => {
     return () => {
       inlineRequestRef.current?.abort();
@@ -780,6 +809,7 @@ export function JupyterNotebookView({
   }, [pagePath]);
 
   React.useEffect(() => {
+    if (!isActive) return;
     const dismissOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") dismissInlineSurface();
     };
@@ -789,7 +819,7 @@ export function JupyterNotebookView({
       window.removeEventListener("keydown", dismissOnEscape);
       window.removeEventListener("scroll", dismissInlineSurfaceFromPassiveEvent, true);
     };
-  }, [dismissInlineSurface, dismissInlineSurfaceFromPassiveEvent]);
+  }, [dismissInlineSurface, dismissInlineSurfaceFromPassiveEvent, isActive]);
 
   // SN-247: warm the fast-lane companion session when this Jupyter page opens,
   // and tear it down when it closes (unmount or pagePath change). Deliberately
@@ -798,13 +828,14 @@ export function JupyterNotebookView({
   // fire-and-forget: warm-up runs off the request path, and teardown must not
   // block navigation/unmount.
   React.useEffect(() => {
+    if (!isActive) return;
     const ownerPath = workspace
       ? state.phase === "ready" ? state.session.capability : null
       : pagePath;
     if (!ownerPath) return;
     warmJupyterFastLaneSession(ownerPath);
     return () => closeJupyterFastLaneSession(ownerPath);
-  }, [pagePath, state, workspace]);
+  }, [isActive, pagePath, state, workspace]);
 
   React.useEffect(() => {
     if (state.phase !== "ready") {
@@ -1188,7 +1219,7 @@ export function JupyterNotebookView({
           />
         ) : null}
       </div>
-      {inlineSurface && typeof document !== "undefined" ? createPortal(
+      {isActive && inlineSurface && typeof document !== "undefined" ? createPortal(
         <div
           role="dialog"
           aria-label="Jupyter inline AI"

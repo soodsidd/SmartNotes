@@ -238,14 +238,14 @@ describe("SN-270 Deep Work root survives a Companion notebook edit", () => {
 
     it("never bumps the remount nonce for a Deep Work surface", () => {
       expect(shell).toContain("canRemountJupyterSurface(");
-      // The nonce is still part of the key, so the guard is what keeps a Deep
-      // Work root alive. If this key ever stops including the nonce, the guard
-      // can be revisited - but not silently.
-      expect(shell).toContain("key={`${draft.path}:${jupyterReloadNonce}`}");
+      // SN-348: the frame generation is part of the cached frame's key, so the
+      // guard is what keeps a Deep Work root alive. If this key ever stops
+      // including the generation, the guard can be revisited - but not silently.
+      expect(shell).toContain("key={`${entry.identity}:${entry.generation}`}");
     });
 
     it("passes the in-place reload as a prop, never as part of the view key", () => {
-      expect(shell).toContain("externalReload={activeProjectWorkspace ? workspaceDocumentReload : null}");
+      expect(shell).toContain("externalReload={visible && activeProjectWorkspace ? workspaceDocumentReload : null}");
       expect(shell).not.toContain("workspaceDocumentReload}`}");
       expect(view).toContain(
         'dispatchCommand("reload-document", undefined, { path: externalReload.path })'

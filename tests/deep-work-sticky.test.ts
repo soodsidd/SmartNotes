@@ -325,7 +325,9 @@ describe("SN-262 sticky Deep Work disk workspace", () => {
 
     it("gates the Jupyter surface and companion binding on the active Deep Work draft", () => {
       expect(SHELL_SOURCE).toContain("activeDeepWorkWorkspace(projectWorkspace, draft?.path ?? null)");
-      expect(SHELL_SOURCE).toContain("workspace={activeProjectWorkspace ? {");
+      // SN-348: the cached frame captures the active descriptor and renders it.
+      expect(SHELL_SOURCE).toContain("workspace: activeProjectWorkspace ?? undefined,");
+      expect(SHELL_SOURCE).toContain("workspace={entry.workspace}");
       expect(SHELL_SOURCE).toContain("projectWorkspace: activeProjectWorkspace ? {");
     });
 
