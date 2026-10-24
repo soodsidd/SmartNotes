@@ -110,7 +110,7 @@ test("SN-356: Computer access checkbox arms and disarms mid-session", async ({ p
   };
 
   const turnOff = await send("What is using my CPU right now?");
-  expect(turnOff.computer_access).toBeUndefined();
+  expect(turnOff.computer_access).toBe(false);
   await injectReply(page, String(turnOff.turn_id), "Computer access is off for this chat — tick **Computer** in the Companion header and ask again so I can check this PC directly.");
 
   // Arm mid-session: no restart, same thread.
@@ -126,10 +126,18 @@ test("SN-356: Computer access checkbox arms and disarms mid-session", async ({ p
   await toggle.uncheck();
   await expect(label).toHaveAttribute("data-armed", "false");
   const turnOffAgain = await send("And check the disk too.");
-  expect(turnOffAgain.computer_access).toBeUndefined();
+  expect(turnOffAgain.computer_access).toBe(false);
   expect(turnOffAgain.thread_key).toBe(turnOff.thread_key);
   await injectReply(page, String(turnOffAgain.turn_id), "Computer access is off again, so I can't run commands on this PC. Tick **Computer** to re-enable.");
   await surface.screenshot({ path: path.join(EVIDENCE_DIR, `${testInfo.project.name}-03-disarmed.png`) });
+
+  // Rework cycle 2: the exact outbound sequence across three sends on one thread.
+  expect(sentBodies.map((body) => body.computer_access)).toEqual([false, true, false]);
+  expect(new Set(sentBodies.map((body) => body.thread_key)).size).toBe(1);
+  fs.writeFileSync(
+    path.join(EVIDENCE_DIR, `${testInfo.project.name}-wire-payloads.json`),
+    JSON.stringify(sentBodies.map((body) => ({ thread_key: body.thread_key, message: body.message, computer_access: body.computer_access })), null, 2)
+  );
 
   // Never persisted: a reload starts disarmed.
   await openCompanion(page, mobile);

@@ -116,9 +116,9 @@ describe("SN-356 computer access sandbox overlay", () => {
 
 describe("SN-356 buildAiTurnRequest", () => {
   const base = { message: "hi", history: [], pageContext: "" };
-  it("omits computer_access unless the owner armed the turn", () => {
-    expect(buildAiTurnRequest(base)).not.toHaveProperty("computer_access");
-    expect(buildAiTurnRequest({ ...base, computerAccess: false })).not.toHaveProperty("computer_access");
+  it("always sends an explicit computer_access boolean, true only when armed", () => {
+    expect(buildAiTurnRequest(base).computer_access).toBe(false);
+    expect(buildAiTurnRequest({ ...base, computerAccess: false }).computer_access).toBe(false);
     expect(buildAiTurnRequest({ ...base, computerAccess: true }).computer_access).toBe(true);
   });
 });

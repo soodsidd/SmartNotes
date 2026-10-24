@@ -1,0 +1,20 @@
+thread=dwc_SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS::whole provider=cursor started=2026-10-24T18:17:23.009Z
+
+=== 1-off (box unchecked); wire computer_access=false; server grant=false; scope=deep-work:sn356-live-demo; status=completed; tool_calls=0 []
+Computer access is **off** for this turn, so I can’t run PowerShell on your PC or report a live process count.
+
+Tick the **Computer** checkbox in the Companion composer (desktop) or header row (mobile), then ask again. No chat restart needed.
+
+You can also run this yourself:
+
+```powershell
+$procs = Get-Process; "Count: $($procs.Count)"; $procs | Sort-Object WorkingSet64 -Descending | Select-Object -First 1 Name, @{N='WS_MB';E={[math]::Round($_.WorkingSet64/1MB,1)}}
+```
+
+=== 2-on (box checked: "ok try again"); wire computer_access=true; server grant=true; scope=deep-work:sn356-live-demo; status=completed; tool_calls=4 [tool_call.started, tool_call.completed, tool_call.started, tool_call.completed]
+I'll run a PowerShell diagnostic for process count and the top memory consumer.I'll run a PowerShell diagnostic for process count and the top memory consumer.Shell ate the `$` variables — retrying with proper escaping.Shell ate the `$` variables — retrying with proper escaping.**373** processes running. Top memory: **node** (PID 25052) at **2600.6 MB**.
+
+=== 3-off (box unchecked again); wire computer_access=false; server grant=false; scope=deep-work:sn356-live-demo; status=completed; tool_calls=0 []
+Computer access is still **off** — I have no shell on your PC and can’t report a process count or top memory process.
+
+Tick the **Computer** checkbox in the Companion composer (desktop) or header row (mobile), then ask again.

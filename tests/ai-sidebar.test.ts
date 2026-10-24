@@ -313,6 +313,7 @@ describe("buildAiTurnRequest", () => {
       message: "Fix this note",
       history: [{ role: "user", content: "Earlier" }],
       page_context: "# Note",
+      computer_access: false,
       app_context: "Smart Notes operating context:\n- Active markdown path: Notebook/Section/note.html",
       provider: "codex",
       model: "gpt-5-codex",
@@ -347,6 +348,7 @@ describe("buildAiTurnRequest", () => {
       message: "Fix this note",
       history: [],
       page_context: "# Note",
+      computer_access: false,
     });
   });
 

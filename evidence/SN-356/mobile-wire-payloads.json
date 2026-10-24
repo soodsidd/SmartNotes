@@ -1,0 +1,17 @@
+[
+  {
+    "thread_key": "Personal Notebook/Quick Notes/strength-training-reference-plan.html::whole",
+    "message": "What is using my CPU right now?",
+    "computer_access": false
+  },
+  {
+    "thread_key": "Personal Notebook/Quick Notes/strength-training-reference-plan.html::whole",
+    "message": "OK, check it now.",
+    "computer_access": true
+  },
+  {
+    "thread_key": "Personal Notebook/Quick Notes/strength-training-reference-plan.html::whole",
+    "message": "And check the disk too.",
+    "computer_access": false
+  }
+]

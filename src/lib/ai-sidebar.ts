@@ -333,11 +333,14 @@ export function buildAiTurnRequest(params: {
     model?: string;
     images?: AiTurnImageAttachment[];
     documents?: AiTurnPdfAttachment[];
-    computer_access?: true;
+    computer_access: boolean;
   } = {
     message: params.message,
     history: params.history,
     page_context: params.pageContext,
+    // SN-356: always explicit on the wire (false unless the owner armed this
+    // turn) so every send states its grant; the server arms only on literal true.
+    computer_access: params.computerAccess === true,
   };
 
   const turnId = params.turnId?.trim();
@@ -378,11 +381,6 @@ export function buildAiTurnRequest(params: {
   const browserOrigin = params.browserOrigin?.trim();
   if (browserOrigin) {
     payload.browser_origin = browserOrigin;
-  }
-
-  // Off by default: the flag is only sent on turns the owner explicitly armed.
-  if (params.computerAccess === true) {
-    payload.computer_access = true;
   }
 
   return payload;
