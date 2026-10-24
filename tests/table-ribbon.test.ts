@@ -116,6 +116,53 @@ describe("selection stats", () => {
 });
 
 describe("ribbon commands", () => {
+  test("Delete removes selected full columns or rows without changing retained cells", () => {
+    const pressDelete = (editor: Editor) => editor.view.someProp("handleKeyDown", (handler) =>
+      handler(editor.view, new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }))) ?? false;
+    const columns = makeEditor();
+    selectRange(columns, [0, 0], [3, 0]);
+    expect(pressDelete(columns)).toBe(true);
+    expect(columnTexts(columns, 0)).toEqual(["Qty", "10", "2.5", ""]);
+    caretIn(columns, 1, 0);
+    expect(exec(columns, selectCellsCommand("column"))).toBe(true);
+    expect(selectionMatrix(columns.state)).toEqual([["Qty"], ["10"], ["2.5"], [""]]);
+    roundTrip(columns);
+    columns.destroy();
+
+    const rows = makeEditor();
+    selectRange(rows, [1, 0], [2, 1]);
+    expect(pressDelete(rows)).toBe(true);
+    expect(columnTexts(rows, 0)).toEqual(["Name", "fig"]);
+    expect(columnTexts(rows, 1)).toEqual(["Qty", ""]);
+    caretIn(rows, 1, 0);
+    expect(exec(rows, selectCellsCommand("row"))).toBe(true);
+    expect(selectionMatrix(rows.state)).toEqual([["fig", ""]]);
+    roundTrip(rows);
+    rows.destroy();
+
+    const wider = makeEditor("<table><tbody><tr><th><p>A</p></th><th><p>B</p></th><th><p>C</p></th><th><p>D</p></th></tr><tr><td><p>a</p></td><td><p>b</p></td><td><p>c</p></td><td><p>d</p></td></tr></tbody></table>");
+    selectRange(wider, [0, 1], [1, 2]);
+    expect(pressDelete(wider)).toBe(true);
+    expect(wider.getJSON().content?.[0].content?.map((row) => row.content?.map((cell) => cell.content?.[0].content?.[0].text))).toEqual([["A", "D"], ["a", "d"]]);
+    roundTrip(wider);
+    wider.destroy();
+
+    const oneRow = makeEditor();
+    selectRange(oneRow, [2, 0], [2, 1]);
+    expect(pressDelete(oneRow)).toBe(true);
+    expect(columnTexts(oneRow, 0)).toEqual(["Name", "pear", "fig"]);
+    oneRow.destroy();
+  });
+
+  test("Delete on a complete table selection removes the table cleanly", () => {
+    const editor = makeEditor();
+    selectRange(editor, [0, 0], [3, 1]);
+    const handled = editor.view.someProp("handleKeyDown", (handler) =>
+      handler(editor.view, new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }))) ?? false;
+    expect(handled).toBe(true);
+    expect(editor.getHTML()).not.toContain("<table");
+    editor.destroy();
+  });
   test("Rows: move row up/down reorders and persists", () => {
     const editor = makeEditor();
     caretIn(editor, 2, 0);

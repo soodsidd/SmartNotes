@@ -13,6 +13,9 @@ import {
   TableMap,
   addColumnAfter,
   addRowAfter,
+  deleteColumn,
+  deleteRow,
+  deleteTable,
   cellAround,
   moveTableColumn,
   moveTableRow,
@@ -437,6 +440,18 @@ export function growTableCommand(axis: "column" | "row") {
   };
 }
 
+/** Delete whole selected rows or columns; a full-table selection removes the table. */
+export function deleteSelectedTableAxisCommand(state: EditorState, dispatch: Dispatch): boolean {
+  if (!(state.selection instanceof CellSelection)) return false;
+  const context = getTableContext(state);
+  if (!context) return false;
+  const fullRows = context.rect.left === 0 && context.rect.right === context.map.width;
+  const fullColumns = context.rect.top === 0 && context.rect.bottom === context.map.height;
+  if (!fullRows && !fullColumns) return false;
+  if (fullRows && fullColumns) return deleteTable(state, dispatch);
+  return (fullColumns ? deleteColumn : deleteRow)(state, dispatch);
+}
+
 export function sortTableCommand(direction: "asc" | "desc") {
   return (state: EditorState, dispatch: Dispatch): boolean => {
     const context = getTableContext(state);
@@ -572,6 +587,7 @@ export const TableRibbonSupport = Extension.create({
       return fn(state, view.dispatch);
     };
     return {
+      Delete: () => deleteSelectedTableAxisCommand(this.editor.state, this.editor.view.dispatch),
       Tab: () => growTableCommand("column")(this.editor.state, this.editor.view.dispatch),
       ArrowUp: grid((state, dispatch) => moveToCell(state, dispatch, "vert", -1)),
       ArrowDown: grid((state, dispatch) => moveToCell(state, dispatch, "vert", 1)),

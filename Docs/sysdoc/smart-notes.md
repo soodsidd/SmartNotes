@@ -1067,6 +1067,8 @@ The fork has two toolbar buttons (outline, paper) before the grid button. On mai
 
 **Assumptions (photos are silent):** the tab contents above are the proposal from the brief chat. The fork ribbon is not Syncfusion's spreadsheet ribbon (Syncfusion's tabs are File/Home/Insert/Formulas/Data/View), so this is built on TipTap tables. Row height has no resize control because TipTap rows size to their content; "resize" means column width. Mode pills are per table, not per device.
 
+**Delete selection (SN-354):** With a CellSelection spanning complete columns, Delete removes those columns; with one spanning complete rows, it removes those rows. Selecting the entire table and pressing Delete removes the table cleanly. Other cell selections retain normal content deletion. The command uses prosemirror-tables structural deletes, so remaining cell content and selection chrome stay valid.
+
 ### Table context menu and icon ribbon (SN-308)
 
 **Plain English:** Right-click a table cell (long-press on mobile) to get a table menu built for the selection, including **Delete table** in red at the bottom (Ctrl+Z restores it). Outside tables the normal text menu is unchanged. The ribbon is now icons only (Rows, Columns, Cells, Select | Grid mode, Data mode | Format, Layout, Data | Expand table) with tooltips and accessible names; on mobile it is one compact row that scrolls sideways, and the stats line hides behind a **Σ** chip that shows the Sum (or Count) and expands to the full line.
