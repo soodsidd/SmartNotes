@@ -8654,6 +8654,25 @@ export const Sidebar = React.memo(function Sidebar({
   const [dragDropSide, setDragDropSide] = React.useState<"before" | "after" | null>(null);
   const [pageContextMenu, setPageContextMenu] = React.useState<PageContextMenuState | null>(null);
   const [ghostContextMenu, setGhostContextMenu] = React.useState<GhostContextMenuState | null>(null);
+  const [sidebarContextMenu, setSidebarContextMenu] = React.useState<{
+    notebook: VaultNotebook;
+    section?: VaultSection;
+    x: number;
+    y: number;
+  } | null>(null);
+  const openSidebarContextMenu = (
+    event: React.MouseEvent<HTMLDivElement>, notebook: VaultNotebook, section?: VaultSection
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setPageContextMenu(null);
+    setGhostContextMenu(null);
+    setSidebarContextMenu({
+      notebook, section,
+      x: Math.max(0, Math.min(event.clientX, window.innerWidth - 208)),
+      y: Math.max(0, Math.min(event.clientY, window.innerHeight - 200)),
+    });
+  };
   const dragStartXRef = React.useRef<number>(0);
   // Ref (not state) so onDragOver closures see the current section path synchronously
   const draggedPageSectionPathRef = React.useRef<string | null>(null);
@@ -8739,12 +8758,18 @@ export const Sidebar = React.memo(function Sidebar({
     const dismissMenus = () => {
       setPageContextMenu(null);
       setGhostContextMenu(null);
+      setSidebarContextMenu(null);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismissMenus();
     };
     window.addEventListener("click", dismissMenus);
     window.addEventListener("scroll", dismissMenus, true);
+    window.addEventListener("keydown", dismissOnEscape);
     return () => {
       window.removeEventListener("click", dismissMenus);
       window.removeEventListener("scroll", dismissMenus, true);
+      window.removeEventListener("keydown", dismissOnEscape);
     };
   }, []);
 
@@ -9124,7 +9149,8 @@ export const Sidebar = React.memo(function Sidebar({
             const hasSections = notebook.sections.length > 0;
             return (
               <div key={notebook.path} data-testid={`notebook-rail-row-${notebook.path}`}>
-                <div className={cn("group flex items-center rounded transition", notebookActive ? "bg-surface" : "hover:bg-surface/70")}>
+                <div className={cn("group flex items-center rounded transition", notebookActive ? "bg-surface" : "hover:bg-surface/70")}
+                  onContextMenu={(event) => openSidebarContextMenu(event, notebook)}>
                 <button
                   type="button"
                   className={cn(
@@ -9188,6 +9214,7 @@ export const Sidebar = React.memo(function Sidebar({
                       return (
                         <div
                           key={section.path}
+                          onContextMenu={(event) => openSidebarContextMenu(event, notebook, section)}
                           className={cn(
                             "group flex items-center rounded-md transition",
                             sectionActive ? "bg-surface text-foreground" : "text-foreground hover:bg-surface/70"
@@ -9281,6 +9308,7 @@ export const Sidebar = React.memo(function Sidebar({
                   compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] gap-1 px-1.5 py-0.5" : "gap-1.5 px-2 py-1",
                   notebookActive ? "bg-surface" : "hover:bg-surface"
                 )}
+                onContextMenu={(event) => openSidebarContextMenu(event, notebook)}
               >
                 <button
                   type="button"
@@ -9386,6 +9414,7 @@ export const Sidebar = React.memo(function Sidebar({
                           }}
                           onContextMenu={(event) => {
                             event.preventDefault();
+                            setSidebarContextMenu(null);
                             setGhostContextMenu(null);
                             setPageContextMenu({
                               pagePath: node.page.path,
@@ -9712,6 +9741,7 @@ export const Sidebar = React.memo(function Sidebar({
                             isSectionDropTarget && "ring-1 ring-inset ring-accent bg-accent/5"
                           )}
                           data-testid={`section-drop-${section.path}`}
+                          onContextMenu={(event) => openSidebarContextMenu(event, notebook, section)}
                           onDragOver={(e) => {
                             const source = draggedPagePath;
                             const sourceContainer = draggedPageSectionPathRef.current;
@@ -9912,6 +9942,7 @@ export const Sidebar = React.memo(function Sidebar({
                                     }}
                                     onContextMenu={(event) => {
                                       event.preventDefault();
+                                      setSidebarContextMenu(null);
                                       setGhostContextMenu(null);
                                       setPageContextMenu({
                                         pagePath: node.page.path,
@@ -10318,6 +10349,61 @@ export const Sidebar = React.memo(function Sidebar({
         }
       </div>
       )}
+
+      {sidebarContextMenu ? (
+        <div
+          className="fixed z-50 min-w-48 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{ top: sidebarContextMenu.y, left: sidebarContextMenu.x }}
+          onClick={(event) => event.stopPropagation()}
+          role="menu"
+          aria-label={`${sidebarContextMenu.section ? "Section" : "Notebook"} actions`}
+          data-testid={`sidebar-context-menu-${sidebarContextMenu.section?.path ?? sidebarContextMenu.notebook.path}`}
+        >
+          {!sidebarContextMenu.section ? (
+            <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                setSidebarContextMenu(null);
+                onCreateSection(sidebarContextMenu.notebook.path, sidebarContextMenu.notebook.name);
+              }}>
+              New section
+            </button>
+          ) : null}
+          <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              setSidebarContextMenu(null);
+              onCreatePage(sidebarContextMenu.section
+                ? sectionTarget(sidebarContextMenu.notebook, sidebarContextMenu.section)
+                : notebookRootTarget(sidebarContextMenu.notebook));
+            }}>
+            New page
+          </button>
+          <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              setSidebarContextMenu(null);
+              if (sidebarContextMenu.section) onRenameSection(sidebarContextMenu.section.path, sidebarContextMenu.section.name, sidebarContextMenu.notebook.path);
+              else onRenameNotebook(sidebarContextMenu.notebook.path, sidebarContextMenu.notebook.name, sidebarContextMenu.notebook.isPortable);
+            }}>
+            {sidebarContextMenu.section ? "Rename section" : "Rename notebook"}
+          </button>
+          {!sidebarContextMenu.section ? (
+            <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                setSidebarContextMenu(null);
+                onCloseNotebook(sidebarContextMenu.notebook.path);
+              }}>
+              Close notebook
+            </button>
+          ) : null}
+          <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              setSidebarContextMenu(null);
+              if (sidebarContextMenu.section) onDeleteSection(sidebarContextMenu.section.path, sidebarContextMenu.section.name);
+              else onDeleteNotebook(sidebarContextMenu.notebook.path, sidebarContextMenu.notebook.name, sidebarContextMenu.notebook.isPortable);
+            }}>
+            {sidebarContextMenu.section ? "Delete section" : sidebarContextMenu.notebook.isPortable ? "Remove notebook" : "Delete notebook"}
+          </button>
+        </div>
+      ) : null}
 
       {pageContextMenu ? (
         <div
