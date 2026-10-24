@@ -110,7 +110,7 @@ No new tokens.
 
 Ribbon controls are icon-only (lucide) with tooltips and `aria-label`s, separated by 1px `--border` dividers. New tokens: `--table-ribbon-button-size: 28px` (desktop icon button) and `--table-ribbon-icon-size: 16px`. Mobile buttons keep the 44px touch target; the mobile stats chip is a pill using `--surface`, `--border`, and `--accent` when expanded. The table context menu reuses the editor context-menu styles; Delete table uses `--destructive` text with a 10% `--destructive` hover tint, matching the comment popover's destructive button.
 
-Table header Sort/Filter tools (SN-355) appear only on header hover as a `--popover` / `--border` / `--radius-sm` / `--shadow-popover` pill of two `--table-ribbon-button-size` lucide icon buttons (`--muted-foreground`, hover `--secondary`, active sort/filter `--accent`, `--ring` focus, 44px on coarse pointers). The filter menu reuses the same surface with 12px text and `--secondary` for the checked value. No new design values.
+Table header Sort/Filter tools (SN-355) appear inside the hovered header cell as a `--popover` / `--border` / `--radius-sm` / `--shadow-popover` pill of two `--table-ribbon-button-size` lucide icon buttons (`--muted-foreground`, hover `--secondary`, active sort/filter `--accent`, `--ring` focus, 44px on coarse pointers). The filter menu reuses the same surface with 12px text and `--secondary` for the checked value. No new design values.
 
 ## Job Inbox App mobile-first ribbon (SN-309)
 

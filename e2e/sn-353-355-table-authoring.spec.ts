@@ -55,9 +55,13 @@ test("SN-353/354/355: keyboard table growth, axis delete, header sort and filter
     await expect(grown.locator("tr")).toHaveCount(1);
     await expect(grown.locator("tr").first().locator("th")).toHaveCount(2);
     await page.keyboard.type("H1");
-    await grown.locator("th").nth(1).click();
+    await grown.locator("th").nth(1).locator("p").click();
     await page.keyboard.type("H2");
+    await expect(grown.locator("th").nth(1)).toHaveText("H2");
+    expect(await page.evaluate(() => window.getSelection()?.anchorNode?.parentElement?.closest("th")?.cellIndex)).toBe(1);
+    expect(await page.evaluate(() => window.getSelection()?.isCollapsed)).toBe(true);
     await page.keyboard.press("Tab");
+    await expect(grown.locator("tr")).toHaveCount(1);
     await expect(grown.locator("tr").first().locator("th")).toHaveCount(3);
     await page.keyboard.type("H3");
     await page.keyboard.press("Enter");
@@ -77,6 +81,12 @@ test("SN-353/354/355: keyboard table growth, axis delete, header sort and filter
     await expect(sort).toHaveCount(0);
     await data.locator("th").first().hover();
     await expect(sort).toBeVisible();
+    const insideHeader = await sort.evaluate((button, cell) => {
+      const icon = button.getBoundingClientRect();
+      const header = (cell as HTMLElement).getBoundingClientRect();
+      return icon.left >= header.left && icon.right <= header.right && icon.top >= header.top && icon.bottom <= header.bottom;
+    }, await data.locator("th").first().elementHandle());
+    expect(insideHeader).toBe(true);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, "sn355-header-hover.png") });
     await sort.click();
     const firstColumn = () => data.locator("tr td:first-child").allTextContents();

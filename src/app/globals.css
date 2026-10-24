@@ -939,12 +939,13 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 }
 .editor-content .selectedCell { position: relative; }
 
-/* SN-355: header tools are a portal, so they never enter saved table HTML. */
+/* SN-355: tools occupy the hovered header's right edge without changing editable DOM. */
+.editor-content th:hover {
+  padding-right: calc(2 * var(--table-ribbon-button-size) + 0.75em);
+}
 .table-header-tools {
   position: fixed;
   z-index: 40;
-  /* Sit just above the header cell's right edge so narrow headers keep their text visible. */
-  transform: translate(-100%, -100%);
   color: var(--foreground);
   font-family: var(--font-sans);
 }
@@ -971,10 +972,8 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 .table-header-tools button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .table-header-tools__buttons svg { width: var(--table-ribbon-icon-size); height: var(--table-ribbon-icon-size); }
 .table-header-tools__menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 2px;
+  position: fixed;
+  z-index: 41;
   display: grid;
   width: max-content;
   min-width: 8rem;

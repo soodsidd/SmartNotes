@@ -7,9 +7,6 @@ import { TableMap } from "@tiptap/pm/tables";
 import { ArrowDownUp, ListFilter } from "lucide-react";
 import { filterHeaderColumnCommand, sortHeaderColumnCommand, tableColumnValues } from "@/lib/table-ribbon";
 
-/** Desktop toolbar height: 28px button + 2px padding x2 + 1px border x2. */
-const TOOLS_HEIGHT_PX = 34;
-
 interface HeaderAnchor {
   cell: HTMLTableCellElement;
   tablePos: number;
@@ -17,11 +14,13 @@ interface HeaderAnchor {
   rect: DOMRect;
 }
 
-/** Pointer affordances for the first header row. The portal stays outside editable table markup. */
+/** Keep controls visually inside the header without mutating ProseMirror's cell DOM. */
 export function TableHeaderTools({ editor }: { editor: Editor | null }) {
   const [anchor, setAnchor] = React.useState<HeaderAnchor | null>(null);
   const [filterOpen, setFilterOpen] = React.useState(false);
   const toolsRef = React.useRef<HTMLDivElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const filterButtonRef = React.useRef<HTMLButtonElement>(null);
   const hideTimer = React.useRef<number | null>(null);
 
   const cancelHide = React.useCallback(() => {
@@ -53,7 +52,7 @@ export function TableHeaderTools({ editor }: { editor: Editor | null }) {
       }
       if (tablePos < 0) return;
       const table = editor.state.doc.nodeAt(tablePos);
-      if (!table || table.childCount < 2) return;
+      if (!table) return;
       const map = TableMap.get(table);
       if (new Set(map.map).size !== map.width * map.height) return;
       cancelHide();
@@ -78,7 +77,7 @@ export function TableHeaderTools({ editor }: { editor: Editor | null }) {
       setAnchor((current) => current ? { ...current, rect: current.cell.getBoundingClientRect() } : null);
     };
     const outside = (event: PointerEvent) => {
-      if (toolsRef.current?.contains(event.target as Node) || anchor.cell.contains(event.target as Node)) return;
+      if (toolsRef.current?.contains(event.target as Node) || menuRef.current?.contains(event.target as Node) || anchor.cell.contains(event.target as Node)) return;
       setFilterOpen(false);
       setAnchor(null);
     };
@@ -97,10 +96,13 @@ export function TableHeaderTools({ editor }: { editor: Editor | null }) {
   if (!table || table.type.name !== "table") return null;
   const values = tableColumnValues(table, anchor.column);
   const currentValue = (table.attrs.columnFilters as Record<string, string> ?? {})[anchor.column];
-  const label = anchor.cell.textContent?.trim() || `Column ${anchor.column + 1}`;
-  const left = Math.max(0, Math.min(anchor.rect.right, window.innerWidth));
-  // Tools render above the header (translateY(-100%)); keep them on-screen near the viewport top.
-  const top = Math.max(TOOLS_HEIGHT_PX, anchor.rect.top);
+  const label = anchor.cell.querySelector("p")?.textContent?.trim() || `Column ${anchor.column + 1}`;
+  const filterRect = filterButtonRef.current?.getBoundingClientRect();
+  const coarse = window.matchMedia("(pointer: coarse)").matches;
+  const toolWidth = coarse ? 94 : 62;
+  const toolHeight = coarse ? 50 : 34;
+  const left = Math.max(anchor.rect.left, anchor.rect.right - toolWidth - 2);
+  const top = anchor.rect.top + Math.max(0, (anchor.rect.height - toolHeight) / 2);
   const run = (command: ReturnType<typeof sortHeaderColumnCommand>) => {
     command(editor.state, editor.view.dispatch);
     setAnchor(null);
@@ -112,21 +114,23 @@ export function TableHeaderTools({ editor }: { editor: Editor | null }) {
     setFilterOpen(false);
   };
 
-  return createPortal(
+  return <>{createPortal(
     <div ref={toolsRef} className="table-header-tools" style={{ left, top }} onPointerEnter={cancelHide} onPointerLeave={hideSoon} onPointerDown={(event) => event.preventDefault()}>
       <div className="table-header-tools__buttons">
         <button type="button" aria-label={`Sort ${label} column`} title={`Sort ${label} column`} data-testid="table-header-sort" data-active={table.attrs.sortColumn === anchor.column || undefined} onClick={() => run(sortHeaderColumnCommand(anchor.tablePos, anchor.column))}>
           <ArrowDownUp aria-hidden="true" />
         </button>
-        <button type="button" aria-label={`Filter ${label} column`} title={`Filter ${label} column`} data-testid="table-header-filter" data-active={currentValue !== undefined || undefined} aria-expanded={filterOpen} onClick={() => setFilterOpen((open) => !open)}>
+        <button ref={filterButtonRef} type="button" aria-label={`Filter ${label} column`} title={`Filter ${label} column`} data-testid="table-header-filter" data-active={currentValue !== undefined || undefined} aria-expanded={filterOpen} onClick={() => setFilterOpen((open) => !open)}>
           <ListFilter aria-hidden="true" />
         </button>
       </div>
-      {filterOpen ? <div className="table-header-tools__menu" role="menu" aria-label={`Filter ${label} column`} data-testid="table-header-filter-menu">
-        <button type="button" role="menuitemradio" aria-checked={currentValue === undefined} onClick={() => filter(null)}>All rows</button>
-        {values.map((value, index) => <button key={value} type="button" role="menuitemradio" aria-checked={currentValue === value} data-testid={`table-filter-option-${index}`} onClick={() => filter(value)}>{value || "(Blank)"}</button>)}
-      </div> : null}
     </div>,
     document.body,
-  );
+  )}{filterOpen && filterRect ? createPortal(
+      <div ref={menuRef} className="table-header-tools__menu" style={{ top: filterRect.bottom + 2, left: Math.max(0, Math.min(filterRect.left, window.innerWidth - 128)) }} role="menu" aria-label={`Filter ${label} column`} data-testid="table-header-filter-menu" onPointerDown={(event) => event.preventDefault()}>
+        <button type="button" role="menuitemradio" aria-checked={currentValue === undefined} onClick={() => filter(null)}>All rows</button>
+        {values.map((value, index) => <button key={value} type="button" role="menuitemradio" aria-checked={currentValue === value} data-testid={`table-filter-option-${index}`} onClick={() => filter(value)}>{value || "(Blank)"}</button>)}
+      </div>,
+      document.body,
+    ) : null}</>;
 }
