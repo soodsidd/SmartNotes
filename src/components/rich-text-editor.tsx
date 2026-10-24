@@ -97,6 +97,8 @@ import { pruneEmptyFloatingTextBoxes, selectionInFloatingTextBox } from "@/lib/f
 import { cn } from "@/lib/utils";
 import { MAX_INSERT_TABLE_DIMENSION, tableCellCount, tableDimension } from "@/lib/table-insert";
 import { TableRibbon } from "@/components/table-ribbon";
+import { TableHeaderTools } from "@/components/table-header-tools";
+import { TableResizeControls } from "@/components/table-resize-controls";
 import { buildTableContextMenuGroups, focusClickedTableCell, tableMenuStateFor } from "@/lib/table-context-menu";
 import { resolvePdfAttachmentTarget, type PdfAttachmentTarget } from "@/lib/pdf-attachment";
 import type { PageContentExport } from "@/lib/page-export";
@@ -2293,6 +2295,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         </div>
         ) : null}
         {!readOnly && !hideFormatToolbar && annotationMode !== "draw" ? <TableRibbon editor={editor} mobile /> : null}
+        {!readOnly && annotationMode !== "draw" ? <TableHeaderTools editor={editor} /> : null}
+        {!readOnly && annotationMode !== "draw" ? <TableResizeControls editor={editor} /> : null}
 
         {!readOnly && !hideFormatToolbar && annotationMode === "draw" ? (
           <div
@@ -2503,56 +2507,108 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
         {/* BubbleMenu — selection toolbar */}
         {!readOnly && !isDrawMode && editor && !composerPending && !contextMenu && (
-          <BubbleMenu editor={editor} updateDelay={100} className="bubble-menu md:hidden">
+          <BubbleMenu
+            editor={editor}
+            updateDelay={100}
+            className="bubble-menu"
+            shouldShow={({ editor: ed }) =>
+              ed.isEditable && ed.state.selection instanceof TextSelection &&
+              !ed.state.selection.empty &&
+              Boolean(ed.state.doc.textBetween(ed.state.selection.from, ed.state.selection.to, "").trim())
+            }
+          >
             <div className="bubble-toolbar" data-testid="bubble-menu">
+              <select
+                aria-label="Selection font family"
+                data-testid="bubble-font-family"
+                className="bubble-font-select"
+                value={editor.getAttributes("textStyle").fontFamily ?? ""}
+                onChange={(event) => {
+                  const family = event.target.value;
+                  if (family) editor.chain().focus().setFontFamily(family).run();
+                  else editor.chain().focus().unsetFontFamily().run();
+                }}
+              >
+                <option value="">Default font</option>
+                {FONT_FAMILIES.map((font) => (
+                  <option key={font.value} value={font.value}>{font.label}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Selection font size"
+                data-testid="bubble-font-size"
+                className="bubble-font-select"
+                value={editor.getAttributes("textStyle").fontSize ?? ""}
+                onChange={(event) => {
+                  const size = event.target.value;
+                  if (size) editor.chain().focus().setFontSize(size).run();
+                  else editor.chain().focus().unsetFontSize().run();
+                }}
+              >
+                <option value="">Size</option>
+                {FONT_SIZES.map((size) => (
+                  <option key={size.value} value={size.value}>{size.label}</option>
+                ))}
+              </select>
+              <div className="bubble-sep" />
               <BubbleBtn active={false} label="Ask Companion..." testId="bubble-ask-companion" onClick={() => {
                 const rect = editor.view.coordsAtPos(editor.state.selection.from);
-                invokeInlineAi({ context: captureInlineAi(editor.view.dom, editor.view.dom, "text"), x: rect.left, y: rect.bottom });
+                const { from, to } = editor.state.selection;
+                const context = captureInlineAi(editor.view.dom, editor.view.dom, "text");
+                context.target = "Selection";
+                context.text = editor.state.doc.textBetween(from, to, "").trim().slice(0, 16000);
+                invokeInlineAi({ context, x: rect.left, y: rect.bottom });
               }} />
+              <BubbleBtn
+                onClick={() => editor.chain().focus().toggleHighlight().run()}
+                active={editor.isActive("highlight")}
+                label="Highlight"
+                testId="bubble-highlight"
+              />
               <BubbleBtn
                 onClick={() => editor.chain().focus().toggleBold().run()}
                 active={editor.isActive("bold")}
                 label="B"
+                className="bubble-mobile-only"
                 style={{ fontWeight: 700 }}
               />
               <BubbleBtn
                 onClick={() => editor.chain().focus().toggleItalic().run()}
                 active={editor.isActive("italic")}
                 label="I"
+                className="bubble-mobile-only"
                 style={{ fontStyle: "italic" }}
               />
-              <div className="bubble-sep" />
+              <div className="bubble-sep bubble-mobile-only" />
               <BubbleBtn
                 onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
                 active={editor.isActive("heading", { level: 1 })}
                 label="H1"
+                className="bubble-mobile-only"
               />
               <BubbleBtn
                 onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
                 active={editor.isActive("heading", { level: 2 })}
                 label="H2"
+                className="bubble-mobile-only"
               />
-              <div className="bubble-sep" />
+              <div className="bubble-sep bubble-mobile-only" />
               <BubbleBtn
                 onClick={() => editor.chain().focus().toggleCode().run()}
                 active={editor.isActive("code")}
                 label="<>"
+                className="bubble-mobile-only"
                 style={{ fontFamily: "monospace" }}
               />
-              <BubbleBtn
-                onClick={() => editor.chain().focus().toggleHighlight().run()}
-                active={editor.isActive("highlight")}
-                label="HL"
-              />
-              <BubbleBtn onClick={openLinkDialog} active={editor.isActive("link")} label="Link" />
-              <div className="bubble-sep md:hidden" />
+              <BubbleBtn onClick={openLinkDialog} active={editor.isActive("link")} label="Link" className="bubble-mobile-only" />
+              <div className="bubble-sep bubble-mobile-only" />
               <BubbleBtn
                 onClick={() => {
                   void copySelectedText();
                 }}
                 active={false}
                 label="Copy"
-                className="md:hidden"
+                className="bubble-mobile-only"
                 disabled={!bubbleSelectionText}
                 testId="bubble-copy-mobile"
               />
@@ -2560,7 +2616,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                 onClick={openComposerFromShortcut}
                 active={false}
                 label="Comment"
-                className="md:hidden"
+                className="bubble-mobile-only"
                 disabled={!bubbleSelectionText}
                 testId="bubble-comment-mobile"
               />
@@ -2568,7 +2624,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                 onClick={() => { void pasteFromClipboard(); }}
                 active={false}
                 label="Paste"
-                className="md:hidden"
+                className="bubble-mobile-only"
                 disabled={!canPasteFromClipboard}
                 testId="bubble-paste-mobile"
               />
@@ -2576,7 +2632,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                 onClick={selectAllText}
                 active={false}
                 label="Select all"
-                className="md:hidden"
+                className="bubble-mobile-only"
                 testId="bubble-select-all-mobile"
               />
             </div>

@@ -318,6 +318,8 @@ export function buildAiTurnRequest(params: {
   model?: string;
   images?: AiTurnImageAttachment[];
   documents?: AiTurnPdfAttachment[];
+  /** SN-356: owner ticked Companion's "Computer" checkbox for this turn. */
+  computerAccess?: boolean;
 }) {
   const payload: {
     turn_id?: string;
@@ -331,10 +333,14 @@ export function buildAiTurnRequest(params: {
     model?: string;
     images?: AiTurnImageAttachment[];
     documents?: AiTurnPdfAttachment[];
+    computer_access: boolean;
   } = {
     message: params.message,
     history: params.history,
     page_context: params.pageContext,
+    // SN-356: always explicit on the wire (false unless the owner armed this
+    // turn) so every send states its grant; the server arms only on literal true.
+    computer_access: params.computerAccess === true,
   };
 
   const turnId = params.turnId?.trim();

@@ -1,0 +1,10 @@
+=== Turn 1-off (computer_access sent: false; recorded: false; 5s; completed)
+Computer access is off, so I can't inspect running processes or memory usage on your PC. Tick the "Computer" checkbox in the composer (or header row on mobile) to arm it for the next turn, then ask me again.
+
+=== Turn 2-on (computer_access sent: true; recorded: true; 8s; completed)
+tool events: 1
+292 running processes. Top memory user: **node** (~2.85 GB working set).
+
+=== Turn 3-off-again (computer_access sent: false; recorded: false; 5s; completed)
+Computer access is off, so I can't inspect running processes or memory usage on your PC — that requires desktop/shell access. Tick the "Computer" checkbox in the Companion composer (or header row on mobile) to enable it for the next turn, then ask again.
+

@@ -37,7 +37,7 @@ describe("shell chrome touch + a11y (SN-289)", () => {
     expect(shellSrc).toContain('data-testid="save-status"');
   });
 
-  it("moves infrequent create/export/reload/settings actions behind More", () => {
+  it("keeps secondary actions in More and exposes desktop primary actions", () => {
     const moreBlock = shellSrc.slice(
       shellSrc.indexOf('data-testid="shell-more-menu"'),
       shellSrc.indexOf("export const Sidebar")
@@ -47,6 +47,14 @@ describe("shell chrome touch + a11y (SN-289)", () => {
     expect(moreBlock).toContain('data-testid="reload-btn"');
     expect(moreBlock).toContain('data-testid="app-settings-trigger"');
     expect(moreBlock).toContain('data-testid="create-spreadsheet-menu-item"');
+    const desktopActions = shellSrc.slice(shellSrc.indexOf('data-testid="desktop-primary-actions"'), shellSrc.indexOf("<DropdownMenu>"));
+    for (const label of ["New notebook", "Open workspace…", "Export page as HTML", "Print page", "Settings"]) {
+      expect(desktopActions).toContain(`aria-label="${label}"`);
+    }
+    expect(desktopActions).toContain("aria-label={reloadLabel}");
+    expect(shellSrc).toContain('className="hidden items-center gap-1 xl:flex" data-testid="desktop-primary-actions"');
+    expect(shellSrc.indexOf('data-testid="desktop-primary-actions"')).toBeLessThan(shellSrc.indexOf("</header>"));
+    expect(shellSrc.slice(shellSrc.indexOf("</header>"), shellSrc.indexOf("export const Sidebar"))).not.toContain("desktop-primary-actions");
     // Primary row no longer hosts a dedicated settings gear or plus trigger.
     expect(shellSrc).not.toContain("AppSettingsTrigger");
     expect(shellSrc).not.toContain('data-testid="add-menu-trigger"');

@@ -108,6 +108,92 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
   return { ...render(<Sidebar {...props} />), props };
 }
 
+describe("SN-352 sidebar context menus", () => {
+  it("opens app actions on blank rail space and suppresses the browser menu", () => {
+    const { props } = renderSidebar({ sidebarLayout: "rail" });
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    fireEvent(screen.getByTestId("tree"), event);
+    expect(event.defaultPrevented).toBe(true);
+    const menu = screen.getByTestId("sidebar-blank-context-menu");
+    expect(menu).toHaveAttribute("data-pane", "rail");
+    expect(within(menu).queryByRole("menuitem", { name: "New page" })).not.toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "New notebook" }));
+    expect(props.onCreateNotebook).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("sidebar-blank-context-menu")).not.toBeInTheDocument();
+  });
+
+  it("routes blank rail New section to the active notebook", () => {
+    const { props } = renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work" });
+    fireEvent.contextMenu(screen.getByTestId("tree"));
+    const menu = screen.getByTestId("sidebar-blank-context-menu");
+    fireEvent.click(within(menu).getByTestId("blank-menu-new-section"));
+    expect(props.onCreateSection).toHaveBeenCalledWith("Work", expect.any(String));
+  });
+
+  it("keeps the native menu for inline text inputs", () => {
+    renderSidebar({ sidebarLayout: "rail" });
+    const input = document.createElement("input");
+    screen.getByTestId("tree").appendChild(input);
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    fireEvent(input, event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.queryByTestId("sidebar-blank-context-menu")).not.toBeInTheDocument();
+  });
+
+  it("targets the selected scope on blank page-pane space and dismisses with Escape", () => {
+    const { props } = renderSidebar({ sidebarLayout: "page-tree", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
+    fireEvent.contextMenu(screen.getByTestId("tree"));
+    const menu = screen.getByTestId("sidebar-blank-context-menu");
+    expect(menu).toHaveAttribute("data-pane", "page-tree");
+    expect(within(menu).queryByRole("menuitem", { name: /New section|New notebook/ })).not.toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "New page" }));
+    expect(props.onCreatePage).toHaveBeenCalledWith(expect.objectContaining({ notebookPath: "Work", sectionPath: "Work/Research" }));
+    fireEvent.contextMenu(screen.getByTestId("tree"));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("sidebar-blank-context-menu")).not.toBeInTheDocument();
+  });
+
+  it("opens notebook actions on right-click and targets New section without selecting", () => {
+    const { props } = renderSidebar({ sidebarLayout: "rail", expandedNotebooks: new Set(["Work"]) });
+    const row = screen.getByTestId("notebook-rail-row-Work");
+    fireEvent.contextMenu(within(row).getByRole("button", { name: "Work" }), { clientX: 90, clientY: 80 });
+    const menu = screen.getByTestId("sidebar-context-menu-Work");
+    expect(screen.queryByTestId("sidebar-blank-context-menu")).not.toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "New section" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "New page" })).toBeVisible();
+    expect(props.onSelectNotebook).not.toHaveBeenCalled();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "New section" }));
+    expect(props.onCreateSection).toHaveBeenCalledWith("Work", "Work");
+    expect(screen.queryByTestId("sidebar-context-menu-Work")).not.toBeInTheDocument();
+  });
+
+  it("targets section pages, dismisses on Escape, and preserves normal click selection", () => {
+    const { props } = renderSidebar({ sidebarLayout: "rail", expandedNotebooks: new Set(["Work"]) });
+    const row = screen.getByTestId("rail-section-row-Work/Research");
+    fireEvent.contextMenu(row, { clientX: 90, clientY: 80 });
+    const menu = screen.getByTestId("sidebar-context-menu-Work/Research");
+    expect(within(menu).queryByRole("menuitem", { name: "New section" })).not.toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "New page" }));
+    expect(props.onCreatePage).toHaveBeenCalledWith(expect.objectContaining({ notebookPath: "Work", sectionPath: "Work/Research" }));
+    fireEvent.contextMenu(row);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("sidebar-context-menu-Work/Research")).not.toBeInTheDocument();
+    fireEvent.click(row);
+    expect(props.onSelectSection).toHaveBeenCalledWith("Work/Research");
+  });
+
+  it("uses the app menu for a page and dismisses it on Escape", () => {
+    renderSidebar({ sidebarLayout: "page-tree", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
+    const row = screen.getByTestId("page-Work/Research/Parent");
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    fireEvent(row, event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.getByTestId("page-context-menu-Work/Research/Parent")).toBeVisible();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("page-context-menu-Work/Research/Parent")).not.toBeInTheDocument();
+  });
+});
+
 describe("SN-324 dual-pane navigation", () => {
   it("shows token-colored section tabs and a surface highlight on the selected section", () => {
     renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });

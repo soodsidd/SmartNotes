@@ -1014,6 +1014,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
   const [aiScope, setAiScope] = React.useState<AiScope>("whole");
   const [keepConversation, setKeepConversation] = React.useState(false);
+  // SN-356: Companion threads whose owner ticked "Computer" access. In-memory
+  // only (never persisted) so every reload / new session starts disarmed.
+  const [computerAccessThreads, setComputerAccessThreads] = React.useState<ReadonlySet<string>>(() => new Set());
+  const computerAccessThreadsRef = React.useRef<ReadonlySet<string>>(computerAccessThreads);
+  computerAccessThreadsRef.current = computerAccessThreads;
   const [aiSectionContext, setAiSectionContext] = React.useState<EditorSectionContext | null>(null);
   const [aiProviders, setAiProviders] = React.useState<Array<{ id: string; name: string; models?: string[]; modelLabels?: Record<string, string> }>>([]);
   const [aiActiveProviderId, setAiActiveProviderId] = React.useState("");
@@ -1733,6 +1738,17 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // thread after the new page/scope transcript is already displayed.
   companionStorePathRef.current = companionStorePath;
   companionScopeKeyRef.current = companionScopeKey;
+  const companionComputerAccess = companionThreadKey ? computerAccessThreads.has(companionThreadKey) : false;
+  const handleComputerAccessChange = React.useCallback((enabled: boolean) => {
+    if (!companionThreadKey) return;
+    setComputerAccessThreads((previous) => {
+      if (previous.has(companionThreadKey) === enabled) return previous;
+      const next = new Set(previous);
+      if (enabled) next.add(companionThreadKey);
+      else next.delete(companionThreadKey);
+      return next;
+    });
+  }, [companionThreadKey]);
 
   React.useEffect(() => {
     keepConversationRef.current = keepConversation;
@@ -5921,6 +5937,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           browserOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
           providerId: aiActiveProviderId,
           model: aiActiveModel,
+          // SN-356: read at send time so a mid-session toggle arms/disarms
+          // the very next turn on this thread.
+          computerAccess: computerAccessThreadsRef.current.has(submitThreadKey),
           images: imageAttachments.map((attachment) => ({
             name: attachment.name,
             path: attachment.path,
@@ -6787,6 +6806,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     scopeOptions: aiScopeOptions,
     keepConversation,
     onKeepConversationChange: handleKeepConversationChange,
+    computerAccess: companionComputerAccess,
+    onComputerAccessChange: handleComputerAccessChange,
     activeProviderLabel: aiProviderLabel,
     activeModelLabel: aiActiveModel,
     activeEffort: aiActiveEffort,
@@ -6893,6 +6914,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             )}
             style={notebookRailCollapsed ? undefined : { width: notebookRailWidth }}
             data-testid="notebook-rail-sidebar"
+            onContextMenu={suppressSidebarChromeContextMenu}
             data-collapsed={notebookRailCollapsed ? "true" : "false"}
           >
             {notebookRailCollapsed ? (
@@ -7019,6 +7041,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
             )}
             style={treeSidebarCollapsed ? undefined : { width: treeSidebarWidth }}
             data-testid="tree-sidebar-rail"
+            onContextMenu={suppressSidebarChromeContextMenu}
             data-collapsed={treeSidebarCollapsed ? "true" : "false"}
           >
             {treeSidebarCollapsed ? (
@@ -8137,6 +8160,7 @@ function TopBar({
     isReloading || isRefreshingNote || (!canRefreshNote && !pendingReload);
 
   return (
+    <>
     <header
       className="flex h-11 shrink-0 items-center justify-between gap-1.5 border-b border-border bg-background/95 pl-1 pr-2 backdrop-blur md:h-14 md:gap-2 md:pl-2 md:pr-4 xl:h-[var(--desktop-chrome-height)] xl:pr-3"
       data-print-chrome="true"
@@ -8287,6 +8311,27 @@ function TopBar({
           ) : null}
         </Button>
 
+        <div className="hidden items-center gap-1 xl:flex" data-testid="desktop-primary-actions">
+          <Button variant="ghost" size="icon" className={SHELL_PRIMARY_ACTION_CLASS} onClick={onCreateNotebook} aria-label="New notebook" title="New notebook">
+            <Plus className="size-4" />
+          </Button>
+          {onOpenWorkspace ? <Button variant="ghost" size="icon" className={SHELL_PRIMARY_ACTION_CLASS} onClick={onOpenWorkspace} aria-label="Open workspace…" title="Open workspace…">
+            <FolderOpen className="size-4" />
+          </Button> : null}
+          <Button variant="ghost" size="icon" className={SHELL_PRIMARY_ACTION_CLASS} onClick={onExportPage} disabled={!canExportPage} aria-label="Export page as HTML" title="Export page as HTML">
+            <Download className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className={cn(SHELL_PRIMARY_ACTION_CLASS, pendingReload && "bg-accent/10 text-accent hover:bg-accent/15")} onClick={pendingReload ? onReload : onRefreshNote} disabled={reloadDisabled} aria-label={reloadLabel} title={reloadLabel}>
+            {isReloading || isRefreshingNote ? <LoaderCircle className="size-4 animate-spin" /> : <RotateCw className="size-4" />}
+          </Button>
+          <Button variant="ghost" size="icon" className={SHELL_PRIMARY_ACTION_CLASS} onClick={onPrintPage} disabled={!canExportPage} aria-label="Print page" title="Print page">
+            <Printer className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className={SHELL_PRIMARY_ACTION_CLASS} onClick={onOpenSettings} aria-label="Settings" title="Settings">
+            <Settings className="size-4" />
+          </Button>
+        </div>
+
         <DropdownMenu>
           <DropdownMenuTrigger
             className={cn(
@@ -8398,6 +8443,7 @@ function TopBar({
         </DropdownMenu>
       </div>
     </header>
+    </>
   );
 }
 
@@ -8631,6 +8677,27 @@ export const Sidebar = React.memo(function Sidebar({
   const [dragDropSide, setDragDropSide] = React.useState<"before" | "after" | null>(null);
   const [pageContextMenu, setPageContextMenu] = React.useState<PageContextMenuState | null>(null);
   const [ghostContextMenu, setGhostContextMenu] = React.useState<GhostContextMenuState | null>(null);
+  const [blankContextMenu, setBlankContextMenu] = React.useState<{ x: number; y: number } | null>(null);
+  const [sidebarContextMenu, setSidebarContextMenu] = React.useState<{
+    notebook: VaultNotebook;
+    section?: VaultSection;
+    x: number;
+    y: number;
+  } | null>(null);
+  const openSidebarContextMenu = (
+    event: React.MouseEvent<HTMLDivElement>, notebook: VaultNotebook, section?: VaultSection
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setPageContextMenu(null);
+    setGhostContextMenu(null);
+    setBlankContextMenu(null);
+    setSidebarContextMenu({
+      notebook, section,
+      x: Math.max(0, Math.min(event.clientX, window.innerWidth - 208)),
+      y: Math.max(0, Math.min(event.clientY, window.innerHeight - 200)),
+    });
+  };
   const dragStartXRef = React.useRef<number>(0);
   // Ref (not state) so onDragOver closures see the current section path synchronously
   const draggedPageSectionPathRef = React.useRef<string | null>(null);
@@ -8716,12 +8783,19 @@ export const Sidebar = React.memo(function Sidebar({
     const dismissMenus = () => {
       setPageContextMenu(null);
       setGhostContextMenu(null);
+      setBlankContextMenu(null);
+      setSidebarContextMenu(null);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismissMenus();
     };
     window.addEventListener("click", dismissMenus);
     window.addEventListener("scroll", dismissMenus, true);
+    window.addEventListener("keydown", dismissOnEscape);
     return () => {
       window.removeEventListener("click", dismissMenus);
       window.removeEventListener("scroll", dismissMenus, true);
+      window.removeEventListener("keydown", dismissOnEscape);
     };
   }, []);
 
@@ -8904,6 +8978,22 @@ export const Sidebar = React.memo(function Sidebar({
       data-testid="tree"
       data-density-variant={variant}
       data-vault-ready={isTreeLoading ? "false" : "true"}
+      onContextMenu={(event) => {
+        if (event.defaultPrevented) {
+          setBlankContextMenu(null);
+          return;
+        }
+        // Inline rename/title inputs keep the native cut/copy/paste menu.
+        if (isEditableContextTarget(event.target)) return;
+        event.preventDefault();
+        setPageContextMenu(null);
+        setGhostContextMenu(null);
+        setSidebarContextMenu(null);
+        setBlankContextMenu({
+          x: event.clientX,
+          y: event.clientY,
+        });
+      }}
     >
       {isPageTreeLayout ? (
         /* Page-tree pane header: Add Page for the scoped section/root + collapse button */
@@ -9101,7 +9191,8 @@ export const Sidebar = React.memo(function Sidebar({
             const hasSections = notebook.sections.length > 0;
             return (
               <div key={notebook.path} data-testid={`notebook-rail-row-${notebook.path}`}>
-                <div className={cn("group flex items-center rounded transition", notebookActive ? "bg-surface" : "hover:bg-surface/70")}>
+                <div className={cn("group flex items-center rounded transition", notebookActive ? "bg-surface" : "hover:bg-surface/70")}
+                  onContextMenu={(event) => openSidebarContextMenu(event, notebook)}>
                 <button
                   type="button"
                   className={cn(
@@ -9165,6 +9256,7 @@ export const Sidebar = React.memo(function Sidebar({
                       return (
                         <div
                           key={section.path}
+                          onContextMenu={(event) => openSidebarContextMenu(event, notebook, section)}
                           className={cn(
                             "group flex items-center rounded-md transition",
                             sectionActive ? "bg-surface text-foreground" : "text-foreground hover:bg-surface/70"
@@ -9258,6 +9350,7 @@ export const Sidebar = React.memo(function Sidebar({
                   compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] gap-1 px-1.5 py-0.5" : "gap-1.5 px-2 py-1",
                   notebookActive ? "bg-surface" : "hover:bg-surface"
                 )}
+                onContextMenu={(event) => openSidebarContextMenu(event, notebook)}
               >
                 <button
                   type="button"
@@ -9363,6 +9456,7 @@ export const Sidebar = React.memo(function Sidebar({
                           }}
                           onContextMenu={(event) => {
                             event.preventDefault();
+                            setSidebarContextMenu(null);
                             setGhostContextMenu(null);
                             setPageContextMenu({
                               pagePath: node.page.path,
@@ -9689,6 +9783,7 @@ export const Sidebar = React.memo(function Sidebar({
                             isSectionDropTarget && "ring-1 ring-inset ring-accent bg-accent/5"
                           )}
                           data-testid={`section-drop-${section.path}`}
+                          onContextMenu={(event) => openSidebarContextMenu(event, notebook, section)}
                           onDragOver={(e) => {
                             const source = draggedPagePath;
                             const sourceContainer = draggedPageSectionPathRef.current;
@@ -9889,6 +9984,7 @@ export const Sidebar = React.memo(function Sidebar({
                                     }}
                                     onContextMenu={(event) => {
                                       event.preventDefault();
+                                      setSidebarContextMenu(null);
                                       setGhostContextMenu(null);
                                       setPageContextMenu({
                                         pagePath: node.page.path,
@@ -10231,6 +10327,7 @@ export const Sidebar = React.memo(function Sidebar({
                                       onContextMenu={(event) => {
                                         event.preventDefault();
                                         event.stopPropagation();
+                                        setBlankContextMenu(null);
                                         setPageContextMenu(null);
                                         setGhostContextMenu({
                                           parentPagePath: node.page.path,
@@ -10295,6 +10392,167 @@ export const Sidebar = React.memo(function Sidebar({
         }
       </div>
       )}
+
+      {blankContextMenu ? (() => {
+        const itemClass = "flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
+        const run = (action: () => void) => () => { setBlankContextMenu(null); action(); };
+        const separator = <div role="separator" className="-mx-1 my-1 h-px bg-border" />;
+        return (
+        <div
+          className="fixed z-50 min-w-48 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{ top: blankContextMenu.y, left: blankContextMenu.x }}
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+          ref={fitMenuToViewport}
+          key={`${blankContextMenu.x}:${blankContextMenu.y}`}
+          role="menu"
+          aria-label={isPageTreeLayout ? "Page pane actions" : "Notebook rail actions"}
+          data-testid="sidebar-blank-context-menu"
+          data-pane={isPageTreeLayout ? "page-tree" : "rail"}
+        >
+          {isPageTreeLayout ? (
+            <>
+              <button type="button" role="menuitem" className={itemClass} disabled={!scopedCreateTarget}
+                data-testid="blank-menu-new-page"
+                onClick={run(() => { if (scopedCreateTarget) onCreatePage(scopedCreateTarget); })}>
+                New page
+              </button>
+              <button type="button" role="menuitem" className={itemClass} disabled={!scopedCreateTarget}
+                data-testid="blank-menu-new-jupyter"
+                onClick={run(() => { if (scopedCreateTarget) onCreateJupyterNotebook(scopedCreateTarget); })}>
+                New Jupyter notebook
+              </button>
+              <button type="button" role="menuitem" className={itemClass} disabled={!scopedCreateTarget}
+                data-testid="blank-menu-new-log"
+                onClick={run(() => { if (scopedCreateTarget) onCreateLogPage(scopedCreateTarget); })}>
+                New log
+              </button>
+              <button type="button" role="menuitem" className={itemClass} disabled={!scopedCreateTarget}
+                data-testid="blank-menu-new-spreadsheet"
+                onClick={run(() => { if (scopedCreateTarget) onCreateSpreadsheetPage(scopedCreateTarget); })}>
+                New spreadsheet
+              </button>
+              {scopedSection ? (
+                <>
+                  {separator}
+                  <button type="button" role="menuitem" className={itemClass}
+                    data-testid="blank-menu-import-docx"
+                    onClick={run(() => onImportDocx(scopedSection.path))}>
+                    Import DOCX
+                  </button>
+                  <button type="button" role="menuitem" className={itemClass}
+                    data-testid="blank-menu-import-package"
+                    onClick={run(() => onImportPagePackage(scopedSection.path))}>
+                    Import page package
+                  </button>
+                </>
+              ) : null}
+              {onCollapseTree ? (
+                <>
+                  {separator}
+                  <button type="button" role="menuitem" className={itemClass}
+                    data-testid="blank-menu-collapse-pages"
+                    onClick={run(onCollapseTree)}>
+                    Collapse page pane
+                  </button>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <button type="button" role="menuitem" className={itemClass} disabled={!activeNotebook}
+                data-testid="blank-menu-new-section"
+                onClick={run(() => { if (activeNotebook) onCreateSection(activeNotebook.path, activeNotebook.name); })}>
+                {activeNotebook ? `New section in ${activeNotebook.name}` : "New section"}
+              </button>
+              <button type="button" role="menuitem" className={itemClass}
+                data-testid="blank-menu-new-notebook"
+                onClick={run(onCreateNotebook)}>
+                New notebook
+              </button>
+              {separator}
+              <button type="button" role="menuitem" className={itemClass}
+                data-testid="blank-menu-open-notebook"
+                onClick={run(() => setPickerOpen(true))}>
+                Open notebook…
+              </button>
+              {onOpenWorkspace ? (
+                <button type="button" role="menuitem" className={itemClass}
+                  data-testid="blank-menu-open-workspace"
+                  onClick={run(onOpenWorkspace)}>
+                  Open workspace…
+                </button>
+              ) : null}
+              {onCollapseRail ? (
+                <>
+                  {separator}
+                  <button type="button" role="menuitem" className={itemClass}
+                    data-testid="blank-menu-collapse-rail"
+                    onClick={run(onCollapseRail)}>
+                    Collapse notebook rail
+                  </button>
+                </>
+              ) : null}
+            </>
+          )}
+        </div>
+        );
+      })() : null}
+
+      {sidebarContextMenu ? (
+        <div
+          className="fixed z-50 min-w-48 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{ top: sidebarContextMenu.y, left: sidebarContextMenu.x }}
+          onClick={(event) => event.stopPropagation()}
+          role="menu"
+          aria-label={`${sidebarContextMenu.section ? "Section" : "Notebook"} actions`}
+          data-testid={`sidebar-context-menu-${sidebarContextMenu.section?.path ?? sidebarContextMenu.notebook.path}`}
+        >
+          {!sidebarContextMenu.section ? (
+            <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                setSidebarContextMenu(null);
+                onCreateSection(sidebarContextMenu.notebook.path, sidebarContextMenu.notebook.name);
+              }}>
+              New section
+            </button>
+          ) : null}
+          <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              setSidebarContextMenu(null);
+              onCreatePage(sidebarContextMenu.section
+                ? sectionTarget(sidebarContextMenu.notebook, sidebarContextMenu.section)
+                : notebookRootTarget(sidebarContextMenu.notebook));
+            }}>
+            New page
+          </button>
+          <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              setSidebarContextMenu(null);
+              if (sidebarContextMenu.section) onRenameSection(sidebarContextMenu.section.path, sidebarContextMenu.section.name, sidebarContextMenu.notebook.path);
+              else onRenameNotebook(sidebarContextMenu.notebook.path, sidebarContextMenu.notebook.name, sidebarContextMenu.notebook.isPortable);
+            }}>
+            {sidebarContextMenu.section ? "Rename section" : "Rename notebook"}
+          </button>
+          {!sidebarContextMenu.section ? (
+            <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                setSidebarContextMenu(null);
+                onCloseNotebook(sidebarContextMenu.notebook.path);
+              }}>
+              Close notebook
+            </button>
+          ) : null}
+          <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              setSidebarContextMenu(null);
+              if (sidebarContextMenu.section) onDeleteSection(sidebarContextMenu.section.path, sidebarContextMenu.section.name);
+              else onDeleteNotebook(sidebarContextMenu.notebook.path, sidebarContextMenu.notebook.name, sidebarContextMenu.notebook.isPortable);
+            }}>
+            {sidebarContextMenu.section ? "Delete section" : sidebarContextMenu.notebook.isPortable ? "Remove notebook" : "Delete notebook"}
+          </button>
+        </div>
+      ) : null}
 
       {pageContextMenu ? (
         <div
@@ -10915,6 +11173,28 @@ function apiDocumentToVaultPage(page: ApiPageDocument): VaultPage {
     designLinked: page.designLinked,
     sourceMissing: page.sourceMissing,
   };
+}
+
+// SN-352: the browser context menu must never win inside the sidebars. The tree
+// opens its own pane-specific menus; any chrome outside it (collapsed strip,
+// resize handle) just suppresses the native menu. Editable fields are exempt.
+function isEditableContextTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest("input, textarea, [contenteditable='true'], [contenteditable='']"));
+}
+
+// Keep a pointer-anchored fixed menu fully on screen (flip/clamp after measuring).
+function fitMenuToViewport(node: HTMLElement | null) {
+  if (!node) return;
+  const margin = 8;
+  const rect = node.getBoundingClientRect();
+  if (rect.bottom > window.innerHeight - margin) node.style.top = `${Math.max(margin, window.innerHeight - rect.height - margin)}px`;
+  if (rect.right > window.innerWidth - margin) node.style.left = `${Math.max(margin, window.innerWidth - rect.width - margin)}px`;
+}
+
+function suppressSidebarChromeContextMenu(event: React.MouseEvent) {
+  if (event.defaultPrevented || isEditableContextTarget(event.target)) return;
+  event.preventDefault();
 }
 
 function appendPageToTree(

@@ -247,8 +247,8 @@
     {
       "id": "e2e-sn-245-drag-selection",
       "name": "SN-245 rich-text drag selection and mode recovery",
-      "description": "Playwright desktop: paragraph and table-cell drag selection, clipboard copy, and draw/pan selection recovery.",
-      "intent": "Keeps the selection toolbar from covering nearby editable text and verifies selection stays within table content after draw and pan gestures.",
+      "description": "Playwright desktop: paragraph and table-cell drag selection, selection chrome Highlight/Ask, clipboard copy, and draw/pan selection recovery.",
+      "intent": "Verifies the selection toolbar appears above selected text, captures that text for Ask, applies Highlight, and preserves selection after draw and pan gestures.",
       "whenToRun": "Pre-merge when changing rich-text selection, selection toolbar placement, table interaction, draw mode, or workspace panning.",
       "failureMeaning": "Dragging over text may hit an overlay, copy the wrong content, or remain disabled after drawing or panning (e.g. Draw exit gated on the annotation save).",
       "appType": "browser",

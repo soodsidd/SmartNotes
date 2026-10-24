@@ -46,6 +46,22 @@ inline AI popover values (`.5rem`, `.75rem`, `1rem`, `.75rem` labels and
 `.8125rem` body); controls use the existing 44px phone touch target. No new
 design values were introduced.
 
+## Text selection chrome (SN-349)
+
+The text-page selection toolbar uses the existing `.bubble-toolbar` surface and
+`.bubble-btn` controls on desktop and mobile. Highlight and Ask Companion use
+the documented `--surface`, `--border`, `--foreground`, `--accent`, and
+`--font-sans` tokens; no new color, spacing, or typography values were added.
+
+## Selection font controls (SN-350)
+
+The selection toolbar's family and size selectors reuse the existing font
+choices and the toolbar's 26px desktop height and 44px touch height. They use
+`--surface`, `--border`, `--foreground`, `--ring`, `--radius-sm`, and
+`--font-sans` with the existing 12px toolbar text. The desktop chrome shows
+only family, size, Ask Companion, and Highlight; mobile retains the other
+selection actions in its scrollable toolbar. No new tokens were added.
+
 ## PDF Record area and page (SN-336)
 
 The crop layer, crop rectangle, crop toolbar and Record panel image preview reuse
@@ -93,6 +109,10 @@ No new tokens.
 ## Table context menu and icon ribbon (SN-308)
 
 Ribbon controls are icon-only (lucide) with tooltips and `aria-label`s, separated by 1px `--border` dividers. New tokens: `--table-ribbon-button-size: 28px` (desktop icon button) and `--table-ribbon-icon-size: 16px`. Mobile buttons keep the 44px touch target; the mobile stats chip is a pill using `--surface`, `--border`, and `--accent` when expanded. The table context menu reuses the editor context-menu styles; Delete table uses `--destructive` text with a 10% `--destructive` hover tint, matching the comment popover's destructive button.
+
+Table header Sort/Filter tools (SN-355) appear inside the hovered header cell as a `--popover` / `--border` / `--radius-sm` / `--shadow-popover` pill of two `--table-ribbon-button-size` lucide icon buttons (`--muted-foreground`, hover `--secondary`, active sort/filter `--accent`, `--ring` focus, 44px on coarse pointers). The filter menu reuses the same surface with 12px text and `--secondary` for the checked value. No new design values.
+
+Table resize controls (SN-357) are hidden until the pointer reaches a divider or corner, and then show only that affordance: column and row dividers as a 2px `--accent` line (row hit strip 7px, revealed within 4px of a row border); corner handles as an 8px square with a 1px `--accent` border on `--background` and 2px radius, centred in a transparent 20px hit box, revealed within 10px of the corner. No popover surface or shadow. New dimensions: the 2px divider line, 7px row hit strip, and the 20px corner hit box with its 8px visible square.
 
 ## Job Inbox App mobile-first ribbon (SN-309)
 
