@@ -851,9 +851,18 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // (page, root) pair so this render falls back to the page's own notebook;
   // a transient failure deliberately leaves it alone (SN-270 boundary) so the
   // in-view Retry button retries the same bound workspace instead of giving up.
-  const boundWorkspaceRequest = draft?.noteType === "jupyter"
-    ? pageWorkspaceFromMetadata(draft.metadata)
+  // SN-348: keep the bound descriptor referentially stable across renders.
+  // The frame cache and JupyterNotebookView effects key on this object, so a
+  // fresh copy per render caused a setState/remount loop that never let Lab load.
+  const boundWorkspaceMetadataKey = draft?.noteType === "jupyter"
+    ? JSON.stringify(draft.metadata?.[JUPYTER_PAGE_WORKSPACE_KEY] ?? null)
     : null;
+  const boundWorkspaceRequest = React.useMemo(
+    () => boundWorkspaceMetadataKey === null
+      ? null
+      : pageWorkspaceFromMetadata({ [JUPYTER_PAGE_WORKSPACE_KEY]: JSON.parse(boundWorkspaceMetadataKey) ?? undefined }),
+    [boundWorkspaceMetadataKey]
+  );
   const malformedBoundWorkspace = Boolean(draft?.noteType === "jupyter" &&
     Object.prototype.hasOwnProperty.call(draft.metadata, JUPYTER_PAGE_WORKSPACE_KEY) && !boundWorkspaceRequest);
   const [pageWorkspaceFallback, setPageWorkspaceFallback] = React.useState<{
