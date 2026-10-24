@@ -247,12 +247,13 @@ describe("table modes", () => {
     expect(press("ArrowDown")).toBe(true);
     expect(selectionMatrix(editor.state)).toEqual([["apple"]]);
     expect(press("Enter")).toBe(true);
-    expect(selectionMatrix(editor.state)).toEqual([["fig"]]);
+    expect(selectionMatrix(editor.state)).toEqual([[""]]);
+    expect(columnTexts(editor, 0)).toEqual(["Name", "pear", "apple", "", "fig"]);
     expect(press("ArrowRight")).toBe(true);
     expect(selectionMatrix(editor.state)).toEqual([[""]]);
     expect(press("ArrowUp", true)).toBe(true);
     expect(press("ArrowLeft", true)).toBe(true);
-    expect(selectionMatrix(editor.state)).toEqual([["apple", "2.5"], ["fig", ""]]);
+    expect(selectionMatrix(editor.state)).toEqual([["apple", "2.5"], ["", ""]]);
     editor.destroy();
   });
 });

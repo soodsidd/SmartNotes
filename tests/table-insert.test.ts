@@ -8,6 +8,35 @@ function makeEditor(content = "<p>Main flow</p>") {
 }
 
 describe("Insert table options", () => {
+  test("shortcut inserts a minimal header table; Tab and Enter grow editable cells", () => {
+    const editor = makeEditor();
+    const press = (key: string, ctrlKey = false, altKey = false) => editor.view.someProp(
+      "handleKeyDown",
+      (handler) => handler(editor.view, new KeyboardEvent("keydown", { key, ctrlKey, altKey, bubbles: true, cancelable: true })),
+    ) ?? false;
+    editor.commands.setTextSelection(editor.state.doc.content.size);
+    expect(press("t", true, true)).toBe(true);
+    let table = editor.getJSON().content?.find((node) => node.type === "table");
+    expect(table?.content).toHaveLength(2);
+    expect(table?.content?.map((row) => row.content?.map((cell) => cell.type))).toEqual([["tableHeader"], ["tableCell"]]);
+    const bodyCell = editor.state.doc.resolve(editor.state.selection.from);
+    expect(bodyCell.parent.type.name).toBe("paragraph");
+    expect(press("Tab")).toBe(true);
+    table = editor.getJSON().content?.find((node) => node.type === "table");
+    expect(table?.content?.map((row) => row.content?.length)).toEqual([2, 2]);
+    editor.commands.insertContent("new column");
+    expect(press("Enter")).toBe(true);
+    table = editor.getJSON().content?.find((node) => node.type === "table");
+    expect(table?.content).toHaveLength(3);
+    expect(table?.content?.[0].content?.[1].content?.[0].content?.[0].text).toBe("new column");
+    editor.commands.insertContent("new row");
+    expect(editor.getHTML()).toContain("new row");
+    const second = makeEditor();
+    setEditorHtmlSilent(second, editor.getHTML());
+    expect(second.getJSON()).toEqual(editor.getJSON());
+    second.destroy();
+    editor.destroy();
+  });
   test("accepts whole dimensions and updates the live cell count", () => {
     expect(tableDimension("3")).toBe(3);
     expect(tableCellCount("3", "3")).toBe(9);

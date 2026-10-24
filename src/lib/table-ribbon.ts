@@ -11,6 +11,8 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import {
   CellSelection,
   TableMap,
+  addColumnAfter,
+  addRowAfter,
   cellAround,
   moveTableColumn,
   moveTableRow,
@@ -416,6 +418,25 @@ export function selectCellsCommand(scope: "cell" | "row" | "column" | "table") {
   };
 }
 
+/** Grow the table at the caret and move into the new cell. */
+export function growTableCommand(axis: "column" | "row") {
+  return (state: EditorState, dispatch: Dispatch): boolean => {
+    if (!state.selection.empty || state.selection instanceof CellSelection) return false;
+    const context = getTableContext(state);
+    if (!context || (axis === "column" && context.rect.right !== context.map.width)) return false;
+    const row = context.rect.top + (axis === "row" ? 1 : 0);
+    const col = context.rect.left + (axis === "column" ? 1 : 0);
+    const command = axis === "column" ? addColumnAfter : addRowAfter;
+    return command(state, dispatch && ((tr) => {
+      const table = tr.doc.nodeAt(context.tablePos);
+      if (!table) return;
+      const pos = cellPositions(table, context.tableStart, row, col);
+      tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 1))).scrollIntoView();
+      dispatch(tr);
+    }));
+  };
+}
+
 export function sortTableCommand(direction: "asc" | "desc") {
   return (state: EditorState, dispatch: Dispatch): boolean => {
     const context = getTableContext(state);
@@ -551,11 +572,12 @@ export const TableRibbonSupport = Extension.create({
       return fn(state, view.dispatch);
     };
     return {
+      Tab: () => growTableCommand("column")(this.editor.state, this.editor.view.dispatch),
       ArrowUp: grid((state, dispatch) => moveToCell(state, dispatch, "vert", -1)),
       ArrowDown: grid((state, dispatch) => moveToCell(state, dispatch, "vert", 1)),
       ArrowLeft: grid((state, dispatch) => caretAtCellEdge(state, -1) && moveToCell(state, dispatch, "horiz", -1)),
       ArrowRight: grid((state, dispatch) => caretAtCellEdge(state, 1) && moveToCell(state, dispatch, "horiz", 1)),
-      Enter: grid((state, dispatch) => moveToCell(state, dispatch, "vert", 1)),
+      Enter: () => growTableCommand("row")(this.editor.state, this.editor.view.dispatch),
       "Shift-Enter": grid((state, dispatch) => moveToCell(state, dispatch, "vert", -1)),
       "Shift-ArrowUp": grid((state, dispatch) => extendCellSelection(state, dispatch, "vert", -1)),
       "Shift-ArrowDown": grid((state, dispatch) => extendCellSelection(state, dispatch, "vert", 1)),
