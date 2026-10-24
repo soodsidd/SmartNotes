@@ -70,7 +70,8 @@
   --desktop-tree-affordance-size: 26px;
   --desktop-tree-indent-step: 10px;
   --editor-table-cell-min-width: 4em;
-  --editor-table-cell-min-height: 2.25em;
+  /* Tight empty-cell floor so rows can shrink close around text (SN-361 follow-up). */
+  --editor-table-cell-min-height: 1.25em;
   --editor-table-expanded-max-width: 1200px;
   --table-ribbon-stats-font-size: 0.6875rem;
   --table-ribbon-button-size: 28px;

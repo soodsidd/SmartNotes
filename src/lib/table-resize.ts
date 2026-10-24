@@ -91,16 +91,19 @@ export function contentColumnWidths(table: HTMLTableElement): number[] {
 /** Measure cell blocks directly so an explicit tr height cannot inflate the fit result. */
 export function contentRowHeights(table: HTMLTableElement): number[] {
   return Array.from(table.rows, (row) => {
-    return Math.ceil(Math.max(...Array.from(row.cells, (cell) => {
+    return Math.ceil(Math.max(1, ...Array.from(row.cells, (cell) => {
       const style = getComputedStyle(cell);
+      const fontSize = parseFloat(style.fontSize) || 16;
       const children = Array.from(cell.children) as HTMLElement[];
-      const blocks = children.reduce((total, child) => {
-        const childStyle = getComputedStyle(child);
-        return total + child.getBoundingClientRect().height
-          + (parseFloat(childStyle.marginTop) || 0) + (parseFloat(childStyle.marginBottom) || 0);
-      }, 0);
-      return Math.max(parseFloat(style.fontSize) * 2.25,
-        blocks + (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) + 2);
+      // Empty cells keep a one-line floor; filled cells use real block + margin height.
+      const blocks = children.length === 0
+        ? fontSize * 1.2
+        : children.reduce((total, child) => {
+            const childStyle = getComputedStyle(child);
+            return total + child.getBoundingClientRect().height
+              + (parseFloat(childStyle.marginTop) || 0) + (parseFloat(childStyle.marginBottom) || 0);
+          }, 0);
+      return blocks + (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
     })));
   });
 }
