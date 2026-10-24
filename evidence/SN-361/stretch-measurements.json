@@ -1,0 +1,14 @@
+{
+  "before": {
+    "table": 721,
+    "wrapper": 720,
+    "scroll": 1,
+    "frame": 768
+  },
+  "after": {
+    "table": 880,
+    "wrapper": 879,
+    "scroll": 1,
+    "frame": 927
+  }
+}
