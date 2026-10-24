@@ -58,7 +58,21 @@ test("SN-245: drag selects and copies paragraph and table-cell text", async ({ p
   await expect.poll(() => page.evaluate(() => getSelection()?.toString())).toBe("before selection");
   await page.keyboard.press("Control+C");
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("before selection");
-  await expect(page.getByTestId("bubble-menu")).toBeHidden();
+  const bubble = page.getByTestId("bubble-menu");
+  await expect(bubble).toBeVisible();
+  await expect(bubble.getByTestId("bubble-highlight")).toBeVisible();
+  await expect(bubble.getByTestId("bubble-ask-companion")).toBeVisible();
+  await testInfo.attach("SN-349-selection-chrome", {
+    body: await page.screenshot(), contentType: "image/png",
+  });
+  await bubble.getByTestId("bubble-ask-companion").click();
+  const ask = page.getByTestId("ask-companion-popover");
+  await expect(ask.locator(".inline-ai-target")).toHaveText("Selection");
+  await expect(ask.locator("blockquote")).toHaveText("before selection");
+  await ask.getByRole("button", { name: "Close Companion popover" }).click();
+  await dragText(page, '[data-testid="rich-text-editor"] > p:first-child', 10, 26);
+  await bubble.getByTestId("bubble-highlight").click();
+  await expect(editor.locator("mark")).toContainText("before selection");
 
   await dragText(page, '[data-testid="rich-text-editor"] table td:first-child p', 5, 14);
   await expect.poll(() => page.evaluate(() => getSelection()?.toString())).toBe("selection");

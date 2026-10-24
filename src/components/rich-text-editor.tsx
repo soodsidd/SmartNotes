@@ -2503,11 +2503,24 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
         {/* BubbleMenu — selection toolbar */}
         {!readOnly && !isDrawMode && editor && !composerPending && !contextMenu && (
-          <BubbleMenu editor={editor} updateDelay={100} className="bubble-menu md:hidden">
+          <BubbleMenu
+            editor={editor}
+            updateDelay={100}
+            className="bubble-menu"
+            shouldShow={({ editor: ed }) =>
+              ed.isEditable && ed.state.selection instanceof TextSelection &&
+              !ed.state.selection.empty &&
+              Boolean(ed.state.doc.textBetween(ed.state.selection.from, ed.state.selection.to, "").trim())
+            }
+          >
             <div className="bubble-toolbar" data-testid="bubble-menu">
               <BubbleBtn active={false} label="Ask Companion..." testId="bubble-ask-companion" onClick={() => {
                 const rect = editor.view.coordsAtPos(editor.state.selection.from);
-                invokeInlineAi({ context: captureInlineAi(editor.view.dom, editor.view.dom, "text"), x: rect.left, y: rect.bottom });
+                const { from, to } = editor.state.selection;
+                const context = captureInlineAi(editor.view.dom, editor.view.dom, "text");
+                context.target = "Selection";
+                context.text = editor.state.doc.textBetween(from, to, "").trim().slice(0, 16000);
+                invokeInlineAi({ context, x: rect.left, y: rect.bottom });
               }} />
               <BubbleBtn
                 onClick={() => editor.chain().focus().toggleBold().run()}
@@ -2542,7 +2555,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
               <BubbleBtn
                 onClick={() => editor.chain().focus().toggleHighlight().run()}
                 active={editor.isActive("highlight")}
-                label="HL"
+                label="Highlight"
+                testId="bubble-highlight"
               />
               <BubbleBtn onClick={openLinkDialog} active={editor.isActive("link")} label="Link" />
               <div className="bubble-sep md:hidden" />

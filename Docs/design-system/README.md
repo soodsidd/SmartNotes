@@ -46,6 +46,13 @@ inline AI popover values (`.5rem`, `.75rem`, `1rem`, `.75rem` labels and
 `.8125rem` body); controls use the existing 44px phone touch target. No new
 design values were introduced.
 
+## Text selection chrome (SN-349)
+
+The text-page selection toolbar uses the existing `.bubble-toolbar` surface and
+`.bubble-btn` controls on desktop and mobile. Highlight and Ask Companion use
+the documented `--surface`, `--border`, `--foreground`, `--accent`, and
+`--font-sans` tokens; no new color, spacing, or typography values were added.
+
 ## PDF Record area and page (SN-336)
 
 The crop layer, crop rectangle, crop toolbar and Record panel image preview reuse
