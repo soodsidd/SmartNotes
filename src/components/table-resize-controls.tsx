@@ -145,8 +145,9 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
     const heights = Array.from(table.rows, (row) => row.getBoundingClientRect().height);
     const minWidths = contentColumnWidths(table);
     const minHeights = contentRowHeights(table);
-    const minScale = Math.max(0.1,
-      ...widths.map((width, index) => (minWidths[index] ?? TABLE_MIN_COLUMN_WIDTH) / width),
+    const minWidthScale = Math.max(0.1,
+      ...widths.map((width, index) => (minWidths[index] ?? TABLE_MIN_COLUMN_WIDTH) / width));
+    const minHeightScale = Math.max(0.1,
       ...heights.map((height, index) => (minHeights[index] ?? 1) / height));
     const xSign = corner.endsWith("e") ? 1 : -1;
     const ySign = corner.startsWith("s") ? 1 : -1;
@@ -155,8 +156,11 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
       const dx = xSign * (pointer.clientX - startX) / Math.max(rect.width, 1);
       const dy = ySign * (pointer.clientY - startY) / Math.max(rect.height, 1);
       const delta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
-      const scale = Math.max(minScale, Math.min(5, 1 + delta));
-      setTableSizes(editor, tablePos, widths.map((width) => width * scale), heights.map((height) => height * scale));
+      const scale = Math.min(5, 1 + delta);
+      // Once rows reach their content height, columns can still shrink toward text (and vice versa).
+      setTableSizes(editor, tablePos,
+        widths.map((width) => width * Math.max(minWidthScale, scale)),
+        heights.map((height) => height * Math.max(minHeightScale, scale)));
     };
     const finish = () => {
       dragging.current = false;
@@ -164,6 +168,35 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
       setHot(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
+
+  const startRowResize = (event: React.PointerEvent<HTMLElement>, table: HTMLTableElement, rowIndex: number) => {
+    if (!editor || event.button !== 0) return;
+    const tablePos = tablePosition(editor, table);
+    if (tablePos === null) return;
+    event.stopPropagation();
+    const startY = event.clientY;
+    const heights = Array.from(table.rows, (row) => row.getBoundingClientRect().height);
+    const minHeight = contentRowHeights(table)[rowIndex];
+    dragging.current = true;
+    let moved = false;
+    const move = (pointer: PointerEvent) => {
+      if (Math.abs(pointer.clientY - startY) <= 2) return;
+      moved = true;
+      const next = [...heights];
+      next[rowIndex] = Math.max(minHeight, heights[rowIndex] + pointer.clientY - startY);
+      setTableSizes(editor, tablePos, undefined, next);
+    };
+    const finish = () => {
+      dragging.current = false;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (moved) setHot(null);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", finish);
@@ -190,7 +223,8 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
   return createPortal(
     <span data-table-resize-chrome="" className="table-row-divider" style={{ left: rect.left, top: row.getBoundingClientRect().bottom, width: rect.right - rect.left }}
       data-testid={`table-row-divider-${rowIndex}`} role="separator" aria-label={`Fit row ${rowIndex + 1} to content`}
-      title="Double-click to fit row to content" onMouseDown={(event) => event.preventDefault()}
+      title="Drag row height or double-click to fit" onPointerDown={(event) => startRowResize(event, table, rowIndex)}
+      onMouseDown={(event) => event.preventDefault()}
       onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); fitRow(editor, table, rowIndex); }} />,
     document.body,
   );

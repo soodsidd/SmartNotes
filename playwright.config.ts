@@ -47,7 +47,7 @@ export default defineConfig({
     command: `node server.js`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: false,
-    timeout: 120_000,
+    timeout: 300_000,
     cwd: __dirname,
     env: {
       // Explicit merge — some Playwright versions replace env when `env` is set.

@@ -318,6 +318,32 @@
       "sourceFiles": [{ "path": "tests/sn-343-image-insert-cursor.test.ts" }, { "path": "src/lib/rich-text-editor-config.ts" }]
     },
     {
+      "id": "e2e-sn-361-table-resize-flow",
+      "name": "SN-361 table shrink and editor width coupling",
+      "description": "Playwright desktop real-pointer drags: repeated corner shrink, row-divider shrink, and table stretch with measured wrapper and main-flow widths.",
+      "intent": "Keeps resized tables close to their cell content and expands the editor frame for ordinary wider tables without table-local clipping.",
+      "whenToRun": "Pre-merge when changing table resize handles, table wrapper sizing, or main editor flow width.",
+      "failureMeaning": "A resize may leave empty wrapper width, refuse further shrinking, or clip a stretched table instead of growing the editor.",
+      "appType": "browser",
+      "command": "node node_modules/@playwright/test/cli.js test e2e/sn-361-table-resize-flow.spec.ts --project=desktop --workers=1 --retries=0",
+      "timeoutMs": 900000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "editor", "table", "resize", "targeted"],
+      "feature": "editor",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-361",
+      "addedAt": "2026-10-24",
+      "sourceFiles": [
+        { "path": "e2e/sn-361-table-resize-flow.spec.ts" },
+        { "path": "src/components/table-resize-controls.tsx" },
+        { "path": "src/components/rich-text-editor.tsx" }
+      ]
+    },
+    {
       "id": "unit-sn-299-insert-table",
       "name": "SN-299 table dimensions, insertion, and HTML reload",
       "description": "Jest: validates table option bounds, header choice, main-flow and floating-box insertion, and HTML round trips.",

@@ -412,6 +412,14 @@ select {
 }
 
 .editor-content.ProseMirror { position: relative; min-width: 100%; }
+@media (min-width: 768px) {
+  /* A resized table can widen the page canvas while the table keeps its own exact width. */
+  .editor-content.ProseMirror { min-width: max(100%, var(--editor-main-flow-width, 672px)); }
+  .editor-content.ProseMirror > .tableWrapper[data-fixed-widths="true"] {
+    width: max-content;
+    max-width: var(--editor-main-flow-width, 672px);
+  }
+}
 
 /* Main body column — floating boxes live on the canvas outside this frame. */
 .editor-content.ProseMirror > :not([data-type="floating-text-box"]) {
