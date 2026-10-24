@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Settings2,
   SquareTerminal,
+  Unlink,
   UnlockKeyhole,
   WandSparkles,
 } from "lucide-react";
@@ -59,6 +60,7 @@ export interface JupyterDeepWorkToolbarProps {
   onReloadLab?: () => void;
   onStopWorkspace?: () => void;
   onRevealFolder?: () => void;
+  onUnlinkFolder?: () => void;
   onViewDiff?: () => void;
   onAnnotations?: () => void;
   annotationCount?: number;
@@ -109,6 +111,7 @@ export function JupyterDeepWorkToolbar({
   onReloadLab,
   onStopWorkspace,
   onRevealFolder,
+  onUnlinkFolder,
   onViewDiff,
   onAnnotations,
   annotationCount = 0,
@@ -279,6 +282,11 @@ export function JupyterDeepWorkToolbar({
             <DropdownMenuItem disabled={!onRevealFolder} onClick={onRevealFolder}>
               <FileCode2 /> Reveal workspace folder
             </DropdownMenuItem>
+            {onUnlinkFolder ? (
+              <DropdownMenuItem onClick={onUnlinkFolder} data-testid="jupyter-toolbar-unlink-folder">
+                <Unlink /> Unlink Deep Work folder
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem disabled={!onReloadLab} onClick={onReloadLab}>
               <RefreshCw /> Reload JupyterLab
             </DropdownMenuItem>

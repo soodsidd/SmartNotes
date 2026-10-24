@@ -52,6 +52,7 @@ import {
   type JupyterInlineAiActionId,
 } from "@/lib/jupyter-inline-ai";
 import { workspacePathBlockReason } from "@/lib/deep-work";
+import { jupyterLabWorkspaceUrl } from "@/lib/jupyter-page-workspace";
 import {
   fetchWorkspaceAnnotations,
   fetchWorkspaceSource,
@@ -98,6 +99,15 @@ export interface JupyterNotebookViewProps {
   backLabel?: string;
   onRevealWorkspace?: () => void;
   onViewDiff?: () => void;
+  onUnlinkFolder?: () => void;
+  /**
+   * SN-347: the workspace launch (or resume) itself failed. Fired only when
+   * `workspace` is set — a note-owned session has no fallback surface to
+   * offer. `code`/`status` mirror the thrown ApiError so the host can tell a
+   * transient failure (leave it to the in-view Retry button) from a
+   * definitive one (missing/invalid/symlinked root) and fall back.
+   */
+  onWorkspaceLaunchError?: (error: { code?: string; status?: number }) => void;
   onFocusChange?: (focus: JupyterFocusState | null) => void;
   onContextMenu?: (event: JupyterContextMenuEvent) => void;
   onAnswerApplied?: (result: JupyterApplyAnswerResult) => void;
@@ -229,6 +239,8 @@ export function JupyterNotebookView({
   backLabel,
   onRevealWorkspace,
   onViewDiff,
+  onUnlinkFolder,
+  onWorkspaceLaunchError,
   onFocusChange,
   onContextMenu,
   onAnswerApplied,
@@ -283,12 +295,14 @@ export function JupyterNotebookView({
   const onBridgeReadyRef = React.useRef(onBridgeReady);
   const onWorkspaceReadyRef = React.useRef(onWorkspaceReady);
   const onAskInCompanionRef = React.useRef(onAskInCompanion);
+  const onWorkspaceLaunchErrorRef = React.useRef(onWorkspaceLaunchError);
   onFocusChangeRef.current = onFocusChange;
   onContextMenuRef.current = onContextMenu;
   onAnswerAppliedRef.current = onAnswerApplied;
   onBridgeReadyRef.current = onBridgeReady;
   onWorkspaceReadyRef.current = onWorkspaceReady;
   onAskInCompanionRef.current = onAskInCompanion;
+  onWorkspaceLaunchErrorRef.current = onWorkspaceLaunchError;
 
   const applyAnswer = React.useCallback<JupyterNotebookBridgeController["applyAnswer"]>((answer, focus, requestId, selectionOverride) => {
     const target = focus ?? latestFocusRef.current;
@@ -824,13 +838,17 @@ export function JupyterNotebookView({
       .then((view: JupyterSessionView) => {
         if (cancelled) return;
         if (view.status === "ready" && view.url) {
-          setState({ phase: "ready", url: view.url, session: view });
+          setState({ phase: "ready", url: jupyterLabWorkspaceUrl(view.url, pagePath, workspace?.rootPath), session: view });
         } else {
           setState({
             phase: "error",
             code: view.errorCode,
             message: view.errorMessage ?? "The notebook session is not ready.",
           });
+          // SN-347: the launch resolved but did not become ready. Only a
+          // project-backed workspace has a page-bound fallback surface to
+          // offer — a note-owned session has nowhere else to fall back to.
+          if (workspace) onWorkspaceLaunchErrorRef.current?.({ code: view.errorCode, status: undefined });
         }
       })
       .catch((error: unknown) => {
@@ -841,6 +859,12 @@ export function JupyterNotebookView({
           code,
           message: error instanceof Error ? error.message : "Failed to start the Jupyter session.",
         });
+        if (workspace) {
+          onWorkspaceLaunchErrorRef.current?.({
+            code,
+            status: (error as { status?: number } | null)?.status,
+          });
+        }
       });
 
     return () => {
@@ -1014,6 +1038,7 @@ export function JupyterNotebookView({
         onStopWorkspace={workspace ? () => void stopWorkspace() : undefined}
         onRevealFolder={onRevealWorkspace}
         onViewDiff={onViewDiff}
+        onUnlinkFolder={onUnlinkFolder}
         onAnnotations={annotationsDisabledReason ? undefined : () => setAnnotationsOpen((value) => !value)}
         annotationCount={annotations.length}
         annotationsDisabledReason={annotationsDisabledReason}

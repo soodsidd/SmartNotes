@@ -1,6 +1,8 @@
 import { setPageRole } from "@/server/vault/recipes";
 import { NextResponse } from "next/server";
-import { createPage, deletePage, movePage, nestPage, readPage, readPaperSnapshot, renamePage, savePage, setPageKeyNote, setPageLines, setPageMainFlowWidth, toApiPageDocument } from "@/server/vault/pages";
+import { createPage, deletePage, movePage, nestPage, readPage, readPaperSnapshot, renamePage, savePage, setPageKeyNote, setPageLines, setPageMainFlowWidth, toApiPageDocument, updatePageMetadata } from "@/server/vault/pages";
+import { JUPYTER_PAGE_WORKSPACE_KEY, pageWorkspaceRecord } from "@/lib/jupyter-page-workspace";
+import type { DeepWorkDescriptor } from "@/lib/deep-work";
 import { isBibliographyPath } from "@/lib/papers";
 import { toErrorResponse, VaultError } from "@/server/vault/errors";
 import { emitVaultSideEffects } from "@/server/vault/socket-events";
@@ -117,7 +119,22 @@ export async function PATCH(request: Request) {
       title?: string;
       sectionPath?: string;
       targetSectionPath?: string;
+      workspace?: DeepWorkDescriptor | null;
     };
+
+    if (body.action === "jupyterWorkspace") {
+      const existing = await readPage(body.path ?? "");
+      if (existing.metadata.note_type !== "jupyter") {
+        throw new VaultError("INVALID_INPUT", "A Deep Work folder can only be bound to a Jupyter page.", 400);
+      }
+      const record = body.workspace === null ? undefined : pageWorkspaceRecord(body.workspace as DeepWorkDescriptor);
+      if (body.workspace !== null && !record) {
+        throw new VaultError("INVALID_INPUT", "The selected workspace is not an owner-opened disk folder.", 400);
+      }
+      const page = await updatePageMetadata(existing.path, { [JUPYTER_PAGE_WORKSPACE_KEY]: record });
+      emitVaultSideEffects({ treeChanged: true });
+      return NextResponse.json({ page: toApiPageDocument(page) });
+    }
 
     if (body.action === "recipe" || body.action === "notebook_instructions") {
       const enabled = (body as { enabled?: unknown }).enabled;
