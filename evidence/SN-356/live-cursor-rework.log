@@ -1,0 +1,12 @@
+=== on; thread=demo/camera-diagnosis.html::whole; grant=true; status=completed; tool_calls=2
+I'll count the running processes with PowerShell now.I'll count the running processes with PowerShell now.**322** processes are currently running on this PC.
+=== off-after-uncheck; thread=demo/camera-diagnosis.html::whole; grant=false; status=completed; tool_calls=0
+**Computer access is off** for this Companion turn, so I can’t run PowerShell on your PC or report a live process count.
+
+To get the exact count yourself:
+
+```powershell
+(Get-Process).Count
+```
+
+Or tick the **Computer** checkbox in the Companion composer (desktop) or header row (mobile), then ask again on the next turn — no chat restart needed.

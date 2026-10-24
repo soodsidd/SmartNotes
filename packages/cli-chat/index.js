@@ -860,7 +860,8 @@ function createChatModule(httpServer, io, userConfig = {}) {
   function clearProviderSessions(scopeKey = buildScopeKey(appId, '')) {
     for (const provider of Object.keys(sessionState)) {
       clearProviderSession(provider, scopeKey);
-      // SN-356: armed Computer-access turns run on a sibling provider session.
+      // SN-356: armed and hard-off turns run on separate provider sessions.
+      clearProviderSession(provider, computerAccessSessionKey(scopeKey, false));
       clearProviderSession(provider, computerAccessSessionKey(scopeKey, true));
     }
   }
@@ -1925,6 +1926,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       args = ['copilot', '--', '--output-format', 'json', '-s'];
       // ── Sandbox: only auto-approve if profile allows ──
       if (turnSandboxCfg.ghcopilot.autoApprove) args.push('--yolo');
+      if (turnSandboxCfg.ghcopilot.computerAccessDisabled) args.push('--deny-tool=shell');
       // Resume previous session for conversation continuity
       if (existingSession) args.push('--resume', existingSession);
       const m = model || resolveProviderModel(settings, 'ghcopilot', getProviderModelSuggestions('ghcopilot', settings, { claudeCommand: which('claude'), codexSpec: getCodexCommandSpec(settings.codexCommand), cursorSpec: getCursorAgentSpec() }));
@@ -1980,6 +1982,26 @@ function createChatModule(httpServer, io, userConfig = {}) {
       cmd = cursorSpec.cmd;
       tracedCommand = cursorSpec.displayCommand;
       spawnOpts.shell = cursorSpec.shell;
+      if (turnSandboxCfg.cursor.computerAccessDisabled) {
+        // Cursor --print can execute Shell without --force, even in Ask mode.
+        // Windows has no Cursor sandbox, so a per-process deny config is the
+        // enforcement boundary. Never spawn unrestricted if it cannot be set.
+        try {
+          const offConfigDir = path.join(stateDir, 'cursor-computer-off');
+          fs.mkdirSync(offConfigDir, { recursive: true });
+          fs.writeFileSync(path.join(offConfigDir, 'cli-config.json'), JSON.stringify({
+            version: 1,
+            editor: { vimMode: false },
+            permissions: { allow: [], deny: ['Shell(*)', 'Write(**)', 'Mcp(*:*)'] },
+          }), 'utf8');
+          spawnEnv.CURSOR_CONFIG_DIR = offConfigDir;
+        } catch (err) {
+          emitProviderError(chatId, provider, `Cannot enforce Computer access OFF: ${err.message}`, { kind: 'config', code: 'computer_access_off_config_failed' });
+          job.status = 'failed';
+          emitDone(chatId, 'failed');
+          return;
+        }
+      }
       const existingSession = getProviderSession('cursor', sessionScopeKey);
       // cursor-agent: --print enables headless/script mode; stream-json + stream-partial-output
       // streams text deltas as they arrive.  The prompt is delivered via stdin.

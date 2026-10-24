@@ -19,6 +19,7 @@ jest.mock("child_process", () => {
     ...actual,
     execSync: jest.fn((command: string) => {
       if (/^where |^which /.test(command)) return "C:\\fake\\claude.cmd\n";
+      if (/cursor-agent status/.test(command)) return "Logged in";
       if (/auth status/.test(command)) return JSON.stringify({ loggedIn: true });
       return "";
     }),
@@ -32,6 +33,7 @@ const {
   resolveSandbox,
   claudeSandboxArgs,
   codexExecArgs,
+  cursorHeadlessArgs,
   applyComputerAccess,
   computerAccessSessionKey,
   buildComputerAccessGuidance,
@@ -67,11 +69,15 @@ function argValue(args: string[], flag: string) {
 describe("SN-356 computer access sandbox overlay", () => {
   const editor = resolveSandbox("editor");
 
-  it("leaves the base profile untouched when the checkbox is off", () => {
-    expect(applyComputerAccess(editor, false)).toBe(editor);
-    const args = claudeSandboxArgs(applyComputerAccess(editor, false));
-    expect(argValue(args, "--disallowedTools")).toBe("Bash,Computer");
+  it("hard-disables local computer tools while leaving the base profile untouched", () => {
+    const disarmed = applyComputerAccess(editor, false);
+    const args = claudeSandboxArgs(disarmed);
+    expect(argValue(args, "--disallowedTools")?.split(",")).toEqual(expect.arrayContaining(["Bash", "PowerShell", "Computer"]));
     expect(argValue(args, "--allowedTools")).not.toMatch(/Bash|PowerShell/);
+    expect(disarmed.ghcopilot.computerAccessDisabled).toBe(true);
+    expect(codexExecArgs(disarmed)).toEqual(expect.arrayContaining(["--disable", "shell_tool", "unified_exec", "computer_use"]));
+    expect(cursorHeadlessArgs(disarmed)).toEqual(["--mode", "ask"]);
+    expect(editor.claude.disallowedTools).toEqual(["Bash", "Computer"]);
   });
 
   it("unlocks shell tools for an armed turn without mutating the shared profile", () => {
@@ -87,8 +93,8 @@ describe("SN-356 computer access sandbox overlay", () => {
   });
 
   it("keeps armed turns on a separate resumable provider session", () => {
-    expect(computerAccessSessionKey("k", false)).toBe("k");
-    expect(computerAccessSessionKey("k", true)).not.toBe("k");
+    expect(computerAccessSessionKey("k", false)).toBe("k#computer-off");
+    expect(computerAccessSessionKey("k", true)).toBe("k#computer-access");
   });
 
   it("tells the agent the grant state each turn", () => {
@@ -174,18 +180,18 @@ describe("SN-356 mid-session toggle through /api/chat/send", () => {
     const turnId = result.body.turn_id;
     pendingRuns.shift()?.();
     const proc = procs[procs.length - 1];
-    const [, args] = childProcess.spawn.mock.calls[childProcess.spawn.mock.calls.length - 1] as [string, string[]];
+    const [, args, spawnOptions] = childProcess.spawn.mock.calls[childProcess.spawn.mock.calls.length - 1] as [string, string[], { env: NodeJS.ProcessEnv }];
     const record = JSON.parse(fs.readFileSync(path.join(root, "jobs", `${turnId}.json`), "utf8"));
     // Finish the turn so the next same-thread send does not supersede it.
     proc.emit("close", 0);
-    return { args, stdin: proc.stdinText, record };
+    return { args, spawnOptions, stdin: proc.stdinText, record };
   }
 
   it("arms and disarms subsequent turns in the same thread without a restart", async () => {
     const thread = { provider: "claude", thread_key: "book/diag.html::whole" };
 
     const off = await send({ ...thread, message: "what is using my CPU?" });
-    expect(argValue(off.args, "--disallowedTools")).toBe("Bash,Computer");
+    expect(argValue(off.args, "--disallowedTools")?.split(",")).toEqual(expect.arrayContaining(["Bash", "PowerShell", "Computer"]));
     expect(off.stdin).toMatch(/Computer access: OFF/);
     expect(off.record.request.computer_access).toBe(false);
 
@@ -197,7 +203,7 @@ describe("SN-356 mid-session toggle through /api/chat/send", () => {
     expect(on.record.request.computer_access).toBe(true);
 
     const offAgain = await send({ ...thread, message: "and again" });
-    expect(argValue(offAgain.args, "--disallowedTools")).toBe("Bash,Computer");
+    expect(argValue(offAgain.args, "--disallowedTools")?.split(",")).toEqual(expect.arrayContaining(["Bash", "PowerShell", "Computer"]));
     expect(argValue(offAgain.args, "--allowedTools")).not.toMatch(/Bash|PowerShell/);
     expect(offAgain.stdin).toMatch(/Computer access: OFF/);
     expect(offAgain.record.request.computer_access).toBe(false);
@@ -205,7 +211,48 @@ describe("SN-356 mid-session toggle through /api/chat/send", () => {
 
   it("only treats a literal true as an opt-in", async () => {
     const turn = await send({ provider: "claude", message: "hi", computer_access: "yes" });
-    expect(argValue(turn.args, "--disallowedTools")).toBe("Bash,Computer");
+    expect(argValue(turn.args, "--disallowedTools")?.split(",")).toEqual(expect.arrayContaining(["Bash", "PowerShell", "Computer"]));
     expect(turn.record.request.computer_access).toBe(false);
+  });
+
+  it("overrides a permissive base profile when Computer is off", () => {
+    const disarmed = applyComputerAccess(resolveSandbox("full"), false);
+    const claudeArgs = claudeSandboxArgs(disarmed);
+    expect(claudeArgs).not.toContain("--dangerously-skip-permissions");
+    expect(argValue(claudeArgs, "--disallowedTools")?.split(",")).toEqual(expect.arrayContaining(["Bash", "PowerShell", "Computer"]));
+    expect(disarmed.codex.sandbox).toBe("read-only");
+    expect(disarmed.ghcopilot.autoApprove).toBe(false);
+    expect(disarmed.cursor.autoApprove).toBe(false);
+  });
+
+  it("runs a Cursor on → off sequence with an isolated shell-deny config and no armed resume", async () => {
+    const thread = { provider: "cursor", thread_key: "book/cameras.html::whole" };
+    const on = await send({ ...thread, message: "Inspect cameras", computer_access: true });
+    expect(on.args).toContain("--force");
+    expect(on.args).not.toContain("--mode");
+    expect(on.record.request.computer_access).toBe(true);
+
+    const off = await send({ ...thread, message: "Try again" });
+    expect(off.args).not.toContain("--force");
+    expect(argValue(off.args, "--mode")).toBe("ask");
+    expect(off.args).not.toContain("--resume");
+    const configDir = off.spawnOptions.env.CURSOR_CONFIG_DIR;
+    expect(configDir).toBe(path.join(root, "cursor-computer-off"));
+    const config = JSON.parse(fs.readFileSync(path.join(configDir!, "cli-config.json"), "utf8"));
+    expect(config.permissions.deny).toEqual(expect.arrayContaining(["Shell(*)", "Write(**)", "Mcp(*:*)"]));
+    expect(off.stdin).toMatch(/Computer access: OFF/);
+    expect(off.record.request.computer_access).toBe(false);
+  });
+
+  it("denies Copilot shell after an armed turn", async () => {
+    const thread = { provider: "ghcopilot", thread_key: "book/cameras.html::whole" };
+    const on = await send({ ...thread, message: "Inspect cameras", computer_access: true });
+    expect(on.args).toContain("--yolo");
+
+    const off = await send({ ...thread, message: "Try again" });
+    expect(off.args).not.toContain("--yolo");
+    expect(off.args).toContain("--deny-tool=shell");
+    expect(off.args).not.toContain("--resume");
+    expect(off.record.request.computer_access).toBe(false);
   });
 });

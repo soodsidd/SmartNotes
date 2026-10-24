@@ -198,11 +198,23 @@ function codexExecArgs(sandboxCfg, options = {}) {
   if (sandboxCfg.codex?.webSearch && options.webSearchSupported === true) {
     args.push('-c', 'tools.web_search=live');
   }
+  if (sandboxCfg.codex?.computerAccessDisabled) {
+    // read-only still permits shell commands and built-in computer tools.
+    for (const feature of ['shell_tool', 'unified_exec', 'computer_use', 'browser_use']) {
+      args.push('--disable', feature);
+    }
+  }
   return args;
 }
 
 function cursorHeadlessArgs(sandboxCfg) {
   const args = [];
+  if (sandboxCfg.cursor?.computerAccessDisabled) {
+    // --print exposes Shell even without --force. Ask reduces the tool set;
+    // the isolated CURSOR_CONFIG_DIR deny rules enforce the hard boundary.
+    args.push('--mode', 'ask');
+    return args;
+  }
   if (sandboxCfg.cursor?.autoApprove || sandboxCfg.cursor?.headlessAutoApprove) {
     args.push('--force');
   }
@@ -217,13 +229,25 @@ const COMPUTER_CONTROL_TOOL_NAMES = new Set(['Bash', 'PowerShell', 'Computer']);
 
 /**
  * Overlay the per-turn Computer access grant on a resolved sandbox profile.
- * Off (default) returns the profile unchanged — the base profile stays the
- * authority (Smart Notes' `editor` profile disallows Bash + Computer). On
- * unlocks the shell tools for this turn only; nothing is mutated, so the next
- * turn without the grant spawns with the original restrictions again.
+ * Off always removes PC control, even if the base profile permits shell tools.
+ * On grants PC control for this turn only. Neither path mutates the base profile.
  */
 function applyComputerAccess(sandboxCfg, enabled) {
-  if (!enabled) return sandboxCfg;
+  if (!enabled) {
+    const claude = { ...sandboxCfg.claude };
+    if (claude.permissionMode === 'bypassPermissions') claude.permissionMode = 'default';
+    if (Array.isArray(claude.allowedTools)) {
+      claude.allowedTools = claude.allowedTools.filter(tool => !COMPUTER_CONTROL_TOOL_NAMES.has(tool));
+    }
+    claude.disallowedTools = [...new Set([...(claude.disallowedTools || []), ...COMPUTER_CONTROL_TOOL_NAMES])];
+    return {
+      ...sandboxCfg,
+      claude,
+      ghcopilot: { ...sandboxCfg.ghcopilot, autoApprove: false, computerAccessDisabled: true },
+      codex: { ...sandboxCfg.codex, sandbox: 'read-only', computerAccessDisabled: true },
+      cursor: { ...sandboxCfg.cursor, autoApprove: false, headlessAutoApprove: false, computerAccessDisabled: true },
+    };
+  }
   const claude = { ...sandboxCfg.claude };
   if (claude.permissionMode === 'plan') claude.permissionMode = 'default';
   if (Array.isArray(claude.allowedTools)) {
@@ -253,10 +277,12 @@ function applyComputerAccess(sandboxCfg, enabled) {
  * Resumable providers (codex / ghcopilot / cursor) keep their original
  * sandbox when a session is resumed (`codex exec resume` rejects --sandbox).
  * Keep armed and disarmed turns on separate provider sessions so unchecking
- * the box can never resume a session that was started with full access.
+ * the box can never resume a session that was started with full access. The
+ * explicit off suffix also avoids resuming legacy off sessions that still had
+ * Cursor/Codex shell tools before the hard-off policy was introduced.
  */
 function computerAccessSessionKey(sessionScopeKey, enabled) {
-  return enabled ? `${sessionScopeKey}#computer-access` : sessionScopeKey;
+  return `${sessionScopeKey}#computer-${enabled ? 'access' : 'off'}`;
 }
 
 function buildComputerAccessGuidance(enabled, options = {}) {

@@ -14,7 +14,7 @@ const { spawnSync } = require('child_process');
 const { parse } = require('url');
 const next = require('next');
 const { Server: SocketIOServer } = require('socket.io');
-const { createChatModule } = require('@repo/cli-chat');
+const { createChatModule } = require('./packages/cli-chat');
 const {
   loadAgentSettings,
   handleAgentSettingsRequest,
