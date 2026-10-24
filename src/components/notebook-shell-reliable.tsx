@@ -8309,6 +8309,27 @@ function TopBar({
           ) : null}
         </Button>
 
+        <div className="hidden items-center gap-1 xl:flex" data-testid="desktop-primary-actions">
+          <Button variant="ghost" size="icon" className={SHELL_PRIMARY_ACTION_CLASS} onClick={onCreateNotebook} aria-label="New notebook" title="New notebook">
+            <Plus className="size-4" />
+          </Button>
+          {onOpenWorkspace ? <Button variant="ghost" size="icon" className={SHELL_PRIMARY_ACTION_CLASS} onClick={onOpenWorkspace} aria-label="Open workspace…" title="Open workspace…">
+            <FolderOpen className="size-4" />
+          </Button> : null}
+          <Button variant="ghost" size="icon" className={SHELL_PRIMARY_ACTION_CLASS} onClick={onExportPage} disabled={!canExportPage} aria-label="Export page as HTML" title="Export page as HTML">
+            <Download className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className={cn(SHELL_PRIMARY_ACTION_CLASS, pendingReload && "bg-accent/10 text-accent hover:bg-accent/15")} onClick={pendingReload ? onReload : onRefreshNote} disabled={reloadDisabled} aria-label={reloadLabel} title={reloadLabel}>
+            {isReloading || isRefreshingNote ? <LoaderCircle className="size-4 animate-spin" /> : <RotateCw className="size-4" />}
+          </Button>
+          <Button variant="ghost" size="icon" className={SHELL_PRIMARY_ACTION_CLASS} onClick={onPrintPage} disabled={!canExportPage} aria-label="Print page" title="Print page">
+            <Printer className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className={SHELL_PRIMARY_ACTION_CLASS} onClick={onOpenSettings} aria-label="Settings" title="Settings">
+            <Settings className="size-4" />
+          </Button>
+        </div>
+
         <DropdownMenu>
           <DropdownMenuTrigger
             className={cn(
@@ -8420,27 +8441,6 @@ function TopBar({
         </DropdownMenu>
       </div>
     </header>
-    <div className="hidden shrink-0 items-center gap-1 border-b border-border bg-background px-3 py-1 xl:flex" data-print-chrome="true" data-testid="desktop-primary-actions">
-      <Button variant="ghost" size="sm" onClick={onCreateNotebook}>
-        <Plus className="mr-1.5 size-3.5" />New notebook
-      </Button>
-      {onOpenWorkspace ? <Button variant="ghost" size="sm" onClick={onOpenWorkspace}>
-        <FolderOpen className="mr-1.5 size-3.5" />Open workspace…
-      </Button> : null}
-      <Button variant="ghost" size="sm" onClick={onExportPage} disabled={!canExportPage}>
-        <Download className="mr-1.5 size-3.5" />Export page as HTML
-      </Button>
-      <Button variant="ghost" size="sm" onClick={pendingReload ? onReload : onRefreshNote} disabled={reloadDisabled} title={reloadLabel}>
-        {isReloading || isRefreshingNote ? <LoaderCircle className="mr-1.5 size-3.5 animate-spin" /> : <RotateCw className="mr-1.5 size-3.5" />}
-        {pendingReload ? reloadLabel : "Reload"}
-      </Button>
-      <Button variant="ghost" size="sm" onClick={onPrintPage} disabled={!canExportPage}>
-        <Printer className="mr-1.5 size-3.5" />Print page
-      </Button>
-      <Button variant="ghost" size="sm" onClick={onOpenSettings}>
-        <Settings className="mr-1.5 size-3.5" />Settings
-      </Button>
-    </div>
     </>
   );
 }
