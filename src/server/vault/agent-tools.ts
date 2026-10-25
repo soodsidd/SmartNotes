@@ -875,7 +875,7 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
   {
     name: "jupyter_cell_run",
     description:
-      "Run one saved code cell (index and/or cellId) on the Jupyter page's live kernel through the Smart Notes-owned Jupyter session. Blocks up to awaitSeconds (default 45, max 60): returns status, duration, and bounded stdout/stderr/result/error when it finishes, or a stillRunning payload with runId + cellId (+ note) if not — never re-run a still-running cell. Requires the page to be open with a kernel; runs the source saved in notebook.ipynb and does not write outputs back.",
+      "Run one saved code cell (index and/or cellId) on the Jupyter page's live kernel through the Smart Notes-owned Jupyter session. Blocks up to awaitSeconds (default 45, max 60): returns status, duration, and bounded stdout/stderr/result/error when it finishes, or a stillRunning payload with runId + cellId (+ note) if not — never re-run a still-running cell. When still running, Smart Notes parks a wake on the calling companion thread (result.wake) and auto-starts a new turn with the outputs and note when the kernel finishes: end your turn instead of polling. Requires the page to be open with a kernel; runs the source saved in notebook.ipynb and does not write outputs back.",
     group: "jupyter",
     action: "cell_run",
     parameters: {
@@ -884,6 +884,7 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
       cellId: { type: "string", description: "Stable nbformat cell id. Required when index is omitted." },
       note: { type: "string", description: "Optional resume note echoed in the result for a later wake/resume (max 2000 chars)." },
       awaitSeconds: { type: "number", description: "Short-await window in seconds (clamped 1-60, default 45)." },
+      wakeTimeoutMinutes: { type: "number", description: "SN-377: how long the wake waits for a still-running cell before resuming with a timed-out result (clamped 1-360, default 30)." },
     },
   },
 
@@ -1048,7 +1049,7 @@ Workflows:
 - Update frontmatter only: page_update_frontmatter with { fields: { key: value, ... } } — leaves HTML body unchanged
 - List sibling pages: page_siblings with path → lists all pages in the same section
 - Get parent page: page_parent with path → returns parent page (via parent_id) or section/notebook context
-- Jupyter context/mutations: jupyter_notebook_context reads bounded cell source/outputs; jupyter_cell_create/edit/reorder/delete changes notebook.ipynb without executing code or owning kernels. jupyter_cell_run (SN-376) is the only execute path: it runs one saved code cell on the page's live kernel, blocks up to awaitSeconds (≤60), and returns bounded outputs or { run.stillRunning: true, handoff: { runId, cellId, note } } — save edits first, never re-run a still-running cell. Create shape: { "tool": "jupyter_cell_create", "args": { "path": "<page.html>", "cellType": "code", "source": "print('hello')", "index": 0 } } (omit index to append; cellType may be code, markdown, or raw)
+- Jupyter context/mutations: jupyter_notebook_context reads bounded cell source/outputs; jupyter_cell_create/edit/reorder/delete changes notebook.ipynb without executing code or owning kernels. jupyter_cell_run (SN-376) is the only execute path: it runs one saved code cell on the page's live kernel, blocks up to awaitSeconds (≤60), and returns bounded outputs or { run.stillRunning: true, handoff: { runId, cellId, note }, wake } — save edits first, never re-run a still-running cell. With a wake (SN-377), end the turn; Smart Notes resumes this thread with the run outputs and note when it finishes. Create shape: { "tool": "jupyter_cell_create", "args": { "path": "<page.html>", "cellType": "code", "source": "print('hello')", "index": 0 } } (omit index to append; cellType may be code, markdown, or raw)
 - Comment triage: comment_list → comment_context → comment_address (or page_write for broad rewrites)
 - Bibliography papers (SN-282 / SN-302): papers are canonical pages under .bibliography/<id>.html, referenced from other pages by id. From an article: paper_list { query } to find an existing paper, else paper_create { title, referenceFromPath: "<article path>" } (the paper's home notebook defaults to that article's notebook; pass homeNotebookPath when creating without a referring page); for an existing paper use paper_reference_add { path, paper }. Promote an existing vault PDF with paper_create_from_pdf { sourcePath|href, title?, homeNotebookPath?, referenceFromPath?, replaceChip? } (copies PDF bytes onto the paper; reuses an existing paper when that exact asset is already attached). Attach a web PDF with paper_attach_pdf { paper, url } (direct http(s) link only), then read it with pdf_read_pages using the returned href. Edit paper notes with the normal page tools on the paper path. Remove with paper_remove (clears references, then deletes) — never page_delete/page_move/page_create inside .bibliography.
 - Page delete: page_delete with vault-relative path (never filesystem delete; clears assets and triggers tree reload warning)

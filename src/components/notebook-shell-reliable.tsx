@@ -336,6 +336,15 @@ import {
   saveCompanionSessions,
 } from "@/lib/api/companion";
 import {
+  cancelCompanionCellWake,
+  companionCellWakeIndicatorTurnId,
+  fetchCompanionCellWakes,
+  isCompanionCellWakeWaiting,
+  selectThreadCellWakeItems,
+  upsertCompanionCellWake,
+  type CompanionCellWake,
+} from "@/lib/api/companion-cell-wakes";
+import {
   buildRecentSearchResults,
   EMPTY_VAULT_SEARCH_INDEX,
   searchVaultIndex,
@@ -1287,6 +1296,14 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // keyed by thread address so parallel turns (SN-322) each keep their own dot.
   const [companionThreadIndicators, setCompanionThreadIndicators] =
     React.useState<CompanionThreadIndicatorState>(EMPTY_COMPANION_THREAD_INDICATORS);
+  // SN-377: host-parked Jupyter cell wakes (pending -> resuming -> resumed |
+  // cancelled | failed). Server-owned; this is the tab's mirror from
+  // GET /api/companion/cell-wakes + `companion_cell_wake` socket events.
+  const [companionCellWakes, setCompanionCellWakes] = React.useState<CompanionCellWake[]>([]);
+  const [cancellingCellWakeIds, setCancellingCellWakeIds] = React.useState<string[]>([]);
+  const [cellWakeErrors, setCellWakeErrors] = React.useState<Record<string, string>>({});
+  const cellWakeEventRef = React.useRef<((wake: CompanionCellWake) => void) | null>(null);
+  const cellWakeSyncRef = React.useRef<(() => void) | null>(null);
   // "Viewed" = the companion is open AND showing that exact thread right now.
   const isCompanionThreadViewedNow = React.useCallback(
     (threadKey: string) =>
@@ -2162,6 +2179,104 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     [clearCompanionActiveTurnPointer, isCompanionThreadViewedNow, saveCompanionThread]
   );
 
+  // SN-377: apply one Jupyter cell wake update. A waiting wake pulses its
+  // thread's SN-373 sidebar dot; a resumed wake hands the dot to the host-started
+  // resume turn and, when that thread is on screen, adds the wake message and
+  // reattaches through the normal SN-132 durable-pointer path. Off-screen
+  // threads need nothing more: reattach discovery finds the pointer on return.
+  const applyCellWakeUpdate = React.useCallback(
+    (wake: CompanionCellWake, options: { reattach?: boolean } = {}) => {
+      setCompanionCellWakes((current) => upsertCompanionCellWake(current, wake));
+      const thread = { storePath: wake.storePath, scopeKey: wake.scopeKey };
+      const wakeTurnId = companionCellWakeIndicatorTurnId(wake.wakeId);
+      if (isCompanionCellWakeWaiting(wake)) {
+        setCompanionThreadIndicators((current) => markCompanionThreadWorking(current, { ...thread, turnId: wakeTurnId }));
+        return;
+      }
+      if (wake.status !== "resumed" || !wake.resumeTurnId) {
+        setCompanionThreadIndicators((current) => clearCompanionThreadTurn(current, wakeTurnId));
+        return;
+      }
+      const resumeTurnId = wake.resumeTurnId;
+      if (!options.reattach) {
+        return;
+      }
+      setCompanionThreadIndicators((current) =>
+        markCompanionThreadWorking(clearCompanionThreadTurn(current, wakeTurnId), { ...thread, turnId: resumeTurnId })
+      );
+      void (async () => {
+        const sidecar = await fetchCompanionSessions(wake.storePath).catch(() => null);
+        if (!sidecar) return;
+        // Keep the cached sidecar current so a later transcript flush preserves the new pointer.
+        if (companionPageRef.current === wake.storePath) companionSidecarRef.current = sidecar;
+        if (companionStorePathRef.current !== wake.storePath || companionScopeKeyRef.current !== wake.scopeKey) return;
+        const pointer = getCompanionActiveTurn(sidecar, wake.scopeKey);
+        if (!pointer || pointer.turnId !== resumeTurnId || activeTurnIdRef.current === resumeTurnId) return;
+        const wakeMessages = fromStoredCompanionMessages(
+          (getCompanionScopeSession(sidecar, wake.scopeKey)?.messages ?? []).filter(
+            (message) => message.id === wake.resumeUserMessageId
+          )
+        );
+        if (wakeMessages.length > 0) {
+          setAiMessages((current) => {
+            if (current.some((message) => message.id === wake.resumeUserMessageId)) return current;
+            const next = [...current.filter((message) => message.id !== pointer.assistantMessageId), ...wakeMessages];
+            aiMessagesRef.current = next;
+            return next;
+          });
+        }
+        await reattachOrReconcileTurn(wake.storePath, wake.scopeKey, pointer);
+      })();
+    },
+    [reattachOrReconcileTurn]
+  );
+
+  const syncCompanionCellWakes = React.useCallback(async () => {
+    const wakes = await fetchCompanionCellWakes().catch(() => null);
+    if (!wakes) return;
+    setCompanionCellWakes(wakes);
+    for (const wake of wakes) {
+      // A list sync never reattaches; durable-pointer discovery owns cold return.
+      applyCellWakeUpdate(wake);
+    }
+  }, [applyCellWakeUpdate]);
+
+  React.useEffect(() => {
+    cellWakeEventRef.current = (wake) => applyCellWakeUpdate(wake, { reattach: true });
+    cellWakeSyncRef.current = () => void syncCompanionCellWakes();
+  }, [applyCellWakeUpdate, syncCompanionCellWakes]);
+
+  React.useEffect(() => {
+    void syncCompanionCellWakes();
+  }, [syncCompanionCellWakes]);
+
+  const handleCancelCellWake = React.useCallback(
+    async (wakeId: string, interrupt: boolean) => {
+      setCancellingCellWakeIds((current) => (current.includes(wakeId) ? current : [...current, wakeId]));
+      setCellWakeErrors((current) => {
+        if (!(wakeId in current)) return current;
+        const next = { ...current };
+        delete next[wakeId];
+        return next;
+      });
+      try {
+        const wake = await cancelCompanionCellWake(wakeId, interrupt);
+        applyCellWakeUpdate(wake);
+        if (wake.error) setCellWakeErrors((current) => ({ ...current, [wakeId]: wake.error as string }));
+      } catch (error) {
+        // Already settled elsewhere (resumed/timed out) -> resync; otherwise keep the row with the error.
+        setCellWakeErrors((current) => ({
+          ...current,
+          [wakeId]: error instanceof Error ? error.message : "Could not cancel the cell wake.",
+        }));
+        await syncCompanionCellWakes();
+      } finally {
+        setCancellingCellWakeIds((current) => current.filter((id) => id !== wakeId));
+      }
+    },
+    [applyCellWakeUpdate, syncCompanionCellWakes]
+  );
+
   // Clear one scope thread on the page being left (navigation dispose with Keep OFF).
   const clearCompanionScopeOnPage = React.useCallback(async (path: string, scopeKey: string) => {
     try {
@@ -2704,6 +2819,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     socket.on("file_updated", handleFileUpdated);
     socket.on("jupyter_notebook_updated", handleJupyterNotebookUpdated);
     socket.on("workspace_source_updated", handleWorkspaceSourceUpdated);
+    // SN-377: Jupyter cell wakes. Reconnect resyncs so a missed event never leaves a stale "Waiting for cell...".
+    const handleCellWake = (wake: CompanionCellWake) => cellWakeEventRef.current?.(wake);
+    const handleCellWakeResync = () => cellWakeSyncRef.current?.();
+    socket.on("companion_cell_wake", handleCellWake);
+    socket.on("connect", handleCellWakeResync);
 
     return () => {
       socket.off("connect", handleSocketConnect);
@@ -2713,6 +2833,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       socket.off("file_updated", handleFileUpdated);
       socket.off("jupyter_notebook_updated", handleJupyterNotebookUpdated);
       socket.off("workspace_source_updated", handleWorkspaceSourceUpdated);
+      socket.off("companion_cell_wake", handleCellWake);
+      socket.off("connect", handleCellWakeResync);
       socket.disconnect();
       socketRef.current = null;
       setSyncConnectionState("disconnected");
@@ -6956,6 +7078,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       storePath: companionStorePath,
       scopeKey: companionScopeKey,
     });
+  const displayedCellWakes = selectThreadCellWakeItems(
+    companionCellWakes,
+    { storePath: companionStorePath, scopeKey: companionScopeKey },
+    { cancelling: cancellingCellWakeIds, errors: cellWakeErrors }
+  );
   // One shared prop bundle and one AiSidebar element serve every shell presentation.
   const companionProps = {
     pageTitle: paperShellTitle ?? draft?.title ?? "No note selected",
@@ -7000,6 +7127,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     onSubmit: (prompt: string, attachments?: AiComposerAttachment[]) =>
       void handleAiSubmit(prompt, attachments, { origin: "composer" }),
     failedSend: aiFailedSend,
+    cellWakes: displayedCellWakes,
+    onCancelCellWake: (wakeId: string, interrupt: boolean) => void handleCancelCellWake(wakeId, interrupt),
     onRetryFailedSend: handleAiRetryFailedSend,
     onEditFailedSend: handleAiEditFailedSend,
     onCancel: handleAiCancel,

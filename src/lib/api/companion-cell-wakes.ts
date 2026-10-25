@@ -61,3 +61,57 @@ export function upsertCompanionCellWake(list: CompanionCellWake[], wake: Compani
 export function companionCellWakeThread(wake: CompanionCellWake): { storePath: string; scopeKey: string } {
   return { storePath: wake.storePath, scopeKey: wake.scopeKey };
 }
+
+/** Transcript row model for a parked wake on the displayed thread. */
+export interface CompanionCellWakeItem {
+  wakeId: string;
+  /** e.g. "Cell 2 (slow-1)" */
+  cellLabel: string;
+  note: string | null;
+  startedAt: string;
+  timeoutAt: string;
+  /** True once the cell settled and the host is waiting to resume this thread. */
+  resuming: boolean;
+  cancelling?: boolean;
+  error?: string | null;
+}
+
+function normalizeStorePath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+/**
+ * Waiting wakes for exactly one thread (SN-322 address), oldest first. Wakes on
+ * other pages/sections/scopes never appear in this thread's transcript.
+ */
+export function selectThreadCellWakeItems(
+  wakes: CompanionCellWake[],
+  thread: { storePath: string; scopeKey: string },
+  state: { cancelling?: readonly string[]; errors?: Readonly<Record<string, string>> } = {}
+): CompanionCellWakeItem[] {
+  if (!thread.storePath) return [];
+  const storePath = normalizeStorePath(thread.storePath);
+  return wakes
+    .filter(
+      (wake) =>
+        isCompanionCellWakeWaiting(wake) &&
+        normalizeStorePath(wake.storePath) === storePath &&
+        wake.scopeKey === thread.scopeKey
+    )
+    .sort((a, b) => Date.parse(a.registeredAt) - Date.parse(b.registeredAt))
+    .map((wake) => ({
+      wakeId: wake.wakeId,
+      cellLabel: `Cell ${wake.index}${wake.cellId ? ` (${wake.cellId})` : ""}`,
+      note: wake.note,
+      startedAt: wake.runStartedAt,
+      timeoutAt: wake.timeoutAt,
+      resuming: wake.status === "resuming",
+      cancelling: state.cancelling?.includes(wake.wakeId) ?? false,
+      error: state.errors?.[wake.wakeId] ?? null,
+    }));
+}
+
+/** SN-373 indicator turn id for a parked wake (the thread pulses "working" while it waits). */
+export function companionCellWakeIndicatorTurnId(wakeId: string): string {
+  return `cell-wake:${wakeId}`;
+}
