@@ -409,7 +409,17 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     const [calculatorOpen, setCalculatorOpen] = React.useState(false);
     const [calculatorSeed, setCalculatorSeed] = React.useState("");
     const [calculatorFocusToken, setCalculatorFocusToken] = React.useState(0);
-    const closeCalculator = React.useCallback(() => setCalculatorOpen(false), []);
+    const editorForCalculatorRef = React.useRef<Editor | null>(null);
+    const closeCalculator = React.useCallback(() => {
+      const active = document.activeElement;
+      const editorInstance = editorForCalculatorRef.current;
+      const caret = calculatorCaretRef.current;
+      if (active instanceof Node && calculatorRef.current?.contains(active) && editorInstance && !editorInstance.isDestroyed) {
+        editorInstance.view.focus();
+        if (caret) editorInstance.commands.setTextSelection(caret);
+      }
+      setCalculatorOpen(false);
+    }, []);
     const contentSizerRef = React.useRef<HTMLDivElement>(null);
     // A drag that starts inside a floating box (e.g. image resize) and is released
     // on the canvas fires click on a common ancestor; it must not create a box.
@@ -1334,6 +1344,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       immediatelyRender: false,
     });
 
+    React.useEffect(() => { editorForCalculatorRef.current = editor; }, [editor]);
+
     React.useEffect(() => {
       if (!editor || readOnly || isDrawMode || inkCaptureMode) return;
       const onShortcut = (event: KeyboardEvent) => {
@@ -1350,6 +1362,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             editor.view.focus();
             if (caret) editor.commands.setTextSelection(caret);
           } else {
+            const { from, to } = editor.state.selection;
+            calculatorCaretRef.current = { from, to };
             setCalculatorFocusToken((current) => current + 1);
           }
           return;

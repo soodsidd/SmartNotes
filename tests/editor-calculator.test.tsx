@@ -54,6 +54,30 @@ describe("editor scientific calculator", () => {
     expect(screen.queryByTestId("editor-calculator")).not.toBeInTheDocument();
   });
 
+  it("returns focus to the invoking caret when closed from the calculator", async () => {
+    await mount();
+    act(() => { editor!.commands.setTextSelection(3); });
+    shortcut();
+    const close = screen.getByRole("button", { name: "Close calculator" });
+    act(() => { close.focus(); });
+    fireEvent.click(close);
+    expect(editor!.view.dom).toHaveFocus();
+    expect(editor!.state.selection.from).toBe(3);
+  });
+
+  it("remembers the latest editor caret when toggling back into the open calculator", async () => {
+    await mount();
+    act(() => { editor!.commands.setTextSelection(2); });
+    shortcut();
+    shortcut();
+    act(() => { editor!.commands.setTextSelection(6); });
+    shortcut();
+    expect(screen.getByRole("textbox", { name: "Expression" })).toHaveFocus();
+    shortcut();
+    expect(editor!.view.dom).toHaveFocus();
+    expect(editor!.state.selection.from).toBe(6);
+  });
+
   it("dismisses after 60 seconds without interaction", async () => {
     await mount();
     jest.useFakeTimers();
