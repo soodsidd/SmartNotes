@@ -171,6 +171,8 @@ describe("companion vault bridge", () => {
       { name: "list", tool: "workspace_source_list", args: { workspace: capability, maxCount: 10 } },
       { name: "create", tool: "workspace_source_create", args: { workspace: capability, path: "walkthrough.ipynb", source: "{}" } },
       { name: "cell-create", tool: "workspace_cell_create", args: { workspace: capability, path: "walkthrough.ipynb", expectedRevision: `sha256:${"0".repeat(64)}`, source: "x = 1" } },
+      { name: "cell-run", tool: "jupyter_cell_run", args: { workspace: capability, path: "walkthrough.ipynb", index: 0, turnId: "turn" } },
+      { name: "cell-run-wrong-capability", tool: "jupyter_cell_run", args: { workspace: `dwc_${"b".repeat(43)}`, path: "walkthrough.ipynb", index: 0 } },
       { name: "cell-wrong-capability", tool: "workspace_cell_edit", args: { workspace: `dwc_${"b".repeat(43)}`, path: "walkthrough.ipynb", index: 0, source: "x" } },
       { name: "vault-jupyter", tool: "jupyter_cell_edit", args: { path: "Vault/walkthrough.html", index: 0, source: "x" } },
       { name: "wrong-capability", tool: "workspace_source_read", args: { workspace: `dwc_${"b".repeat(43)}`, path: "main.py" } },
@@ -192,6 +194,8 @@ describe("companion vault bridge", () => {
     const wrongCapability = await processBridgeRequest({ requestPath: path.join(requestsDir, "wrong-capability.json"), ...options });
     const vaultFallback = await processBridgeRequest({ requestPath: path.join(requestsDir, "vault-fallback.json"), ...options });
     const cellCreate = await processBridgeRequest({ requestPath: path.join(requestsDir, "cell-create.json"), ...options });
+    const cellRun = await processBridgeRequest({ requestPath: path.join(requestsDir, "cell-run.json"), ...options });
+    const cellRunWrongCapability = await processBridgeRequest({ requestPath: path.join(requestsDir, "cell-run-wrong-capability.json"), ...options });
     const cellWrongCapability = await processBridgeRequest({ requestPath: path.join(requestsDir, "cell-wrong-capability.json"), ...options });
     const vaultJupyter = await processBridgeRequest({ requestPath: path.join(requestsDir, "vault-jupyter.json"), ...options });
 
@@ -200,9 +204,11 @@ describe("companion vault bridge", () => {
     expect(wrongCapability).toMatchObject({ ok: false, code: "WORKSPACE_CAPABILITY_MISMATCH" });
     expect(vaultFallback).toMatchObject({ ok: false, code: "TOOL_NOT_ALLOWED" });
     expect(cellCreate).toMatchObject({ ok: true, tool: "workspace_cell_create" });
+    expect(cellRun).toMatchObject({ ok: true, tool: "jupyter_cell_run" });
+    expect(cellRunWrongCapability).toMatchObject({ ok: false, code: "WORKSPACE_CAPABILITY_MISMATCH" });
     expect(cellWrongCapability).toMatchObject({ ok: false, code: "WORKSPACE_CAPABILITY_MISMATCH" });
     expect(vaultJupyter).toMatchObject({ ok: false, code: "TOOL_NOT_ALLOWED" });
-    expect(invokeTool).toHaveBeenCalledTimes(3);
+    expect(invokeTool).toHaveBeenCalledTimes(4);
   });
 
   it("SN-359: allowlists notebook cell tools and routes them only to /api/workspace/notebook", () => {
@@ -253,6 +259,11 @@ describe("companion vault bridge", () => {
       method: "PUT",
     });
     expect(workspaceToolRequest("jupyter_cell_edit", { path: "x" }, base)).toBeNull();
+    expect(workspaceToolRequest("jupyter_cell_run", { workspace, path: "a.ipynb", index: 0, turnId: "turn" }, base)).toEqual({
+      endpoint: `${base}/api/workspace/notebook`,
+      method: "POST",
+      body: { workspace, path: "a.ipynb", index: 0, turnId: "turn", operation: "cell_run" },
+    });
   });
 
   it("forwards page_get and page_write while rejecting other page commands", async () => {

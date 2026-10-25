@@ -200,6 +200,7 @@ function rewriteCompanionAppContext(appContext, target) {
     .replace(/^- (?:browserOrigin|apiBaseUrl)[^\r\n]*$/gmi, '')
     .replace(/^- Vault tool shell:[^\r\n]*$/gmi, '')
     .replace(/^- Shell-less editor sandbox:[^\r\n]*$/gmi, '')
+    .replace(/^- companionTurnId:[^\r\n]*$/gmi, '')
     .replace(/^- For page_get\/page_write, the sandboxed vault bridge[^\r\n]*$/gmi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -223,7 +224,7 @@ function rewriteCompanionAppContext(appContext, target) {
       ? `- apiBaseUrl (host-local Smart Notes server): ${target.apiBaseUrl}`
       : '- apiBaseUrl: unavailable because the server bound port could not be resolved',
     companionBridgeRoot
-      ? `- Exact capability-bound bridge paths (use these literal absolute paths; do not search, inspect a README, or resolve them against cwd, the vault root, or the disk workspace): Write { tool, args } to ${path.join(companionBridgeRoot, 'requests', '<unique-id>.json')}, then Read ${path.join(companionBridgeRoot, 'responses', '<unique-id>.json')}. If the response is not present yet, retry only that same response path briefly. This bridge accepts only workspace_source_list, workspace_source_read, workspace_source_create, workspace_source_edit, workspace_annotations_get, workspace_annotations_put, workspace_notebook_context, workspace_cell_create, workspace_cell_edit, workspace_cell_reorder, and workspace_cell_delete, and every request must carry workspace ${JSON.stringify(deepWorkCapability)}. Author .ipynb cells with the workspace_cell_* tools (revision-checked, no kernel execution), not hand-written nbformat JSON or byte-offset patches.`
+      ? `- Exact capability-bound bridge paths (use these literal absolute paths; do not search, inspect a README, or resolve them against cwd, the vault root, or the disk workspace): Write { tool, args } to ${path.join(companionBridgeRoot, 'requests', '<unique-id>.json')}, then Read ${path.join(companionBridgeRoot, 'responses', '<unique-id>.json')}. If the response is not present yet, retry only that same response path briefly. This bridge accepts only workspace_source_list, workspace_source_read, workspace_source_create, workspace_source_edit, workspace_annotations_get, workspace_annotations_put, workspace_notebook_context, workspace_cell_create/edit/reorder/delete, and jupyter_cell_run; every request must carry workspace ${JSON.stringify(deepWorkCapability)}. jupyter_cell_run also needs turnId from companionTurnId below and a repository-relative .ipynb path. Author .ipynb cells with the workspace_cell_* tools, not hand-written nbformat JSON.`
       : '- Capability-bound shell-less bridge is unavailable for this turn.',
     '- This turn is isolated to the active disk workspace. Vault page/tree/Jupyter-note tools are outside its authority and must not be used for discovery, reads, creation, or edits, even when prior conversation mentions a similarly named vault page.',
     '- Never switch provider cwd to the disk workspace, use direct filesystem access, probe processes, assume port 3002, or call browserOrigin. Use only the capability-authenticated workspace API/bridge operations above.',
@@ -2527,7 +2528,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       }),
       companionBridgeRoot,
     };
-    const appContext = rewriteCompanionAppContext(data.app_context, companionApiTarget);
+    let appContext = rewriteCompanionAppContext(data.app_context, companionApiTarget);
 
     const provider = data.provider || getProviders().default || 'ghcopilot';
     const auth = checkAuth(provider);
@@ -2570,6 +2571,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
     const computerAccess = data.computer_access === true;
     const sessionScopeKey = computerAccessSessionKey(getSessionScopeKey(activeScope.scopeKey, threadKey), computerAccess);
     const chatId = requestedTurnId || crypto.randomUUID();
+    if (deepWorkCapability) appContext += `\n- companionTurnId: ${chatId}`;
     const pdfTextResults = await Promise.all(sanitizedPdfAttachments.map(doc => extractPdfText(doc.path)));
     const supersededTurnIds = cancelRunningTurnsInScope(activeScope.scopeKey, threadKey);
     logTrace('turn_created', {

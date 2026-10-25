@@ -161,6 +161,26 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
     expect(readOnly).toContain("workspace_notebook_context");
     expect(readOnly).not.toContain("workspace_cell_create");
     expect(readOnly).toContain("Do not attempt source or notebook cell mutations");
+
+    const notebookContext = buildSmartNotesOperatingContext({
+      title: descriptor.projectName,
+      path: pagePath,
+      noteType: "jupyter",
+      projectWorkspace: { ...descriptor, capability: "dwc_test_capability", notebookSessionReady: true },
+      activeJupyterFocus: { ...focus, workspacePath: "analysis.ipynb", documentKind: "notebook", activeCellIndex: 0, activeCellId: "code-1" },
+    });
+    expect(notebookContext).toContain("Deep Work notebook run: enabled");
+    expect(notebookContext).toContain('"tool": "jupyter_cell_run"');
+    expect(notebookContext).toContain('"path": "analysis.ipynb"');
+    expect(notebookContext).not.toContain('"tool": "jupyter_notebook_context"');
+    const withoutSession = buildSmartNotesOperatingContext({
+      title: descriptor.projectName,
+      path: pagePath,
+      noteType: "jupyter",
+      projectWorkspace: { ...descriptor, capability: "dwc_test_capability", notebookSessionReady: false },
+      activeJupyterFocus: { ...focus, workspacePath: "analysis.ipynb", documentKind: "notebook" },
+    });
+    expect(withoutSession).not.toContain('"tool": "jupyter_cell_run"');
   });
 
   it("blocks hidden, secret-shaped, dependency, VCS, and build paths from source context", () => {

@@ -6062,6 +6062,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         ...activeProjectWorkspace,
         requestedAccess: workspaceSession?.accessMode ?? activeProjectWorkspace.requestedAccess,
         capability: workspaceSession?.capability,
+        notebookSessionReady: workspaceSession?.status === "ready",
         returnUrl: workspaceSession?.returnUrl,
         executionContext: workspaceSession?.executionContext,
       } : null,

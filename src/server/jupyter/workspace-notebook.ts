@@ -238,6 +238,29 @@ export async function readWorkspaceNotebookContext(
   };
 }
 
+/** Read the complete saved code cell for execution after the workspace path policy. */
+export async function readWorkspaceNotebookCellForRun(
+  request: ProjectWorkspaceRequest,
+  relativePath: unknown,
+  selector: { index?: number; cellId?: string }
+) {
+  const resolved = await resolveNotebookFile(request, relativePath);
+  const notebook = parseNotebook(await fs.readFile(resolved.absolutePath));
+  const index = resolveCellSelector(notebook.cells, selector, { required: true }) as number;
+  const cell = notebook.cells[index];
+  const cellType = normalizeCellType(cell.cell_type);
+  if (cellType !== "code") {
+    throw new VaultError("NOT_CODE_CELL", `Cell ${index} is a ${cellType} cell; only code cells can be run.`, 400);
+  }
+  return {
+    path: resolved.relativePath,
+    index,
+    cellId: normalizeCellId(cell.id),
+    source: normalizeSource(cell.source),
+    workspaceKey: resolved.workspace.key,
+  };
+}
+
 function createWorkspaceCell(notebook: WorkspaceNotebookDocument, cellType: JupyterCellType, source: string): NotebookCell {
   const cell: NotebookCell = {};
   // nbformat 4.5+ requires stable cell ids; earlier minors forbid them, so

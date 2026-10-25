@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 
-import { resolveLiveNotebookServer, type LiveNotebookServer } from "@/server/jupyter/runtime";
+import { resolveLiveNotebookServer, resolveLiveProjectNotebookServer, type LiveNotebookServer } from "@/server/jupyter/runtime";
+import { readWorkspaceNotebookCellForRun } from "@/server/jupyter/workspace-notebook";
+import type { ProjectWorkspaceRequest } from "@/server/jupyter/workspace-root";
 import { VaultError } from "@/server/vault/errors";
 import { readNotebookCellForRun } from "@/server/vault/jupyter-notebook";
 
@@ -48,6 +50,8 @@ export type CellRunStatus = "queued" | "running" | "completed" | "error" | "inte
 interface CellRunRecord {
   runId: string;
   pagePath: string;
+  identity: string;
+  server: LiveNotebookServer;
   index: number;
   cellId: string | null;
   note: string | null;
@@ -93,6 +97,8 @@ export interface RunJupyterCellInput {
 export interface RunJupyterCellDeps {
   WebSocketImpl?: WebSocketCtor;
   resolveServer?: (pagePath: string) => Promise<LiveNotebookServer>;
+  readCell?: (input: RunJupyterCellInput) => Promise<{ path: string; index: number; cellId: string | null; source: string }>;
+  identity?: string;
 }
 
 function runs(): Map<string, CellRunRecord> {
@@ -494,12 +500,13 @@ export async function runJupyterCell(input: RunJupyterCellInput, deps: RunJupyte
     ? input.note.trim().slice(0, CELL_RUN_NOTE_MAX_CHARS)
     : null;
 
-  const cell = await readNotebookCellForRun({ path: input.path, index: input.index, cellId: input.cellId });
+  const cell = await (deps.readCell ?? readNotebookCellForRun)({ path: input.path, index: input.index, cellId: input.cellId });
+  const identity = deps.identity ?? cell.path;
 
   for (const existing of runs().values()) {
     if (
       !isTerminal(existing.status) &&
-      existing.pagePath === cell.path &&
+      existing.identity === identity &&
       (existing.cellId && cell.cellId ? existing.cellId === cell.cellId : existing.index === cell.index)
     ) {
       throw new VaultError(
@@ -524,6 +531,8 @@ export async function runJupyterCell(input: RunJupyterCellInput, deps: RunJupyte
   const record: CellRunRecord = {
     runId: `run-${crypto.randomUUID()}`,
     pagePath: cell.path,
+    identity,
+    server,
     index: cell.index,
     cellId: cell.cellId,
     note,
@@ -618,6 +627,23 @@ export async function runJupyterCell(input: RunJupyterCellInput, deps: RunJupyte
   };
 }
 
+/** Execute a capability-validated Deep Work notebook on its existing project kernel. */
+export async function runWorkspaceJupyterCell(
+  request: ProjectWorkspaceRequest,
+  input: RunJupyterCellInput,
+  deps: Pick<RunJupyterCellDeps, "WebSocketImpl"> = {}
+) {
+  // Validate the notebook before looking up its project runtime. No vault path
+  // or kernel fallback is possible when this file is missing or blocked.
+  const cell = await readWorkspaceNotebookCellForRun(request, input.path, input);
+  return runJupyterCell(input, {
+    ...deps,
+    identity: `${cell.workspaceKey}:${cell.path}`,
+    readCell: async () => cell,
+    resolveServer: () => resolveLiveProjectNotebookServer(cell.workspaceKey, cell.path),
+  });
+}
+
 /** Look up a run (live or recently finished) — the hook SN-377 builds on. */
 export function getJupyterCellRun(runId: string): JupyterCellRunPayload | null {
   const record = runs().get(runId);
@@ -660,7 +686,7 @@ export async function interruptJupyterCellRun(
 ): Promise<boolean> {
   const record = runs().get(runId);
   if (!record || isTerminal(record.status)) return false;
-  const server = await (deps.resolveServer ?? resolveLiveNotebookServer)(record.pagePath);
+  const server = deps.resolveServer ? await deps.resolveServer(record.pagePath) : record.server;
   const url = `${server.baseUrl}${server.basePath}api/kernels/${encodeURIComponent(record.kernelId)}/interrupt?token=${encodeURIComponent(server.token)}`;
   const response = await fetch(url, { method: "POST", signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
   if (!response.ok) {

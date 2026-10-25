@@ -1139,6 +1139,29 @@ export interface LiveNotebookServer {
 export async function resolveLiveNotebookServer(pagePath: string): Promise<LiveNotebookServer> {
   const resolved = await resolveNotebook(pagePath);
   const session = registry().get(resolved.key);
+  return liveServerFromSession(session, pagePath, resolved.notebookFile);
+}
+
+/** Resolve an already running Deep Work server for one validated notebook. */
+export async function resolveLiveProjectNotebookServer(
+  workspaceKey: string,
+  notebookFile: string
+): Promise<LiveNotebookServer> {
+  if (!workspaceKey.startsWith("project:") || !notebookFile) {
+    throw new VaultError("JUPYTER_SESSION_UNAVAILABLE", "A live Deep Work notebook is required.", 409);
+  }
+  const session = registry().get(workspaceKey);
+  if (session?.kind !== "project") {
+    throw new VaultError("JUPYTER_SESSION_UNAVAILABLE", "No live Deep Work Jupyter session is available. Open the workspace in Smart Notes, then retry.", 409);
+  }
+  return liveServerFromSession(session, notebookFile, notebookFile);
+}
+
+async function liveServerFromSession(
+  session: JupyterSession | undefined,
+  pagePath: string,
+  notebookFile: string
+): Promise<LiveNotebookServer> {
   if (!session || session.status === "stopped") {
     throw new VaultError(
       "JUPYTER_SESSION_UNAVAILABLE",
@@ -1175,7 +1198,7 @@ export async function resolveLiveNotebookServer(pagePath: string): Promise<LiveN
     baseUrl: session.baseUrl,
     basePath: session.proxyBasePath,
     token: session.token,
-    notebookFile: session.notebookFile ?? resolved.notebookFile,
+    notebookFile,
   };
 }
 

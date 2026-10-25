@@ -12,6 +12,8 @@ import {
 import { getVaultRoot } from "@/server/vault/config";
 import { VaultError } from "@/server/vault/errors";
 import { readCompanionSessions, saveCompanionSessions } from "@/server/vault/pages";
+import { workspaceRequestFromValue } from "@/server/jupyter/workspace-request";
+import { readWorkspaceCompanion, writeWorkspaceCompanion } from "@/server/jupyter/workspace-state";
 
 // ---------------------------------------------------------------------------
 // Companion Jupyter cell-run wake — detach → wait → resume (SN-377)
@@ -219,14 +221,16 @@ function toView(record: CellWakeRecord): CellWakeView {
   };
 }
 
-/** Parse a cli-chat `thread_key` (`<storePath>::<scopeKey>`, SN-322) into a vault store address. */
+/** Parse a cli-chat `thread_key` (`<storePath>::<scopeKey>`, SN-322). */
 export function parseCompanionThreadKey(threadKey: string): { storePath: string; scopeKey: string } | null {
   const split = threadKey.lastIndexOf("::");
   if (split <= 0) return null;
   const storePath = threadKey.slice(0, split).replace(/\\/g, "/");
   const scopeKey = threadKey.slice(split + 2);
   if (!storePath || !scopeKey) return null;
-  // Only vault-relative stores (pages / notebook sections); Deep Work disk roots have no sidecar here.
+  // Deep Work stores use an opaque issued capability. Never treat an absolute
+  // disk root or a malformed capability as a vault path.
+  if (/^dwc_[A-Za-z0-9_-]{43}$/.test(storePath)) return { storePath, scopeKey };
   if (
     /^[A-Za-z]:/.test(storePath) ||
     storePath.startsWith("/") ||
@@ -236,6 +240,20 @@ export function parseCompanionThreadKey(threadKey: string): { storePath: string;
     return null;
   }
   return { storePath, scopeKey };
+}
+
+async function readThreadSessions(storePath: string): Promise<{ scopes: Record<string, unknown> }> {
+  return storePath.startsWith("dwc_")
+    ? readWorkspaceCompanion(workspaceRequestFromValue(storePath))
+    : readCompanionSessions(storePath);
+}
+
+async function saveThreadSessions(storePath: string, scopes: Record<string, unknown>): Promise<void> {
+  if (storePath.startsWith("dwc_")) {
+    await writeWorkspaceCompanion(workspaceRequestFromValue(storePath), scopes);
+  } else {
+    await saveCompanionSessions(storePath, scopes);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -504,7 +522,7 @@ async function settleWake(
 
     let history: Array<{ role: "user" | "assistant"; content: string }> = [];
     try {
-      const sidecar = await readCompanionSessions(record.storePath);
+      const sidecar = await readThreadSessions(record.storePath);
       const scopes = { ...(sidecar.scopes ?? {}) } as Record<string, Record<string, unknown>>;
       const session = { ...(scopes[record.scopeKey] ?? {}) } as Record<string, unknown>;
       const messages = Array.isArray(session.messages) ? (session.messages as unknown[]) : [];
@@ -517,7 +535,7 @@ async function settleWake(
       session.activeTurn = { turnId, assistantMessageId, lastSeq: -1, startedAt: Date.now() };
       session.updatedAt = new Date().toISOString();
       scopes[record.scopeKey] = session;
-      await saveCompanionSessions(record.storePath, scopes);
+      await saveThreadSessions(record.storePath, scopes);
     } catch (error) {
       await update(record, { status: "failed", error: `Could not write the wake to the companion thread: ${(error as Error).message}` });
       return;
@@ -561,7 +579,7 @@ async function settleWake(
 /** Undo the durable pointer and leave a visible failure note on the placeholder. */
 async function markResumeFailed(record: CellWakeRecord, assistantMessageId: string, turnId: string, reason: string): Promise<void> {
   try {
-    const sidecar = await readCompanionSessions(record.storePath);
+    const sidecar = await readThreadSessions(record.storePath);
     const scopes = { ...(sidecar.scopes ?? {}) } as Record<string, Record<string, unknown>>;
     const session = scopes[record.scopeKey];
     if (!session) return;
@@ -572,7 +590,7 @@ async function markResumeFailed(record: CellWakeRecord, assistantMessageId: stri
         : message
     );
     if ((session.activeTurn as { turnId?: string } | undefined)?.turnId === turnId) session.activeTurn = null;
-    await saveCompanionSessions(record.storePath, scopes);
+    await saveThreadSessions(record.storePath, scopes);
   } catch {
     // Best-effort.
   }
@@ -588,18 +606,24 @@ export interface RegisterCellRunWakeInput {
   /** Companion turn that called the tool (SMART_NOTES_TURN_ID header); optional. */
   turnId?: string | null;
   timeoutMinutes?: number;
+  workspaceCapability?: string;
 }
 
 export type RegisterCellRunWakeResult =
   | { wake: CellWakeView; reason?: undefined }
   | { wake: null; reason: string };
 
-function resolveSourceTurn(host: CompanionWakeHost, pagePath: string, turnId?: string | null): CompanionTurnInfo | string {
+function resolveSourceTurn(host: CompanionWakeHost, pagePath: string, turnId?: string | null, workspaceCapability?: string): CompanionTurnInfo | string {
+  const matchesWorkspace = (turn: CompanionTurnInfo) => !workspaceCapability || (
+    parseCompanionThreadKey(turn.threadKey)?.storePath === workspaceCapability &&
+    turn.appContext.includes(`- workspaceCapability: ${workspaceCapability}`)
+  );
   if (turnId) {
     const turn = host.getTurn(turnId);
-    if (turn && turn.status === "running" && turn.threadKey) return turn;
+    if (turn && turn.status === "running" && turn.threadKey && matchesWorkspace(turn)) return turn;
+    if (workspaceCapability) return "the calling turn does not own this Deep Work capability";
   }
-  const running = host.listRunningTurns().filter((turn) => turn.status === "running" && turn.threadKey);
+  const running = host.listRunningTurns().filter((turn) => turn.status === "running" && turn.threadKey && matchesWorkspace(turn));
   const onPageThread = running.filter((turn) => parseCompanionThreadKey(turn.threadKey)?.storePath === pagePath);
   if (onPageThread.length === 1) return onPageThread[0];
   const mentioning = running.filter((turn) => turn.appContext.includes(pagePath) || turn.pageContext.includes(pagePath));
@@ -622,10 +646,14 @@ export async function registerCellRunWake(input: RegisterCellRunWakeInput): Prom
   }
   const host = config().host;
   if (!host) return { wake: null, reason: "the companion host is unavailable in this process" };
-  const turn = resolveSourceTurn(host, input.handoff.pagePath, input.turnId);
+  if (input.workspaceCapability) workspaceRequestFromValue(input.workspaceCapability);
+  const turn = resolveSourceTurn(host, input.handoff.pagePath, input.turnId, input.workspaceCapability);
   if (typeof turn === "string") return { wake: null, reason: turn };
   const address = parseCompanionThreadKey(turn.threadKey);
-  if (!address) return { wake: null, reason: "the calling companion thread is not a vault page or section thread" };
+  if (!address) return { wake: null, reason: "the calling companion thread has no valid store address" };
+  if (input.workspaceCapability && address.storePath !== input.workspaceCapability) {
+    return { wake: null, reason: "the calling companion thread does not own this Deep Work workspace" };
+  }
 
   const now = Date.now();
   const record: CellWakeRecord = {
