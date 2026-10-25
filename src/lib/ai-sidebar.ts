@@ -1760,7 +1760,7 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
     apiBaseUrl
       ? `- Vault tools API: POST ${apiBaseUrl}/api/agent/vault with { tool, args } — page_get, pdf_read_page, pdf_read_pages, pdf_page_count, page_write, page_create, page_edit, page_render (rr), ui_render (ur), vault_tree, …`
       : "- Vault tools API: POST /api/agent/vault with { tool, args } — e.g. page_get, pdf_read_page, pdf_read_pages, pdf_page_count, page_delete, page_write, page_create, page_edit, page_render (rr), ui_render (ur), vault_tree, …",
-    "- Shell-less editor sandbox: if HTTP POST and the vault-tool shell are unavailable, use the literal absolute request and response paths in the server-authoritative Host-side companion connection block appended to this context. Do not search for the bridge or resolve its path against cwd, the vault root, or resolvedDiskPath. The bridge accepts page_get, page_write, page_edit, page_create, the five log-form tools, app_send, the four spreadsheet tools, jupyter_notebook_context, and jupyter_cell_edit and forwards them through this server's vault API. Prefer page_edit for targeted App/design patches instead of full page_write rewrites. Use a new id per request and retry only the same response path briefly.",
+    "- Shell-less editor sandbox: if HTTP POST and the vault-tool shell are unavailable, use the literal absolute request and response paths in the server-authoritative Host-side companion connection block appended to this context. Do not search for the bridge or resolve its path against cwd, the vault root, or resolvedDiskPath. The bridge accepts page_get, page_write, page_edit, page_create, the five log-form tools, app_send, the four spreadsheet tools, jupyter_notebook_context, jupyter_cell_edit, and jupyter_cell_run and forwards them through this server's vault API. Prefer page_edit for targeted App/design patches instead of full page_write rewrites. Use a new id per request and retry only the same response path briefly.",
     "- For page_get/page_write, the sandboxed vault bridge is required when POST/shell is unavailable; do not edit resolvedDiskPath as a fallback because that bypasses snapshots and reload events.",
     "- PDF PAGE POLICY (MANDATORY): when the immersive reader is open or the owner asks about a vault PDF page, use only pdf_read_page, pdf_read_pages, and pdf_page_count through the Vault tools API.",
     "- Never use bash/shell, direct disk reads, pdftoppm, Computer, or whole-file/whole-document extraction for vault PDF page questions. Never use pdfChunkOffset for a page question.",
@@ -1838,8 +1838,11 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
       focusedCellSelector
         ? `- Targeted active-cell edit: { "tool": "jupyter_cell_edit", "args": { "path": ${JSON.stringify(notePath)}, ${focusedCellSelector}, "source": "..." } }`
         : "",
+      focusedCellSelector
+        ? `- Run the active cell on the live kernel (only when the owner asks to run/execute it): { "tool": "jupyter_cell_run", "args": { "path": ${JSON.stringify(notePath)}, ${focusedCellSelector} } }`
+        : "",
       "- When index and cellId are both known, pass both: the server rejects the edit if a reorder made them disagree. After success, the active frame refreshes; the owner can also use the Smart Notes Reload/Refresh button to re-read notebook.ipynb.",
-      "- Existing jupyter_* tools remain the only notebook mutation path and still target this note's notebook.ipynb saved on disk; they do not edit another focused workspace file, execute cells, or change kernel ownership."
+      "- Existing jupyter_* tools remain the only notebook mutation path and still target this note's notebook.ipynb saved on disk; they do not edit another focused workspace file, execute cells, or change kernel ownership. jupyter_cell_run is the only execute path: it runs the saved source of one code cell on this page's live kernel (save unsaved Lab edits first), blocks at most 60s, and returns a stillRunning runId for longer runs — do not re-run it."
     );
   }
 
@@ -1924,6 +1927,7 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
       `- Read Jupyter notebook cells when this is a Jupyter page: { "tool": "jupyter_notebook_context", "args": { "path": "${notePath}" } } (pass index and/or cellId to read exactly one saved cell)`,
       `- Create a Jupyter cell when this is a Jupyter page: { "tool": "jupyter_cell_create", "args": { "path": "${notePath}", "cellType": "code", "source": "def square(x):\\n    return x**2", "index": 3 } } (omit index to append; cellType may be code, markdown, or raw)`,
       `- Safely mutate one Jupyter cell when this is a Jupyter page: { "tool": "jupyter_cell_edit", "args": { "path": "${notePath}", "index": 0, "cellId": "stable-id-when-known", "source": "..." } } (index or cellId is required; when both are present they must match)`,
+      `- Run one saved code cell on this Jupyter page's live kernel (short await ≤60s): { "tool": "jupyter_cell_run", "args": { "path": "${notePath}", "index": 0, "cellId": "stable-id-when-known", "note": "optional resume note" } } (returns bounded outputs, or run.stillRunning with handoff.runId — never re-run a still-running cell)`,
       `- Read exactly one PDF page when its href is known: { "tool": "pdf_read_page", "args": { "href": "/vault/Notebook/Section/page.assets/document.pdf", "page": 7 } }`,
       `- Read up to 3 surrounding PDF pages: { "tool": "pdf_read_pages", "args": { "href": "/vault/Notebook/Section/page.assets/document.pdf", "startPage": 6, "endPage": 8 } }`,
       `- Get page count without extracting text: { "tool": "pdf_page_count", "args": { "href": "/vault/Notebook/Section/page.assets/document.pdf" } }`,

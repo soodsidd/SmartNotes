@@ -48,6 +48,7 @@ import {
   reorderNotebookCell,
   requireCellType,
 } from "./jupyter-notebook";
+import { CELL_RUN_NOTE_MAX_CHARS, runJupyterCell } from "@/server/jupyter/cell-run";
 import { getAppTemplate, listAppTemplates, APP_TEMPLATE_CATALOG_VERSION } from "./app-templates";
 import { getAppInventoryEntry, listAppInventory } from "./app-inventory";
 import { queryAppTableForCompanion, saveAppManifest, seedOwnedAppTable } from "./app-runtime";
@@ -1747,6 +1748,37 @@ async function runJupyterCommand(action: string, args: Record<string, unknown>):
       };
     }
 
+    case "cell_run": {
+      // SN-376: host-owned execution on the page's live kernel (short await).
+      const pagePath = requireString(args.path, "path");
+      if (args.index !== undefined && !Number.isInteger(args.index)) {
+        throw new VaultError("INVALID_INPUT", '"index" must be an integer when provided.');
+      }
+      if (args.cellId !== undefined && (typeof args.cellId !== "string" || !args.cellId.trim())) {
+        throw new VaultError("INVALID_INPUT", '"cellId" must be a non-empty string when provided.');
+      }
+      if (args.index === undefined && args.cellId === undefined) {
+        throw new VaultError("INVALID_INPUT", 'Provide "index" and/or "cellId" to run a cell.');
+      }
+      if (args.note !== undefined && typeof args.note !== "string") {
+        throw new VaultError("INVALID_INPUT", '"note" must be a string when provided.');
+      }
+      if (typeof args.note === "string" && args.note.length > CELL_RUN_NOTE_MAX_CHARS) {
+        throw new VaultError("INVALID_INPUT", `"note" must be at most ${CELL_RUN_NOTE_MAX_CHARS} characters.`);
+      }
+      if (args.awaitSeconds !== undefined && (typeof args.awaitSeconds !== "number" || !Number.isFinite(args.awaitSeconds))) {
+        throw new VaultError("INVALID_INPUT", '"awaitSeconds" must be a number when provided.');
+      }
+      const result = await runJupyterCell({
+        path: pagePath,
+        index: args.index as number | undefined,
+        cellId: args.cellId as string | undefined,
+        note: args.note as string | undefined,
+        awaitMs: typeof args.awaitSeconds === "number" ? args.awaitSeconds * 1000 : undefined,
+      });
+      return { ok: true, group: "jupyter", action, data: result };
+    }
+
     default:
       throw new VaultError("UNKNOWN_COMMAND", `Unknown jupyter command: ${action}`, 400);
   }
@@ -1869,7 +1901,7 @@ export function listVaultCommands() {
     version: ["page_versions", "page_restore"],
     vault: ["tree"],
     pdf: ["read_page", "read_pages", "page_count"],
-    jupyter: ["context", "cell_create", "cell_edit", "cell_delete", "cell_reorder"],
+    jupyter: ["context", "cell_create", "cell_edit", "cell_delete", "cell_reorder", "cell_run"],
     log: ["get", "put", "query", "render", "asset_put"],
     spreadsheet: ["list_sheets", "read_range", "write_cells", "summarize"],
     design: ["render"],

@@ -130,6 +130,8 @@ const ALLOWED_TOOLS = new Set([
   // notebook.ipynb and preserve the server-owned reload event path.
   "jupyter_notebook_context",
   "jupyter_cell_edit",
+  // SN-376 short-await execution on the page's live kernel (blocks <=60s).
+  "jupyter_cell_run",
   // SN-282 Bibliography paper tools. The PDF download runs on the server, so a
   // network-less sandbox can still attach a paper PDF through this bridge.
   "paper_list",

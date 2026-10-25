@@ -1115,6 +1115,70 @@ export async function getSessionStatus(pagePath: string): Promise<JupyterSession
   return toView(session);
 }
 
+/**
+ * Server-side endpoint for the live Smart Notes–owned Jupyter server behind a
+ * note's proxy (SN-376). Never exposed to clients: it carries the session
+ * token so host-owned tools (companion cell execution) can talk to the same
+ * Jupyter Server — and therefore the same kernel — the embedded Lab uses.
+ */
+export interface LiveNotebookServer {
+  pagePath: string;
+  /** Loopback origin, e.g. http://127.0.0.1:PORT */
+  baseUrl: string;
+  /** Jupyter `base_url` (the proxy prefix), with trailing slash. */
+  basePath: string;
+  token: string;
+  notebookFile: string;
+}
+
+/**
+ * Resolve the running session for a note without launching one. A missing,
+ * starting, errored, or unresponsive session is an actionable VaultError:
+ * host-owned execution only targets a kernel the owner already has live.
+ */
+export async function resolveLiveNotebookServer(pagePath: string): Promise<LiveNotebookServer> {
+  const resolved = await resolveNotebook(pagePath);
+  const session = registry().get(resolved.key);
+  if (!session || session.status === "stopped") {
+    throw new VaultError(
+      "JUPYTER_SESSION_UNAVAILABLE",
+      "No live Jupyter session for this page. Open the Jupyter page in Smart Notes so its server and kernel start, then retry.",
+      409
+    );
+  }
+  if (session.status === "starting") {
+    throw new VaultError(
+      "JUPYTER_SESSION_UNAVAILABLE",
+      "The Jupyter server for this page is still starting. Retry in a few seconds.",
+      409
+    );
+  }
+  if (session.status === "error") {
+    throw new VaultError(
+      "JUPYTER_SESSION_UNAVAILABLE",
+      `The Jupyter server for this page is not running (${session.errorCode ?? "error"}${session.errorMessage ? `: ${session.errorMessage}` : ""}). Reopen or restart the Jupyter page, then retry.`,
+      409
+    );
+  }
+  if (!(await pingReady(session.baseUrl, session.token, session.proxyBasePath))) {
+    session.status = "error";
+    session.errorCode = "SERVER_DOWN";
+    session.errorMessage = "The Jupyter server is no longer responding.";
+    throw new VaultError(
+      "JUPYTER_SESSION_UNAVAILABLE",
+      "The Jupyter server for this page is no longer responding. Reopen the Jupyter page to restart it, then retry.",
+      409
+    );
+  }
+  return {
+    pagePath,
+    baseUrl: session.baseUrl,
+    basePath: session.proxyBasePath,
+    token: session.token,
+    notebookFile: session.notebookFile ?? resolved.notebookFile,
+  };
+}
+
 /** Return the current status for a project workspace without launching one. */
 export async function getProjectWorkspaceStatus(request: ProjectWorkspaceRequest): Promise<JupyterSessionView> {
   const resolved = await resolveProjectWorkspace(request);
