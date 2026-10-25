@@ -150,9 +150,11 @@ import {
 import {
   canRemountJupyterSurface,
   deepWorkSourceRefreshDecision,
+  sameDeepWorkRootPath,
   stickyRootRevalidationDisposition,
   type DeepWorkSourceUpdatedEvent,
 } from "@/lib/deep-work-refresh";
+import { normalizeJupyterWorkspacePath } from "@/lib/jupyter-focus";
 import { safeRandomUUID } from "@/lib/safe-random-uuid";
 import type { TLDefaultColorStyle } from "tldraw";
 import dynamic from "next/dynamic";
@@ -1190,6 +1192,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // src/lib/deep-work-refresh.ts for why a remount loses the root.
   const [workspaceDocumentReload, setWorkspaceDocumentReload] =
     React.useState<{ path: string; nonce: number } | null>(null);
+  const [workspaceDocumentConflict, setWorkspaceDocumentConflict] = React.useState<string | null>(null);
+  const [workspaceCellRun, setWorkspaceCellRun] = React.useState<{
+    path: string;
+    nonce: number;
+    run: import("@/server/jupyter/cell-run").JupyterCellRunPayload;
+  } | null>(null);
   const [activeJupyterFocus, setActiveJupyterFocus] = React.useState<JupyterFocusState | null>(null);
   const activeJupyterFocusRef = React.useRef<JupyterFocusState | null>(null);
   const workspaceSessionRef = React.useRef<JupyterSessionView | null>(null);
@@ -1436,8 +1444,24 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     projectWorkspaceRef.current = projectWorkspace;
   }, [projectWorkspace]);
 
+  // SN-381: a Companion-reload conflict notice never outlives its workspace session.
   React.useEffect(() => {
+    setWorkspaceDocumentConflict(null);
+  }, [workspaceSession]);
+
+  React.useEffect(() => {
+    const previous = activeJupyterFocusRef.current;
     activeJupyterFocusRef.current = activeJupyterFocus;
+    // SN-381: the "unsaved edits blocked a Companion reload" notice is about one
+    // document state; it clears once the owner saves/reloads or switches file.
+    if (
+      previous &&
+      (!activeJupyterFocus ||
+        previous.workspacePath !== activeJupyterFocus.workspacePath ||
+        (previous.isDirty && activeJupyterFocus.isDirty === false))
+    ) {
+      setWorkspaceDocumentConflict(null);
+    }
   }, [activeJupyterFocus]);
 
   React.useEffect(() => {
@@ -2806,11 +2830,31 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         activeDocumentDirty: activeJupyterFocusRef.current?.isDirty ?? null,
         event,
       });
+      if (decision.kind === "blocked-dirty") {
+        setWorkspaceDocumentConflict(
+          "Companion changed this file on disk, but it has unsaved edits here, so it was not reloaded. Your edits are kept: save to keep them (JupyterLab will warn that the file changed on disk), or reload from disk to take Companion's version."
+        );
+        return;
+      }
       if (decision.kind !== "reload-document") return;
+      setWorkspaceDocumentConflict(null);
       setWorkspaceDocumentReload((current) => ({
         path: decision.path,
         nonce: (current?.nonce ?? 0) + 1,
       }));
+    };
+
+    const handleWorkspaceCellRunUpdated = (event: {
+      rootPath?: unknown;
+      path?: unknown;
+      run?: import("@/server/jupyter/cell-run").JupyterCellRunPayload;
+    }) => {
+      const current = draftRef.current;
+      if (!activeDeepWorkWorkspace(projectWorkspaceRef.current, current?.path ?? null) && !activeBoundWorkspaceRef.current) return;
+      if (!sameDeepWorkRootPath(event?.rootPath, workspaceSessionRef.current?.rootPath)) return;
+      const file = normalizeJupyterWorkspacePath(event.path);
+      if (!file || file !== activeJupyterFocusRef.current?.workspacePath || !event.run?.runId) return;
+      setWorkspaceCellRun((previous) => ({ path: file, nonce: (previous?.nonce ?? 0) + 1, run: event.run! }));
     };
 
     socket.on("connect", handleSocketConnect);
@@ -2819,6 +2863,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     socket.on("file_updated", handleFileUpdated);
     socket.on("jupyter_notebook_updated", handleJupyterNotebookUpdated);
     socket.on("workspace_source_updated", handleWorkspaceSourceUpdated);
+    socket.on("workspace_cell_run_updated", handleWorkspaceCellRunUpdated);
     // SN-377: Jupyter cell wakes. Reconnect resyncs so a missed event never leaves a stale "Waiting for cell...".
     const handleCellWake = (wake: CompanionCellWake) => cellWakeEventRef.current?.(wake);
     const handleCellWakeResync = () => cellWakeSyncRef.current?.();
@@ -2833,6 +2878,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       socket.off("file_updated", handleFileUpdated);
       socket.off("jupyter_notebook_updated", handleJupyterNotebookUpdated);
       socket.off("workspace_source_updated", handleWorkspaceSourceUpdated);
+      socket.off("workspace_cell_run_updated", handleWorkspaceCellRunUpdated);
       socket.off("companion_cell_wake", handleCellWake);
       socket.off("connect", handleCellWakeResync);
       socket.disconnect();
@@ -3552,6 +3598,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         setWorkspaceSession(null);
         setActiveJupyterFocus(null);
         setWorkspaceDocumentReload(null);
+        setWorkspaceCellRun(null);
       }
       if (shouldLeaveDeepWorkForVaultSelection(projectWorkspaceRef.current, nextPath)) {
         // SN-266: selecting a vault note has the same live-session boundary as
@@ -3562,6 +3609,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         setWorkspaceSession(null);
         setActiveJupyterFocus(null);
         setWorkspaceDocumentReload(null);
+        setWorkspaceCellRun(null);
         workspaceReturnStateRef.current = null;
         // SN-347/SN-348: drop the orphan Deep Work frame immediately so a
         // launching/dead sticky frame cannot stay visible during the handoff
@@ -6823,6 +6871,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           setWorkspaceSession(null);
           setActiveJupyterFocus(null);
           setWorkspaceDocumentReload(null);
+          setWorkspaceCellRun(null);
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not bind the Deep Work folder to this page.");
@@ -6851,6 +6900,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setWorkspaceSession(null);
     setActiveJupyterFocus(null);
     setWorkspaceDocumentReload(null);
+    setWorkspaceCellRun(null);
     setActiveNotebookPath(null);
     setActiveSectionPath(null);
     setActivePagePath(workspaceDraft.path);
@@ -6932,6 +6982,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setWorkspaceSession(null);
     setActiveJupyterFocus(null);
     setWorkspaceDocumentReload(null);
+    setWorkspaceCellRun(null);
     setJupyterFrameCache((current) => dropDeepWorkPendingJupyterFrames(current));
     setActiveNotebookPath(previous?.activeNotebookPath ?? null);
     setActiveSectionPath(previous?.activeSectionPath ?? null);
@@ -7746,6 +7797,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                         onFocusChange={setActiveJupyterFocus}
                         onWorkspaceReady={setWorkspaceSession}
                         externalReload={visible && activeProjectWorkspace ? workspaceDocumentReload : null}
+                        externalConflict={visible && activeProjectWorkspace ? workspaceDocumentConflict : null}
+                        externalRun={visible && activeProjectWorkspace ? workspaceCellRun : null}
                         onAskInCompanion={visible ? handleJupyterAskInCompanion : undefined}
                       />
                     </div>

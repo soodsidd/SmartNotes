@@ -556,9 +556,13 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
         reason = 'This command is unavailable in the managed JupyterLab profile.';
       } else {
         try {
-          const result = semantic === 'focus-file'
-            ? await app.commands.execute(commandId, { path: focusPath })
-            : await app.commands.execute(commandId);
+          const execute = () => semantic === 'focus-file'
+            ? app.commands.execute(commandId, { path: focusPath })
+            : app.commands.execute(commandId);
+          // SN-381: a Companion cell edit reloads in place without losing the owner's cell or scroll position.
+          const result = semantic === 'reload-document'
+            ? await keepNotebookPlace(app, focusPath, execute)
+            : await execute();
           // Keep terminals in the durable bottom panel while creation and
           // lifecycle remain owned by JupyterLab's terminal command.
           if (semantic === 'open-terminal' && result && result.id && app.shell && typeof app.shell.add === 'function') {
@@ -585,6 +589,187 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
       focus: focusSnapshot(app)
     });
     if (!reason) scheduleReport(app);
+  };
+
+  // SN-381: Companion cell runs, shown natively in the open notebook.
+  //
+  // Execution and the saved .ipynb stay server-owned: the host relays bounded
+  // run snapshots, and this frame only (a) mirrors them into the matching
+  // code cell's output model while the run is live, and (b) once the server
+  // reports the outputs saved, reloads the document in place - but only when
+  // the document's unsaved state is provably nothing but this run's outputs.
+  // Owner edits are never discarded; anything else becomes a visible notice.
+  const MAX_TRACKED_RUNS = 20;
+  const liveCellRuns = new Map();
+  // Reloads and run updates are applied strictly in arrival order, so a
+  // Companion cell edit's reload always lands before the run that follows it.
+  let hostWork = Promise.resolve();
+  const enqueueHostWork = (work) => {
+    hostWork = hostWork.then(work).catch(() => {});
+    return hostWork;
+  };
+
+  // JupyterLab 4 notebooks are windowed lists; outerNode is their scroll
+  // container. No DOM queries: the bridge reads Lab's public widget API only.
+  const notebookScroller = (content) => content ? (content.outerNode || content.node || null) : null;
+
+  // Reload the focused document while keeping the owner's active cell and scroll position.
+  const keepNotebookPlace = async (app, path, reload) => {
+    const before = currentParts(app);
+    const previousIndex = before.isNotebook ? before.activeCellIndex : null;
+    const scroller = notebookScroller(before.content);
+    const scrollTop = scroller ? scroller.scrollTop : null;
+    const result = await reload();
+    const after = currentParts(app);
+    if (after.workspacePath === path) {
+      if (previousIndex !== null && after.isNotebook && after.content.widgets.length) {
+        after.content.activeCellIndex = Math.min(previousIndex, after.content.widgets.length - 1);
+      }
+      const nextScroller = notebookScroller(after.content);
+      if (nextScroller && scrollTop !== null) nextScroller.scrollTop = scrollTop;
+    }
+    return result;
+  };
+
+  const cellJson = (model) => {
+    try {
+      return model && typeof model.toJSON === 'function' ? model.toJSON() : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Fingerprint of everything an owner could change, except the run cell's
+  // outputs and execution count (the only things this bridge writes).
+  const ownerSignature = (content, runModel) => (Array.isArray(content && content.widgets) ? content.widgets : [])
+    .map((widget) => {
+      const model = widget && widget.model;
+      const json = cellJson(model);
+      if (!json || typeof json !== 'object') return (model && model.id || '') + ':' + sourceRevision(cellSource(model));
+      if (model === runModel) {
+        delete json.outputs;
+        delete json.execution_count;
+      }
+      return sourceRevision(JSON.stringify(json));
+    }).join('|');
+
+  const findRunModel = (content, cell) => {
+    const widgets = Array.isArray(content && content.widgets) ? content.widgets : [];
+    let widget = null;
+    if (typeof cell.cellId === 'string' && cell.cellId) {
+      widget = widgets.find((candidate) => candidate && candidate.model && candidate.model.id === cell.cellId) || null;
+    } else if (Number.isInteger(cell.index)) {
+      widget = widgets[cell.index] || null;
+    }
+    const model = widget && widget.model;
+    if (!model || model.type !== 'code') return null;
+    // The cell must hold exactly the source that ran, or its output would lie.
+    if (typeof cell.sourceRevision === 'string' && sourceRevision(cellSource(model)) !== cell.sourceRevision) return null;
+    return model;
+  };
+
+  const liveOutputs = (run) => {
+    const outputs = [];
+    const text = (value) => value && typeof value.text === 'string' ? value.text : '';
+    if (text(run.stdout)) outputs.push({ output_type: 'stream', name: 'stdout', text: text(run.stdout) });
+    if (text(run.stderr)) outputs.push({ output_type: 'stream', name: 'stderr', text: text(run.stderr) });
+    if (text(run.result)) {
+      outputs.push({ output_type: 'execute_result', execution_count: Number.isInteger(run.executionCount) ? run.executionCount : null, metadata: {}, data: { 'text/plain': text(run.result) } });
+    }
+    if (run.error && typeof run.error.traceback === 'string') {
+      outputs.push({ output_type: 'error', ename: String(run.error.ename || 'Error'), evalue: String(run.error.evalue || ''), traceback: run.error.traceback.split('\n') });
+    }
+    return outputs;
+  };
+
+  const showRun = (model, run, tracked) => {
+    const outputs = liveOutputs(run);
+    const count = Number.isInteger(run.executionCount) ? run.executionCount : null;
+    const shownKey = JSON.stringify([outputs, count]);
+    try {
+      if ('executionState' in model) model.executionState = run.stillRunning ? 'running' : 'idle';
+    } catch {}
+    if (tracked.shown === shownKey) return true;
+    try {
+      const shared = model.sharedModel;
+      if (shared && typeof shared.setOutputs === 'function') {
+        const apply = () => {
+          shared.setOutputs(outputs);
+          if (shared.execution_count !== count) shared.execution_count = count;
+        };
+        if (typeof shared.transact === 'function') shared.transact(apply);
+        else apply();
+      } else if (model.outputs && typeof model.outputs.clear === 'function' && typeof model.outputs.fromJSON === 'function') {
+        model.outputs.clear();
+        model.outputs.fromJSON(outputs);
+        model.executionCount = count;
+      } else {
+        return false;
+      }
+      tracked.shown = shownKey;
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const reportRunNotice = (runId, tracked, notice) => {
+    if (tracked && tracked.notice === notice) return;
+    if (tracked) tracked.notice = notice;
+    post({ source: SOURCE, version: VERSION, kind: 'cell-run-update-result', runId, reason: notice });
+  };
+
+  const applyCellRunUpdate = async (app, message) => {
+    const run = message && message.run;
+    if (!run || typeof run.runId !== 'string' || !run.runId || run.runId.length > 100 || !run.cell || typeof run.cell !== 'object') return;
+    const path = normalizeWorkspacePath(message.path);
+    const parts = currentParts(app);
+    // Only the focused notebook is touched; any other file converges from disk when reopened.
+    if (!path || !parts.isNotebook || parts.workspacePath !== path) return;
+    const context = parts.widget && parts.widget.context;
+    const documentModel = context && context.model;
+    let tracked = liveCellRuns.get(run.runId);
+    if (!tracked) {
+      tracked = { path, baseline: null, shown: '', notice: undefined };
+      liveCellRuns.set(run.runId, tracked);
+      while (liveCellRuns.size > MAX_TRACKED_RUNS) liveCellRuns.delete(liveCellRuns.keys().next().value);
+    }
+    const model = findRunModel(parts.content, run.cell);
+    const dirty = Boolean(documentModel && documentModel.dirty);
+    // Remember the last moment the document matched disk. From then on only
+    // this run's output patches are ours to discard.
+    if (!dirty) tracked.baseline = ownerSignature(parts.content, model);
+    const persistence = run.persistence && typeof run.persistence.status === 'string' ? run.persistence : null;
+    let notice = null;
+
+    if (persistence && persistence.status === 'saved') {
+      const onlyRunOutput = !dirty || (tracked.baseline !== null && ownerSignature(parts.content, model) === tracked.baseline);
+      if (onlyRunOutput && context && typeof context.revert === 'function') {
+        try {
+          // context.revert() reloads from disk without JupyterLab's
+          // "discard changes?" dialog; it is reached only when nothing but
+          // this run's (now saved) outputs is unsaved.
+          await keepNotebookPlace(app, path, () => context.revert());
+        } catch {
+          notice = 'Companion saved this cell\'s output, but JupyterLab could not reload the notebook. Use File > Reload Notebook from Disk to see it.';
+        }
+      } else {
+        if (model) showRun(model, run, tracked);
+        notice = 'Companion saved this cell\'s output to the notebook file, but this notebook has unsaved edits, so it was not reloaded. Your edits are kept: save to keep them (JupyterLab will warn that the file changed on disk), or reload from disk to take the saved version.';
+      }
+    } else {
+      const shown = model ? showRun(model, run, tracked) : false;
+      if (!shown) notice = 'The cell Companion ran was edited, moved, or removed here, so its output is shown only in Companion.';
+      if (persistence && persistence.status === 'conflict') {
+        const reason = typeof persistence.message === 'string' && persistence.message ? persistence.message.slice(0, 400) : 'The run\'s outputs could not be saved to the notebook.';
+        notice = shown
+          ? reason + ' The output is shown in the cell; save the notebook to keep it.'
+          : reason;
+      }
+    }
+    reportRunNotice(run.runId, tracked, notice);
+    if (!run.stillRunning && persistence && persistence.status !== 'pending') liveCellRuns.delete(run.runId);
+    scheduleReport(app);
   };
 
   const bindCurrentWidget = (app) => {
@@ -707,7 +892,9 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
       const message = event.data;
       if (!message || message.source !== HOST_SOURCE || message.version !== VERSION) return;
       if (message.kind === 'apply-answer') applyAnswer(app, message);
+      else if (message.kind === 'command' && message.command === 'reload-document') void enqueueHostWork(() => dispatchCommand(app, message));
       else if (message.kind === 'command') void dispatchCommand(app, message);
+      else if (message.kind === 'cell-run-update') void enqueueHostWork(() => applyCellRunUpdate(app, message));
     };
     document.addEventListener('contextmenu', onContextMenu, true);
     document.addEventListener('scroll', onScroll, true);

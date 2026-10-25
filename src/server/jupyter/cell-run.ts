@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
 
+import { cellSourceRevision } from "@/lib/jupyter-cell-fingerprint";
 import { resolveLiveNotebookServer, resolveLiveProjectNotebookServer, type LiveNotebookServer } from "@/server/jupyter/runtime";
-import { readWorkspaceNotebookCellForRun } from "@/server/jupyter/workspace-notebook";
+import { persistWorkspaceCellRun, readWorkspaceNotebookCellForRun } from "@/server/jupyter/workspace-notebook";
 import type { ProjectWorkspaceRequest } from "@/server/jupyter/workspace-root";
+import { emitVaultSideEffects } from "@/server/vault/socket-events";
 import { VaultError } from "@/server/vault/errors";
 import { readNotebookCellForRun } from "@/server/vault/jupyter-notebook";
 
@@ -20,8 +22,15 @@ import { readNotebookCellForRun } from "@/server/vault/jupyter-notebook";
 // 1–60s). A run that finishes inside the window returns bounded outputs; a run
 // still going at the threshold returns a structured "still running" payload
 // (runId + cellId + note) and keeps listening in a process-global run registry
-// so the wake/detach story (SN-377) can pick it up. Outputs are reported in the
-// tool result only — notebook.ipynb is never written by this path.
+// so the wake/detach story (SN-377) can pick it up. For vault pages, outputs
+// are reported in the tool result only — notebook.ipynb is never written.
+//
+// SN-381: a Deep Work (project workspace) run additionally (1) announces
+// throttled live progress on `workspace_cell_run_updated` so the open
+// JupyterLab document shows it in the matching cell, and (2) persists the
+// finished nbformat outputs into that one cell through
+// `persistWorkspaceCellRun`, which refuses (conflict) rather than overwrite
+// owner edits. Persistence never re-executes anything.
 // ---------------------------------------------------------------------------
 
 export const CELL_RUN_AWAIT_DEFAULT_MS = 45_000;
@@ -41,6 +50,10 @@ const STREAM_BUFFER_CHARS = 64_000;
 const STREAM_RESULT_CHARS = 4_000;
 const RESULT_TEXT_CHARS = 2_000;
 const TRACEBACK_CHARS = 3_000;
+/** SN-381: rich data bundles kept for the saved notebook; beyond this, bundles degrade to text/plain. */
+const PERSIST_RICH_BYTES = 512 * 1024;
+/** SN-381: in-flight progress is coalesced to at most one announcement per window. */
+const LIVE_ANNOUNCE_MS = 250;
 export const CELL_RUN_NOTE_MAX_CHARS = 2_000;
 
 const RUNS_KEY = "__smartNotesJupyterCellRuns__";
@@ -73,6 +86,41 @@ interface CellRunRecord {
   socket: WebSocketLike | null;
   timers: Set<NodeJS.Timeout>;
   waiters: Set<() => void>;
+  /** SN-381: nbformat outputs for the saved notebook (raw text, rich bundles, bounded). */
+  outputs: NotebookOutput[];
+  outputBytes: number;
+  workspace: WorkspaceRunContext | null;
+  persistence: CellRunPersistence | null;
+  sourceRevision: string;
+  announceTimer: NodeJS.Timeout | null;
+  /** Resolves once a terminal run has finished (or skipped) persistence. */
+  settled: Promise<void> | null;
+}
+
+type NotebookOutput = Record<string, unknown>;
+
+export interface CellRunPersistence {
+  status: "pending" | "saved" | "conflict";
+  message?: string;
+  /** Notebook revision after a successful save (the next workspace_cell_* expectedRevision). */
+  revision?: string;
+}
+
+/** SN-381: launch-time snapshot of the executed workspace cell. */
+interface WorkspaceRunContext {
+  request: ProjectWorkspaceRequest;
+  rootPath: string;
+  source: string;
+  launchRevision: string;
+  launchOutputs: string;
+  launchExecutionCount: number | null;
+}
+
+interface CellForRun {
+  path: string;
+  index: number;
+  cellId: string | null;
+  source: string;
 }
 
 /** Minimal surface of the WHATWG WebSocket we rely on (Node 22 global). */
@@ -97,8 +145,9 @@ export interface RunJupyterCellInput {
 export interface RunJupyterCellDeps {
   WebSocketImpl?: WebSocketCtor;
   resolveServer?: (pagePath: string) => Promise<LiveNotebookServer>;
-  readCell?: (input: RunJupyterCellInput) => Promise<{ path: string; index: number; cellId: string | null; source: string }>;
+  readCell?: (input: RunJupyterCellInput) => Promise<CellForRun>;
   identity?: string;
+  workspace?: WorkspaceRunContext;
 }
 
 function runs(): Map<string, CellRunRecord> {
@@ -159,7 +208,28 @@ function textFromBundle(data: unknown): string {
   return mime ? `[${mime} output omitted]` : "";
 }
 
+function pushOutput(record: CellRunRecord, output: NotebookOutput): void {
+  const data = output.data;
+  if (data && typeof data === "object") {
+    const bytes = Buffer.byteLength(JSON.stringify(data), "utf8");
+    if (record.outputBytes + bytes > PERSIST_RICH_BYTES) {
+      const plain = joinText((data as Record<string, unknown>)["text/plain"]);
+      output.data = { "text/plain": plain ? plain.slice(0, RESULT_TEXT_CHARS) : "[output omitted: too large to save]" };
+    } else {
+      record.outputBytes += bytes;
+    }
+  }
+  record.outputs.push(output);
+}
+
 function appendStream(record: CellRunRecord, name: string, text: string): void {
+  const streamName = name === "stderr" ? "stderr" : "stdout";
+  const last = record.outputs[record.outputs.length - 1];
+  if (last && last.output_type === "stream" && last.name === streamName) {
+    last.text = (String(last.text ?? "") + text).slice(-STREAM_BUFFER_CHARS);
+  } else {
+    record.outputs.push({ output_type: "stream", name: streamName, text: text.slice(-STREAM_BUFFER_CHARS) });
+  }
   const clean = stripAnsi(text);
   if (name === "stderr") {
     record.stderr = (record.stderr + clean).slice(-STREAM_BUFFER_CHARS);
@@ -182,7 +252,7 @@ function toPayload(record: CellRunRecord, awaitMs?: number) {
     status: record.status,
     stillRunning,
     pagePath: record.pagePath,
-    cell: { index: record.index, cellId: record.cellId },
+    cell: { index: record.index, cellId: record.cellId, sourceRevision: record.sourceRevision },
     note: record.note,
     kernelId: record.kernelId,
     executionCount: record.executionCount,
@@ -197,10 +267,12 @@ function toPayload(record: CellRunRecord, awaitMs?: number) {
       ? { ename: record.error.ename, evalue: record.error.evalue, traceback: traceback.text, truncated: traceback.truncated }
       : null,
     failure: record.failure,
+    persistence: record.persistence,
   };
 }
 
 export type JupyterCellRunPayload = ReturnType<typeof toPayload>;
+export { cellSourceRevision };
 
 // ---------------------------------------------------------------------------
 // Run lifecycle
@@ -213,6 +285,61 @@ function addTimer(record: CellRunRecord, ms: number, fn: () => void): void {
   }, ms);
   timer.unref?.();
   record.timers.add(timer);
+}
+
+function emitRun(record: CellRunRecord): void {
+  if (record.announceTimer) {
+    clearTimeout(record.announceTimer);
+    record.announceTimer = null;
+  }
+  if (!record.workspace) return;
+  emitVaultSideEffects({
+    workspaceCellRunUpdated: { rootPath: record.workspace.rootPath, path: record.pagePath, run: toPayload(record) },
+  });
+}
+
+/**
+ * SN-381: live progress for the open Deep Work notebook. Start, terminal, and
+ * persistence states go out immediately; in-flight output is coalesced so a
+ * chatty loop cannot flood the socket. Every payload is a full bounded
+ * snapshot, so a coalesced intermediate update loses nothing.
+ */
+function announceRun(record: CellRunRecord, immediate = false): void {
+  if (!record.workspace) return;
+  if (immediate) {
+    emitRun(record);
+    return;
+  }
+  if (record.announceTimer) return;
+  record.announceTimer = setTimeout(() => {
+    record.announceTimer = null;
+    emitRun(record);
+  }, LIVE_ANNOUNCE_MS);
+  record.announceTimer.unref?.();
+}
+
+async function persistRun(record: CellRunRecord, workspace: WorkspaceRunContext): Promise<void> {
+  try {
+    const saved = await persistWorkspaceCellRun(workspace.request, record.pagePath, {
+      runId: record.runId,
+      launchRevision: workspace.launchRevision,
+      index: record.index,
+      cellId: record.cellId,
+      source: workspace.source,
+      launchOutputs: workspace.launchOutputs,
+      launchExecutionCount: workspace.launchExecutionCount,
+      executionCount: record.executionCount,
+      outputs: record.outputs,
+    });
+    record.persistence = { status: "saved", revision: saved.revision };
+  } catch (error) {
+    record.persistence = {
+      status: "conflict",
+      message: error instanceof VaultError
+        ? error.message
+        : "The run's outputs could not be saved to the notebook. They remain in Companion.",
+    };
+  }
 }
 
 function finish(record: CellRunRecord, status: CellRunStatus, failure?: { code: string; message: string }): void {
@@ -229,8 +356,22 @@ function finish(record: CellRunRecord, status: CellRunStatus, failure?: { code: 
   } catch {
     // best-effort
   }
-  for (const waiter of record.waiters) waiter();
-  record.waiters.clear();
+  // Only a run that executed to completion or raised an exception has outputs
+  // worth saving; interrupted/failed/lost runs leave the file alone.
+  const workspace = record.workspace;
+  const persist = Boolean(workspace) && (status === "completed" || status === "error");
+  if (persist) record.persistence = { status: "pending" };
+  announceRun(record, true);
+  record.settled = (async () => {
+    if (persist && workspace) {
+      await persistRun(record, workspace);
+      announceRun(record, true);
+    }
+    // Waiters (the short await and the SN-377 wake) observe the final
+    // persistence state. Nothing on this path can re-execute the cell.
+    for (const waiter of record.waiters) waiter();
+    record.waiters.clear();
+  })();
 }
 
 function finalizeFromReply(record: CellRunRecord): void {
@@ -332,12 +473,24 @@ function handleMessage(record: CellRunRecord, raw: unknown): void {
       break;
     case "execute_result":
     case "display_data": {
+      if (content.data && typeof content.data === "object") {
+        pushOutput(record, type === "execute_result"
+          ? {
+              output_type: "execute_result",
+              execution_count: typeof content.execution_count === "number" ? content.execution_count : record.executionCount,
+              data: content.data,
+              metadata: content.metadata ?? {},
+            }
+          : { output_type: "display_data", data: content.data, metadata: content.metadata ?? {} });
+      }
       const text = stripAnsi(textFromBundle(content.data));
       if (text) record.resultText = record.resultText ? `${record.resultText}\n${text}`.slice(-STREAM_BUFFER_CHARS) : text;
       if (typeof content.execution_count === "number") record.executionCount = content.execution_count;
       break;
     }
     case "clear_output":
+      record.outputs = [];
+      record.outputBytes = 0;
       record.stdout = "";
       record.stderr = "";
       record.resultText = "";
@@ -348,10 +501,18 @@ function handleMessage(record: CellRunRecord, raw: unknown): void {
         evalue: String(content.evalue ?? ""),
         traceback: stripAnsi((Array.isArray(content.traceback) ? content.traceback : []).map(String).join("\n")),
       };
+      // The saved notebook keeps Jupyter's raw (ANSI-coloured) traceback lines.
+      record.outputs.push({
+        output_type: "error",
+        ename: record.error.ename,
+        evalue: record.error.evalue,
+        traceback: (Array.isArray(content.traceback) ? content.traceback : []).map(String).slice(-200),
+      });
       break;
     default:
       break;
   }
+  announceRun(record);
 }
 
 function pruneRuns(): void {
@@ -482,6 +643,21 @@ function executeRequest(msgId: string, clientSession: string, code: string): str
 // Public API
 // ---------------------------------------------------------------------------
 
+function finishedHint(payload: JupyterCellRunPayload): string {
+  const outcome = payload.status === "error"
+    ? "The cell raised an exception on the live kernel; see run.error."
+    : "Cell finished on the live kernel.";
+  if (payload.persistence?.status === "saved") {
+    return `${outcome} Its outputs were saved into the notebook cell and appear in the owner's open JupyterLab notebook. The notebook revision is now run.persistence.revision; use it as expectedRevision for your next workspace_cell_* edit.`;
+  }
+  if (payload.persistence?.status === "conflict") {
+    return `${outcome} Its outputs could NOT be saved to the notebook (${payload.persistence.message ?? "the notebook changed"}). Give the owner these outputs and ask them to reconcile the notebook; the cell already ran once, so do not re-run it.`;
+  }
+  return payload.status === "error"
+    ? `${outcome} Outputs are reported here only — notebook.ipynb was not modified.`
+    : `${outcome} Outputs are reported here only — notebook.ipynb was not modified; the open Lab view does not render them.`;
+}
+
 function stillRunningHint(payload: JupyterCellRunPayload, awaitMs: number): string {
   return [
     `Cell is still ${payload.status} after ${Math.round(awaitMs / 1000)}s; the kernel keeps executing it.`,
@@ -554,8 +730,16 @@ export async function runJupyterCell(input: RunJupyterCellInput, deps: RunJupyte
     socket,
     timers: new Set(),
     waiters: new Set(),
+    outputs: [],
+    outputBytes: 0,
+    workspace: deps.workspace ?? null,
+    persistence: null,
+    sourceRevision: cellSourceRevision(cell.source),
+    announceTimer: null,
+    settled: null,
   };
   runs().set(record.runId, record);
+  announceRun(record, true);
 
   socket.addEventListener("message", (event) => handleMessage(record, event.data));
   const lost = () =>
@@ -592,6 +776,7 @@ export async function runJupyterCell(input: RunJupyterCellInput, deps: RunJupyte
     });
   }
 
+  if (isTerminal(record.status) && record.settled) await record.settled;
   const payload = toPayload(record, awaitMs);
   if (record.status === "interrupted" || record.status === "failed") {
     const failure = record.failure ?? { code: "JUPYTER_RUN_FAILED", message: "The cell run failed." };
@@ -620,10 +805,7 @@ export async function runJupyterCell(input: RunJupyterCellInput, deps: RunJupyte
 
   return {
     run: payload,
-    hint:
-      payload.status === "error"
-        ? "The cell raised an exception on the live kernel; see run.error. Outputs are reported here only — notebook.ipynb was not modified."
-        : "Cell finished on the live kernel. Outputs are reported here only — notebook.ipynb was not modified; the open Lab view does not render them.",
+    hint: finishedHint(payload),
   };
 }
 
@@ -639,6 +821,14 @@ export async function runWorkspaceJupyterCell(
   return runJupyterCell(input, {
     ...deps,
     identity: `${cell.workspaceKey}:${cell.path}`,
+    workspace: {
+      request,
+      rootPath: cell.rootPath,
+      source: cell.source,
+      launchRevision: cell.revision,
+      launchOutputs: cell.outputsFingerprint,
+      launchExecutionCount: cell.executionCount,
+    },
     readCell: async () => cell,
     resolveServer: () => resolveLiveProjectNotebookServer(cell.workspaceKey, cell.path),
   });
@@ -659,7 +849,7 @@ export function onJupyterCellRunSettled(runId: string, listener: (payload: Jupyt
   const record = runs().get(runId);
   if (!record) return null;
   if (isTerminal(record.status)) {
-    queueMicrotask(() => listener(toPayload(record)));
+    void (record.settled ?? Promise.resolve()).then(() => listener(toPayload(record)));
     return () => undefined;
   }
   let active = true;

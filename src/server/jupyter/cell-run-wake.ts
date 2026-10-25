@@ -402,6 +402,10 @@ export function buildCellWakeMessage(record: CellWakeRecord, outcome: CellWakeOu
   ];
   if (record.note) lines.push(`Your note from before the wait: ${record.note}`);
   if (run?.failure) lines.push(`Run failure: ${run.failure.code} — ${run.failure.message}`);
+  if (run?.persistence?.status === "saved") {
+    lines.push(`Run outputs were saved to the notebook.${run.persistence.revision ? ` Its revision is now ${run.persistence.revision}; use it as expectedRevision for your next workspace_cell_* edit.` : ""}`);
+  }
+  if (run?.persistence?.status === "conflict") lines.push(`Output save conflict: ${run.persistence.message ?? "The notebook changed."} Keep these outputs in Companion and ask the owner to reconcile the notebook; do not rerun the cell.`);
   if (run) {
     lines.push(...fence("stdout", run.stdout.text, run.stdout.totalChars, WAKE_STDOUT_CHARS));
     lines.push(...fence("stderr", run.stderr.text, run.stderr.totalChars, WAKE_STDERR_CHARS));
@@ -421,7 +425,7 @@ export function buildCellWakeMessage(record: CellWakeRecord, outcome: CellWakeOu
     lines.push("Tell the owner the run's result was not captured. Do not re-run the cell unless they ask.");
   } else {
     lines.push(
-      "Continue the task from your note using these outputs. The cell already ran on the live kernel — do not re-run it unless the owner asks. Outputs were not written to notebook.ipynb."
+      `Continue the task from your note using these outputs. The cell already ran on the live kernel — do not re-run it unless the owner asks.${!run?.persistence ? " Outputs were not written to notebook.ipynb." : ""}`
     );
   }
   return lines.join("\n");

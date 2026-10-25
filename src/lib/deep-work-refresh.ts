@@ -35,6 +35,12 @@ export interface DeepWorkSourceUpdatedEvent {
   path?: unknown;
   /** Content revision after the write. */
   revision?: unknown;
+  /**
+   * SN-381: set when the write saved a Companion cell run's outputs. The
+   * matching `workspace_cell_run_updated` event reconciles the open document
+   * (the frame knows whether the only unsaved change is that run's output).
+   */
+  cellRunId?: unknown;
 }
 
 export type DeepWorkRefreshIgnoreReason =
@@ -42,7 +48,8 @@ export type DeepWorkRefreshIgnoreReason =
   | "session-not-ready"
   | "other-workspace"
   | "unsafe-path"
-  | "not-active-file";
+  | "not-active-file"
+  | "cell-run-output";
 
 export type DeepWorkRefreshDecision =
   /** Nothing to do. `reason` is diagnostic only and never shown to the owner. */
@@ -112,6 +119,9 @@ export function deepWorkSourceRefreshDecision(input: {
   const activePath = normalizeJupyterWorkspacePath(input.activeWorkspacePath);
   if (!activePath || activePath !== eventPath) {
     return { kind: "ignore", reason: "not-active-file" };
+  }
+  if (typeof input.event.cellRunId === "string" && input.event.cellRunId) {
+    return { kind: "ignore", reason: "cell-run-output" };
   }
   if (input.activeDocumentDirty === true) {
     return { kind: "blocked-dirty", path: eventPath };

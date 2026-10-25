@@ -18,6 +18,8 @@ import {
   type JupyterWorkspaceSessionRequest,
 } from "@/lib/api/jupyter";
 import {
+  JUPYTER_FOCUS_MESSAGE_VERSION,
+  JUPYTER_HOST_MESSAGE_SOURCE,
   createJupyterCommandMessage,
   createJupyterApplyAnswerMessage,
   parseJupyterApplyAnswerResult,
@@ -32,6 +34,7 @@ import {
   type JupyterDeepWorkCommand,
   type JupyterFocusState,
 } from "@/lib/jupyter-focus";
+import type { JupyterCellRunPayload } from "@/server/jupyter/cell-run";
 import {
   JupyterDeepWorkToolbar,
   type JupyterDeepWorkIdentity,
@@ -129,6 +132,8 @@ export interface JupyterNotebookViewProps {
    * workspace, its capability, and the active file.
    */
   externalReload?: { path: string; nonce: number } | null;
+  externalRun?: { path: string; nonce: number; run: JupyterCellRunPayload } | null;
+  externalConflict?: string | null;
 }
 
 type ViewState =
@@ -243,6 +248,8 @@ export function JupyterNotebookView({
   onWorkspaceReady,
   onAskInCompanion,
   externalReload,
+  externalRun,
+  externalConflict,
 }: JupyterNotebookViewProps) {
   const [state, setState] = React.useState<ViewState>({ phase: "launching" });
   const workspaceAccessMode = workspace
@@ -262,6 +269,7 @@ export function JupyterNotebookView({
     pending: null,
     failed: null,
   });
+  const [runNotice, setRunNotice] = React.useState<string | null>(null);
   const [inlineSurface, setInlineSurface] = React.useState<InlineSurfaceState | null>(null);
   const [annotationsOpen, setAnnotationsOpen] = React.useState(false);
   const [annotations, setAnnotations] = React.useState<LoadedWorkspaceAnnotation[]>([]);
@@ -388,6 +396,22 @@ export function JupyterNotebookView({
     handledExternalReloadRef.current = externalReload.nonce;
     dispatchCommand("reload-document", undefined, { path: externalReload.path });
   }, [dispatchCommand, externalReload, frameLoaded, state.phase, workspace]);
+
+  const handledExternalRunRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!workspace || !externalRun || state.phase !== "ready" || !frameLoaded) return;
+    if (handledExternalRunRef.current === externalRun.nonce) return;
+    handledExternalRunRef.current = externalRun.nonce;
+    iframeRef.current?.contentWindow?.postMessage({
+      source: JUPYTER_HOST_MESSAGE_SOURCE,
+      version: JUPYTER_FOCUS_MESSAGE_VERSION,
+      kind: "cell-run-update",
+      path: externalRun.path,
+      run: externalRun.run,
+    }, window.location.origin);
+    // Conflict and reconciliation notices come back from the frame, which is
+    // the only place that knows whether the owner has unsaved cells.
+  }, [externalRun, frameLoaded, state.phase, workspace]);
 
   const dismissInlineSurface = React.useCallback(() => {
     inlineRequestRef.current?.abort();
@@ -702,6 +726,15 @@ export function JupyterNotebookView({
       const focus = parseJupyterFocusMessage(event.data, pagePath);
       if (focus) {
         if (!isActiveRef.current) return;
+        // SN-381: a run/sync notice is about one document state. It clears
+        // once the owner saves or reloads (dirty -> clean) or switches file.
+        const previousFocus = latestFocusRef.current;
+        if (
+          previousFocus &&
+          ((previousFocus.isDirty && focus.isDirty === false) || previousFocus.workspacePath !== focus.workspacePath)
+        ) {
+          setRunNotice(null);
+        }
         latestFocusRef.current = focus;
         setActiveFocus(focus);
         onFocusChangeRef.current?.(focus);
@@ -785,6 +818,13 @@ export function JupyterNotebookView({
             ? null
             : { ...current, phase: "error", error: answerResult.reason ?? "Jupyter rejected the cell update." };
         });
+        return;
+      }
+      if (event.data?.source === "smart-notes-jupyter-focus" && event.data?.kind === "cell-run-update-result") {
+        // SN-381: null clears a notice the frame resolved (e.g. saved outputs reloaded).
+        if (isActiveRef.current) {
+          setRunNotice(typeof event.data.reason === "string" && event.data.reason ? event.data.reason.slice(0, 600) : null);
+        }
         return;
       }
       const commandResult = parseJupyterCommandResult(event.data, pagePath);
@@ -1186,6 +1226,11 @@ export function JupyterNotebookView({
           className="border-b border-border bg-muted/60 px-3 py-1 text-xs text-muted-foreground"
         >
           Inline AI and source annotations are unavailable for this protected path. {protectedWorkspacePathReason}
+        </div>
+      ) : null}
+      {runNotice || externalConflict ? (
+        <div role="alert" data-testid="jupyter-notebook-sync-notice" className="border-b border-border bg-muted/60 px-3 py-1 text-xs text-destructive">
+          {runNotice || externalConflict}
         </div>
       ) : null}
       <div className="relative min-h-0 flex-1">
