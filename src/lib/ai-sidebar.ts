@@ -2360,3 +2360,13 @@ export function resolveComposerEnterAction(params: {
 export function isDuplicateTurnIdRejection(status: number, error: string | undefined) {
   return status === 409 && /turn_id already exists/i.test(error ?? "");
 }
+
+/**
+ * SN-362: a Keep ON thread restore resolves asynchronously. When a turn was
+ * submitted while it was loading (e.g. Ask Companion from a closed panel), keep
+ * the live messages and put any stored history not already present before them.
+ */
+export function mergeRestoredCompanionMessages<T extends { id: string }>(restored: T[], live: T[]): T[] {
+  const liveIds = new Set(live.map((message) => message.id));
+  return [...restored.filter((message) => !liveIds.has(message.id)), ...live];
+}

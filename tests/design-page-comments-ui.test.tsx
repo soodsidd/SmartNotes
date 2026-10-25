@@ -44,7 +44,7 @@ function Harness({ initial = [], onSave }: { initial?: PageComment[]; onSave: je
           setComments(next);
         }}
       />
-      <InlineAiPopover pagePath="Career/Resumes/resume.html" onContinue={jest.fn()} />
+      <InlineAiPopover pagePath="Career/Resumes/resume.html" onAsk={jest.fn()} onOpenCompanion={jest.fn()} />
     </>
   );
 }
@@ -131,7 +131,7 @@ describe("design page comments UI (SN-310)", () => {
     render(
       <>
         <DesignPageView pagePath="a.html" title="A" bodyHtml="<p>x</p>" />
-        <InlineAiPopover pagePath="a.html" onContinue={jest.fn()} />
+        <InlineAiPopover pagePath="a.html" onAsk={jest.fn()} onOpenCompanion={jest.fn()} />
       </>
     );
     expect(screen.queryByTestId("design-comments-toggle")).not.toBeInTheDocument();

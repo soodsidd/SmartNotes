@@ -12,14 +12,17 @@ const ANSWER = "A right angle post clamp joins two posts at 90 degrees.";
 
 test.use({ serviceWorkers: "block" });
 
-/** Deterministic fast-lane stream so screenshots show a streamed answer without a live provider. */
+/** Deterministic shared-sidebar turn with the existing dev chat-event bridge. */
 async function stubFastLane(page: Page, bodies: string[]) {
-  await page.route("**/api/companion/fast-lane/send/stream", async (route) => {
+  await page.route("**/api/chat/send", async (route) => {
     bodies.push(route.request().postData() ?? "");
-    const words = ANSWER.split(" ");
-    const sse = words.map((w, i) => `event: delta\ndata: ${JSON.stringify({ text: (i ? " " : "") + w })}\n\n`).join("") +
-      `event: done\ndata: ${JSON.stringify({ text: ANSWER, sessionId: "fast", durationMs: 5 })}\n\n`;
-    await route.fulfill({ status: 200, headers: { "Content-Type": "text/event-stream" }, body: sse });
+    const { turn_id: turnId } = JSON.parse(bodies[bodies.length - 1]) as { turn_id: string };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ turn_id: turnId }) });
+    await page.evaluate(({ turnId, answer }) => {
+      const bridge = (window as typeof window & { __testChatBridge?: { injectChatEvent: (event: unknown) => void } }).__testChatBridge;
+      bridge?.injectChatEvent({ turn_id: turnId, seq: 0, type: "token", payload: { text: answer } });
+      bridge?.injectChatEvent({ turn_id: turnId, seq: 1, type: "done", payload: { status: "completed" } });
+    }, { turnId, answer: ANSWER });
   });
 }
 
@@ -39,7 +42,7 @@ async function askAndContinue(page: Page, project: string, surface: string, bodi
   const popover = page.getByTestId("ask-companion-popover");
   await expect(popover).toHaveAttribute("role", "dialog");
   await expect(popover.getByText("Uses full page text and table context. Images, ink, and linked files are not read.")).toBeVisible();
-  await expect(popover.getByText("Only this captured text is sent.")).toBeVisible();
+  await expect(popover.getByText("Selection and surrounding page context are sent.")).toBeVisible();
   await expect(popover.getByPlaceholder("What does this mean?")).toBeFocused();
   await shot(page, project, `${surface}-popover`);
   await popover.getByRole("button", { name: "Explain" }).click();
@@ -50,16 +53,14 @@ async function askAndContinue(page: Page, project: string, surface: string, bodi
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
   await shot(page, project, `${surface}-answer`);
-  const body = JSON.parse(bodies[bodies.length - 1]) as { message: string; inlineContext: { surface: string }; context?: unknown };
-  expect(body.inlineContext.surface).toBe(surface);
-  expect(body.context).toBeUndefined();
-  await popover.getByRole("button", { name: "Continue in Companion →" }).click();
+  const body = JSON.parse(bodies[bodies.length - 1]) as { message: string; thread_key: string };
+  expect(body.message).toContain(`"surface":"${surface}"`);
+  expect(body.thread_key).toBeTruthy();
+  await popover.getByRole("button", { name: "Open in Companion →" }).click();
   await expect(popover).toHaveCount(0);
   const companion = project === "mobile" ? page.getByTestId("mobile-ai-sheet") : page.getByTestId("ai-sidebar");
   await expect(companion).toBeVisible(SLOW);
-  await expect(companion.getByTestId("ai-input").filter({ visible: true })).toHaveValue(
-    new RegExp(`Explain this text\\.[\\s\\S]*${ANSWER}`), SLOW
-  );
+  await expect(companion.getByText(ANSWER)).toBeVisible(SLOW);
 }
 
 async function openAskMenuFromFrame(page: Page, frameTestId: string, text: string, project: string, surface: string) {
@@ -119,8 +120,8 @@ test("SN-303: text page context menu row, table menu row, popover, and Continue 
     await expect(popover.getByText("Clicked paragraph")).toBeVisible();
     await expect(popover.locator("blockquote")).toHaveText("Right angle post clamp");
     await askAndContinue(page, project, "text", bodies);
-    const sent = JSON.parse(bodies[0]) as { inlineContext: { pageText: string; tableText: string } };
-    expect(sent.inlineContext.pageText).toContain("Clamp");
+    const sent = JSON.parse(bodies[0]) as { message: string };
+    expect(sent.message).toContain("Clamp");
   } finally {
     await page.request.delete(`/api/page?path=${encodeURIComponent(pagePath)}`).catch(() => undefined);
   }
@@ -150,9 +151,9 @@ test("SN-303: mobile selection bubble opens Ask Companion", async ({ page }, tes
     await expect(page.getByTestId("ask-companion-popover").locator(".inline-ai-target")).toHaveText("Selection");
     await shot(page, "mobile", "text-bubble-popover");
     await askAndContinue(page, "mobile", "text", bodies);
-    const sent = JSON.parse(bodies[0]) as { inlineContext: { target: string; text: string } };
-    expect(sent.inlineContext.target).toBe("Selection");
-    expect(sent.inlineContext.text).toContain("After table selection target");
+    const sent = JSON.parse(bodies[0]) as { message: string };
+    expect(sent.message).toContain('"target":"Selection"');
+    expect(sent.message).toContain("After table selection target");
   } finally {
     await page.request.delete(`/api/page?path=${encodeURIComponent(pagePath)}`).catch(() => undefined);
   }

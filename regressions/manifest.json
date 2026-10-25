@@ -1696,6 +1696,30 @@
       "failureMeaning": "A send may cancel another page, fail to supersede its own thread, or keep the wrong composer busy."
     },
     {
+      "id": "unit-sn-362-inline-ai-relay",
+      "name": "Ask Companion shared relay and Edit",
+      "description": "Jest: Fast/Slow turn provider routing, captured page context, popup stream mirror, Edit completion, and rich-text selection/caret insertion.",
+      "appType": "node",
+      "command": "npm test -- tests/inline-ai-popover.test.tsx tests/inline-ai-relay.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "node", "inline-ai", "targeted"],
+      "feature": "inline-ai",
+      "testType": "component",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-362",
+      "addedAt": "2026-10-24",
+      "sourceFiles": [
+        { "path": "tests/inline-ai-popover.test.tsx" },
+        { "path": "tests/inline-ai-relay.test.ts" }
+      ],
+      "intent": "Protects one shared Companion turn while the popup mirrors its answer and applies finished text only to the intended rich-text editor.",
+      "whenToRun": "Pre-merge when changing Ask Companion relay, Fast/Slow choice, or Edit insertion."
+    },
+    {
       "id": "unit-sn-193-pdf-reader-selection",
       "name": "PDF read-mode selection and Companion handoff",
       "description": "Jest: tests/pdf-reader-selection.test.ts and tests/inline-ai-popover.test.tsx — read-mode selection/copy, touch navigation, and captured PDF text through Companion prompts and handoff; SN-334 adds tests/pdf-selection-highlight.test.ts and tests/pdf-passage-actions.test.tsx for the Highlight/Record/Ask Companion menu, duplicate-free Highlight, and phone highlight taps.",

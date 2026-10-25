@@ -412,6 +412,8 @@ The owner references are the two photos on the vault page Key docs/ask-ai-compan
 
 The mobile selection bubble keeps controls on one line with horizontal scrolling and the established 44px touch targets; Ask Companion uses the existing `--accent` color.
 
+SN-362 adds Fast/Slow choice and a rich-text Edit toggle in the same chip row. The pressed choice uses the documented `--accent` for its border and text; spacing, typography, and touch targets remain the SN-303 values. No new design values were added.
+
 ## PDF passage actions (SN-334)
 
 The PDF selection menu is one compact row: Highlight, Record, Ask Companion. A tapped highlight's comment dish shows a row with Record and Ask Companion. Each action reuses `.inline-ai-menu-action`, keeping its lucide icon in `--accent` (Highlighter, NotebookPen, Sparkles) and the 44px touch target on coarse pointers and widths below 768px. The floating row and the "Highlighted · Undo" status use the inline AI popover tokens: `--popover`, `--foreground`, `--border`, `--secondary` (hover), `--ring` (focus), `--radius-md`, `--shadow-popover`, `--font-sans`, and `.8125rem` text with `.25rem`/`.5rem`/`.75rem` spacing. The row sizes to `max-content`, wraps only when wider than the viewport minus 16px, opens 8px below the passage (or above it when the reader suggests top), and stays at least 8px inside the viewport edge. No new design values were introduced.

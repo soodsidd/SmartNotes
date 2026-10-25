@@ -3,17 +3,23 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { Crop, FileImage, Highlighter, MessageSquarePlus, NotebookPen, Sparkles, X } from "lucide-react";
-import { streamJupyterFastLanePrompt } from "@/lib/api/jupyter";
-import { inlineAiHandoff, parseInlineAiContext, type InlineAiInvocation } from "@/lib/inline-ai";
+import { parseInlineAiContext, type InlineAiInvocation, type InlineAiRelayObserver, type InlineAiRelayRequest, type InlineAiSpeed } from "@/lib/inline-ai";
 import { invokePdfRecord } from "@/components/pdf-record-panel";
 
-export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; onContinue: (payload: { draft: string }) => void }) {
+export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
+  pagePath: string;
+  onAsk: (request: InlineAiRelayRequest, observer: InlineAiRelayObserver) => void;
+  onOpenCompanion: () => void;
+}) {
   const [invocation, setInvocation] = React.useState<InlineAiInvocation | null>(null);
   const [question, setQuestion] = React.useState("");
   const [answer, setAnswer] = React.useState("");
   const [answeredQuestion, setAnsweredQuestion] = React.useState("");
   const [error, setError] = React.useState("");
   const [working, setWorking] = React.useState(false);
+  const [speed, setSpeed] = React.useState<InlineAiSpeed>("fast");
+  const [edit, setEdit] = React.useState(false);
+  const [inserted, setInserted] = React.useState(false);
   const abort = React.useRef<AbortController | null>(null);
   const panel = React.useRef<HTMLDivElement>(null);
   const invocationRef = React.useRef<InlineAiInvocation | null>(null);
@@ -32,7 +38,7 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
       abort.current?.abort(); abort.current = null;
       invocationRef.current = detail;
       previousFocus.current = document.activeElement as HTMLElement;
-      setQuestion(""); setAnswer(""); setAnsweredQuestion(""); setError(""); setWorking(false); setInvocation(detail);
+      setQuestion(""); setAnswer(""); setAnsweredQuestion(""); setError(""); setWorking(false); setSpeed("fast"); setEdit(false); setInserted(false); setInvocation(detail);
     };
     window.addEventListener("smart-notes-ask-companion", open);
     return () => { window.removeEventListener("smart-notes-ask-companion", open); abort.current?.abort(); };
@@ -67,19 +73,27 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
     return () => { observer.disconnect(); window.removeEventListener("resize", position); };
   }, [invocation]);
 
-  async function ask() {
+  function ask() {
     if (!invocation || !question.trim() || working) return;
     const controller = new AbortController(); abort.current = controller;
-    setWorking(true); setAnswer(""); setError("");
+    setWorking(true); setAnswer(""); setError(""); setInserted(false);
+    const askedQuestion = question;
+    const editTurn = edit && Boolean(invocation.applyEdit);
     try {
-      const result = await streamJupyterFastLanePrompt(pagePath, question, invocation.context, {
-        signal: controller.signal,
-        onDelta: (_, text) => { if (!controller.signal.aborted) setAnswer(text); },
+      onAsk({ question: askedQuestion, context: invocation.context, speed, edit: editTurn }, {
+        onText: (text) => { if (!controller.signal.aborted) setAnswer(text); },
+        onDone: (text) => {
+          if (controller.signal.aborted) return;
+          setAnswer(text); setAnsweredQuestion(askedQuestion); setWorking(false);
+          if (!editTurn) return;
+          if (invocation.applyEdit?.(text)) setInserted(true);
+          else setError("The answer could not be inserted into this editor.");
+        },
+        onError: (message) => { if (!controller.signal.aborted) { setError(message); setWorking(false); } },
       });
-      if (!controller.signal.aborted) { setAnswer(result.text); setAnsweredQuestion(question); }
     } catch (err) {
-      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Could not get an answer. Try again.");
-    } finally { if (!controller.signal.aborted) setWorking(false); }
+      if (!controller.signal.aborted) { setError(err instanceof Error ? err.message : "Could not get an answer. Try again."); setWorking(false); }
+    }
   }
   if (!invocation) return null;
   return createPortal(
@@ -107,17 +121,22 @@ export function InlineAiPopover({ pagePath, onContinue }: { pagePath: string; on
         <p className="inline-ai-helper">Uses full page text and table context. Images, ink, and linked files are not read.</p>
         <blockquote>{invocation.context.text || "This target has no text yet."}</blockquote>
         <div className="inline-ai-chips">{["Explain", "Summarize"].map(label => <button key={label} disabled={working} onClick={() => { setQuestion(`${label} this text.`); panel.current?.querySelector("textarea")?.focus(); }}>{label}</button>)}{invocation.pdfRecord && <button onClick={() => invokePdfRecord({ ...invocation.pdfRecord!, quick: true })}>Record</button>}</div>
+        <div className="inline-ai-chips" role="group" aria-label="Companion turn mode">
+          {(["fast", "slow"] as const).map(value => <button key={value} type="button" aria-pressed={speed === value} disabled={working} onClick={() => setSpeed(value)}>{value === "fast" ? "Fast" : "Slow"}</button>)}
+          {invocation.applyEdit && <button type="button" aria-pressed={edit} disabled={working} onClick={() => setEdit(value => !value)}>Edit</button>}
+        </div>
         {invocation.pdfRecord && <button className="inline-ai-continue" onClick={() => invokePdfRecord(invocation.pdfRecord!)}>Add thought or choose note…</button>}
         <form onSubmit={e => { e.preventDefault(); void ask(); }}>
           <label htmlFor="inline-ai-question">Ask about this text</label>
           <textarea id="inline-ai-question" placeholder="What does this mean?" rows={3} maxLength={4000} value={question} disabled={working} onChange={e => setQuestion(e.target.value)} />
-          <footer><span>Only this captured text is sent.</span><button className="inline-ai-ask" disabled={!question.trim() || working}>{working ? "Asking…" : error ? "Retry" : "Ask"}</button></footer>
+          <footer><span>Selection and surrounding page context are sent.</span><button className="inline-ai-ask" disabled={!question.trim() || working}>{working ? "Asking…" : error ? "Retry" : "Ask"}</button></footer>
         </form>
         {working && !answer && <p role="status">Thinking…</p>}
         {answer && <div className="inline-ai-answer" aria-live="polite" aria-busy={working}>{answer}</div>}
         {invocation.pdfRecord && answer && !working && answeredQuestion === question && <button className="inline-ai-continue" onClick={() => invokePdfRecord({ ...invocation.pdfRecord!, question: answeredQuestion, answer, quick: true })}>Record answer</button>}
+        {inserted && <p role="status">Inserted into the page.</p>}
         {error && <p role="alert">{error}</p>}
-        <button className="inline-ai-continue" onClick={() => { onContinue({ draft: inlineAiHandoff(invocation.context, question, answer) }); close(); }}>Continue in Companion →</button>
+        <button className="inline-ai-continue" onClick={() => { onOpenCompanion(); close(); }}>Open in Companion →</button>
       </>}
     </div>, document.body
   );

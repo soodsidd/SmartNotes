@@ -69,7 +69,7 @@ it("ignores a clip invocation that arrives without its rendered image", () => {
 });
 
 it("offers Record area and Record page from the PDF page menu", () => {
-  render(<InlineAiPopover pagePath="Notes/pdf.html" onContinue={jest.fn()} />);
+  render(<InlineAiPopover pagePath="Notes/pdf.html" onAsk={jest.fn()} onOpenCompanion={jest.fn()} />);
   const pdfClip = { area: jest.fn(), page: jest.fn() };
   act(() => invokeInlineAi({ context: { surface: "pdf", target: "PDF page", text: "", pageText: "", tableText: "" }, x: 10, y: 10, menu: true, pdfClip }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Record area" }));
