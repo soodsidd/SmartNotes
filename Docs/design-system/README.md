@@ -414,6 +414,8 @@ The mobile selection bubble keeps controls on one line with horizontal scrolling
 
 SN-362 adds Fast/Slow choice and a rich-text Edit toggle in the same chip row. The pressed choice uses the documented `--accent` for its border and text; spacing, typography, and touch targets remain the SN-303 values. No new design values were added.
 
+SN-363 brings JupyterLab into the same popover: the Lab inline-AI chip row (existing `--popover`, `--border`, `--muted` hover, `text-xs` chip classes) relabels its Ask chip "Ask Companion...", matching the rich-text and PDF menus. Fast/Slow/Edit render with the SN-362 popover styles unchanged. No new design values were added.
+
 ## PDF passage actions (SN-334)
 
 The PDF selection menu is one compact row: Highlight, Record, Ask Companion. A tapped highlight's comment dish shows a row with Record and Ask Companion. Each action reuses `.inline-ai-menu-action`, keeping its lucide icon in `--accent` (Highlighter, NotebookPen, Sparkles) and the 44px touch target on coarse pointers and widths below 768px. The floating row and the "Highlighted · Undo" status use the inline AI popover tokens: `--popover`, `--foreground`, `--border`, `--secondary` (hover), `--ring` (focus), `--radius-md`, `--shadow-popover`, `--font-sans`, and `.8125rem` text with `.25rem`/`.5rem`/`.75rem` spacing. The row sizes to `max-content`, wraps only when wider than the viewport minus 16px, opens 8px below the passage (or above it when the reader suggests top), and stays at least 8px inside the viewport edge. No new design values were introduced.

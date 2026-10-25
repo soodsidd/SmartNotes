@@ -1698,9 +1698,9 @@
     {
       "id": "unit-sn-362-inline-ai-relay",
       "name": "Ask Companion shared relay and Edit",
-      "description": "Jest: Fast/Slow turn provider routing, captured page context, popup stream mirror, Edit completion, and rich-text selection/caret insertion.",
+      "description": "Jest: Fast/Slow turn provider routing, captured page context, popup stream mirror, Edit completion, and rich-text selection/caret insertion; SN-363 adds Jupyter Lab Ask Companion (shared relay with no fast-lane session, cell/selection context, revision-guarded cell Edit at the live selection or caret).",
       "appType": "node",
-      "command": "npm test -- tests/inline-ai-popover.test.tsx tests/inline-ai-relay.test.ts",
+      "command": "npm test -- tests/inline-ai-popover.test.tsx tests/inline-ai-relay.test.ts tests/jupyter-ask-companion.test.tsx",
       "timeoutMs": 120000,
       "enabled": true,
       "tags": ["unit", "node", "inline-ai", "targeted"],
@@ -1714,10 +1714,11 @@
       "addedAt": "2026-10-24",
       "sourceFiles": [
         { "path": "tests/inline-ai-popover.test.tsx" },
-        { "path": "tests/inline-ai-relay.test.ts" }
+        { "path": "tests/inline-ai-relay.test.ts" },
+        { "path": "tests/jupyter-ask-companion.test.tsx" }
       ],
-      "intent": "Protects one shared Companion turn while the popup mirrors its answer and applies finished text only to the intended rich-text editor.",
-      "whenToRun": "Pre-merge when changing Ask Companion relay, Fast/Slow choice, or Edit insertion."
+      "intent": "Protects one shared Companion turn while the popup mirrors its answer and applies finished text only to the intended rich-text editor or Jupyter Lab cell.",
+      "whenToRun": "Pre-merge when changing Ask Companion relay, Fast/Slow choice, Edit insertion, or the Jupyter Lab Ask path."
     },
     {
       "id": "unit-sn-193-pdf-reader-selection",
