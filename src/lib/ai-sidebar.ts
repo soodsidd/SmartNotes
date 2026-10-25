@@ -1611,7 +1611,7 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
     const focus = input.activeJupyterFocus?.pagePath === notePath ? input.activeJupyterFocus : null;
     const activeWorkspacePath = focus?.workspacePath || workspace.activeFile || "";
     const canRunNotebook = Boolean(
-      workspace.capability && workspace.notebookSessionReady &&
+      workspace.capability && workspace.requestedAccess === "editable" && workspace.notebookSessionReady &&
       focus?.documentKind === "notebook" && /\.ipynb$/i.test(activeWorkspacePath)
     );
     const live = projectFocusSource(focus);

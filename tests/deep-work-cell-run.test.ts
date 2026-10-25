@@ -197,6 +197,17 @@ describe("SN-378 Deep Work notebook execution", () => {
     expect(fake.executions).toHaveLength(0);
   });
 
+  it("rejects cell execution from a read-only Deep Work capability", async () => {
+    const request = { rootPath: root, requestedAccess: "read-only" as const, branch: "av/sn-378" };
+    capability = issueWorkspaceCapability(request, await resolveProjectWorkspace(request)).capability;
+    source.threadKey = `${capability}::whole`;
+    source.appContext = `Smart Notes Deep Work operating context:\n- workspaceCapability: ${capability}\n- Active repository-relative file: analysis.ipynb\n- Deep Work notebook run: enabled.\n- companionTurnId: ${source.turnId}`;
+    const result = await post("analysis.ipynb");
+    expect(result.status).toBe(403);
+    expect(result.body.code).toBe("WORKSPACE_READ_ONLY");
+    expect(fake.executions).toHaveLength(0);
+  });
+
   it("parks a durable wake on the Deep Work thread and resumes it with outputs and note", async () => {
     await writeWorkspaceCompanion({ rootPath: root, requestedAccess: "editable", branch: "av/sn-378" }, {
       whole: { messages: [{ id: "u1", role: "user", content: "Run the model" }] },

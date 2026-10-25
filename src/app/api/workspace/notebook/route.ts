@@ -51,6 +51,9 @@ export async function POST(request: Request) {
       if (args.awaitSeconds !== undefined && (typeof args.awaitSeconds !== "number" || !Number.isFinite(args.awaitSeconds))) throw new VaultError("INVALID_INPUT", '"awaitSeconds" must be a number.');
       if (args.wakeTimeoutMinutes !== undefined && (typeof args.wakeTimeoutMinutes !== "number" || !Number.isFinite(args.wakeTimeoutMinutes))) throw new VaultError("INVALID_INPUT", '"wakeTimeoutMinutes" must be a number.');
       const capability = workspaceRequestFromValue(workspace);
+      if (capability.requestedAccess !== "editable") {
+        throw new VaultError("WORKSPACE_READ_ONLY", "Cell execution requires an editable Deep Work workspace.", 403);
+      }
       const suppliedTurnId = request.headers.get("x-smart-notes-turn-id") || args.turnId;
       const host = (globalThis as Record<string, unknown>)._smartNotesCompanionHost as {
         getTurn?: (turnId: string) => { status: string; threadKey: string; appContext: string } | null;
