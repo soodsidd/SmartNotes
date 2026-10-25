@@ -317,6 +317,19 @@ import {
   writeVolatileCompanionSession,
 } from "@/lib/ai-sidebar";
 import {
+  EMPTY_COMPANION_THREAD_INDICATORS,
+  acknowledgeCompanionThread,
+  clearCompanionThreadTurn,
+  companionIndicatorThreadKey,
+  lookupCompanionSidebarIndicator,
+  markCompanionThreadWorking,
+  resolveCompanionSidebarIndicators,
+  resolveCompanionThreadTerminal,
+  type CompanionSidebarIndicators,
+  type CompanionThreadIndicatorState,
+  type CompanionThreadIndicatorStatus,
+} from "@/lib/companion-thread-indicators";
+import {
   deleteCompanionSessions,
   fetchCompanionPageContext,
   fetchCompanionSessions,
@@ -1269,6 +1282,22 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // fed by the existing durable-turn terminal stream — no second turn lifecycle.
   const [companionAnswerReady, setCompanionAnswerReady] = React.useState(false);
   const [companionTurnPending, setCompanionTurnPending] = React.useState(false);
+  // SN-373: per-thread (page / notebook-section) working → ready → acknowledged
+  // indicators for the page sidebar. Fed by the same signals as SN-211 above, but
+  // keyed by thread address so parallel turns (SN-322) each keep their own dot.
+  const [companionThreadIndicators, setCompanionThreadIndicators] =
+    React.useState<CompanionThreadIndicatorState>(EMPTY_COMPANION_THREAD_INDICATORS);
+  // "Viewed" = the companion is open AND showing that exact thread right now.
+  const isCompanionThreadViewedNow = React.useCallback(
+    (threadKey: string) =>
+      aiOpenRef.current &&
+      Boolean(companionStorePathRef.current) &&
+      companionIndicatorThreadKey({
+        storePath: companionStorePathRef.current,
+        scopeKey: companionScopeKeyRef.current,
+      }) === threadKey,
+    []
+  );
   // Live mirror of `aiOpen` for the socket closure, and the turn id watched for a
   // background (closed-panel) terminal event. `watchedTurnIdRef` survives the
   // detach-on-close path so completion is still observed after the panel closes.
@@ -2010,6 +2039,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         // before it finishes still lights the ready badge on completion.
         watchedTurnIdRef.current = pointer.turnId;
         setCompanionTurnPending(true);
+        // SN-373: the reattached turn is live on this thread's sidebar row.
+        setCompanionThreadIndicators((current) =>
+          markCompanionThreadWorking(current, { storePath: path, scopeKey, turnId: pointer.turnId })
+        );
         socketRef.current?.emit("chat_resume", { turn_id: pointer.turnId, last_seq: -1 });
         return;
       }
@@ -2100,6 +2133,16 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       if (shouldLightCompanionReady(terminalStatus, aiOpenRef.current)) {
         setCompanionAnswerReady(true);
       }
+      // SN-373: same recovery for this thread's sidebar dot. The fallback address
+      // covers a turn this tab never saw start (reload); settled turns are deduped.
+      setCompanionThreadIndicators((current) =>
+        resolveCompanionThreadTerminal(current, {
+          turnId: pointer.turnId,
+          status: terminalStatus,
+          isViewed: isCompanionThreadViewedNow,
+          fallbackThread: { storePath: path, scopeKey },
+        })
+      );
 
       if (activeTurnContextRef.current?.path === path && activeTurnContextRef.current.scopeKey === scopeKey) {
         activeTurnContextRef.current = null;
@@ -2116,7 +2159,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       }
       await clearCompanionActiveTurnPointer(path, scopeKey, pointer.turnId);
     },
-    [clearCompanionActiveTurnPointer, saveCompanionThread]
+    [clearCompanionActiveTurnPointer, isCompanionThreadViewedNow, saveCompanionThread]
   );
 
   // Clear one scope thread on the page being left (navigation dispose with Keep OFF).
@@ -2196,6 +2239,16 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       setCompanionAnswerReady(false);
     }
   }, [aiOpen]);
+
+  // SN-373: viewing a thread (companion open on it) acknowledges that thread's
+  // ready sidebar dot only — other pages/sections keep theirs. Switching pages or
+  // scope with the companion open acknowledges the newly displayed thread.
+  React.useEffect(() => {
+    if (!aiOpen || !companionStorePath) return;
+    setCompanionThreadIndicators((current) =>
+      acknowledgeCompanionThread(current, { storePath: companionStorePath, scopeKey: companionScopeKey })
+    );
+  }, [aiOpen, companionStorePath, companionScopeKey, companionThreadIndicators]);
 
   const updateAiMessage = React.useCallback((messageId: string, updater: (message: AiSidebarMessage) => AiSidebarMessage) => {
     setAiMessages((currentMessages) => {
@@ -2353,6 +2406,27 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           watchedTurnIdRef.current = null;
           setCompanionTurnPending(false);
         }
+      }
+
+      // SN-373: per-thread sidebar dots. The server broadcasts every turn's
+      // events, so any turn this tab started or reattached settles here even
+      // after newer sends on other pages replaced the SN-211 watched turn.
+      // Unknown (foreign) turn ids are ignored by the state machine.
+      if (event.turn_id && (event.type === "done" || event.type === "error")) {
+        const terminalTurnId = event.turn_id;
+        const terminalStatus =
+          event.type === "error"
+            ? "failed"
+            : typeof event.payload?.status === "string"
+              ? event.payload.status
+              : "completed";
+        setCompanionThreadIndicators((current) =>
+          resolveCompanionThreadTerminal(current, {
+            turnId: terminalTurnId,
+            status: terminalStatus,
+            isViewed: isCompanionThreadViewedNow,
+          })
+        );
       }
 
       // SN-362: the Ask Companion popup mirrors this shared sidebar turn. Like the
@@ -2643,7 +2717,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       socketRef.current = null;
       setSyncConnectionState("disconnected");
     };
-  }, [checkActivePageForExternalUpdate, clearCompanionActiveTurnPointer, reloadActiveJupyterFrame, updateAiMessage]);
+  }, [checkActivePageForExternalUpdate, clearCompanionActiveTurnPointer, isCompanionThreadViewedNow, reloadActiveJupyterFrame, updateAiMessage]);
 
   React.useEffect(() => {
     let ignore = false;
@@ -5916,6 +5990,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     watchedTurnIdRef.current = turnId;
     setCompanionTurnPending(true);
     setCompanionAnswerReady(false);
+    // SN-373: this thread's sidebar row starts pulsing (supersedes its own
+    // unread ready dot only; other pages/sections keep theirs).
+    setCompanionThreadIndicators((current) =>
+      markCompanionThreadWorking(current, { storePath: submitPath, scopeKey: submitScopeKey, turnId })
+    );
     const visibleSnapshot = snapshot.map((message) =>
       message.id === assistantMessageId ? { ...message, isStreaming: true } : message
     );
@@ -6048,6 +6127,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         watchedTurnIdRef.current = null;
         setCompanionTurnPending(false);
       }
+      setCompanionThreadIndicators((current) => clearCompanionThreadTurn(current, turnId));
       if (activeTurnIdRef.current === turnId && activeTurnContextRef.current?.path === submitPath &&
           activeTurnContextRef.current.scopeKey === submitScopeKey) {
         activeTurnIdRef.current = null;
@@ -6138,6 +6218,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     // the ready badge for it (the transcript stays the source of truth).
     watchedTurnIdRef.current = null;
     setCompanionTurnPending(false);
+    // SN-373: a stopped turn never leaves a green sidebar dot.
+    setCompanionThreadIndicators((current) => clearCompanionThreadTurn(current, currentTurnId));
     // SN-362: release the popup mirror of a stopped shared turn.
     const relay = inlineRelayRef.current;
     if (relay && relay.turnId === currentTurnId) {
@@ -6401,6 +6483,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       turnPending: companionTurnPending,
       panelOpen: aiOpen,
     });
+  // SN-373: sidebar row projection of the per-thread indicators (stable identity
+  // between changes so the memoized Sidebar does not re-render on every tick).
+  const companionSidebarIndicators = React.useMemo(
+    () => resolveCompanionSidebarIndicators(companionThreadIndicators),
+    [companionThreadIndicators]
+  );
 
   const canExportCurrentTextPage = Boolean(
     draft && draft.noteType === "text" && !activeVersionPreview
@@ -7028,6 +7116,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   onCollapseRail={() => setNotebookRailCollapsedAndStore(true)}
                   variant="desktop"
                   tree={treeWithOverrides}
+                  companionIndicators={companionSidebarIndicators}
                   isTreeLoading={isLoadingTree}
                   ghostVersions={ghostVersions}
                   activeNotebookPath={activeNotebookPath}
@@ -7154,6 +7243,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                     sidebarLayout="page-tree"
                     variant="desktop"
                     tree={treeWithOverrides}
+                    companionIndicators={companionSidebarIndicators}
                     isTreeLoading={isLoadingTree}
                     ghostVersions={ghostVersions}
                     activeNotebookPath={activeNotebookPath}
@@ -7609,6 +7699,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               <Sidebar
                 sidebarLayout="rail"
                 tree={treeWithOverrides}
+                companionIndicators={companionSidebarIndicators}
                 isTreeLoading={isLoadingTree}
                 activeNotebookPath={activeNotebookPath}
                 activeSectionPath={activeSectionPath}
@@ -7707,6 +7798,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 <Sidebar
                   sidebarLayout="page-tree"
                   tree={treeWithOverrides}
+                  companionIndicators={companionSidebarIndicators}
                   pageScope={mobileDrillNotebookPath ? { notebookPath: mobileDrillNotebookPath, sectionPath: mobileDrillSectionPath } : null}
                   isTreeLoading={isLoadingTree}
                   activeNotebookPath={activeNotebookPath}
@@ -8538,6 +8630,39 @@ function TopBar({
   );
 }
 
+/**
+ * SN-373: per-thread companion dot on a page or section sidebar row. Mirrors the
+ * SN-211 companion-icon language: working = quiet muted pulse (reduced-motion
+ * aware, decorative); ready = solid --accent attention dot announced politely.
+ */
+function CompanionThreadDot({ status, testId }: { status: CompanionThreadIndicatorStatus | null; testId: string }) {
+  if (status === "ready") {
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full bg-accent"
+        role="status"
+        aria-live="polite"
+        aria-label="Companion answer ready"
+        title="Companion answer ready"
+        data-testid={testId}
+        data-companion-indicator="ready"
+      />
+    );
+  }
+  if (status === "working") {
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full bg-muted-foreground/70 animate-pulse motion-reduce:animate-none"
+        aria-hidden="true"
+        title="Companion working"
+        data-testid={testId}
+        data-companion-indicator="working"
+      />
+    );
+  }
+  return null;
+}
+
 function InlineSectionName({ path, name, onCommit, kind = "section" }: { path: string; name: string; onCommit: (path: string, name: string) => Promise<void>; kind?: "section" | "page" }) {
   const [value, setValue] = React.useState(name);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -8670,8 +8795,11 @@ export const Sidebar = React.memo(function Sidebar({
   onExportPage,
   onExportDocxPage,
   onExportPagePackage,
+  companionIndicators,
 }: {
   sidebarLayout?: "unified" | "rail" | "page-tree";
+  /** SN-373: per-page / per-section companion working/ready dots. */
+  companionIndicators?: CompanionSidebarIndicators;
   onCollapseRail?: () => void;
   /** Page-tree layout only; defaults to the active notebook/section. */
   pageScope?: SidebarPageScope | null;
@@ -9373,6 +9501,10 @@ export const Sidebar = React.memo(function Sidebar({
                             data-testid={`rail-section-tab-${section.path}`}
                           />
                           <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass, sectionActive ? "font-medium" : "font-normal")}>{section.name}</span>
+                          <CompanionThreadDot
+                            status={lookupCompanionSidebarIndicator(companionIndicators, "section", section.path)}
+                            testId={`companion-thread-dot-rail-section-${section.path}`}
+                          />
                         </button>
                         <DropdownMenu>
                           <DropdownMenuTrigger
@@ -9720,6 +9852,10 @@ export const Sidebar = React.memo(function Sidebar({
                             >
                               {node.page.title}
                             </p>}
+                            <CompanionThreadDot
+                              status={lookupCompanionSidebarIndicator(companionIndicators, "page", node.page.path)}
+                              testId={`companion-thread-dot-page-${node.page.path}`}
+                            />
                           </button>
                           {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? (
                             <InlineSectionName path={node.page.path} name={node.page.title} kind="page" onCommit={onCommitPageTitle} />
@@ -9929,6 +10065,10 @@ export const Sidebar = React.memo(function Sidebar({
                             {inlineSectionPath !== section.path ? (
                               <span className="truncate text-sm text-foreground">{section.name}</span>
                             ) : null}
+                            <CompanionThreadDot
+                              status={lookupCompanionSidebarIndicator(companionIndicators, "section", section.path)}
+                              testId={`companion-thread-dot-section-${section.path}`}
+                            />
                           </button>
                           {inlineSectionPath === section.path ? (
                             <InlineSectionName path={section.path} name={section.name} onCommit={onCommitSectionName} />
@@ -10253,6 +10393,10 @@ export const Sidebar = React.memo(function Sidebar({
                                         isAppPage && "text-accent",
                                         isSpreadsheetPage && "text-chart-2",
                                       )}>{node.page.title}</p>}
+                                    <CompanionThreadDot
+                                      status={lookupCompanionSidebarIndicator(companionIndicators, "page", node.page.path)}
+                                      testId={`companion-thread-dot-page-${node.page.path}`}
+                                    />
                                     </button>
                                     {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? (
                                       <InlineSectionName path={node.page.path} name={node.page.title} kind="page" onCommit={onCommitPageTitle} />
