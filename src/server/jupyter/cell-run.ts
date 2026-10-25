@@ -479,8 +479,7 @@ function executeRequest(msgId: string, clientSession: string, code: string): str
 function stillRunningHint(payload: JupyterCellRunPayload, awaitMs: number): string {
   return [
     `Cell is still ${payload.status} after ${Math.round(awaitMs / 1000)}s; the kernel keeps executing it.`,
-    `Do not re-run this cell. Report runId ${payload.runId} (cellId ${payload.cell.cellId ?? "none"}) to the owner;`,
-    "wake/auto-resume for long runs is handled separately (SN-377).",
+    `Do not re-run this cell. Report runId ${payload.runId} (cellId ${payload.cell.cellId ?? "none"}) to the owner.`,
   ].join(" ");
 }
 
@@ -623,6 +622,51 @@ export async function runJupyterCell(input: RunJupyterCellInput, deps: RunJupyte
 export function getJupyterCellRun(runId: string): JupyterCellRunPayload | null {
   const record = runs().get(runId);
   return record ? toPayload(record) : null;
+}
+
+/**
+ * SN-377: call `listener` once when the run reaches a terminal state (or
+ * immediately if it already has). Returns an unsubscribe function. Returns
+ * null when the run is unknown to this process (e.g. after a server restart).
+ */
+export function onJupyterCellRunSettled(runId: string, listener: (payload: JupyterCellRunPayload) => void): (() => void) | null {
+  const record = runs().get(runId);
+  if (!record) return null;
+  if (isTerminal(record.status)) {
+    queueMicrotask(() => listener(toPayload(record)));
+    return () => undefined;
+  }
+  let active = true;
+  const waiter = () => {
+    if (!active) return;
+    active = false;
+    listener(toPayload(record));
+  };
+  record.waiters.add(waiter);
+  return () => {
+    active = false;
+    record.waiters.delete(waiter);
+  };
+}
+
+/**
+ * SN-377: interrupt a live run's kernel (owner cancel). Sends the standard
+ * Jupyter Server `POST api/kernels/<id>/interrupt`; the run then settles as
+ * interrupted through the normal KeyboardInterrupt / execute_reply path.
+ */
+export async function interruptJupyterCellRun(
+  runId: string,
+  deps: Pick<RunJupyterCellDeps, "resolveServer"> = {}
+): Promise<boolean> {
+  const record = runs().get(runId);
+  if (!record || isTerminal(record.status)) return false;
+  const server = await (deps.resolveServer ?? resolveLiveNotebookServer)(record.pagePath);
+  const url = `${server.baseUrl}${server.basePath}api/kernels/${encodeURIComponent(record.kernelId)}/interrupt?token=${encodeURIComponent(server.token)}`;
+  const response = await fetch(url, { method: "POST", signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+  if (!response.ok) {
+    throw new VaultError("JUPYTER_RUN_FAILED", `Could not interrupt the kernel (HTTP ${response.status}).`, 502);
+  }
+  return true;
 }
 
 /** Test hook: abandon all runs and clear the registry. */

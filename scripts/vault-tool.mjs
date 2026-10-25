@@ -100,7 +100,11 @@ async function main() {
   const url = `http://${DEFAULT_HOST}:${port}/api/agent/vault`;
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // SN-377: identify the companion turn so a long Jupyter cell run can wake this thread.
+      ...(process.env.SMART_NOTES_TURN_ID ? { "x-smart-notes-turn-id": process.env.SMART_NOTES_TURN_ID } : {}),
+    },
     body: JSON.stringify({ tool, args }),
   });
 

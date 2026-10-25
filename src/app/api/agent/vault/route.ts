@@ -25,7 +25,14 @@ export async function POST(request: Request) {
     };
 
     if (body.tool) {
-      const outcome = await executeVaultTool(body.tool, body.args ?? {});
+      const args = { ...(body.args ?? {}) };
+      // SN-377: the provider child inherits SMART_NOTES_TURN_ID and vault-tool.mjs
+      // forwards it so a still-running cell wake parks on the calling thread.
+      const turnHeader = request.headers.get("x-smart-notes-turn-id")?.trim();
+      if (turnHeader && /^[0-9a-f-]{36}$/i.test(turnHeader) && body.tool === "jupyter_cell_run") {
+        args._companionTurnId = turnHeader;
+      }
+      const outcome = await executeVaultTool(body.tool, args);
       if (!outcome.ok) {
         return NextResponse.json(
           { error: outcome.error, code: outcome.code, tool: outcome.tool },

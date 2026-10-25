@@ -246,11 +246,13 @@ function rewriteCompanionAppContext(appContext, target) {
   return [context, connectionLines.join('\n')].filter(Boolean).join('\n\n');
 }
 
-function buildCompanionProviderEnv(baseEnv, boundPort) {
+function buildCompanionProviderEnv(baseEnv, boundPort, turnId = '') {
   const port = normalizeBoundPort(boundPort);
   return {
     ...baseEnv,
     ...(port ? { PORT: String(port), SMART_NOTES_PORT: String(port) } : {}),
+    // SN-377: vault-tool.mjs forwards this so host tools know the calling turn/thread.
+    ...(turnId ? { SMART_NOTES_TURN_ID: String(turnId) } : {}),
   };
 }
 
@@ -783,6 +785,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
   }
 
   function getRequestClientDetails(req) {
+    if (!req) return { ip: 'host', user_agent: 'smart-notes-host' };
     return {
       ip: String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').trim(),
       user_agent: String(req.headers['user-agent'] || '').trim(),
@@ -1873,7 +1876,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
     const boundPort = normalizeBoundPort(runOptions.boundPort);
     // Ensure vault-tool.mjs / companion shell hits THIS server, including a
     // dynamic preview, rather than a remote browser origin or stale :3002.
-    const spawnEnv = buildCompanionProviderEnv(process.env, boundPort);
+    const spawnEnv = buildCompanionProviderEnv(process.env, boundPort, chatId);
     const spawnOpts = {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
@@ -2489,6 +2492,237 @@ function createChatModule(httpServer, io, userConfig = {}) {
 
   /* ── Request Router ── */
 
+  // SN-377: one turn-acceptance path shared by POST /send and host-started
+  // turns (Jupyter cell wakes). `req` is null for host turns.
+  async function acceptTurn(data, req) {
+    const reply = (code, body) => ({ code, body });
+    const message = (data.message || '').trim();
+    const requestSettings = {
+      ...readStoredConfig(),
+      ...(typeof data.projectId === 'string' ? { projectId: data.projectId.trim() } : {}),
+    };
+    const configuredScope = getActiveScopeSettings(requestSettings);
+    const deepWorkCapability = extractDeepWorkCapability(data.app_context);
+    let activeScope = configuredScope;
+    let companionBridgeRoot = path.join(cfg.workingDirectory, '.smart-notes-companion-log-form-bridge');
+    if (deepWorkCapability !== null) {
+      if (!deepWorkCapability || typeof cfg.resolveDeepWorkTurn !== 'function') {
+        return reply(403, { error: 'A valid active Deep Work workspace capability is required.' });
+      }
+      const resolvedDeepWork = await cfg.resolveDeepWorkTurn(deepWorkCapability);
+      if (!resolvedDeepWork?.scopeKey || !resolvedDeepWork?.companionBridgeRoot) {
+        return reply(403, { error: 'Deep Work capability is invalid or expired; relaunch the workspace.' });
+      }
+      activeScope = {
+        project: null,
+        scopeKey: resolvedDeepWork.scopeKey,
+        workingDirectory: resolvedDeepWork.workingDirectory || cfg.workingDirectory,
+      };
+      companionBridgeRoot = resolvedDeepWork.companionBridgeRoot;
+    }
+    const companionApiTarget = {
+      ...resolveCompanionApiTarget({
+        boundPort: cfg.boundPort,
+        browserOrigin: data.browser_origin,
+      }),
+      companionBridgeRoot,
+    };
+    const appContext = rewriteCompanionAppContext(data.app_context, companionApiTarget);
+
+    const provider = data.provider || getProviders().default || 'ghcopilot';
+    const auth = checkAuth(provider);
+    if (!auth.ok && auth.code !== 'unknown_provider') {
+      return reply(400, {
+        error: auth.error,
+        provider: auth.provider || provider,
+        kind: auth.kind || 'auth',
+        code: auth.code || 'auth_failed',
+      });
+    }
+    const uploadedImages = sanitizeUploadedAttachments(data.images, uploadDir, ALLOWED_IMAGE_EXT);
+    // PDF attachments: sanitize paths then extract text server-side so every
+    // provider receives the document content through the normal CLI path.
+    const sanitizedPdfAttachments = sanitizeUploadedAttachments(data.documents, uploadDir, new Set(['.pdf']));
+    const hasSanitizedAttachments = uploadedImages.length > 0 || sanitizedPdfAttachments.length > 0;
+    if (!message && !hasSanitizedAttachments) return reply(400, { error: 'No message provided' });
+    const attachmentOnlyPrompt = hasSanitizedAttachments
+      ? `Please review the attached file(s): ${[...uploadedImages, ...sanitizedPdfAttachments].map(file => file.name || path.basename(file.path)).join(', ')}.`
+      : '';
+    // SN-202: Smart Notes may allocate the durable turn ID before sending so
+    // it can persist the reattach pointer before a mobile PWA is frozen or
+    // torn down. Accept only UUID-shaped client IDs and never overwrite an
+    // existing durable run.
+    const requestedTurnId = typeof data.turn_id === 'string' ? data.turn_id.trim() : '';
+    if (requestedTurnId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedTurnId)) {
+      return reply(400, { error: 'Invalid turn_id' });
+    }
+    if (requestedTurnId && (jobs[requestedTurnId] || loadPersistedJobRecord(requestedTurnId))) {
+      return reply(409, { error: 'turn_id already exists' });
+    }
+    const threadKey = typeof data.thread_key === 'string' ? data.thread_key.trim() : '';
+    if (data.thread_key !== undefined && (!threadKey || threadKey.length > 2048 || /[\x00-\x1f]/.test(threadKey))) {
+      return reply(400, { error: 'Invalid thread_key' });
+    }
+    // SN-356: Computer access is an explicit per-turn opt-in from the
+    // Companion checkbox. Absent/false = off. It applies to Deep Work turns
+    // too: the owner's checkbox is the only authority, and silently forcing
+    // Deep Work turns off made a checked box arm nothing (rework cycle 2).
+    const computerAccess = data.computer_access === true;
+    const sessionScopeKey = computerAccessSessionKey(getSessionScopeKey(activeScope.scopeKey, threadKey), computerAccess);
+    const chatId = requestedTurnId || crypto.randomUUID();
+    const pdfTextResults = await Promise.all(sanitizedPdfAttachments.map(doc => extractPdfText(doc.path)));
+    const supersededTurnIds = cancelRunningTurnsInScope(activeScope.scopeKey, threadKey);
+    logTrace('turn_created', {
+      ...getRequestClientDetails(req),
+      turn_id: chatId,
+      provider,
+      model: (data.model || '').trim(),
+      history_messages: Array.isArray(data.history) ? data.history.length : 0,
+      image_count: uploadedImages.length,
+      document_count: sanitizedPdfAttachments.length,
+      has_link_content: !!data.link_content,
+      has_app_context: !!appContext,
+      computer_access: computerAccess,
+      computer_access_requested: data.computer_access === true,
+      deep_work: deepWorkCapability !== null,
+      browser_origin: companionApiTarget.browserOrigin,
+      host_api_base_url: companionApiTarget.apiBaseUrl,
+      host_api_port: companionApiTarget.port,
+      page_context: String(data.page_context || ''),
+      project_id: activeScope.project?.id || '',
+      scope_key: activeScope.scopeKey,
+      thread_key: threadKey,
+      working_directory: activeScope.workingDirectory,
+      superseded_turn_ids: supersededTurnIds,
+    });
+    // App-supplied agent instructions override the default system prompt.
+    const resolvedSystemPrompt = typeof cfg.systemPrompt === 'function'
+      ? cfg.systemPrompt()
+      : cfg.systemPrompt;
+    let sysText = agentInfo?.instructions || resolvedSystemPrompt;
+    if (activeScope.project) {
+      sysText += `\n\nSelected project: ${activeScope.project.name}\nProject repo root: ${activeScope.project.repoRoot}`;
+      if (activeScope.project.instructions) sysText += `\n${activeScope.project.instructions}`;
+    }
+    if (appContext) sysText += `\n\n${appContext}`;
+    const computerAccessGuidance = buildComputerAccessGuidance(computerAccess);
+    sysText += `\n\n${computerAccessGuidance}`;
+    if (data.page_context) sysText += `\n\nThe user is on this page: ${data.page_context}`;
+
+    const parts = [];
+    // Put current message FIRST so it stays prominent in the prompt.
+    // GH Copilot CLI ignores trailing questions after long history blocks.
+    parts.push(message || attachmentOnlyPrompt);
+    if (uploadedImages.length) {
+      parts.push('', 'Attached images (file paths on disk):');
+      for (const img of uploadedImages) parts.push(`- ${img.name || 'image'}: ${img.path}`);
+    }
+    // PDF text is injected as fenced code blocks so all providers (Claude,
+    // Codex, Cursor, GH Copilot) receive the document content and vault/action
+    // tools remain available throughout the turn.
+    for (let i = 0; i < sanitizedPdfAttachments.length; i++) {
+      const doc = sanitizedPdfAttachments[i];
+      const text = pdfTextResults[i];
+      if (text && text.trim()) {
+        parts.push('', `Attached PDF: ${doc.name || 'document.pdf'}`, '```text', text.trim(), '```');
+      } else {
+        parts.push('', `Attached PDF: ${doc.name || 'document.pdf'} (text could not be extracted from this PDF — it may be encrypted or image-only)`);
+      }
+    }
+    if (data.link_content) parts.push('', 'Content from a linked URL the user shared:', data.link_content);
+    // Only embed history when there's no active Copilot session.
+    // With --resume, GH Copilot CLI maintains its own conversation memory.
+    const hasSession = (provider === 'ghcopilot' || provider === 'codex') && getProviderSession(provider, sessionScopeKey);
+    const sanitizedHistory = sanitizeConversationHistory(data.history);
+    if (sanitizedHistory.length && !hasSession) {
+      const recent = sanitizedHistory.slice(-6);
+      parts.push('', 'Earlier in this conversation:');
+      for (const m of recent) {
+        const role = m.role === 'user' ? 'User' : 'Assistant';
+        let text = m.content || '';
+        if (role === 'Assistant' && text.length > 400) text = text.slice(0, 400) + '…';
+        parts.push(`${role}: ${text}`);
+      }
+    }
+
+    // Include page_context in the message body so all providers receive the
+    // note content.  buildCompactRolePrompt (Codex/GH Copilot) only keeps
+    // the first paragraph of sysText, so injecting into sysText alone drops
+    // the context for every non-Claude provider.
+    if (appContext) {
+      parts.push('', appContext);
+    }
+    // Every provider (incl. compact-role Codex/Copilot prompts) must see
+    // this turn's Computer access state, so it rides in the message body too.
+    parts.push('', computerAccessGuidance);
+    if (data.page_context) {
+      parts.push('', `Current note content:\n${data.page_context}`);
+    }
+
+    jobs[chatId] = {
+      status: 'running',
+      proc: null,
+      nextSeq: 0,
+      provider,
+      model: (data.model || '').trim(),
+      projectId: activeScope.project?.id || '',
+      scopeKey: activeScope.scopeKey,
+      threadKey,
+      sessionScopeKey,
+      workingDirectory: activeScope.workingDirectory,
+      request: {
+        message,
+        app_context: appContext,
+        browser_origin: companionApiTarget.browserOrigin,
+        host_api_base_url: companionApiTarget.apiBaseUrl,
+        page_context: data.page_context || '',
+        images: uploadedImages.map(image => ({ name: image.name, path: image.path })),
+        documents: sanitizedPdfAttachments.map(document => ({ name: document.name, path: document.path, mimeType: document.mimeType })),
+        provider,
+        model: (data.model || '').trim(),
+        project_id: activeScope.project?.id || '',
+        working_directory: activeScope.workingDirectory,
+        computer_access: computerAccess,
+      },
+      doneEmitted: false,
+      errorEmitted: false,
+      idleWarningEmitted: false,
+      stderrRemainder: '',
+      record: createJobRecord(chatId, {
+        provider,
+        model: (data.model || '').trim(),
+        project_id: activeScope.project?.id || '',
+        scope_key: activeScope.scopeKey,
+        thread_key: threadKey,
+        request: {
+          message,
+          app_context: appContext,
+          browser_origin: companionApiTarget.browserOrigin,
+          host_api_base_url: companionApiTarget.apiBaseUrl,
+          page_context: data.page_context || '',
+          images: uploadedImages.map(image => ({ name: image.name, path: image.path })),
+          documents: sanitizedPdfAttachments.map(document => ({ name: document.name, path: document.path, mimeType: document.mimeType })),
+          provider,
+          model: (data.model || '').trim(),
+          project_id: activeScope.project?.id || '',
+          working_directory: activeScope.workingDirectory,
+          computer_access: computerAccess,
+        },
+      }),
+    };
+    savePersistedJobRecord(chatId, jobs[chatId].record);
+    recordUsage(provider, (data.model || '').trim());
+    setImmediate(() => runChat(chatId, parts.join('\n'), sysText, provider, (data.model || '').trim(), {
+      workingDirectory: activeScope.workingDirectory,
+      scopeKey: activeScope.scopeKey,
+      threadKey,
+      projectId: activeScope.project?.id || '',
+      boundPort: companionApiTarget.port,
+      computerAccess,
+    }));
+    return reply(200, { status: 'ok', chat_id: chatId, turn_id: chatId });
+  }
+
   function handleRequest(req, res) {
     const url = new URL(req.url, 'http://localhost');
     const apiPath = url.pathname.slice(cfg.urlPrefix.length);
@@ -2573,231 +2807,8 @@ function createChatModule(httpServer, io, userConfig = {}) {
     if (apiPath === '/send' && req.method === 'POST') {
       readBody(req, cfg.maxBodySize).then(async buf => {
         const data = JSON.parse(buf.toString('utf8'));
-        const message = (data.message || '').trim();
-        const requestSettings = {
-          ...readStoredConfig(),
-          ...(typeof data.projectId === 'string' ? { projectId: data.projectId.trim() } : {}),
-        };
-        const configuredScope = getActiveScopeSettings(requestSettings);
-        const deepWorkCapability = extractDeepWorkCapability(data.app_context);
-        let activeScope = configuredScope;
-        let companionBridgeRoot = path.join(cfg.workingDirectory, '.smart-notes-companion-log-form-bridge');
-        if (deepWorkCapability !== null) {
-          if (!deepWorkCapability || typeof cfg.resolveDeepWorkTurn !== 'function') {
-            return sendJson(res, 403, { error: 'A valid active Deep Work workspace capability is required.' });
-          }
-          const resolvedDeepWork = await cfg.resolveDeepWorkTurn(deepWorkCapability);
-          if (!resolvedDeepWork?.scopeKey || !resolvedDeepWork?.companionBridgeRoot) {
-            return sendJson(res, 403, { error: 'Deep Work capability is invalid or expired; relaunch the workspace.' });
-          }
-          activeScope = {
-            project: null,
-            scopeKey: resolvedDeepWork.scopeKey,
-            workingDirectory: resolvedDeepWork.workingDirectory || cfg.workingDirectory,
-          };
-          companionBridgeRoot = resolvedDeepWork.companionBridgeRoot;
-        }
-        const companionApiTarget = {
-          ...resolveCompanionApiTarget({
-            boundPort: cfg.boundPort,
-            browserOrigin: data.browser_origin,
-          }),
-          companionBridgeRoot,
-        };
-        const appContext = rewriteCompanionAppContext(data.app_context, companionApiTarget);
-
-        const provider = data.provider || getProviders().default || 'ghcopilot';
-        const auth = checkAuth(provider);
-        if (!auth.ok && auth.code !== 'unknown_provider') {
-          return sendJson(res, 400, {
-            error: auth.error,
-            provider: auth.provider || provider,
-            kind: auth.kind || 'auth',
-            code: auth.code || 'auth_failed',
-          });
-        }
-        const uploadedImages = sanitizeUploadedAttachments(data.images, uploadDir, ALLOWED_IMAGE_EXT);
-        // PDF attachments: sanitize paths then extract text server-side so every
-        // provider receives the document content through the normal CLI path.
-        const sanitizedPdfAttachments = sanitizeUploadedAttachments(data.documents, uploadDir, new Set(['.pdf']));
-        const hasSanitizedAttachments = uploadedImages.length > 0 || sanitizedPdfAttachments.length > 0;
-        if (!message && !hasSanitizedAttachments) return sendJson(res, 400, { error: 'No message provided' });
-        const attachmentOnlyPrompt = hasSanitizedAttachments
-          ? `Please review the attached file(s): ${[...uploadedImages, ...sanitizedPdfAttachments].map(file => file.name || path.basename(file.path)).join(', ')}.`
-          : '';
-        // SN-202: Smart Notes may allocate the durable turn ID before sending so
-        // it can persist the reattach pointer before a mobile PWA is frozen or
-        // torn down. Accept only UUID-shaped client IDs and never overwrite an
-        // existing durable run.
-        const requestedTurnId = typeof data.turn_id === 'string' ? data.turn_id.trim() : '';
-        if (requestedTurnId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedTurnId)) {
-          return sendJson(res, 400, { error: 'Invalid turn_id' });
-        }
-        if (requestedTurnId && (jobs[requestedTurnId] || loadPersistedJobRecord(requestedTurnId))) {
-          return sendJson(res, 409, { error: 'turn_id already exists' });
-        }
-        const threadKey = typeof data.thread_key === 'string' ? data.thread_key.trim() : '';
-        if (data.thread_key !== undefined && (!threadKey || threadKey.length > 2048 || /[\x00-\x1f]/.test(threadKey))) {
-          return sendJson(res, 400, { error: 'Invalid thread_key' });
-        }
-        // SN-356: Computer access is an explicit per-turn opt-in from the
-        // Companion checkbox. Absent/false = off. It applies to Deep Work turns
-        // too: the owner's checkbox is the only authority, and silently forcing
-        // Deep Work turns off made a checked box arm nothing (rework cycle 2).
-        const computerAccess = data.computer_access === true;
-        const sessionScopeKey = computerAccessSessionKey(getSessionScopeKey(activeScope.scopeKey, threadKey), computerAccess);
-        const chatId = requestedTurnId || crypto.randomUUID();
-        const pdfTextResults = await Promise.all(sanitizedPdfAttachments.map(doc => extractPdfText(doc.path)));
-        const supersededTurnIds = cancelRunningTurnsInScope(activeScope.scopeKey, threadKey);
-        logTrace('turn_created', {
-          ...getRequestClientDetails(req),
-          turn_id: chatId,
-          provider,
-          model: (data.model || '').trim(),
-          history_messages: Array.isArray(data.history) ? data.history.length : 0,
-          image_count: uploadedImages.length,
-          document_count: sanitizedPdfAttachments.length,
-          has_link_content: !!data.link_content,
-          has_app_context: !!appContext,
-          computer_access: computerAccess,
-          computer_access_requested: data.computer_access === true,
-          deep_work: deepWorkCapability !== null,
-          browser_origin: companionApiTarget.browserOrigin,
-          host_api_base_url: companionApiTarget.apiBaseUrl,
-          host_api_port: companionApiTarget.port,
-          page_context: String(data.page_context || ''),
-          project_id: activeScope.project?.id || '',
-          scope_key: activeScope.scopeKey,
-          thread_key: threadKey,
-          working_directory: activeScope.workingDirectory,
-          superseded_turn_ids: supersededTurnIds,
-        });
-        // App-supplied agent instructions override the default system prompt.
-        const resolvedSystemPrompt = typeof cfg.systemPrompt === 'function'
-          ? cfg.systemPrompt()
-          : cfg.systemPrompt;
-        let sysText = agentInfo?.instructions || resolvedSystemPrompt;
-        if (activeScope.project) {
-          sysText += `\n\nSelected project: ${activeScope.project.name}\nProject repo root: ${activeScope.project.repoRoot}`;
-          if (activeScope.project.instructions) sysText += `\n${activeScope.project.instructions}`;
-        }
-        if (appContext) sysText += `\n\n${appContext}`;
-        const computerAccessGuidance = buildComputerAccessGuidance(computerAccess);
-        sysText += `\n\n${computerAccessGuidance}`;
-        if (data.page_context) sysText += `\n\nThe user is on this page: ${data.page_context}`;
-
-        const parts = [];
-        // Put current message FIRST so it stays prominent in the prompt.
-        // GH Copilot CLI ignores trailing questions after long history blocks.
-        parts.push(message || attachmentOnlyPrompt);
-        if (uploadedImages.length) {
-          parts.push('', 'Attached images (file paths on disk):');
-          for (const img of uploadedImages) parts.push(`- ${img.name || 'image'}: ${img.path}`);
-        }
-        // PDF text is injected as fenced code blocks so all providers (Claude,
-        // Codex, Cursor, GH Copilot) receive the document content and vault/action
-        // tools remain available throughout the turn.
-        for (let i = 0; i < sanitizedPdfAttachments.length; i++) {
-          const doc = sanitizedPdfAttachments[i];
-          const text = pdfTextResults[i];
-          if (text && text.trim()) {
-            parts.push('', `Attached PDF: ${doc.name || 'document.pdf'}`, '```text', text.trim(), '```');
-          } else {
-            parts.push('', `Attached PDF: ${doc.name || 'document.pdf'} (text could not be extracted from this PDF — it may be encrypted or image-only)`);
-          }
-        }
-        if (data.link_content) parts.push('', 'Content from a linked URL the user shared:', data.link_content);
-        // Only embed history when there's no active Copilot session.
-        // With --resume, GH Copilot CLI maintains its own conversation memory.
-        const hasSession = (provider === 'ghcopilot' || provider === 'codex') && getProviderSession(provider, sessionScopeKey);
-        const sanitizedHistory = sanitizeConversationHistory(data.history);
-        if (sanitizedHistory.length && !hasSession) {
-          const recent = sanitizedHistory.slice(-6);
-          parts.push('', 'Earlier in this conversation:');
-          for (const m of recent) {
-            const role = m.role === 'user' ? 'User' : 'Assistant';
-            let text = m.content || '';
-            if (role === 'Assistant' && text.length > 400) text = text.slice(0, 400) + '…';
-            parts.push(`${role}: ${text}`);
-          }
-        }
-
-        // Include page_context in the message body so all providers receive the
-        // note content.  buildCompactRolePrompt (Codex/GH Copilot) only keeps
-        // the first paragraph of sysText, so injecting into sysText alone drops
-        // the context for every non-Claude provider.
-        if (appContext) {
-          parts.push('', appContext);
-        }
-        // Every provider (incl. compact-role Codex/Copilot prompts) must see
-        // this turn's Computer access state, so it rides in the message body too.
-        parts.push('', computerAccessGuidance);
-        if (data.page_context) {
-          parts.push('', `Current note content:\n${data.page_context}`);
-        }
-
-        jobs[chatId] = {
-          status: 'running',
-          proc: null,
-          nextSeq: 0,
-          provider,
-          model: (data.model || '').trim(),
-          projectId: activeScope.project?.id || '',
-          scopeKey: activeScope.scopeKey,
-          threadKey,
-          sessionScopeKey,
-          workingDirectory: activeScope.workingDirectory,
-          request: {
-            message,
-            app_context: appContext,
-            browser_origin: companionApiTarget.browserOrigin,
-            host_api_base_url: companionApiTarget.apiBaseUrl,
-            page_context: data.page_context || '',
-            images: uploadedImages.map(image => ({ name: image.name, path: image.path })),
-            documents: sanitizedPdfAttachments.map(document => ({ name: document.name, path: document.path, mimeType: document.mimeType })),
-            provider,
-            model: (data.model || '').trim(),
-            project_id: activeScope.project?.id || '',
-            working_directory: activeScope.workingDirectory,
-            computer_access: computerAccess,
-          },
-          doneEmitted: false,
-          errorEmitted: false,
-          idleWarningEmitted: false,
-          stderrRemainder: '',
-          record: createJobRecord(chatId, {
-            provider,
-            model: (data.model || '').trim(),
-            project_id: activeScope.project?.id || '',
-            scope_key: activeScope.scopeKey,
-            thread_key: threadKey,
-            request: {
-              message,
-              app_context: appContext,
-              browser_origin: companionApiTarget.browserOrigin,
-              host_api_base_url: companionApiTarget.apiBaseUrl,
-              page_context: data.page_context || '',
-              images: uploadedImages.map(image => ({ name: image.name, path: image.path })),
-              documents: sanitizedPdfAttachments.map(document => ({ name: document.name, path: document.path, mimeType: document.mimeType })),
-              provider,
-              model: (data.model || '').trim(),
-              project_id: activeScope.project?.id || '',
-              working_directory: activeScope.workingDirectory,
-              computer_access: computerAccess,
-            },
-          }),
-        };
-        savePersistedJobRecord(chatId, jobs[chatId].record);
-        recordUsage(provider, (data.model || '').trim());
-        setImmediate(() => runChat(chatId, parts.join('\n'), sysText, provider, (data.model || '').trim(), {
-          workingDirectory: activeScope.workingDirectory,
-          scopeKey: activeScope.scopeKey,
-          threadKey,
-          projectId: activeScope.project?.id || '',
-          boundPort: companionApiTarget.port,
-          computerAccess,
-        }));
-        sendJson(res, 200, { status: 'ok', chat_id: chatId, turn_id: chatId });
+        const result = await acceptTurn(data, req);
+        sendJson(res, result.code, result.body);
       }).catch(err => sendJson(res, 400, { error: err.message }));
       return;
     }
@@ -2937,8 +2948,55 @@ function createChatModule(httpServer, io, userConfig = {}) {
 
   /* ── Public API ── */
 
+  // SN-377: in-process host surface for Smart Notes server features (Jupyter
+  // cell wakes) that must inspect live turns or start a turn on a thread.
+  function describeTurn(chatId) {
+    const job = jobs[chatId];
+    const record = job?.record || loadPersistedJobRecord(chatId);
+    if (!job && !record) return null;
+    const request = job?.request || record?.request || {};
+    return {
+      turnId: chatId,
+      status: String(job?.status || record?.status || ''),
+      threadKey: String(job?.threadKey || record?.thread_key || ''),
+      provider: String(job?.provider || record?.provider || request.provider || ''),
+      model: String(job?.model || record?.model || request.model || ''),
+      appContext: String(request.app_context || ''),
+      pageContext: String(request.page_context || ''),
+    };
+  }
+
+  const host = {
+    getTurn: describeTurn,
+    listRunningTurns() {
+      return Object.keys(jobs)
+        .filter(chatId => jobs[chatId]?.status === 'running')
+        .map(describeTurn)
+        .filter(Boolean);
+    },
+    isThreadBusy(threadKey) {
+      return Object.values(jobs).some(job => job?.status === 'running' && String(job.threadKey || '') === String(threadKey || ''));
+    },
+    async startHostTurn(input) {
+      const result = await acceptTurn({
+        message: input.message,
+        history: input.history,
+        provider: input.provider,
+        model: input.model,
+        app_context: input.appContext,
+        page_context: input.pageContext,
+        thread_key: input.threadKey,
+        turn_id: input.turnId,
+      }, null);
+      return result.code === 200
+        ? { ok: true, turnId: result.body.turn_id }
+        : { ok: false, error: result.body?.error || `HTTP ${result.code}` };
+    },
+  };
+
   return {
     handleRequest,
+    host,
     getProviders,
     checkAuth,
     getSandboxConfig: () => sandboxCfg,

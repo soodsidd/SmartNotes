@@ -49,6 +49,7 @@ import {
   requireCellType,
 } from "./jupyter-notebook";
 import { CELL_RUN_NOTE_MAX_CHARS, runJupyterCell } from "@/server/jupyter/cell-run";
+import { registerCellRunWake } from "@/server/jupyter/cell-run-wake";
 import { getAppTemplate, listAppTemplates, APP_TEMPLATE_CATALOG_VERSION } from "./app-templates";
 import { getAppInventoryEntry, listAppInventory } from "./app-inventory";
 import { queryAppTableForCompanion, saveAppManifest, seedOwnedAppTable } from "./app-runtime";
@@ -1769,6 +1770,12 @@ async function runJupyterCommand(action: string, args: Record<string, unknown>):
       if (args.awaitSeconds !== undefined && (typeof args.awaitSeconds !== "number" || !Number.isFinite(args.awaitSeconds))) {
         throw new VaultError("INVALID_INPUT", '"awaitSeconds" must be a number when provided.');
       }
+      if (
+        args.wakeTimeoutMinutes !== undefined &&
+        (typeof args.wakeTimeoutMinutes !== "number" || !Number.isFinite(args.wakeTimeoutMinutes))
+      ) {
+        throw new VaultError("INVALID_INPUT", '"wakeTimeoutMinutes" must be a number when provided.');
+      }
       const result = await runJupyterCell({
         path: pagePath,
         index: args.index as number | undefined,
@@ -1776,7 +1783,46 @@ async function runJupyterCommand(action: string, args: Record<string, unknown>):
         note: args.note as string | undefined,
         awaitMs: typeof args.awaitSeconds === "number" ? args.awaitSeconds * 1000 : undefined,
       });
-      return { ok: true, group: "jupyter", action, data: result };
+      if (!result.handoff) {
+        return { ok: true, group: "jupyter", action, data: result };
+      }
+      // SN-377: park a durable wake on the calling companion thread and tell
+      // the provider to end its turn instead of polling.
+      const registered = await registerCellRunWake({
+        handoff: result.handoff,
+        runStartedAt: result.run.startedAt,
+        turnId: typeof args._companionTurnId === "string" ? args._companionTurnId : null,
+        timeoutMinutes: args.wakeTimeoutMinutes as number | undefined,
+      });
+      if (registered.wake) {
+        const wake = registered.wake;
+        const minutes = Math.round((Date.parse(wake.timeoutAt) - Date.parse(wake.registeredAt)) / 60_000);
+        return {
+          ok: true,
+          group: "jupyter",
+          action,
+          data: {
+            ...result,
+            wake: { wakeId: wake.wakeId, status: wake.status, timeoutAt: wake.timeoutAt },
+            hint: [
+              `Cell is still running (runId ${result.handoff.runId}). Smart Notes registered a wake (${wake.wakeId}) on this companion thread.`,
+              "END YOUR TURN NOW: briefly tell the owner the cell is still running and that you will continue automatically when it finishes",
+              `(wake timeout ${minutes} min). Do not poll, sleep, or call jupyter_cell_run / jupyter_notebook_context to check on it —`,
+              "Smart Notes starts a new turn on this thread with the run status, outputs, and your note when the kernel finishes.",
+            ].join(" "),
+          },
+        };
+      }
+      return {
+        ok: true,
+        group: "jupyter",
+        action,
+        data: {
+          ...result,
+          wake: null,
+          hint: `${result.hint} No auto-resume wake was registered (${registered.reason}); do not poll for it — end your turn and tell the owner the cell is still running.`,
+        },
+      };
     }
 
     default:
