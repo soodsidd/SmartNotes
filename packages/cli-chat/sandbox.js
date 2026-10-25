@@ -209,12 +209,10 @@ function codexExecArgs(sandboxCfg, options = {}) {
 
 function cursorHeadlessArgs(sandboxCfg) {
   const args = [];
-  if (sandboxCfg.cursor?.computerAccessDisabled) {
-    // --print exposes Shell even without --force. Ask reduces the tool set;
-    // the isolated CURSOR_CONFIG_DIR deny rules enforce the hard boundary.
-    args.push('--mode', 'ask');
-    return args;
-  }
+  // Computer OFF must still allow vault page_write/page_edit (Write + bridge).
+  // Never use Cursor --mode ask here: that makes the model refuse vault edits
+  // and tell the owner to "switch to Agent mode" (IDE jargon, not Smart Notes).
+  // Shell stays blocked via CURSOR_CONFIG_DIR deny rules in the spawn path.
   if (sandboxCfg.cursor?.autoApprove || sandboxCfg.cursor?.headlessAutoApprove) {
     args.push('--force');
   }
@@ -245,7 +243,9 @@ function applyComputerAccess(sandboxCfg, enabled) {
       claude,
       ghcopilot: { ...sandboxCfg.ghcopilot, autoApprove: false, computerAccessDisabled: true },
       codex: { ...sandboxCfg.codex, sandbox: 'read-only', computerAccessDisabled: true },
-      cursor: { ...sandboxCfg.cursor, autoApprove: false, headlessAutoApprove: false, computerAccessDisabled: true },
+      // Keep headlessAutoApprove from the base profile (editor=true) so vault
+      // Write still auto-approves headless; only Shell is denied below.
+      cursor: { ...sandboxCfg.cursor, autoApprove: false, computerAccessDisabled: true },
     };
   }
   const claude = { ...sandboxCfg.claude };
@@ -292,6 +292,7 @@ function buildComputerAccessGuidance(enabled, options = {}) {
       '## Computer access: OFF',
       'The owner has not enabled Computer access for this Companion turn. You have no desktop/computer-use control and no shell on the owner\'s PC.',
       '- Do not claim or attempt desktop control, screenshots of the owner\'s screen, or running shell/PowerShell commands on their machine.',
+      '- Vault edits still work: use page_write / page_edit / the vault bridge as usual. Never tell the owner to "switch to Agent mode" or refuse a vault write because Computer access is off.',
       '- If the request needs on-PC inspection, say Computer access is off and that the owner can tick the "Computer" checkbox in the Companion composer (desktop) or header row (mobile) to arm it for the next turn (no chat restart needed). You may still suggest commands they can run themselves.',
     ].join('\n');
   }

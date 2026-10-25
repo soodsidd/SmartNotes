@@ -76,7 +76,10 @@ describe("SN-356 computer access sandbox overlay", () => {
     expect(argValue(args, "--allowedTools")).not.toMatch(/Bash|PowerShell/);
     expect(disarmed.ghcopilot.computerAccessDisabled).toBe(true);
     expect(codexExecArgs(disarmed)).toEqual(expect.arrayContaining(["--disable", "shell_tool", "unified_exec", "computer_use"]));
-    expect(cursorHeadlessArgs(disarmed)).toEqual(["--mode", "ask"]);
+    // Editor profile keeps headlessAutoApprove so vault Write still works;
+    // Computer OFF must not force Cursor Ask mode (that blocked page_write).
+    expect(cursorHeadlessArgs(disarmed)).toEqual(["--force"]);
+    expect(disarmed.cursor.headlessAutoApprove).toBe(true);
     expect(editor.claude.disallowedTools).toEqual(["Bash", "Computer"]);
   });
 
@@ -101,6 +104,8 @@ describe("SN-356 computer access sandbox overlay", () => {
     const off = buildComputerAccessGuidance(false);
     expect(off).toMatch(/Computer access: OFF/);
     expect(off).toMatch(/Do not claim or attempt desktop control/);
+    expect(off).toMatch(/Vault edits still work/);
+    expect(off).toMatch(/Never tell the owner to "switch to Agent mode"/);
     const on = buildComputerAccessGuidance(true, { platform: "win32", screenshotScript: "C:\\x\\desktop-screenshot.ps1" });
     expect(on).toMatch(/Computer access: ON/);
     expect(on).toContain("C:\\x\\desktop-screenshot.ps1");
@@ -238,14 +243,16 @@ describe("SN-356 mid-session toggle through /api/chat/send", () => {
     expect(on.record.request.computer_access).toBe(true);
 
     const off = await send({ ...thread, message: "Try again" });
-    expect(off.args).not.toContain("--force");
-    expect(argValue(off.args, "--mode")).toBe("ask");
+    expect(off.args).toContain("--force");
+    expect(off.args).not.toContain("--mode");
     expect(off.args).not.toContain("--resume");
     const configDir = off.spawnOptions.env.CURSOR_CONFIG_DIR;
     expect(configDir).toBe(path.join(root, "cursor-computer-off"));
     const config = JSON.parse(fs.readFileSync(path.join(configDir!, "cli-config.json"), "utf8"));
-    expect(config.permissions.deny).toEqual(expect.arrayContaining(["Shell(*)", "Write(**)", "Mcp(*:*)"]));
+    expect(config.permissions.deny).toEqual(["Shell(*)"]);
+    expect(config.permissions.deny).not.toContain("Write(**)");
     expect(off.stdin).toMatch(/Computer access: OFF/);
+    expect(off.stdin).toMatch(/Vault edits still work/);
     expect(off.record.request.computer_access).toBe(false);
   });
 
@@ -257,7 +264,8 @@ describe("SN-356 mid-session toggle through /api/chat/send", () => {
       app_context: ["Smart Notes Deep Work operating context:", `- workspaceCapability: ${capability}`].join("\n"),
     };
     const off = await send({ ...thread, message: "Inspect cameras" });
-    expect(argValue(off.args, "--mode")).toBe("ask");
+    expect(off.args).toContain("--force");
+    expect(off.args).not.toContain("--mode");
     expect(off.stdin).toMatch(/Computer access: OFF/);
     expect(off.record.request.computer_access).toBe(false);
 
@@ -273,8 +281,8 @@ describe("SN-356 mid-session toggle through /api/chat/send", () => {
 
     const offAgain = await send({ ...thread, message: "and now?" });
     expect(offAgain.record.request.computer_access).toBe(false);
-    expect(argValue(offAgain.args, "--mode")).toBe("ask");
-    expect(offAgain.args).not.toContain("--force");
+    expect(offAgain.args).toContain("--force");
+    expect(offAgain.args).not.toContain("--mode");
     expect(offAgain.args).not.toContain("--resume");
     expect(offAgain.stdin).toMatch(/Computer access: OFF/);
   });

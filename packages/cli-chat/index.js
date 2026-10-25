@@ -1983,16 +1983,17 @@ function createChatModule(httpServer, io, userConfig = {}) {
       tracedCommand = cursorSpec.displayCommand;
       spawnOpts.shell = cursorSpec.shell;
       if (turnSandboxCfg.cursor.computerAccessDisabled) {
-        // Cursor --print can execute Shell without --force, even in Ask mode.
-        // Windows has no Cursor sandbox, so a per-process deny config is the
-        // enforcement boundary. Never spawn unrestricted if it cannot be set.
+        // Computer OFF = no Shell on the owner's PC. Keep Write so vault
+        // page_write / the shell-less bridge still work. Windows has no Cursor
+        // sandbox, so a per-process deny config is the Shell enforcement
+        // boundary. Never spawn unrestricted if it cannot be set.
         try {
           const offConfigDir = path.join(stateDir, 'cursor-computer-off');
           fs.mkdirSync(offConfigDir, { recursive: true });
           fs.writeFileSync(path.join(offConfigDir, 'cli-config.json'), JSON.stringify({
             version: 1,
             editor: { vimMode: false },
-            permissions: { allow: [], deny: ['Shell(*)', 'Write(**)', 'Mcp(*:*)'] },
+            permissions: { allow: [], deny: ['Shell(*)'] },
           }), 'utf8');
           spawnEnv.CURSOR_CONFIG_DIR = offConfigDir;
         } catch (err) {
