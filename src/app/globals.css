@@ -412,6 +412,14 @@ select {
 }
 
 .editor-content.ProseMirror { position: relative; min-width: 100%; }
+@media (min-width: 768px) {
+  /* A resized table can widen the page canvas while the table keeps its own exact width. */
+  .editor-content.ProseMirror { min-width: max(100%, var(--editor-main-flow-width, 672px)); }
+  .editor-content.ProseMirror > .tableWrapper[data-fixed-widths="true"] {
+    width: max-content;
+    max-width: var(--editor-main-flow-width, 672px);
+  }
+}
 
 /* Main body column — floating boxes live on the canvas outside this frame. */
 .editor-content.ProseMirror > :not([data-type="floating-text-box"]) {
@@ -916,11 +924,16 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
   position: relative;
   box-sizing: border-box;
   border: 1px solid var(--border);
-  padding: 0.4em 0.75em;
+  padding: 0.15em 0.75em;
   text-align: left;
   min-width: var(--editor-table-cell-min-width);
-  height: var(--editor-table-cell-min-height);
+  min-height: var(--editor-table-cell-min-height);
   vertical-align: top;
+}
+/* Body paragraph bottom margin must not invent unshrinkable row height. */
+.editor-content .tableWrapper th > p,
+.editor-content .tableWrapper td > p {
+  margin: 0;
 }
 .editor-content th {
   background: var(--secondary);

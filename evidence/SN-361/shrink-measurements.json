@@ -1,0 +1,22 @@
+{
+  "before": {
+    "table": 721,
+    "wrapper": 720,
+    "scroll": 1,
+    "frame": 768
+  },
+  "firstShrink": {
+    "table": 541,
+    "wrapper": 541,
+    "scroll": 0,
+    "frame": 720
+  },
+  "after": {
+    "table": 193,
+    "wrapper": 193,
+    "scroll": 0,
+    "frame": 720
+  },
+  "rowBefore": 100,
+  "rowAfter": 51
+}

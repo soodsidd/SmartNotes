@@ -125,9 +125,16 @@ The Insert table side submenu reuses `--popover`, `--input`, `--background`,
 `--ring`. The editable grid uses `--border` for its light rules, `--secondary`
 for the header row, and `--accent` for the active cell outline in both the main
 flow and floating text boxes. `--editor-table-cell-min-width: 4em` and
-`--editor-table-cell-min-height: 2.25em` keep empty cells readable without
+`--editor-table-cell-min-height: 1.25em` keep empty cells readable without
 changing the existing table scroll behavior. Submenu controls use the established
 44px mobile target and compact desktop input/button sizing.
+
+SN-361 keeps these tokens and the quiet hover-only resize chrome. Explicitly
+resized desktop tables hug their measured width; the main-flow frame grows with
+them up to the documented 1200px limit. Wider tables and mobile tables retain
+local scrolling. Row dividers drag or double-click to fit, while corner shrink
+can continue narrowing columns after rows reach their minimum. No color,
+spacing, or typography values were added.
 
 ## Floating text boxes (SN-296)
 

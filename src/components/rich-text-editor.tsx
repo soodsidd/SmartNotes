@@ -134,7 +134,7 @@ import {
 import { AnnotationDrawToolbar } from "@/components/annotation-draw-toolbar";
 import { PageLinesPopover } from "@/components/page-lines-popover";
 import { DEFAULT_PAGE_LINES, pageLinesBackgroundStyle, type PageLinesSetting } from "@/lib/page-lines";
-import { MAIN_FLOW_DEFAULT_WIDTH, normalizeMainFlowWidth } from "@/lib/main-flow-width";
+import { MAIN_FLOW_DEFAULT_WIDTH, MAIN_FLOW_MAX_WIDTH, normalizeMainFlowWidth } from "@/lib/main-flow-width";
 import { MainFlowWidthHandle } from "@/components/main-flow-width-handle";
 import { shouldOpenEditorContextMenu } from "@/lib/editor-context-menu";
 import { useSpellcheckEnabled } from "@/components/spellcheck-provider";
@@ -377,6 +377,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     // SN-318: live column width — follows the stored value, updated on every drag step.
     const storedMainFlowWidth = normalizeMainFlowWidth(mainFlowWidthProp);
     const [mainFlowWidth, setMainFlowWidth] = React.useState(storedMainFlowWidth);
+    const [tableFlowWidth, setTableFlowWidth] = React.useState(0);
+    const effectiveMainFlowWidth = Math.max(mainFlowWidth, Math.min(tableFlowWidth, MAIN_FLOW_MAX_WIDTH));
     // SN-321: the main-flow outline + width handle only show while the caret is in the main column.
     const [mainFlowFocused, setMainFlowFocused] = React.useState(false);
     // Frame padding left of the prose; the outline insets the column by this on both sides.
@@ -700,7 +702,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         const proseMirror = editor.view.dom as HTMLElement;
         const rect = proseMirror.getBoundingClientRect();
         const scale = rect.width / proseMirror.offsetWidth || 1;
-        const mainFlowRight = rect.left + (mainFlowWidth + mainFlowInset) * scale;
+        const mainFlowRight = rect.left + (effectiveMainFlowWidth + mainFlowInset) * scale;
         const lastFlow = Array.from(proseMirror.children).filter((child) =>
           !(child as HTMLElement).matches('[data-type="floating-text-box"]')
         ).at(-1) as HTMLElement | undefined;
@@ -1326,7 +1328,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     function insertFloatingBox(x?: number, y?: number) {
       if (!editor || readOnly || isDrawMode) return;
       const position = editor.state.doc.content.size;
-      const fallbackX = mainFlowWidth + 24;
+      const fallbackX = effectiveMainFlowWidth + 24;
       const fallbackY = (scrollAreaRef.current?.scrollTop ?? 0) + 140;
       const inserted = editor.commands.insertContentAt(position, {
         type: "floatingTextBox",
@@ -1710,6 +1712,10 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       const syncTextHeight = () => {
         setTextHeight(Math.max(proseMirror.scrollHeight, proseMirror.offsetHeight));
         setMainFlowInset(proseMirror.offsetParent === contentSizerRef.current ? proseMirror.offsetLeft : 0);
+        // TipTap gives fully sized tables a pixel width. Reflect the widest main-flow table
+        // in the editor frame; tables beyond the frame limit retain local scrolling.
+        setTableFlowWidth(Math.max(0, ...Array.from(proseMirror.querySelectorAll<HTMLTableElement>(":scope > .tableWrapper[data-fixed-widths] > table"),
+          (table) => parseFloat(table.style.width) || 0)));
         const flowChildren = Array.from(proseMirror.children).filter(
           (child) => !(child as HTMLElement).matches('[data-type="floating-text-box"]')
         ) as HTMLElement[];
@@ -2130,7 +2136,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           const measuredTextHeight = Math.max(proseMirror.scrollHeight, proseMirror.offsetHeight);
           return {
             html: editor.getHTML(),
-            mainFlowWidth,
+            mainFlowWidth: effectiveMainFlowWidth,
             frameHeight: computePageFrameHeight({
               textHeight: measuredTextHeight,
               viewportHeight: viewportHeight || measuredTextHeight,
@@ -2148,7 +2154,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           setScrollTop(scrollArea.scrollTop);
         },
       }),
-      [drawableBottom, editor, onSelectionContextChange, persistStrippedLegacyToc, viewportHeight]
+      [drawableBottom, editor, effectiveMainFlowWidth, onSelectionContextChange, persistStrippedLegacyToc, viewportHeight]
     );
 
     // ── Render ───────────────────────────────────────────────────────────────
@@ -2725,7 +2731,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                   : undefined),
                 ...pageLinesBackgroundStyle(pageLines),
                 ...editorZoomSurfaceStyle(workspaceZoom, workspacePan),
-                ["--editor-main-flow-width" as string]: `${mainFlowWidth}px`,
+                ["--editor-main-flow-width" as string]: `${effectiveMainFlowWidth}px`,
               }}
               data-testid="editor-content-frame"
               data-main-flow-focused={mainFlowFocused && !readOnly && !isDrawMode ? "true" : undefined}
@@ -2742,14 +2748,14 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                 data-testid="editor-main-flow-outline"
                 aria-hidden="true"
                 style={{
-                  width: mainFlowWidth + mainFlowInset * 2,
+                  width: effectiveMainFlowWidth + mainFlowInset * 2,
                   height: Math.max(mainFlowHeight, textHeight, 240),
                 }}
               />
               <PageTitleBar pagePath={pagePath} title={pageTitle} createdAt={pageCreatedAt} readOnly={readOnly} focusOnCreate={focusPageTitle} onCommit={onPageTitleCommit} />
               {!readOnly && !isDrawMode && !inkCaptureMode && onMainFlowWidthChange ? (
                 <MainFlowWidthHandle
-                  width={mainFlowWidth}
+                  width={effectiveMainFlowWidth}
                   inset={mainFlowInset * 2}
                   height={Math.max(mainFlowHeight, textHeight, 240)}
                   onLiveChange={setMainFlowWidth}

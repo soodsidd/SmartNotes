@@ -8,7 +8,8 @@ import { ensureNotebookTreeVisible } from "./helpers";
  * exercised with stepped (human-like) pointer moves on a fresh table that has no stored widths.
  */
 const EVIDENCE_DIR = path.resolve(__dirname, "../evidence/SN-357");
-test.use({ serviceWorkers: "block" });
+// Keep the enlarged editor frame and its corner in view after the stretch drag.
+test.use({ serviceWorkers: "block", viewport: { width: 1600, height: 900 } });
 
 const TABLE = [
   "<table><tbody>",
@@ -147,8 +148,7 @@ test("SN-357: quiet chrome; column drag, double-click fit, and corner resize per
     for (let index = 0; index < heights0.length; index++) expect(heights1[index] / heights0[index]).toBeCloseTo(scale, 1);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, "corner-resize.png") });
 
-    // Shrink far past content from the visible corner (a grown table may now be wider than its
-    // scrolling wrapper; the handle must sit on the visible edge so it can always be shrunk back).
+    // Shrink far past content from the corner; oversized tables can still use the visible wrapper edge.
     const grown = (await table.boundingBox())!;
     const wrapper = (await page.getByTestId("rich-text-editor").locator(".tableWrapper").first().boundingBox())!;
     const visible = { x: Math.min(grown.x + grown.width, wrapper.x + wrapper.width) - 2, y: grown.y + grown.height - 2 };

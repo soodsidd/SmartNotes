@@ -38,11 +38,15 @@ class ScrollableTableView extends TableView {
     this.dom.setAttribute("aria-label", "Table scroll area");
     this.dom.setAttribute("data-table-scroll", "true");
     this.syncModes(node);
+    this.syncFixedWidth();
   }
 
   update(node: ProseMirrorNode) {
     const updated = super.update(node);
-    if (updated) this.syncModes(node);
+    if (updated) {
+      this.syncModes(node);
+      this.syncFixedWidth();
+    }
     return updated;
   }
 
@@ -52,6 +56,12 @@ class ScrollableTableView extends TableView {
       if (node.attrs[attr]) this.dom.setAttribute(dataAttr, "true");
       else this.dom.removeAttribute(dataAttr);
     }
+  }
+
+  /** Explicit column sizes make the wrapper hug the table instead of filling the prose column. */
+  private syncFixedWidth() {
+    if (this.table.style.width.endsWith("px")) this.dom.setAttribute("data-fixed-widths", "true");
+    else this.dom.removeAttribute("data-fixed-widths");
   }
 }
 
