@@ -1609,15 +1609,6 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
     const workspace = input.projectWorkspace;
     const focus = input.activeJupyterFocus?.pagePath === notePath ? input.activeJupyterFocus : null;
     const activeWorkspacePath = focus?.workspacePath || workspace.activeFile || "";
-    const notebookRequested = /\.ipynb\b|\b(?:jupyter|python)\s+notebook\b|\b(?:create|author|write|make|build|draft|edit|update)\b[^\n.]{0,100}\bnotebook\b/i.test(input.userRequest || "");
-    const showNotebookPlaybook = /\.ipynb$/i.test(activeWorkspacePath) || notebookRequested;
-    const notebookPath = /\.ipynb$/i.test(activeWorkspacePath) ? activeWorkspacePath : "<relative-path>.ipynb";
-    const notebookSource = JSON.stringify({
-      cells: [{ cell_type: "markdown", metadata: {}, source: ["# New notebook\n"] }],
-      metadata: {},
-      nbformat: 4,
-      nbformat_minor: 5,
-    });
     const live = projectFocusSource(focus);
     const position = (value: JupyterFocusState["caret"]) =>
       value
@@ -1672,32 +1663,32 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
       workspace.capability
         ? `- Bridge list: { "tool": "workspace_source_list", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "maxCount": 200 } }`
         : "",
-      workspace.capability && !showNotebookPlaybook
+      workspace.capability
         ? `- Bridge edit: { "tool": "workspace_source_edit", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<relative-path>", "expectedRevision": "sha256:...", "edits": [{ "start": 0, "end": 0, "text": "..." }] } }`
         : "",
-      workspace.capability && !showNotebookPlaybook
+      workspace.capability
         ? `- Bridge create: { "tool": "workspace_source_create", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<new-relative-path>", "source": "<UTF-8 source or valid nbformat v4 JSON>" } }`
         : "",
       workspace.capability
         ? `- Bridge annotations: workspace_annotations_get / workspace_annotations_put with args { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<relative-path>", "annotations": [...] } as appropriate.`
         : "",
+      "- Notebook (.ipynb) cells: never hand-author nbformat JSON or byte-offset patches into an existing notebook. Use the capability-scoped cell tools, which preserve unrelated cells, outputs, and metadata and never start, stop, or execute kernels. Each read/mutation returns a sha256 revision; pass the latest one as expectedRevision. Use index and/or cellId (both must match). A 409 means re-read with workspace_notebook_context.",
+      workspace.capability
+        ? `- Bridge notebook read: { "tool": "workspace_notebook_context", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<relative-path>.ipynb" } } (add index and/or cellId to read one cell; startIndex to page)`
+        : "",
+      workspace.capability && workspace.requestedAccess === "editable"
+        ? `- Bridge cell create: { "tool": "workspace_cell_create", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<relative-path>.ipynb", "expectedRevision": "sha256:...", "cellType": "code", "source": "print('hello')", "index": 0 } } (omit index to append; cellType code, markdown, or raw)`
+        : "",
+      workspace.capability && workspace.requestedAccess === "editable"
+        ? `- Bridge cell edit/delete/reorder: workspace_cell_edit { workspace, path, expectedRevision, index and/or cellId, source and/or cellType }; workspace_cell_delete { workspace, path, expectedRevision, index and/or cellId }; workspace_cell_reorder { workspace, path, expectedRevision, fromIndex and/or cellId, toIndex }.`
+        : "",
+      workspace.requestedAccess === "editable"
+        ? "- New notebook: create an empty skeleton once with workspace_source_create and source {\"cells\":[],\"metadata\":{},\"nbformat\":4,\"nbformat_minor\":5}, then add each cell in order with workspace_cell_create, chaining the returned revision."
+        : "",
       workspace.requestedAccess === "editable"
         ? "- This workspace is editable through the bounded source API. POST may atomically create one new allowed UTF-8 source file or valid .ipynb, but creation is create-only and never overwrites."
-        : "- This workspace is read-only. Do not attempt source mutations.",
-      showNotebookPlaybook ? "Workspace .ipynb create-then-edit playbook (use only the capability-bound workspace_source_* API/bridge):" : "",
-      showNotebookPlaybook && workspace.requestedAccess !== "editable"
-        ? "- This workspace is read-only: use the read step only. Ask the owner to open an editable workspace before attempting create or edit."
-        : "",
-      showNotebookPlaybook && workspace.capability
-        ? `1. For a new file in an existing directory, create once: { "tool": "workspace_source_create", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": ${JSON.stringify(notebookPath)}, "source": ${JSON.stringify(notebookSource)} } }. Replace the starter cells with complete valid nbformat v4 cells before creating. If the file exists, skip create; never overwrite it.`
-        : "",
-      showNotebookPlaybook && workspace.capability
-        ? `2. Read the file: { "tool": "workspace_source_read", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": ${JSON.stringify(notebookPath)}, "maxBytes": 65536 } }. Use its source and sha256 revision; require truncated=false.`
-        : "",
-      showNotebookPlaybook && workspace.capability
-        ? `3. To change cells, parse the returned source, update cells in memory, then JSON.stringify the whole notebook and send { "tool": "workspace_source_edit", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": ${JSON.stringify(notebookPath)}, "expectedRevision": "<read.revision>", "edits": [{ "start": 0, "end": "<read.source.length in UTF-16 code units>", "text": "<complete revised notebook JSON>" }] } }. Supply end as a number. On 409, re-read and reconcile. If truncated or the replacement exceeds 64 KiB, explain the source-tool limit instead of attempting cell-offset surgery; workspace notebook cell tools are not available yet.`
-        : "",
-      "- Vault page/tree/Jupyter-note APIs are outside this Deep Work turn and must never be used as a fallback for project discovery, reads, creation, or edits.",
+        : "- This workspace is read-only. Do not attempt source or notebook cell mutations.",
+      "- Vault page/tree/Jupyter-note APIs are outside this Deep Work turn and must never be used as a fallback for project discovery, reads, creation, or edits. Vault Jupyter cell tools do not apply to project notebooks; use the workspace_* notebook tools above.",
       "- Never use direct filesystem writes, arbitrary commands, or Jupyter lifecycle commands for project source work.",
       "- Do not change the provider working directory to the project root. The capability-authenticated workspace API/bridge is the only project read or mutation path.",
       "- Smart Notes has no authority to commit, record verification, review, approve, merge, release, deploy, clean up the worktree, or mutate Ascent Vector brief/fleet state.",

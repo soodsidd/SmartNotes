@@ -5,6 +5,8 @@ import * as path from "path";
 
 const {
   ALLOWED_TOOLS,
+  WORKSPACE_TOOLS,
+  workspaceToolRequest,
   processBridgeRequest,
   responsePathFor,
   startCompanionLogFormBridge,
@@ -163,16 +165,14 @@ describe("companion vault bridge", () => {
     const responsesDir = path.join(root, "responses");
     fs.mkdirSync(requestsDir, { recursive: true });
     const capability = `dwc_${"a".repeat(43)}`;
-    const allowedTools = new Set([
-      "workspace_source_list",
-      "workspace_source_read",
-      "workspace_source_create",
-      "workspace_source_edit",
-    ]);
+    const allowedTools = WORKSPACE_TOOLS;
     const invokeTool = jest.fn().mockResolvedValue({ ok: true, status: 200 });
     const cases = [
       { name: "list", tool: "workspace_source_list", args: { workspace: capability, maxCount: 10 } },
       { name: "create", tool: "workspace_source_create", args: { workspace: capability, path: "walkthrough.ipynb", source: "{}" } },
+      { name: "cell-create", tool: "workspace_cell_create", args: { workspace: capability, path: "walkthrough.ipynb", expectedRevision: `sha256:${"0".repeat(64)}`, source: "x = 1" } },
+      { name: "cell-wrong-capability", tool: "workspace_cell_edit", args: { workspace: `dwc_${"b".repeat(43)}`, path: "walkthrough.ipynb", index: 0, source: "x" } },
+      { name: "vault-jupyter", tool: "jupyter_cell_edit", args: { path: "Vault/walkthrough.html", index: 0, source: "x" } },
       { name: "wrong-capability", tool: "workspace_source_read", args: { workspace: `dwc_${"b".repeat(43)}`, path: "main.py" } },
       { name: "vault-fallback", tool: "page_get", args: { path: "Vault/LeRobot.jupyter" } },
     ];
@@ -191,12 +191,68 @@ describe("companion vault bridge", () => {
     const create = await processBridgeRequest({ requestPath: path.join(requestsDir, "create.json"), ...options });
     const wrongCapability = await processBridgeRequest({ requestPath: path.join(requestsDir, "wrong-capability.json"), ...options });
     const vaultFallback = await processBridgeRequest({ requestPath: path.join(requestsDir, "vault-fallback.json"), ...options });
+    const cellCreate = await processBridgeRequest({ requestPath: path.join(requestsDir, "cell-create.json"), ...options });
+    const cellWrongCapability = await processBridgeRequest({ requestPath: path.join(requestsDir, "cell-wrong-capability.json"), ...options });
+    const vaultJupyter = await processBridgeRequest({ requestPath: path.join(requestsDir, "vault-jupyter.json"), ...options });
 
     expect(list).toMatchObject({ ok: true, tool: "workspace_source_list" });
     expect(create).toMatchObject({ ok: true, tool: "workspace_source_create" });
     expect(wrongCapability).toMatchObject({ ok: false, code: "WORKSPACE_CAPABILITY_MISMATCH" });
     expect(vaultFallback).toMatchObject({ ok: false, code: "TOOL_NOT_ALLOWED" });
-    expect(invokeTool).toHaveBeenCalledTimes(2);
+    expect(cellCreate).toMatchObject({ ok: true, tool: "workspace_cell_create" });
+    expect(cellWrongCapability).toMatchObject({ ok: false, code: "WORKSPACE_CAPABILITY_MISMATCH" });
+    expect(vaultJupyter).toMatchObject({ ok: false, code: "TOOL_NOT_ALLOWED" });
+    expect(invokeTool).toHaveBeenCalledTimes(3);
+  });
+
+  it("SN-359: allowlists notebook cell tools and routes them only to /api/workspace/notebook", () => {
+    const notebookTools = [
+      "workspace_notebook_context",
+      "workspace_cell_create",
+      "workspace_cell_edit",
+      "workspace_cell_reorder",
+      "workspace_cell_delete",
+    ];
+    for (const tool of notebookTools) {
+      expect(WORKSPACE_TOOLS.has(tool)).toBe(true);
+      expect(ALLOWED_TOOLS.has(tool)).toBe(true);
+    }
+    for (const tool of ["jupyter_cell_create", "jupyter_cell_edit", "jupyter_notebook_context", "page_get"]) {
+      expect(WORKSPACE_TOOLS.has(tool)).toBe(false);
+    }
+
+    const base = "http://127.0.0.1:4321";
+    const workspace = `dwc_${"a".repeat(43)}`;
+    const context = workspaceToolRequest(
+      "workspace_notebook_context",
+      { workspace, path: "nb/walkthrough.ipynb", index: 2, cellId: "abc" },
+      base
+    );
+    expect(context.method).toBe("GET");
+    const url = new URL(context.endpoint);
+    expect(url.pathname).toBe("/api/workspace/notebook");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ workspace, path: "nb/walkthrough.ipynb", index: "2", cellId: "abc" });
+    expect(context.body).toBeUndefined();
+
+    const operations: Record<string, string> = {
+      workspace_cell_create: "cell_create",
+      workspace_cell_edit: "cell_edit",
+      workspace_cell_reorder: "cell_reorder",
+      workspace_cell_delete: "cell_delete",
+    };
+    for (const [tool, operation] of Object.entries(operations)) {
+      const routed = workspaceToolRequest(tool, { workspace, path: "a.ipynb", expectedRevision: "sha256:x", operation: "spoofed" }, base);
+      expect(routed).toEqual({
+        endpoint: `${base}/api/workspace/notebook`,
+        method: "POST",
+        body: { workspace, path: "a.ipynb", expectedRevision: "sha256:x", operation },
+      });
+    }
+    expect(workspaceToolRequest("workspace_source_edit", { workspace }, base)).toMatchObject({
+      endpoint: `${base}/api/workspace/source`,
+      method: "PUT",
+    });
+    expect(workspaceToolRequest("jupyter_cell_edit", { path: "x" }, base)).toBeNull();
   });
 
   it("forwards page_get and page_write while rejecting other page commands", async () => {

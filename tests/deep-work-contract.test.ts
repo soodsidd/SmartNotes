@@ -141,60 +141,26 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
     expect(context).not.toContain("jupyter_cell_edit");
     expect(context).not.toContain('"tool": "jupyter_notebook_context"');
     expect(context).not.toContain("Workspace .ipynb create-then-edit playbook");
-  });
-
-  it("gives a focused workspace notebook a complete capability-only create/read/edit sequence", () => {
-    const descriptor = parseDeepWorkDescriptor(descriptorParams({ file: "analysis/walkthrough.ipynb" }))!;
-    const context = buildSmartNotesOperatingContext({
-      title: descriptor.projectName,
-      path: deepWorkPendingPath(descriptor),
-      noteType: "jupyter",
-      projectWorkspace: { ...descriptor, capability: "dwc_test_capability" },
-    });
-
-    expect(context).toContain("Workspace .ipynb create-then-edit playbook");
-    expect(context).toContain('"tool": "workspace_source_create"');
-    expect(context).toContain('"tool": "workspace_source_read"');
-    expect(context).toContain('"tool": "workspace_source_edit"');
-    expect(context).toContain('\\"nbformat\\":4');
-    expect(context).toContain('\\"nbformat_minor\\":5');
-    expect(context).toContain('"path": "analysis/walkthrough.ipynb"');
-    expect(context).toContain('"expectedRevision": "<read.revision>"');
-    expect(context).toContain('"end": "<read.source.length in UTF-16 code units>"');
-    expect(context).toContain("require truncated=false");
-    expect(context).toContain("instead of attempting cell-offset surgery");
+    // SN-359: notebook authoring goes through capability-scoped cell tools.
+    expect(context).toContain("workspace_notebook_context");
+    expect(context).toContain("workspace_cell_create");
+    expect(context).toContain("workspace_cell_edit");
+    expect(context).toContain("workspace_cell_reorder");
+    expect(context).toContain("workspace_cell_delete");
+    expect(context).toContain("never start, stop, or execute kernels");
     expect(context).not.toContain('"tool": "jupyter_cell_');
-    expect(context).not.toContain('"tool": "jupyter_notebook_context"');
-    expect(context).not.toContain('"tool": "page_');
-  });
 
-  it("includes the notebook playbook when the owner requests authoring before notebook focus exists", () => {
-    const descriptor = parseDeepWorkDescriptor(descriptorParams())!;
-    const context = buildSmartNotesOperatingContext({
+    const readOnly = buildSmartNotesOperatingContext({
       title: descriptor.projectName,
-      path: deepWorkPendingPath(descriptor),
+      path: pagePath,
       noteType: "jupyter",
-      projectWorkspace: { ...descriptor, capability: "dwc_test_capability" },
-      userRequest: "Create a Jupyter notebook explaining the analysis",
+      projectWorkspace: { ...descriptor, requestedAccess: "read-only", capability: "dwc_test_capability" },
+      activeJupyterFocus: focus,
+      apiBaseUrl: "http://127.0.0.1:3002",
     });
-    expect(context).toContain("Workspace .ipynb create-then-edit playbook");
-    expect(context).toContain('"tool": "workspace_source_create"');
-    expect(context).toContain('"workspace": "dwc_test_capability"');
-  });
-
-  it("keeps notebook mutation guidance gated in a read-only workspace", () => {
-    const descriptor = parseDeepWorkDescriptor(descriptorParams({
-      access: "read-only",
-      file: "analysis/walkthrough.ipynb",
-    }))!;
-    const context = buildSmartNotesOperatingContext({
-      title: descriptor.projectName,
-      path: deepWorkPendingPath(descriptor),
-      noteType: "jupyter",
-      projectWorkspace: { ...descriptor, capability: "dwc_test_capability" },
-    });
-    expect(context).toContain("use the read step only");
-    expect(context).toContain("before attempting create or edit");
+    expect(readOnly).toContain("workspace_notebook_context");
+    expect(readOnly).not.toContain("workspace_cell_create");
+    expect(readOnly).toContain("Do not attempt source or notebook cell mutations");
   });
 
   it("blocks hidden, secret-shaped, dependency, VCS, and build paths from source context", () => {

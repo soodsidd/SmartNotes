@@ -28,6 +28,7 @@ export const WORKSPACE_LIST_DEFAULT_COUNT = 200;
 export const WORKSPACE_LIST_MAX_COUNT = 500;
 export const WORKSPACE_LIST_MAX_DEPTH = 16;
 export const WORKSPACE_LIST_MAX_SCANNED_ENTRIES = 5_000;
+export const WORKSPACE_NOTEBOOK_MAX_CELLS = 1_000;
 
 export interface WorkspaceSourceEdit {
   start: number;
@@ -55,7 +56,7 @@ export interface WorkspaceSourceList {
   truncated: boolean;
 }
 
-function revision(bytes: Buffer): string {
+export function revision(bytes: Buffer): string {
   return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
 }
 
@@ -89,7 +90,7 @@ async function resolveWorkspacePath(
   return { workspace, relativePath, absolutePath };
 }
 
-async function resolveFile(
+export async function resolveFile(
   request: ProjectWorkspaceRequest,
   relativeValue: unknown
 ): Promise<{ workspace: ResolvedProjectWorkspace; relativePath: string; absolutePath: string }> {
@@ -230,54 +231,62 @@ function validateCreateSource(relativePath: string, value: unknown): Buffer {
     } catch {
       throw new VaultError("INVALID_WORKSPACE_NOTEBOOK", "New .ipynb source must be valid JSON.", 422);
     }
-    if (!notebook || typeof notebook !== "object" || Array.isArray(notebook)) {
-      throw new VaultError("INVALID_WORKSPACE_NOTEBOOK", "New .ipynb source must be a notebook object.", 422);
+    validateWorkspaceNotebookDocument(notebook);
+  }
+  return bytes;
+}
+
+/**
+ * Bounded nbformat v4 shape check shared by notebook creation and the SN-359
+ * cell tools, so a workspace notebook write never publishes an invalid notebook.
+ */
+export function validateWorkspaceNotebookDocument(notebook: unknown): void {
+  if (!notebook || typeof notebook !== "object" || Array.isArray(notebook)) {
+    throw new VaultError("INVALID_WORKSPACE_NOTEBOOK", "New .ipynb source must be a notebook object.", 422);
+  }
+  const record = notebook as Record<string, unknown>;
+  const metadata = record.metadata;
+  const cells = record.cells;
+  if (
+    record.nbformat !== 4 ||
+    !Number.isInteger(record.nbformat_minor) ||
+    (record.nbformat_minor as number) < 0 ||
+    !metadata || typeof metadata !== "object" || Array.isArray(metadata) ||
+    !Array.isArray(cells) || cells.length > WORKSPACE_NOTEBOOK_MAX_CELLS
+  ) {
+    throw new VaultError(
+      "INVALID_WORKSPACE_NOTEBOOK",
+      "New .ipynb source must be a bounded nbformat v4 notebook.",
+      422
+    );
+  }
+  for (const cell of cells) {
+    if (!cell || typeof cell !== "object" || Array.isArray(cell)) {
+      throw new VaultError("INVALID_WORKSPACE_NOTEBOOK", "Every notebook cell must be an object.", 422);
     }
-    const record = notebook as Record<string, unknown>;
-    const metadata = record.metadata;
-    const cells = record.cells;
+    const parsed = cell as Record<string, unknown>;
     if (
-      record.nbformat !== 4 ||
-      !Number.isInteger(record.nbformat_minor) ||
-      (record.nbformat_minor as number) < 0 ||
-      !metadata || typeof metadata !== "object" || Array.isArray(metadata) ||
-      !Array.isArray(cells) || cells.length > 1_000
+      (parsed.cell_type !== "code" && parsed.cell_type !== "markdown" && parsed.cell_type !== "raw") ||
+      !parsed.metadata || typeof parsed.metadata !== "object" || Array.isArray(parsed.metadata) ||
+      !(typeof parsed.source === "string" || (
+        Array.isArray(parsed.source) && parsed.source.every((line) => typeof line === "string")
+      ))
+    ) {
+      throw new VaultError("INVALID_WORKSPACE_NOTEBOOK", "Notebook cells must have valid type, metadata, and source.", 422);
+    }
+    if (
+      parsed.cell_type === "code" &&
+      (!Array.isArray(parsed.outputs) || !(
+        parsed.execution_count === null || Number.isInteger(parsed.execution_count)
+      ))
     ) {
       throw new VaultError(
         "INVALID_WORKSPACE_NOTEBOOK",
-        "New .ipynb source must be a bounded nbformat v4 notebook.",
+        "Code cells must include outputs and a valid execution_count.",
         422
       );
     }
-    for (const cell of cells) {
-      if (!cell || typeof cell !== "object" || Array.isArray(cell)) {
-        throw new VaultError("INVALID_WORKSPACE_NOTEBOOK", "Every notebook cell must be an object.", 422);
-      }
-      const parsed = cell as Record<string, unknown>;
-      if (
-        (parsed.cell_type !== "code" && parsed.cell_type !== "markdown" && parsed.cell_type !== "raw") ||
-        !parsed.metadata || typeof parsed.metadata !== "object" || Array.isArray(parsed.metadata) ||
-        !(typeof parsed.source === "string" || (
-          Array.isArray(parsed.source) && parsed.source.every((line) => typeof line === "string")
-        ))
-      ) {
-        throw new VaultError("INVALID_WORKSPACE_NOTEBOOK", "Notebook cells must have valid type, metadata, and source.", 422);
-      }
-      if (
-        parsed.cell_type === "code" &&
-        (!Array.isArray(parsed.outputs) || !(
-          parsed.execution_count === null || Number.isInteger(parsed.execution_count)
-        ))
-      ) {
-        throw new VaultError(
-          "INVALID_WORKSPACE_NOTEBOOK",
-          "Code cells must include outputs and a valid execution_count.",
-          422
-        );
-      }
-    }
   }
-  return bytes;
 }
 
 async function resolveCreateTarget(
@@ -319,7 +328,10 @@ async function resolveCreateTarget(
  * revision travel; the capability that authorized the write never does. The
  * event is advisory - a missing listener changes nothing about the write.
  */
-function announceWorkspaceSourceWrite(rootPath: string, result: WorkspaceSourceRead): void {
+export function announceWorkspaceSourceWrite(
+  rootPath: string,
+  result: Pick<WorkspaceSourceRead, "path" | "revision">
+): void {
   emitVaultSideEffects({
     workspaceSourceUpdated: { rootPath, path: result.path, revision: result.revision },
   });
