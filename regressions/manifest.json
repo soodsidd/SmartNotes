@@ -1721,6 +1721,27 @@
       "whenToRun": "Pre-merge when changing Ask Companion relay, Fast/Slow choice, Edit insertion, or the Jupyter Lab Ask path."
     },
     {
+      "id": "e2e-sn-375-ask-auto-send",
+      "name": "Ask Companion Explain auto-send",
+      "description": "Playwright desktop: Explain starts the shared Companion turn from a text page without a second Ask click, mirrors the answer, and opens the same turn in the sidebar.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-303-ask-companion.spec.ts --project=desktop --grep=\"text page context menu\"",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": ["e2e", "inline-ai", "targeted"],
+      "feature": "inline-ai",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-375",
+      "addedAt": "2026-10-25",
+      "sourceFiles": [{ "path": "e2e/sn-303-ask-companion.spec.ts" }],
+      "intent": "Protects the one-click Explain relay, popup mirror, and Open in Companion handoff on a real page.",
+      "whenToRun": "Pre-merge when changing Ask Companion quick actions or their relay into the sidebar."
+    },
+    {
       "id": "unit-sn-193-pdf-reader-selection",
       "name": "PDF read-mode selection and Companion handoff",
       "description": "Jest: tests/pdf-reader-selection.test.ts and tests/inline-ai-popover.test.tsx — read-mode selection/copy, touch navigation, and captured PDF text through Companion prompts and handoff; SN-334 adds tests/pdf-selection-highlight.test.ts and tests/pdf-passage-actions.test.tsx for the Highlight/Record/Ask Companion menu, duplicate-free Highlight, and phone highlight taps.",
