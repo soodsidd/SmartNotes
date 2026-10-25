@@ -2,9 +2,12 @@
 
 ## Companion quick prompts (SN-374)
 
-Composer shortcuts reuse the existing `--surface`, `--border`, `--secondary`,
-`--foreground`, `--muted`, and `--ring` colors. Chips use the established 11px
-secondary label, 24px desktop control height, and 44px phone touch height.
+The right-side composer dropdown reuses the existing `--border`, `--secondary`,
+`--foreground`, `--muted`, and `--ring` colors, plus the existing popover menu
+surface. Its trigger uses the established 11px label, 24px desktop control
+height, 44px phone touch height, and 132px maximum width.
+On the narrow desktop toolbar, the adjacent Computer control keeps its checkbox,
+monitor icon, and accessible name while hiding its visible text.
 The AI Settings editor uses the existing 8px and 12px spacing, 12px and 14px
 text, and 44px phone controls. No new design values were added.
 
@@ -259,27 +262,6 @@ scope chip and `--accent` dot. On a wide paper split the fixed Companion rail
 covers at least the notes width and targets 55% of the viewport, matching #9;
 the reader inset continues to depend only on the saved splitter width. No new
 color, spacing, or typography token was added.
-
-## Sidebar companion dots (SN-373)
-
-Page rows and section rows in the page sidebar (unified tree, dual-pane rail
-section rows, and the page-tree pane) can show the SN-211 companion states per
-page or section. Working is an 8px (`size-2`) round dot in `--muted-foreground`
-at 70% opacity with the standard pulse, disabled under reduced motion. Ready is
-an 8px solid `--accent` dot. The dot sits after the row label and never
-shrinks, so long titles truncate before it. No new color, spacing, or
-typography token was added.
-
-## Companion cell-run wake row (SN-377)
-
-While a Jupyter cell wake is pending on the open companion thread, the
-transcript ends with a compact status row ("Waiting for cell…", or "Cell
-finished — resuming…" once settle has begun). It reuses the SN-373 working
-pulse (`size-2` `--muted-foreground` at 70%, `motion-reduce:animate-none`),
-`--border` / `--muted` / `--foreground` / `--muted-foreground` / `--destructive`
-surfaces and copy, ghost `Button` `size="xs"` for Stop waiting / Interrupt, and
-the existing companion mobile `min-h-11` touch target. No new color, spacing,
-radius, or typography token was added.
 
 This folder is the tracked UI reference set for Smart Notes.
 
