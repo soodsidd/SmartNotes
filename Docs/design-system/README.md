@@ -260,6 +260,16 @@ covers at least the notes width and targets 55% of the viewport, matching #9;
 the reader inset continues to depend only on the saved splitter width. No new
 color, spacing, or typography token was added.
 
+## Sidebar companion dots (SN-373)
+
+Page rows and section rows in the page sidebar (unified tree, dual-pane rail
+section rows, and the page-tree pane) can show the SN-211 companion states per
+page or section. Working is an 8px (`size-2`) round dot in `--muted-foreground`
+at 70% opacity with the standard pulse, disabled under reduced motion. Ready is
+an 8px solid `--accent` dot. The dot sits after the row label and never
+shrinks, so long titles truncate before it. No new color, spacing, or
+typography token was added.
+
 This folder is the tracked UI reference set for Smart Notes.
 
 **System:** Clarity v1.0 — cool neutral grays, teal accent, all-sans Hanken Grotesk typography.

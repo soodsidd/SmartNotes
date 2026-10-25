@@ -5440,6 +5440,33 @@
       ]
     },
     {
+      "id": "unit-sn-373-companion-sidebar-dots",
+      "name": "SN-373 page/section sidebar companion dots",
+      "description": "Unit checks for the per-thread working -> ready -> acknowledged state machine (parallel turns, section-row vs page-row mapping, failure never green, settled-turn dedupe), source wiring for the sidebar dots, and the SN-211 companion icon helpers.",
+      "intent": "Protects per-page and per-section companion indicators in the page sidebar alongside the global SN-211 icon.",
+      "whenToRun": "Pre-merge when changing companion turn signals, thread addressing, the SN-211 icon state, or sidebar page/section rows.",
+      "failureMeaning": "Sidebar dots may stick, show green for failed turns, clear the wrong page, or appear on every page of a section.",
+      "appType": "node",
+      "command": "npm test -- tests/companion-thread-indicators.test.ts tests/companion-ready-icon.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "companion", "sidebar", "targeted"],
+      "feature": "companion",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-373",
+      "addedAt": "2026-10-25",
+      "sourceFiles": [
+        { "path": "tests/companion-thread-indicators.test.ts" },
+        { "path": "tests/companion-ready-icon.test.ts" },
+        { "path": "src/lib/companion-thread-indicators.ts" },
+        { "path": "src/components/notebook-shell-reliable.tsx" }
+      ]
+    },
+    {
       "id": "e2e-recipes",
       "name": "SN-305 recipe page-menu toggles and companion recipe tools",
       "description": "Playwright: e2e/sn-305-recipes.spec.ts — page menu marks/unmarks a recipe and notebook instructions, recipe_list/recipe_run via /api/agent/vault, and instructions appear only in the owning notebook's companion context.",
