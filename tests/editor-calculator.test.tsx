@@ -65,17 +65,27 @@ describe("editor scientific calculator", () => {
     expect(editor!.state.selection.from).toBe(3);
   });
 
-  it("remembers the latest editor caret when toggling back into the open calculator", async () => {
+  it("returns to the latest editor caret, not the original one, after editing", async () => {
     await mount();
-    act(() => { editor!.commands.setTextSelection(2); });
+    act(() => { editor!.commands.setTextSelection({ from: 1, to: 5 }); });
     shortcut();
     shortcut();
-    act(() => { editor!.commands.setTextSelection(6); });
-    shortcut();
-    expect(screen.getByRole("textbox", { name: "Expression" })).toHaveFocus();
-    shortcut();
+    act(() => { editor!.commands.insertContentAt(8, " = 9"); });
+    const caret = editor!.state.selection.from;
+    const close = screen.getByRole("button", { name: "Close calculator" });
+    act(() => { close.focus(); });
+    fireEvent.click(close);
     expect(editor!.view.dom).toHaveFocus();
-    expect(editor!.state.selection.from).toBe(6);
+    expect(editor!.state.selection.from).toBe(caret);
+    expect(editor!.state.selection.empty).toBe(true);
+  });
+
+  it("dragging the header does not start a document text selection", async () => {
+    await mount();
+    shortcut();
+    const header = screen.getByText("Scientific calculator");
+    const allowed = fireEvent.pointerDown(header, { clientX: 10, clientY: 10 });
+    expect(allowed).toBe(false);
   });
 
   it("dismisses after 60 seconds without interaction", async () => {

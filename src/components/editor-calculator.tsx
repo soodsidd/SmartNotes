@@ -122,12 +122,14 @@ export function EditorCalculator({
       }}
     >
       <div
-        className="mb-2 flex cursor-move touch-none items-center justify-between gap-2 text-sm font-medium"
+        className="mb-2 flex cursor-move touch-none select-none items-center justify-between gap-2 text-sm font-medium"
         onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest("button")) return;
           const host = hostRef.current;
           const panel = popupRef.current;
           if (!host || !panel) return;
+          // Without this, dragging starts a native text selection across the editor.
+          event.preventDefault();
           const hostRect = host.getBoundingClientRect();
           const panelRect = panel.getBoundingClientRect();
           dragRef.current = { x: event.clientX, y: event.clientY, left: panelRect.left - hostRect.left, top: panelRect.top - hostRect.top };

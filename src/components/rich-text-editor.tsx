@@ -405,21 +405,24 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     const scrollAreaRef = React.useRef<HTMLDivElement>(null);
     const calculatorHostRef = React.useRef<HTMLDivElement>(null);
     const calculatorRef = React.useRef<HTMLDivElement>(null);
-    const calculatorCaretRef = React.useRef<{ from: number; to: number } | null>(null);
     const [calculatorOpen, setCalculatorOpen] = React.useState(false);
     const [calculatorSeed, setCalculatorSeed] = React.useState("");
     const [calculatorFocusToken, setCalculatorFocusToken] = React.useState(0);
     const editorForCalculatorRef = React.useRef<Editor | null>(null);
+    // ProseMirror keeps (and maps) its selection while blurred; re-dispatching it
+    // after focus syncs the DOM caret before the next keystroke arrives.
+    const focusEditorCaret = React.useCallback((instance: Editor) => {
+      instance.view.focus();
+      instance.view.dispatch(instance.state.tr.setSelection(instance.state.selection));
+    }, []);
     const closeCalculator = React.useCallback(() => {
       const active = document.activeElement;
       const editorInstance = editorForCalculatorRef.current;
-      const caret = calculatorCaretRef.current;
       if (active instanceof Node && calculatorRef.current?.contains(active) && editorInstance && !editorInstance.isDestroyed) {
-        editorInstance.view.focus();
-        if (caret) editorInstance.commands.setTextSelection(caret);
+        focusEditorCaret(editorInstance);
       }
       setCalculatorOpen(false);
-    }, []);
+    }, [focusEditorCaret]);
     const contentSizerRef = React.useRef<HTMLDivElement>(null);
     // A drag that starts inside a floating box (e.g. image resize) and is released
     // on the canvas fires click on a common ancestor; it must not create a box.
@@ -1357,26 +1360,18 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         event.preventDefault();
         event.stopPropagation();
         if (calculatorOpen) {
-          if (inCalculator) {
-            const caret = calculatorCaretRef.current;
-            editor.view.focus();
-            if (caret) editor.commands.setTextSelection(caret);
-          } else {
-            const { from, to } = editor.state.selection;
-            calculatorCaretRef.current = { from, to };
-            setCalculatorFocusToken((current) => current + 1);
-          }
+          if (inCalculator) focusEditorCaret(editor);
+          else setCalculatorFocusToken((current) => current + 1);
           return;
         }
         const { from, to } = editor.state.selection;
-        calculatorCaretRef.current = { from, to };
         setCalculatorSeed(numericCalculatorSeed(editor.state.doc.textBetween(from, to)));
         setCalculatorOpen(true);
         setCalculatorFocusToken((current) => current + 1);
       };
       window.addEventListener("keydown", onShortcut);
       return () => window.removeEventListener("keydown", onShortcut);
-    }, [editor, readOnly, isDrawMode, inkCaptureMode, calculatorOpen]);
+    }, [editor, readOnly, isDrawMode, inkCaptureMode, calculatorOpen, focusEditorCaret]);
 
     React.useEffect(() => { setCalculatorOpen(false); }, [pagePath, readOnly, isDrawMode, inkCaptureMode]);
 
