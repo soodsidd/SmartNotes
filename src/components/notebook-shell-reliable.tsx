@@ -305,6 +305,7 @@ import {
   setCompanionActiveTurn,
   setCompanionScopeSession,
   shouldApplyTurnEventSeq,
+  mergeRestoredCompanionMessages,
   shouldLightCompanionReady,
   withCompanionProviderPreferences,
   type AiScope,
@@ -1209,6 +1210,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const syncOriginIdRef = React.useRef<string | null>(null);
   const activeTurnIdRef = React.useRef<string | null>(null);
   const inlineRelayRef = React.useRef<InlineAiRelayMirror | null>(null);
+  // SN-362: thread a turn was submitted on before its Keep ON restore resolved.
+  const unrestoredSubmitThreadRef = React.useRef<string | null>(null);
   const activeAssistantMessageIdRef = React.useRef<string | null>(null);
   const aiSubmitGenerationRef = React.useRef(0);
   // SN-80 companion session persistence refs.
@@ -2957,7 +2960,16 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       companionSidecarRef.current = sidecar;
       companionPageRef.current = path;
       const session = getCompanionScopeSession(sidecar, scopeKey);
-      const restoredMessages = session ? fromStoredCompanionMessages(session.messages) : [];
+      const storedMessages = session ? fromStoredCompanionMessages(session.messages) : [];
+      // SN-362: a turn submitted on this thread before the restore resolved
+      // (Ask Companion from a closed panel) must not be overwritten by it.
+      const threadKey = `${path}::${scopeKey}`;
+      const keepLive = unrestoredSubmitThreadRef.current === threadKey &&
+        aiMessagesBindingKeyRef.current === threadKey;
+      unrestoredSubmitThreadRef.current = null;
+      const restoredMessages = keepLive
+        ? mergeRestoredCompanionMessages(storedMessages, aiMessagesRef.current)
+        : storedMessages;
       aiMessagesRef.current = restoredMessages;
       aiMessagesBindingKeyRef.current = `${path}::${scopeKey}`;
       setAiMessages(restoredMessages);
@@ -5893,6 +5905,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     );
     aiMessagesRef.current = visibleSnapshot;
     aiMessagesBindingKeyRef.current = `${submitPath}::${submitScopeKey}`;
+    const loadedThread = companionLoadedRef.current;
+    if (!loadedThread || loadedThread.path !== submitPath || loadedThread.scopeKey !== submitScopeKey) {
+      unrestoredSubmitThreadRef.current = submitThreadKey;
+    }
     setAiMessages(visibleSnapshot);
     try {
       const pointerPersisted = await persistCompanionActiveTurn(
@@ -6092,10 +6108,6 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   const handleAiCancel = React.useCallback(() => {
     const currentTurnId = activeTurnIdRef.current;
-    if (inlineRelayRef.current?.turnId === currentTurnId) {
-      inlineRelayRef.current.observer.onError("Companion turn stopped.");
-      inlineRelayRef.current = null;
-    }
     const assistantMessageId = activeAssistantMessageIdRef.current;
     // SN-132: explicit user cancellation is the one path that stops the
     // server-owned turn; clear the durable pointer for its page+scope too.
@@ -6110,6 +6122,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     // the ready badge for it (the transcript stays the source of truth).
     watchedTurnIdRef.current = null;
     setCompanionTurnPending(false);
+    // SN-362: release the popup mirror of a stopped shared turn.
+    const relay = inlineRelayRef.current;
+    if (relay && relay.turnId === currentTurnId) {
+      inlineRelayRef.current = null;
+      relay.observer.onError("Companion turn stopped.");
+    }
 
     if (currentTurnId) {
       void fetch("/api/chat/cancel", {

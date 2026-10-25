@@ -2,6 +2,7 @@ import type { Editor } from "@tiptap/react";
 import { inlineAiRelayPrompt, inlineAiTurnProvider } from "@/lib/inline-ai";
 import { applyInlineAiEditorAnswer } from "@/lib/inline-ai-edit";
 import { applyInlineAiRelayEvent, createInlineAiRelayMirror } from "@/lib/inline-ai-relay";
+import { mergeRestoredCompanionMessages } from "@/lib/ai-sidebar";
 
 jest.mock("@/lib/rich-text-editor-config", () => ({
   looksLikeMarkdown: (text: string) => /^\s*([-*] |#)/m.test(text),
@@ -108,5 +109,14 @@ describe("SN-362 Edit insertion", () => {
   it("refuses empty answers and read-only editors", () => {
     expect(applyInlineAiEditorAnswer(fakeEditor({ from: 1, to: 1 }, "").editor, "  ", null)).toBe(false);
     expect(applyInlineAiEditorAnswer(fakeEditor({ from: 1, to: 1 }, "", false).editor, "text", null)).toBe(false);
+  });
+});
+
+describe("SN-362 shared transcript survives a late Keep ON restore", () => {
+  it("keeps the relayed turn and prepends stored history without duplicates", () => {
+    const stored = [{ id: "u0", content: "old question" }, { id: "a0", content: "old answer" }, { id: "u1", content: "Ask Companion" }];
+    const live = [{ id: "u1", content: "Ask Companion" }, { id: "a1", content: "streaming" }];
+    expect(mergeRestoredCompanionMessages(stored, live).map((m) => m.id)).toEqual(["u0", "a0", "u1", "a1"]);
+    expect(mergeRestoredCompanionMessages([], live)).toEqual(live);
   });
 });
