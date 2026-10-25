@@ -99,6 +99,7 @@ import {
 import type { AnnotationLayerHandle, AnnotationLayerProps, AnnotationStrokeSize, AnnotationTool } from "@/components/annotation-layer";
 import type { InkCanvasHandle, InkCanvasProps } from "@/components/ink-canvas";
 import type { JupyterNotebookViewProps } from "@/components/jupyter-notebook-view";
+import { jupyterFrameHostClassName } from "@/lib/jupyter-browser-support";
 import {
   dropDeepWorkPendingJupyterFrames,
   jupyterFrameIdentity,
@@ -1129,6 +1130,20 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     const identity = activeJupyterFrameIdentityRef.current;
     if (identity) setJupyterFrameCache((current) => reloadJupyterFrame(current, identity));
   }, []);
+  // SN-360: seed the active frame during render so the first paint already has a
+  // height-bearing host. Waiting for the SN-348 touch effect left a blank /
+  // zero-height surface on mobile WebKit/PWA.
+  if (draft?.noteType === "jupyter" && activeJupyterFrameIdentity) {
+    const seeded = touchJupyterFrame(jupyterFrameCache, {
+      identity: activeJupyterFrameIdentity,
+      pagePath: draft.path,
+      title: draft.title,
+      workspace: activeProjectWorkspace ?? undefined,
+    });
+    if (seeded !== jupyterFrameCache) {
+      setJupyterFrameCache(seeded);
+    }
+  }
   React.useEffect(() => {
     setJupyterFrameCache((current) => {
       const validPaths = new Set(tree.flatMap((notebook) => [
@@ -7332,15 +7347,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   focusedShellHref={focusedLogUrl(draft.path)}
                 />
               ) : draft.noteType === "jupyter" ? (
-                <div className="flex flex-col">
-                  {malformedBoundWorkspace || boundWorkspaceFailed ? (
-                    <div role="alert" className="border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      {malformedBoundWorkspace
-                        ? "The saved Deep Work folder binding is invalid. Showing this page's notebook; unlink it or choose another folder."
-                        : JUPYTER_PAGE_WORKSPACE_FALLBACK_MESSAGE}
-                    </div>
-                  ) : null}
-                </div>
+                // SN-360: alerts only here — Lab hosts live in the height-bearing
+                // jupyter surface below so flex min-h-0 flex-1 is restored.
+                null
               ) : draft.noteType === "app" ? (
                 <AppPageView
                   key={draft.path}
@@ -7457,48 +7466,73 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 onOpenCapture={openCaptureDialog}
               />
             )}
-            {jupyterFrameCache.map((entry) => {
-              const visible = draft?.noteType === "jupyter" && entry.identity === activeJupyterFrameIdentity;
-              return (
-                <div
-                  key={`${entry.identity}:${entry.generation}`}
-                  data-testid="jupyter-frame-host"
-                  hidden={!visible}
-                  className={cn("min-h-0 flex-1 flex-col", visible ? "flex" : "hidden")}
-                >
-                  <JupyterNotebookView
-                    pagePath={entry.pagePath}
-                    title={entry.title}
-                    workspace={entry.workspace}
-                    isActive={visible}
-                    onOpenSidebar={visible ? () => setSidebarOpen(true) : undefined}
-                    onBack={visible ? (
-                      activeProjectWorkspace?.returnUrl
-                        ? () => returnToAscentVector("workspace")
-                        : activeProjectWorkspace && openedWorkspace
-                          ? handleLeaveOpenedWorkspace
-                          : undefined
-                    ) : undefined}
-                    backLabel={visible ? (
-                      activeProjectWorkspace?.returnUrl
-                        ? "Return to Ascent Vector"
-                        : activeProjectWorkspace && openedWorkspace
-                          ? "Back to notes"
-                          : undefined
-                    ) : undefined}
-                    onViewDiff={visible && workspaceSession?.returnUrl ? () => returnToAscentVector("diff") : undefined}
-                    onUnlinkFolder={visible && (boundWorkspaceRequest || malformedBoundWorkspace) ? () => void handleUnlinkJupyterFolder() : undefined}
-                    onWorkspaceLaunchError={visible && activeBoundWorkspace ? handleJupyterWorkspaceLaunchError : undefined}
-                    // SN-348: the view only reports focus/session while visible and
-                    // clears both in effect cleanup when hidden, so no guard here.
-                    onFocusChange={setActiveJupyterFocus}
-                    onWorkspaceReady={setWorkspaceSession}
-                    externalReload={visible && activeProjectWorkspace ? workspaceDocumentReload : null}
-                    onAskInCompanion={visible ? handleJupyterAskInCompanion : undefined}
-                  />
-                </div>
-              );
-            })}
+            {/*
+              SN-348/SN-360: keep-alive Lab frames. While a Jupyter page is open the
+              surface owns flex min-h-0 flex-1 height; inactive hosts stay laid out
+              (visibility/absolute) instead of display:none so mobile/PWA does not
+              collapse the embed or freeze kernel WebSockets. Away from Jupyter the
+              surface is hidden (display:none) so note pages reclaim the canvas.
+            */}
+            {(draft?.noteType === "jupyter" || jupyterFrameCache.length > 0) ? (
+              <div
+                data-testid="jupyter-surface"
+                className={cn(
+                  draft?.noteType === "jupyter"
+                    ? "relative flex min-h-0 flex-1 flex-col"
+                    : "hidden"
+                )}
+              >
+                {draft?.noteType === "jupyter" && (malformedBoundWorkspace || boundWorkspaceFailed) ? (
+                  <div role="alert" className="border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {malformedBoundWorkspace
+                      ? "The saved Deep Work folder binding is invalid. Showing this page's notebook; unlink it or choose another folder."
+                      : JUPYTER_PAGE_WORKSPACE_FALLBACK_MESSAGE}
+                  </div>
+                ) : null}
+                {jupyterFrameCache.map((entry) => {
+                  const visible = draft?.noteType === "jupyter" && entry.identity === activeJupyterFrameIdentity;
+                  return (
+                    <div
+                      key={`${entry.identity}:${entry.generation}`}
+                      data-testid="jupyter-frame-host"
+                      aria-hidden={!visible}
+                      className={jupyterFrameHostClassName(visible)}
+                    >
+                      <JupyterNotebookView
+                        pagePath={entry.pagePath}
+                        title={entry.title}
+                        workspace={entry.workspace}
+                        isActive={visible}
+                        onOpenSidebar={visible ? () => setSidebarOpen(true) : undefined}
+                        onBack={visible ? (
+                          activeProjectWorkspace?.returnUrl
+                            ? () => returnToAscentVector("workspace")
+                            : activeProjectWorkspace && openedWorkspace
+                              ? handleLeaveOpenedWorkspace
+                              : undefined
+                        ) : undefined}
+                        backLabel={visible ? (
+                          activeProjectWorkspace?.returnUrl
+                            ? "Return to Ascent Vector"
+                            : activeProjectWorkspace && openedWorkspace
+                              ? "Back to notes"
+                              : undefined
+                        ) : undefined}
+                        onViewDiff={visible && workspaceSession?.returnUrl ? () => returnToAscentVector("diff") : undefined}
+                        onUnlinkFolder={visible && (boundWorkspaceRequest || malformedBoundWorkspace) ? () => void handleUnlinkJupyterFolder() : undefined}
+                        onWorkspaceLaunchError={visible && activeBoundWorkspace ? handleJupyterWorkspaceLaunchError : undefined}
+                        // SN-348: the view only reports focus/session while visible and
+                        // clears both in effect cleanup when hidden, so no guard here.
+                        onFocusChange={setActiveJupyterFocus}
+                        onWorkspaceReady={setWorkspaceSession}
+                        externalReload={visible && activeProjectWorkspace ? workspaceDocumentReload : null}
+                        onAskInCompanion={visible ? handleJupyterAskInCompanion : undefined}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
             </div>
           </div>
 

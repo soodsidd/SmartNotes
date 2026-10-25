@@ -17,6 +17,7 @@ jest.mock("@/lib/api/jupyter", () => ({
 
 import { JupyterNotebookView, type JupyterNotebookBridgeController } from "@/components/jupyter-notebook-view";
 import { JUPYTER_FOCUS_MESSAGE_SOURCE, type JupyterFocusState } from "@/lib/jupyter-focus";
+import { jupyterFrameHostClassName } from "@/lib/jupyter-browser-support";
 import {
   dropDeepWorkPendingJupyterFrames,
   JUPYTER_FRAME_CACHE_LIMIT,
@@ -115,9 +116,14 @@ function focusMessage(workspacePath: string) {
 describe("visible-frame routing (SN-348)", () => {
   function Harness({ active }: { active: "a" | "b" }) {
     return (
-      <>
+      <div data-testid="jupyter-surface" className="relative flex min-h-0 flex-1 flex-col">
         {(["a", "b"] as const).map((page) => (
-          <div key={page} data-testid={`host-${page}`} hidden={active !== page}>
+          <div
+            key={page}
+            data-testid={`host-${page}`}
+            aria-hidden={active !== page}
+            className={jupyterFrameHostClassName(active === page)}
+          >
             <JupyterNotebookView
               pagePath={page}
               title={page}
@@ -127,7 +133,7 @@ describe("visible-frame routing (SN-348)", () => {
             />
           </div>
         ))}
-      </>
+      </div>
     );
   }
 

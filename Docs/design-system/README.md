@@ -57,6 +57,13 @@ inline AI popover values (`.5rem`, `.75rem`, `1rem`, `.75rem` labels and
 `.8125rem` body); controls use the existing 44px phone touch target. No new
 design values were introduced.
 
+## Jupyter mobile remote embed (SN-360)
+
+Mobile/PWA Jupyter restores the height-bearing `jupyter-surface` and frame-host
+flex contract without new color, spacing, or typography tokens. Bound-workspace
+alerts continue to use `--destructive` text on a 10% `--destructive` tint over
+`--border`; Lab chrome remains the embedded JupyterLab UI. No new design values.
+
 ## Text selection chrome (SN-349)
 
 The text-page selection toolbar uses the existing `.bubble-toolbar` surface and

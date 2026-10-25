@@ -55,6 +55,7 @@ import {
 import { invokeInlineAi } from "@/lib/inline-ai";
 import { jupyterAskCompanionContext, jupyterAskCompanionEditTarget } from "@/lib/jupyter-ask-companion";
 import { workspacePathBlockReason } from "@/lib/deep-work";
+import { unsupportedBrowserReason } from "@/lib/jupyter-browser-support";
 import { jupyterLabWorkspaceUrl } from "@/lib/jupyter-page-workspace";
 import {
   fetchWorkspaceAnnotations,
@@ -214,17 +215,6 @@ function errorGuidance(code: JupyterErrorCode | undefined): { heading: string; h
         hint: "The Jupyter server failed to launch. Check that your Python environment is healthy, then retry.",
       };
   }
-}
-
-function unsupportedBrowserReason(): string | null {
-  if (typeof window === "undefined") return null;
-  if (!("WebSocket" in window)) {
-    return "WebSocket support is unavailable, so Jupyter kernel channels cannot connect.";
-  }
-  if (typeof navigator !== "undefined" && navigator.cookieEnabled === false) {
-    return "Cookies are disabled, so JupyterLab cannot keep its authenticated session.";
-  }
-  return null;
 }
 
 /**
@@ -1092,7 +1082,7 @@ export function JupyterNotebookView({
         : "stopped";
 
   return (
-    <div className="relative flex h-full w-full flex-col bg-background">
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col bg-background">
       <JupyterDeepWorkToolbar
         title={title}
         identity={toolbarIdentity}

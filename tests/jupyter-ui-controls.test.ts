@@ -79,11 +79,29 @@ describe("jupyter UI controls (SN-101)", () => {
       path.resolve(__dirname, "../src/components/jupyter-notebook-view.tsx"),
       "utf8"
     );
+    const support = fs.readFileSync(
+      path.resolve(__dirname, "../src/lib/jupyter-browser-support.ts"),
+      "utf8"
+    );
 
     expect(src).toContain("PROXY_UNAVAILABLE");
     expect(src).toContain("MOBILE_BROWSER_UNSUPPORTED");
-    expect(src).toContain("WebSocket support is unavailable");
+    expect(src).toContain('from "@/lib/jupyter-browser-support"');
+    expect(support).toContain("WebSocket support is unavailable");
+    expect(support).toContain("sn_jupyter_cookie_probe");
     expect(src).toContain("The JupyterLab frame could not load through the Smart Notes proxy.");
+  });
+
+  it("mounts Lab inside a height-bearing jupyter surface (SN-360)", () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "../src/components/notebook-shell-reliable.tsx"),
+      "utf8"
+    );
+    expect(src).toContain('data-testid="jupyter-surface"');
+    expect(src).toContain("jupyterFrameHostClassName(visible)");
+    expect(src).toContain("relative flex min-h-0 flex-1 flex-col");
+    // Must not leave Lab as a bare sibling with only display:none hosts.
+    expect(src).not.toContain('className={cn("min-h-0 flex-1 flex-col", visible ? "flex" : "hidden")}');
   });
 
   it("lets notebook mutations and the owner Reload control remount the active Jupyter frame", () => {
