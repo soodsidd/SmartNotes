@@ -133,6 +133,8 @@ import {
 } from "@/components/comment-layer";
 import { AnnotationDrawToolbar } from "@/components/annotation-draw-toolbar";
 import { PageLinesPopover } from "@/components/page-lines-popover";
+import { EditorCalculator } from "@/components/editor-calculator";
+import { numericCalculatorSeed } from "@/lib/scientific-calculator";
 import { DEFAULT_PAGE_LINES, pageLinesBackgroundStyle, type PageLinesSetting } from "@/lib/page-lines";
 import { MAIN_FLOW_DEFAULT_WIDTH, MAIN_FLOW_MAX_WIDTH, normalizeMainFlowWidth } from "@/lib/main-flow-width";
 import { MainFlowWidthHandle } from "@/components/main-flow-width-handle";
@@ -401,6 +403,13 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       drawableBottom,
     });
     const scrollAreaRef = React.useRef<HTMLDivElement>(null);
+    const calculatorHostRef = React.useRef<HTMLDivElement>(null);
+    const calculatorRef = React.useRef<HTMLDivElement>(null);
+    const calculatorCaretRef = React.useRef<{ from: number; to: number } | null>(null);
+    const [calculatorOpen, setCalculatorOpen] = React.useState(false);
+    const [calculatorSeed, setCalculatorSeed] = React.useState("");
+    const [calculatorFocusToken, setCalculatorFocusToken] = React.useState(0);
+    const closeCalculator = React.useCallback(() => setCalculatorOpen(false), []);
     const contentSizerRef = React.useRef<HTMLDivElement>(null);
     // A drag that starts inside a floating box (e.g. image resize) and is released
     // on the canvas fires click on a common ancestor; it must not create a box.
@@ -1324,6 +1333,38 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       },
       immediatelyRender: false,
     });
+
+    React.useEffect(() => {
+      if (!editor || readOnly || isDrawMode || inkCaptureMode) return;
+      const onShortcut = (event: KeyboardEvent) => {
+        if (!(event.ctrlKey || event.metaKey) || !event.altKey || event.shiftKey || event.code !== "KeyC") return;
+        const active = document.activeElement;
+        const inEditor = active instanceof Node && editor.view.dom.contains(active);
+        const inCalculator = active instanceof Node && Boolean(calculatorRef.current?.contains(active));
+        if (!inEditor && !inCalculator) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (calculatorOpen) {
+          if (inCalculator) {
+            const caret = calculatorCaretRef.current;
+            editor.view.focus();
+            if (caret) editor.commands.setTextSelection(caret);
+          } else {
+            setCalculatorFocusToken((current) => current + 1);
+          }
+          return;
+        }
+        const { from, to } = editor.state.selection;
+        calculatorCaretRef.current = { from, to };
+        setCalculatorSeed(numericCalculatorSeed(editor.state.doc.textBetween(from, to)));
+        setCalculatorOpen(true);
+        setCalculatorFocusToken((current) => current + 1);
+      };
+      window.addEventListener("keydown", onShortcut);
+      return () => window.removeEventListener("keydown", onShortcut);
+    }, [editor, readOnly, isDrawMode, inkCaptureMode, calculatorOpen]);
+
+    React.useEffect(() => { setCalculatorOpen(false); }, [pagePath, readOnly, isDrawMode, inkCaptureMode]);
 
     function insertFloatingBox(x?: number, y?: number) {
       if (!editor || readOnly || isDrawMode) return;
@@ -2689,6 +2730,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
         {/* Glass overlay: TipTap stays visible; ink layer covers the full page frame */}
         <div
+          ref={calculatorHostRef}
           className="relative min-h-0 flex-1"
           data-testid="editor-surface"
           onPointerDownCapture={handleEditorPointerDownCapture}
@@ -2975,6 +3017,15 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             </div>
             </div>
           </div>
+          {calculatorOpen && editor && !readOnly && !isDrawMode && !inkCaptureMode ? (
+            <EditorCalculator
+              hostRef={calculatorHostRef}
+              popupRef={calculatorRef}
+              initialExpression={calculatorSeed}
+              focusToken={calculatorFocusToken}
+              onClose={closeCalculator}
+            />
+          ) : null}
         </div>
 
         {/* Right-click context menu */}
