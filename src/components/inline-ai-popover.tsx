@@ -73,11 +73,11 @@ export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
     return () => { observer.disconnect(); window.removeEventListener("resize", position); };
   }, [invocation]);
 
-  function ask() {
-    if (!invocation || !question.trim() || working) return;
+  function ask(prompt = question) {
+    if (!invocation || !prompt.trim() || working) return;
     const controller = new AbortController(); abort.current = controller;
     setWorking(true); setAnswer(""); setError(""); setInserted(false);
-    const askedQuestion = question;
+    const askedQuestion = prompt;
     const editTurn = edit && Boolean(invocation.applyEdit);
     try {
       onAsk({ question: askedQuestion, context: invocation.context, speed, edit: editTurn }, {
@@ -123,13 +123,13 @@ export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
         <span className="inline-ai-target">{invocation.context.target}</span>
         <p className="inline-ai-helper">Uses full page text and table context. Images, ink, and linked files are not read.</p>
         <blockquote>{invocation.context.text || "This target has no text yet."}</blockquote>
-        <div className="inline-ai-chips">{["Explain", "Summarize"].map(label => <button key={label} disabled={working} onClick={() => { setQuestion(`${label} this text.`); panel.current?.querySelector("textarea")?.focus(); }}>{label}</button>)}{invocation.pdfRecord && <button onClick={() => invokePdfRecord({ ...invocation.pdfRecord!, quick: true })}>Record</button>}</div>
+        <div className="inline-ai-chips">{["Explain", "Summarize"].map(label => <button key={label} disabled={working} onClick={() => { const prompt = `${label} this text.`; setQuestion(prompt); ask(prompt); }}>{label}</button>)}{invocation.pdfRecord && <button onClick={() => invokePdfRecord({ ...invocation.pdfRecord!, quick: true })}>Record</button>}</div>
         <div className="inline-ai-chips" role="group" aria-label="Companion turn mode">
           {(["fast", "slow"] as const).map(value => <button key={value} type="button" aria-pressed={speed === value} disabled={working} onClick={() => setSpeed(value)}>{value === "fast" ? "Fast" : "Slow"}</button>)}
           {invocation.applyEdit && <button type="button" aria-pressed={edit} disabled={working} onClick={() => setEdit(value => !value)}>Edit</button>}
         </div>
         {invocation.pdfRecord && <button className="inline-ai-continue" onClick={() => invokePdfRecord(invocation.pdfRecord!)}>Add thought or choose note…</button>}
-        <form onSubmit={e => { e.preventDefault(); void ask(); }}>
+        <form onSubmit={e => { e.preventDefault(); ask(); }}>
           <label htmlFor="inline-ai-question">Ask about this text</label>
           <textarea id="inline-ai-question" placeholder="What does this mean?" rows={3} maxLength={4000} value={question} disabled={working} onChange={e => setQuestion(e.target.value)} />
           <footer><span>Selection and surrounding page context are sent.</span><button className="inline-ai-ask" disabled={!question.trim() || working}>{working ? "Asking…" : error ? "Retry" : "Ask"}</button></footer>

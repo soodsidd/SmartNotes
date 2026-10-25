@@ -33,6 +33,8 @@ const WORKSPACE_TOOLS = new Set([
   "workspace_cell_edit",
   "workspace_cell_reorder",
   "workspace_cell_delete",
+  // The sole Deep Work execute tool; still capability-bound to /api/workspace.
+  "jupyter_cell_run",
 ]);
 
 const WORKSPACE_CELL_OPERATIONS = new Map([
@@ -86,6 +88,13 @@ function workspaceToolRequest(tool, args, baseUrl) {
       body: { ...input, operation: WORKSPACE_CELL_OPERATIONS.get(tool) },
     };
   }
+  if (tool === "jupyter_cell_run" && input.workspace) {
+    return {
+      endpoint: `${baseUrl}/api/workspace/notebook`,
+      method: "POST",
+      body: { ...input, operation: "cell_run" },
+    };
+  }
   return null;
 }
 
@@ -130,6 +139,8 @@ const ALLOWED_TOOLS = new Set([
   // notebook.ipynb and preserve the server-owned reload event path.
   "jupyter_notebook_context",
   "jupyter_cell_edit",
+  // SN-376 short-await execution on the page's live kernel (blocks <=60s).
+  "jupyter_cell_run",
   // SN-282 Bibliography paper tools. The PDF download runs on the server, so a
   // network-less sandbox can still attach a paper PDF through this bridge.
   "paper_list",

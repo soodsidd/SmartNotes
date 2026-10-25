@@ -57,6 +57,15 @@ describe("SN-270 Deep Work root survives a Companion notebook edit", () => {
       });
     });
 
+    it("leaves a Companion run's output save to the run update instead of reloading or blocking (SN-381)", () => {
+      const event = { rootPath: ROOT, path: "notebooks/walkthrough.ipynb", revision: "sha256:abc", cellRunId: "run-1" };
+      expect(deepWorkSourceRefreshDecision(refreshInput({ event }))).toEqual({ kind: "ignore", reason: "cell-run-output" });
+      // Even a dirty document (the run's own live output) is not reported as blocked.
+      expect(deepWorkSourceRefreshDecision(refreshInput({ event, activeDocumentDirty: true }))).toEqual({ kind: "ignore", reason: "cell-run-output" });
+      // Other roots and files are still rejected first.
+      expect(deepWorkSourceRefreshDecision(refreshInput({ event: { ...event, path: "other.ipynb" } }))).toEqual({ kind: "ignore", reason: "not-active-file" });
+    });
+
     it("ignores an unknown dirty state only to the extent of still reloading a clean-reported doc", () => {
       // isDirty is null when no document owns focus; that is already caught by
       // the active-file gate, so a null here must not be treated as dirty.
@@ -262,10 +271,29 @@ describe("SN-270 Deep Work root survives a Companion notebook edit", () => {
       expect(clear).toBeGreaterThan(disposition);
     });
 
+    it("routes Companion run updates to the focused notebook in the live root only (SN-381)", () => {
+      expect(shell).toContain('socket.on("workspace_cell_run_updated", handleWorkspaceCellRunUpdated)');
+      expect(shell).toContain('socket.off("workspace_cell_run_updated", handleWorkspaceCellRunUpdated)');
+      expect(shell).toContain("sameDeepWorkRootPath(event?.rootPath, workspaceSessionRef.current?.rootPath)");
+      expect(shell).toContain("file !== activeJupyterFocusRef.current?.workspacePath");
+      expect(shell).toContain("externalRun={visible && activeProjectWorkspace ? workspaceCellRun : null}");
+      expect(shell).not.toContain("workspaceCellRun}`}");
+      expect(view).toContain('kind: "cell-run-update"');
+      expect(view).toContain("handledExternalRunRef.current === externalRun.nonce");
+      // Run updates and in-place reloads are serialized inside the frame.
+      expect(JUPYTER_FOCUS_BRIDGE_SOURCE).toContain("enqueueHostWork(() => applyCellRunUpdate(app, message))");
+      expect(JUPYTER_FOCUS_BRIDGE_SOURCE).toContain("enqueueHostWork(() => dispatchCommand(app, message))");
+    });
+
     it("drops a queued in-place reload whenever the live Deep Work session ends", () => {
       // Page-owned folders also clear a prior session's reload when the owner
       // switches pages or binds another root.
       expect((shell.match(/setWorkspaceDocumentReload\(null\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
+      // SN-381: a stale run snapshot must never replay into a new frame; the
+      // reload-conflict notice clears whenever the workspace session changes.
+      const resets = (shell.match(/setWorkspaceDocumentReload\(null\);\s*setWorkspaceCellRun\(null\);/g) ?? []).length;
+      expect(shell).toMatch(/setWorkspaceDocumentConflict\(null\);\s*\}, \[workspaceSession\]\);/);
+      expect(resets).toBe((shell.match(/setWorkspaceDocumentReload\(null\)/g) ?? []).length);
     });
   });
 });

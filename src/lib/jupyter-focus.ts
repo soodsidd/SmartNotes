@@ -109,6 +109,13 @@ export interface JupyterFocusState {
   documentKind: JupyterFocusDocumentKind | null;
   /** Live Jupyter document-model dirty state; null when no document owns focus. */
   isDirty: boolean | null;
+  /**
+   * SN-381: true only when the owner changed notebook cells since the document
+   * last matched disk. JupyterLab also dirties a notebook by rewriting
+   * kernelspec/language_info on kernel connect; that alone is not owner work
+   * and must not block a Companion reload. Absent from older bridges.
+   */
+  hasUnsavedCellEdits?: boolean | null;
   /** Zero-based notebook cell index, when the focused document is a notebook. */
   activeCellIndex: number | null;
   /** Stable nbformat/Jupyter cell id, when exposed by JupyterLab. */
@@ -377,6 +384,7 @@ function parseFocus(value: unknown, pagePath: string): JupyterFocusState | null 
     return null;
   }
   const isDirty = typeof value.isDirty === "boolean" ? value.isDirty : null;
+  const hasUnsavedCellEdits = typeof value.hasUnsavedCellEdits === "boolean" ? value.hasUnsavedCellEdits : null;
   const activeCellIndex = boundedInteger(value.activeCellIndex, 10_000_000);
   const activeCellId = value.activeCellId === null || value.activeCellId === undefined
     ? null
@@ -401,6 +409,7 @@ function parseFocus(value: unknown, pagePath: string): JupyterFocusState | null 
     workspacePath,
     documentKind,
     isDirty,
+    ...(hasUnsavedCellEdits !== null ? { hasUnsavedCellEdits } : {}),
     activeCellIndex,
     activeCellId,
     sourceRevision,

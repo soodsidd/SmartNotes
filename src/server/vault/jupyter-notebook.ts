@@ -531,6 +531,27 @@ function notebookMutationResult(
   };
 }
 
+/**
+ * SN-376: resolve one saved code cell (full, untruncated source) for host-owned
+ * execution. Read-only — never writes the notebook.
+ */
+export async function readNotebookCellForRun(input: { path: string; index?: number; cellId?: string }) {
+  const { page, notebook } = await readNotebookDocument(input.path);
+  const cells = cellsOf(notebook);
+  const index = resolveCellSelector(cells, { index: input.index, cellId: input.cellId }, { required: true }) as number;
+  const cell = cells[index];
+  const cellType = normalizeCellType(cell.cell_type);
+  if (cellType !== "code") {
+    throw new VaultError("NOT_CODE_CELL", `Cell ${index} is a ${cellType} cell; only code cells can be run.`, 400);
+  }
+  return {
+    path: page.path,
+    index,
+    cellId: normalizeCellId(cell.id),
+    source: normalizeSource(cell.source),
+  };
+}
+
 export const __testInternals = {
   normalizeSource,
   serializeOutputs,

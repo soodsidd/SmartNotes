@@ -9,7 +9,12 @@ export function emitVaultSideEffects(input: {
    * server-resolved real root so only the shell whose live session owns that
    * exact root reacts, and never the capability that authorized the write.
    */
-  workspaceSourceUpdated?: { rootPath: string; path: string; revision: string };
+  workspaceSourceUpdated?: { rootPath: string; path: string; revision: string; cellRunId?: string };
+  /**
+   * SN-381: bounded live progress / persistence state of a Companion cell run
+   * in a Deep Work notebook. Never carries the workspace capability.
+   */
+  workspaceCellRunUpdated?: { rootPath: string; path: string; run: unknown };
 }) {
   try {
     const io = (global as Record<string, unknown>)["_smartNotesIo"];
@@ -36,6 +41,9 @@ export function emitVaultSideEffects(input: {
     }
     if (input.workspaceSourceUpdated) {
       emitter.emit("workspace_source_updated", input.workspaceSourceUpdated);
+    }
+    if (input.workspaceCellRunUpdated) {
+      emitter.emit("workspace_cell_run_updated", input.workspaceCellRunUpdated);
     }
     if (input.treeChanged) {
       emitter.emit("vault_updated", { reason: "agent_vault_tool" });

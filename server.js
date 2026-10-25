@@ -404,6 +404,10 @@ app.prepare().then(async () => {
       'Hi! Ask me about your notes. Vault writes save on disk immediately; click Reload in the editor to view updates.'
   });
 
+  // SN-377: Jupyter cell wakes (Next API side) inspect live turns and start a
+  // resume turn on the calling companion thread through this in-process host.
+  global._smartNotesCompanionHost = chat.host;
+
   server.listen(port, hostname, () => {
     const address = server.address();
     const boundPort = address && typeof address === 'object' ? address.port : port;

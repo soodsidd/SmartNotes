@@ -12,6 +12,7 @@ import {
 } from "@/server/jupyter/workspace-files";
 import type { ProjectWorkspaceRequest } from "@/server/jupyter/workspace-root";
 import { VaultError } from "@/server/vault/errors";
+import { emitVaultSideEffects } from "@/server/vault/socket-events";
 import {
   NOTEBOOK_CONTEXT_DEFAULTS,
   normalizeCellId,
@@ -70,6 +71,46 @@ export interface WorkspaceNotebookMutation {
   cellCount: number;
   mutation: Record<string, unknown>;
   hint: string;
+}
+
+/** SN-381: one finished Companion run, saved into the cell that executed it. */
+export interface WorkspaceRunOutput {
+  runId: string;
+  /** File revision the run read its source from. */
+  launchRevision: string;
+  index: number;
+  cellId: string | null;
+  /** Exact source that executed. */
+  source: string;
+  /** `outputsFingerprint` of the cell when the run started. */
+  launchOutputs: string;
+  launchExecutionCount: number | null;
+  executionCount: number | null;
+  outputs: Record<string, unknown>[];
+}
+
+/** Key-order-independent JSON so a JupyterLab re-save does not read as a change. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+export function outputsFingerprint(cell: NotebookCell): string {
+  return canonicalJson(Array.isArray(cell.outputs) ? cell.outputs : []);
+}
+
+function executionCountOf(cell: NotebookCell): number | null {
+  return typeof cell.execution_count === "number" ? cell.execution_count : null;
+}
+
+function runConflict(message: string): VaultError {
+  return new VaultError("WORKSPACE_RUN_OUTPUT_CONFLICT", `${message} The run's outputs remain in Companion; the notebook was not changed.`, 409);
 }
 
 interface WorkspaceNotebookDocument {
@@ -236,6 +277,125 @@ export async function readWorkspaceNotebookContext(
     warnings,
     focusedCell: null,
   };
+}
+
+/** Read the complete saved code cell for execution after the workspace path policy. */
+export async function readWorkspaceNotebookCellForRun(
+  request: ProjectWorkspaceRequest,
+  relativePath: unknown,
+  selector: { index?: number; cellId?: string }
+) {
+  const resolved = await resolveNotebookFile(request, relativePath);
+  const bytes = await fs.readFile(resolved.absolutePath);
+  const notebook = parseNotebook(bytes);
+  const index = resolveCellSelector(notebook.cells, selector, { required: true }) as number;
+  const cell = notebook.cells[index];
+  const cellType = normalizeCellType(cell.cell_type);
+  if (cellType !== "code") {
+    throw new VaultError("NOT_CODE_CELL", `Cell ${index} is a ${cellType} cell; only code cells can be run.`, 400);
+  }
+  return {
+    path: resolved.relativePath,
+    index,
+    cellId: normalizeCellId(cell.id),
+    source: normalizeSource(cell.source),
+    workspaceKey: resolved.workspace.key,
+    rootPath: resolved.workspace.realRoot,
+    // SN-381: launch snapshot used to decide whether finished outputs can be
+    // saved without overwriting anything that changed during the run.
+    revision: revision(bytes),
+    outputsFingerprint: outputsFingerprint(cell),
+    executionCount: executionCountOf(cell),
+  };
+}
+
+/**
+ * SN-381: save one finished Companion run into the cell that executed it.
+ *
+ * The write is scoped to that cell's `outputs` and `execution_count`; every
+ * other byte of meaning in the current file is preserved. That is what lets a
+ * long run survive JupyterLab autosave (which writes the run's own live output
+ * and changes the file revision) or an unrelated edit to another cell, while
+ * still refusing whenever saving could overwrite someone else's work:
+ *
+ *   - the executed cell must still exist as the same code cell (by id when the
+ *     notebook has ids; by index only if the file is unchanged since launch),
+ *   - its source must be exactly the source that ran, and
+ *   - its outputs must be the launch-time outputs, this run's own (matching
+ *     execution count), or a cleared/running state (no execution count).
+ *
+ * Anything else is a WORKSPACE_RUN_OUTPUT_CONFLICT and the file is untouched.
+ * The usual per-file mutation queue, pre-rename revision re-check, nbformat
+ * validation, and size/link policy apply. Nothing here executes code.
+ */
+export async function persistWorkspaceCellRun(
+  request: ProjectWorkspaceRequest,
+  relativePath: string,
+  output: WorkspaceRunOutput
+): Promise<{ revision: string; path: string }> {
+  const resolved = await resolveNotebookFile(request, relativePath);
+  if (resolved.workspace.accessMode !== "editable") {
+    throw new VaultError("WORKSPACE_READ_ONLY", "This workspace is read-only, so run outputs were not saved.", 403);
+  }
+  const saved = await withFileMutation(resolved.absolutePath, async () => {
+    const before = await fs.readFile(resolved.absolutePath);
+    const beforeRevision = revision(before);
+    const unchangedSinceLaunch = beforeRevision === output.launchRevision;
+    const original = before.toString("utf8");
+    const notebook = parseNotebook(before);
+
+    let index = output.index;
+    if (output.cellId) {
+      const matches = notebook.cells
+        .map((cell, position) => (normalizeCellId(cell.id) === output.cellId ? position : -1))
+        .filter((position) => position >= 0);
+      if (matches.length !== 1) throw runConflict("The cell Companion ran was deleted from the notebook during the run.");
+      index = matches[0];
+    } else if (!unchangedSinceLaunch) {
+      throw runConflict("The notebook changed during the run and its cells have no ids, so the executed cell cannot be identified safely.");
+    }
+    const cell = notebook.cells[index];
+    if (!cell || normalizeCellType(cell.cell_type) !== "code") {
+      throw runConflict("The cell Companion ran is no longer a code cell.");
+    }
+    if (normalizeSource(cell.source) !== output.source) {
+      throw runConflict("The cell's source was edited during the run.");
+    }
+    if (!unchangedSinceLaunch) {
+      const current = executionCountOf(cell);
+      const untouched = outputsFingerprint(cell) === output.launchOutputs && current === output.launchExecutionCount;
+      const ownRun = output.executionCount !== null && current === output.executionCount;
+      const running = current === null;
+      if (!untouched && !ownRun && !running) {
+        throw runConflict("The cell's outputs were changed by another run during this one.");
+      }
+    }
+
+    cell.outputs = output.outputs;
+    cell.execution_count = output.executionCount;
+    validateWorkspaceNotebookDocument(notebook);
+    const next = Buffer.from(serializeNotebook(notebook, original), "utf8");
+    if (next.length > WORKSPACE_FILE_MAX_BYTES) {
+      throw new VaultError("WORKSPACE_FILE_TOO_LARGE", "The run's outputs would make the notebook too large to save. They remain in Companion; the notebook was not changed.", 413);
+    }
+    const stat = await fs.stat(resolved.absolutePath);
+    if (stat.nlink > 1) throw new VaultError("WORKSPACE_HARD_LINK_BLOCKED", "Cannot replace a multiply linked notebook.", 403);
+    await atomicReplaceFile(resolved.absolutePath, next, {
+      mode: stat.mode,
+      beforeReplace: async () => {
+        if (revision(await fs.readFile(resolved.absolutePath)) !== beforeRevision) {
+          throw runConflict("The notebook was saved by someone else while the outputs were being written.");
+        }
+      },
+    });
+    return { path: resolved.relativePath, revision: revision(next) };
+  });
+  // Tagged with the run so the open Lab view lets the run update (not the
+  // generic external-write path) reconcile its document.
+  emitVaultSideEffects({
+    workspaceSourceUpdated: { rootPath: resolved.workspace.realRoot, path: saved.path, revision: saved.revision, cellRunId: output.runId },
+  });
+  return saved;
 }
 
 function createWorkspaceCell(notebook: WorkspaceNotebookDocument, cellType: JupyterCellType, source: string): NotebookCell {

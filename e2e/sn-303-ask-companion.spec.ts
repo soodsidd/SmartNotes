@@ -18,11 +18,6 @@ async function stubFastLane(page: Page, bodies: string[]) {
     bodies.push(route.request().postData() ?? "");
     const { turn_id: turnId } = JSON.parse(bodies[bodies.length - 1]) as { turn_id: string };
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ turn_id: turnId }) });
-    await page.evaluate(({ turnId, answer }) => {
-      const bridge = (window as typeof window & { __testChatBridge?: { injectChatEvent: (event: unknown) => void } }).__testChatBridge;
-      bridge?.injectChatEvent({ turn_id: turnId, seq: 0, type: "token", payload: { text: answer } });
-      bridge?.injectChatEvent({ turn_id: turnId, seq: 1, type: "done", payload: { status: "completed" } });
-    }, { turnId, answer: ANSWER });
   });
 }
 
@@ -45,8 +40,18 @@ async function askAndContinue(page: Page, project: string, surface: string, bodi
   await expect(popover.getByText("Selection and surrounding page context are sent.")).toBeVisible();
   await expect(popover.getByPlaceholder("What does this mean?")).toBeFocused();
   await shot(page, project, `${surface}-popover`);
+  const accepted = page.waitForResponse(response => response.url().includes("/api/chat/send") && response.ok());
   await popover.getByRole("button", { name: "Explain" }).click();
-  await popover.getByRole("button", { name: "Ask", exact: true }).click();
+  await accepted;
+  await expect.poll(() => bodies.length).toBeGreaterThan(0);
+  await expect(popover.getByRole("status")).toHaveText("Thinking…");
+  const { turn_id: turnId } = JSON.parse(bodies[bodies.length - 1]) as { turn_id: string };
+  await page.evaluate(({ turnId, answer }) => {
+    const bridge = (window as typeof window & { __testChatBridge?: { injectChatEvent: (event: unknown) => void } }).__testChatBridge;
+    if (!bridge) throw new Error("Chat test bridge is unavailable");
+    bridge.injectChatEvent({ turn_id: turnId, seq: 0, type: "token", payload: { text: answer } });
+    bridge.injectChatEvent({ turn_id: turnId, seq: 1, type: "done", payload: { status: "completed" } });
+  }, { turnId, answer: ANSWER });
   await expect(popover.getByText(ANSWER)).toBeVisible();
   const box = await popover.boundingBox();
   const viewport = page.viewportSize()!;
@@ -95,8 +100,15 @@ test("SN-303: text page context menu row, table menu row, popover, and Continue 
     content: "<p>Right angle post clamp</p><table><tbody><tr><th><p>Part</p></th><th><p>Qty</p></th></tr><tr><td><p>Clamp</p></td><td><p>4</p></td></tr></tbody></table><p>After table</p>",
   });
   try {
+    // Vault UI-state hydration resets Keep and the transcript; never send before it lands.
+    const hydrated = page.waitForResponse(response => response.url().includes("/api/ui-state") && response.request().method() === "GET");
     await page.goto(`/?page=${encodeURIComponent(pagePath)}`);
+    await hydrated;
     await dismissBlockingOverlays(page);
+    // Keep the shared transcript in memory while the mock stream runs from a closed panel.
+    await page.getByTestId("ai-toggle-btn").click();
+    await page.getByRole("checkbox", { name: "Keep conversation" }).check();
+    await page.getByRole("button", { name: "Close Companion" }).click();
     const editor = page.getByTestId("rich-text-editor");
     await expect(editor.getByText("Right angle post clamp")).toBeVisible(SLOW);
 

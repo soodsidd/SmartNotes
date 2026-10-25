@@ -26,8 +26,8 @@ it("defaults to Fast, relays the selection with surrounding page text, and mirro
   act(() => invokeInlineAi({ context, x: 10, y: 10 }));
   expect(screen.getByRole("button", { name: "Fast" })).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(screen.getByRole("button", { name: "Explain" }));
-  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
   expect(onAsk).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("status")).toHaveTextContent("Thinking");
   expect(onAsk).toHaveBeenCalledWith({ question: "Explain this text.", context, speed: "fast", edit: false }, expect.any(Object));
   act(() => onAsk.mock.calls[0][1].onText("First"));
   expect(screen.getByText("First")).toBeVisible();
@@ -44,7 +44,7 @@ it("uses Slow for one request and keeps Summarize on the same relay path", () =>
   act(() => invokeInlineAi({ context, x: 10, y: 10 }));
   fireEvent.click(screen.getByRole("button", { name: "Slow" }));
   fireEvent.click(screen.getByRole("button", { name: "Summarize" }));
-  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
+  expect(onAsk).toHaveBeenCalledTimes(1);
   expect(onAsk.mock.calls[0][0]).toEqual({ question: "Summarize this text.", context, speed: "slow", edit: false });
   act(() => onAsk.mock.calls[0][1].onError("Provider unavailable"));
   expect(screen.getByRole("alert")).toHaveTextContent("Provider unavailable");
@@ -74,7 +74,6 @@ it("shows the answer without editing when Edit is off, and reports a refused ins
   act(() => invokeInlineAi({ context, x: 10, y: 10, applyEdit }));
   expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute("aria-pressed", "false");
   fireEvent.click(screen.getByRole("button", { name: "Explain" }));
-  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
   act(() => onAsk.mock.calls[0][1].onDone("Shown only"));
   expect(applyEdit).not.toHaveBeenCalled();
   expect(screen.getByText("Shown only")).toBeVisible();
@@ -82,6 +81,21 @@ it("shows the answer without editing when Edit is off, and reports a refused ins
   fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
   act(() => onAsk.mock.calls[1][1].onDone("Not insertable"));
   expect(await screen.findByRole("alert")).toHaveTextContent("could not be inserted");
+});
+
+it("applies Edit to an auto-started Explain turn and leaves custom text for manual Ask", async () => {
+  const applyEdit = jest.fn(() => true);
+  const { onAsk } = renderPopover();
+  act(() => invokeInlineAi({ context, x: 10, y: 10, applyEdit }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  fireEvent.click(screen.getByRole("button", { name: "Explain" }));
+  expect(onAsk.mock.calls[0][0]).toEqual({ question: "Explain this text.", context, speed: "fast", edit: true });
+  act(() => onAsk.mock.calls[0][1].onDone("Edited"));
+  expect(await screen.findByText("Inserted into the page.")).toBeVisible();
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "Custom question" } });
+  expect(onAsk).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
+  expect(onAsk.mock.calls[1][0].question).toBe("Custom question");
 });
 
 // SN-363: Jupyter Lab confirms the cell write asynchronously through its bridge.
@@ -146,7 +160,6 @@ it("offers PDF Record answer with the original quote after a relayed answer", ()
   act(() => invokeInlineAi({ context: { surface: "pdf", target: "Selection", text: quote, pageText: "Other page", tableText: "" }, x: 10, y: 10, menu: true, pdfRecord }));
   fireEvent.click(screen.getByRole("menuitem", { name: /Ask Companion/ }));
   fireEvent.click(screen.getByRole("button", { name: "Explain" }));
-  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
   act(() => onAsk.mock.calls[0][1].onDone("An AI explanation"));
   fireEvent.click(screen.getByRole("button", { name: "Record answer" }));
   expect(recorded).toEqual([expect.objectContaining({ source: pdfRecord.source, question: "Explain this text.", answer: "An AI explanation", quick: true })]);
@@ -182,7 +195,6 @@ it("keeps PDF selection context through the menu and relay, without exposing Edi
   fireEvent.click(screen.getByRole("menuitem", { name: /Ask Companion/ }));
   expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Summarize" }));
-  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
   expect(onAsk.mock.calls[0][0]).toEqual({ question: "Summarize this text.", context: pdfContext, speed: "fast", edit: false });
   act(() => onAsk.mock.calls[0][1].onDone("Summary"));
   expect(screen.getByText("Summary")).toBeVisible();

@@ -1,5 +1,26 @@
 # Smart Notes Design System
 
+## Companion cell wake row (SN-378)
+
+The waiting row in the Companion transcript uses existing `--border`,
+`--muted`, `--muted-foreground`, `--foreground`, and `--destructive` colors.
+Its muted surface is shown at 45% opacity and its pulse dot at 70% opacity.
+It uses the established 11px secondary text, 8px gap and vertical padding,
+10px horizontal padding, and the 44px mobile button touch target. The row
+restores the SN-377 waiting, resuming, and cancel controls without a new color,
+spacing, or typography token.
+
+## Companion quick prompts (SN-374)
+
+The right-side composer dropdown reuses the existing `--border`, `--secondary`,
+`--foreground`, `--muted`, and `--ring` colors, plus the existing popover menu
+surface. Its trigger uses the established 11px label, 24px desktop control
+height, 44px phone touch height, and 132px maximum width.
+On the narrow desktop toolbar, the adjacent Computer control keeps its checkbox,
+monitor icon, and accessible name while hiding its visible text.
+The AI Settings editor uses the existing 8px and 12px spacing, 12px and 14px
+text, and 44px phone controls. No new design values were added.
+
 ## Editor scientific calculator (SN-364)
 
 The editor scientific calculator is a body-level fixed utility popup (not a

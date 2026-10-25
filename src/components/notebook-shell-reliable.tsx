@@ -150,9 +150,11 @@ import {
 import {
   canRemountJupyterSurface,
   deepWorkSourceRefreshDecision,
+  sameDeepWorkRootPath,
   stickyRootRevalidationDisposition,
   type DeepWorkSourceUpdatedEvent,
 } from "@/lib/deep-work-refresh";
+import { normalizeJupyterWorkspacePath } from "@/lib/jupyter-focus";
 import { safeRandomUUID } from "@/lib/safe-random-uuid";
 import type { TLDefaultColorStyle } from "tldraw";
 import dynamic from "next/dynamic";
@@ -317,11 +319,33 @@ import {
   writeVolatileCompanionSession,
 } from "@/lib/ai-sidebar";
 import {
+  EMPTY_COMPANION_THREAD_INDICATORS,
+  acknowledgeCompanionThread,
+  clearCompanionThreadTurn,
+  companionIndicatorThreadKey,
+  lookupCompanionSidebarIndicator,
+  markCompanionThreadWorking,
+  resolveCompanionSidebarIndicators,
+  resolveCompanionThreadTerminal,
+  type CompanionSidebarIndicators,
+  type CompanionThreadIndicatorState,
+  type CompanionThreadIndicatorStatus,
+} from "@/lib/companion-thread-indicators";
+import {
   deleteCompanionSessions,
   fetchCompanionPageContext,
   fetchCompanionSessions,
   saveCompanionSessions,
 } from "@/lib/api/companion";
+import {
+  cancelCompanionCellWake,
+  companionCellWakeIndicatorTurnId,
+  fetchCompanionCellWakes,
+  isCompanionCellWakeWaiting,
+  selectThreadCellWakeItems,
+  upsertCompanionCellWake,
+  type CompanionCellWake,
+} from "@/lib/api/companion-cell-wakes";
 import {
   buildRecentSearchResults,
   EMPTY_VAULT_SEARCH_INDEX,
@@ -1168,6 +1192,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // src/lib/deep-work-refresh.ts for why a remount loses the root.
   const [workspaceDocumentReload, setWorkspaceDocumentReload] =
     React.useState<{ path: string; nonce: number } | null>(null);
+  const [workspaceDocumentConflict, setWorkspaceDocumentConflict] = React.useState<string | null>(null);
+  const [workspaceCellRun, setWorkspaceCellRun] = React.useState<{
+    path: string;
+    nonce: number;
+    run: import("@/server/jupyter/cell-run").JupyterCellRunPayload;
+  } | null>(null);
   const [activeJupyterFocus, setActiveJupyterFocus] = React.useState<JupyterFocusState | null>(null);
   const activeJupyterFocusRef = React.useRef<JupyterFocusState | null>(null);
   const workspaceSessionRef = React.useRef<JupyterSessionView | null>(null);
@@ -1269,6 +1299,30 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   // fed by the existing durable-turn terminal stream — no second turn lifecycle.
   const [companionAnswerReady, setCompanionAnswerReady] = React.useState(false);
   const [companionTurnPending, setCompanionTurnPending] = React.useState(false);
+  // SN-373: per-thread (page / notebook-section) working → ready → acknowledged
+  // indicators for the page sidebar. Fed by the same signals as SN-211 above, but
+  // keyed by thread address so parallel turns (SN-322) each keep their own dot.
+  const [companionThreadIndicators, setCompanionThreadIndicators] =
+    React.useState<CompanionThreadIndicatorState>(EMPTY_COMPANION_THREAD_INDICATORS);
+  // SN-377: host-parked Jupyter cell wakes (pending -> resuming -> resumed |
+  // cancelled | failed). Server-owned; this is the tab's mirror from
+  // GET /api/companion/cell-wakes + `companion_cell_wake` socket events.
+  const [companionCellWakes, setCompanionCellWakes] = React.useState<CompanionCellWake[]>([]);
+  const [cancellingCellWakeIds, setCancellingCellWakeIds] = React.useState<string[]>([]);
+  const [cellWakeErrors, setCellWakeErrors] = React.useState<Record<string, string>>({});
+  const cellWakeEventRef = React.useRef<((wake: CompanionCellWake) => void) | null>(null);
+  const cellWakeSyncRef = React.useRef<(() => void) | null>(null);
+  // "Viewed" = the companion is open AND showing that exact thread right now.
+  const isCompanionThreadViewedNow = React.useCallback(
+    (threadKey: string) =>
+      aiOpenRef.current &&
+      Boolean(companionStorePathRef.current) &&
+      companionIndicatorThreadKey({
+        storePath: companionStorePathRef.current,
+        scopeKey: companionScopeKeyRef.current,
+      }) === threadKey,
+    []
+  );
   // Live mirror of `aiOpen` for the socket closure, and the turn id watched for a
   // background (closed-panel) terminal event. `watchedTurnIdRef` survives the
   // detach-on-close path so completion is still observed after the panel closes.
@@ -1390,8 +1444,24 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     projectWorkspaceRef.current = projectWorkspace;
   }, [projectWorkspace]);
 
+  // SN-381: a Companion-reload conflict notice never outlives its workspace session.
   React.useEffect(() => {
+    setWorkspaceDocumentConflict(null);
+  }, [workspaceSession]);
+
+  React.useEffect(() => {
+    const previous = activeJupyterFocusRef.current;
     activeJupyterFocusRef.current = activeJupyterFocus;
+    // SN-381: the "unsaved edits blocked a Companion reload" notice is about one
+    // document state; it clears once the owner saves/reloads or switches file.
+    if (
+      previous &&
+      (!activeJupyterFocus ||
+        previous.workspacePath !== activeJupyterFocus.workspacePath ||
+        (previous.isDirty && activeJupyterFocus.isDirty === false))
+    ) {
+      setWorkspaceDocumentConflict(null);
+    }
   }, [activeJupyterFocus]);
 
   React.useEffect(() => {
@@ -2010,6 +2080,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         // before it finishes still lights the ready badge on completion.
         watchedTurnIdRef.current = pointer.turnId;
         setCompanionTurnPending(true);
+        // SN-373: the reattached turn is live on this thread's sidebar row.
+        setCompanionThreadIndicators((current) =>
+          markCompanionThreadWorking(current, { storePath: path, scopeKey, turnId: pointer.turnId })
+        );
         socketRef.current?.emit("chat_resume", { turn_id: pointer.turnId, last_seq: -1 });
         return;
       }
@@ -2100,6 +2174,16 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       if (shouldLightCompanionReady(terminalStatus, aiOpenRef.current)) {
         setCompanionAnswerReady(true);
       }
+      // SN-373: same recovery for this thread's sidebar dot. The fallback address
+      // covers a turn this tab never saw start (reload); settled turns are deduped.
+      setCompanionThreadIndicators((current) =>
+        resolveCompanionThreadTerminal(current, {
+          turnId: pointer.turnId,
+          status: terminalStatus,
+          isViewed: isCompanionThreadViewedNow,
+          fallbackThread: { storePath: path, scopeKey },
+        })
+      );
 
       if (activeTurnContextRef.current?.path === path && activeTurnContextRef.current.scopeKey === scopeKey) {
         activeTurnContextRef.current = null;
@@ -2116,7 +2200,105 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       }
       await clearCompanionActiveTurnPointer(path, scopeKey, pointer.turnId);
     },
-    [clearCompanionActiveTurnPointer, saveCompanionThread]
+    [clearCompanionActiveTurnPointer, isCompanionThreadViewedNow, saveCompanionThread]
+  );
+
+  // SN-377: apply one Jupyter cell wake update. A waiting wake pulses its
+  // thread's SN-373 sidebar dot; a resumed wake hands the dot to the host-started
+  // resume turn and, when that thread is on screen, adds the wake message and
+  // reattaches through the normal SN-132 durable-pointer path. Off-screen
+  // threads need nothing more: reattach discovery finds the pointer on return.
+  const applyCellWakeUpdate = React.useCallback(
+    (wake: CompanionCellWake, options: { reattach?: boolean } = {}) => {
+      setCompanionCellWakes((current) => upsertCompanionCellWake(current, wake));
+      const thread = { storePath: wake.storePath, scopeKey: wake.scopeKey };
+      const wakeTurnId = companionCellWakeIndicatorTurnId(wake.wakeId);
+      if (isCompanionCellWakeWaiting(wake)) {
+        setCompanionThreadIndicators((current) => markCompanionThreadWorking(current, { ...thread, turnId: wakeTurnId }));
+        return;
+      }
+      if (wake.status !== "resumed" || !wake.resumeTurnId) {
+        setCompanionThreadIndicators((current) => clearCompanionThreadTurn(current, wakeTurnId));
+        return;
+      }
+      const resumeTurnId = wake.resumeTurnId;
+      if (!options.reattach) {
+        return;
+      }
+      setCompanionThreadIndicators((current) =>
+        markCompanionThreadWorking(clearCompanionThreadTurn(current, wakeTurnId), { ...thread, turnId: resumeTurnId })
+      );
+      void (async () => {
+        const sidecar = await fetchCompanionSessions(wake.storePath).catch(() => null);
+        if (!sidecar) return;
+        // Keep the cached sidecar current so a later transcript flush preserves the new pointer.
+        if (companionPageRef.current === wake.storePath) companionSidecarRef.current = sidecar;
+        if (companionStorePathRef.current !== wake.storePath || companionScopeKeyRef.current !== wake.scopeKey) return;
+        const pointer = getCompanionActiveTurn(sidecar, wake.scopeKey);
+        if (!pointer || pointer.turnId !== resumeTurnId || activeTurnIdRef.current === resumeTurnId) return;
+        const wakeMessages = fromStoredCompanionMessages(
+          (getCompanionScopeSession(sidecar, wake.scopeKey)?.messages ?? []).filter(
+            (message) => message.id === wake.resumeUserMessageId
+          )
+        );
+        if (wakeMessages.length > 0) {
+          setAiMessages((current) => {
+            if (current.some((message) => message.id === wake.resumeUserMessageId)) return current;
+            const next = [...current.filter((message) => message.id !== pointer.assistantMessageId), ...wakeMessages];
+            aiMessagesRef.current = next;
+            return next;
+          });
+        }
+        await reattachOrReconcileTurn(wake.storePath, wake.scopeKey, pointer);
+      })();
+    },
+    [reattachOrReconcileTurn]
+  );
+
+  const syncCompanionCellWakes = React.useCallback(async () => {
+    const wakes = await fetchCompanionCellWakes().catch(() => null);
+    if (!wakes) return;
+    setCompanionCellWakes(wakes);
+    for (const wake of wakes) {
+      // A list sync never reattaches; durable-pointer discovery owns cold return.
+      applyCellWakeUpdate(wake);
+    }
+  }, [applyCellWakeUpdate]);
+
+  React.useEffect(() => {
+    cellWakeEventRef.current = (wake) => applyCellWakeUpdate(wake, { reattach: true });
+    cellWakeSyncRef.current = () => void syncCompanionCellWakes();
+  }, [applyCellWakeUpdate, syncCompanionCellWakes]);
+
+  React.useEffect(() => {
+    void syncCompanionCellWakes();
+  }, [syncCompanionCellWakes]);
+
+  const handleCancelCellWake = React.useCallback(
+    async (wakeId: string, interrupt: boolean) => {
+      setCancellingCellWakeIds((current) => (current.includes(wakeId) ? current : [...current, wakeId]));
+      setCellWakeErrors((current) => {
+        if (!(wakeId in current)) return current;
+        const next = { ...current };
+        delete next[wakeId];
+        return next;
+      });
+      try {
+        const wake = await cancelCompanionCellWake(wakeId, interrupt);
+        applyCellWakeUpdate(wake);
+        if (wake.error) setCellWakeErrors((current) => ({ ...current, [wakeId]: wake.error as string }));
+      } catch (error) {
+        // Already settled elsewhere (resumed/timed out) -> resync; otherwise keep the row with the error.
+        setCellWakeErrors((current) => ({
+          ...current,
+          [wakeId]: error instanceof Error ? error.message : "Could not cancel the cell wake.",
+        }));
+        await syncCompanionCellWakes();
+      } finally {
+        setCancellingCellWakeIds((current) => current.filter((id) => id !== wakeId));
+      }
+    },
+    [applyCellWakeUpdate, syncCompanionCellWakes]
   );
 
   // Clear one scope thread on the page being left (navigation dispose with Keep OFF).
@@ -2196,6 +2378,16 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       setCompanionAnswerReady(false);
     }
   }, [aiOpen]);
+
+  // SN-373: viewing a thread (companion open on it) acknowledges that thread's
+  // ready sidebar dot only — other pages/sections keep theirs. Switching pages or
+  // scope with the companion open acknowledges the newly displayed thread.
+  React.useEffect(() => {
+    if (!aiOpen || !companionStorePath) return;
+    setCompanionThreadIndicators((current) =>
+      acknowledgeCompanionThread(current, { storePath: companionStorePath, scopeKey: companionScopeKey })
+    );
+  }, [aiOpen, companionStorePath, companionScopeKey, companionThreadIndicators]);
 
   const updateAiMessage = React.useCallback((messageId: string, updater: (message: AiSidebarMessage) => AiSidebarMessage) => {
     setAiMessages((currentMessages) => {
@@ -2353,6 +2545,27 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           watchedTurnIdRef.current = null;
           setCompanionTurnPending(false);
         }
+      }
+
+      // SN-373: per-thread sidebar dots. The server broadcasts every turn's
+      // events, so any turn this tab started or reattached settles here even
+      // after newer sends on other pages replaced the SN-211 watched turn.
+      // Unknown (foreign) turn ids are ignored by the state machine.
+      if (event.turn_id && (event.type === "done" || event.type === "error")) {
+        const terminalTurnId = event.turn_id;
+        const terminalStatus =
+          event.type === "error"
+            ? "failed"
+            : typeof event.payload?.status === "string"
+              ? event.payload.status
+              : "completed";
+        setCompanionThreadIndicators((current) =>
+          resolveCompanionThreadTerminal(current, {
+            turnId: terminalTurnId,
+            status: terminalStatus,
+            isViewed: isCompanionThreadViewedNow,
+          })
+        );
       }
 
       // SN-362: the Ask Companion popup mirrors this shared sidebar turn. Like the
@@ -2614,14 +2827,37 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           Boolean(activeBoundWorkspaceRef.current),
         sessionRootPath: workspaceSessionRef.current?.rootPath ?? null,
         activeWorkspacePath: activeJupyterFocusRef.current?.workspacePath ?? null,
-        activeDocumentDirty: activeJupyterFocusRef.current?.isDirty ?? null,
+        // SN-381: Lab's own kernel-metadata churn is not owner work; prefer the
+        // bridge's cell-level answer and fall back to plain dirty state.
+        activeDocumentDirty:
+          activeJupyterFocusRef.current?.hasUnsavedCellEdits ?? activeJupyterFocusRef.current?.isDirty ?? null,
         event,
       });
+      if (decision.kind === "blocked-dirty") {
+        setWorkspaceDocumentConflict(
+          "Companion changed this file on disk, but it has unsaved edits here, so it was not reloaded. Your edits are kept: save to keep them (JupyterLab will warn that the file changed on disk), or reload from disk to take Companion's version."
+        );
+        return;
+      }
       if (decision.kind !== "reload-document") return;
+      setWorkspaceDocumentConflict(null);
       setWorkspaceDocumentReload((current) => ({
         path: decision.path,
         nonce: (current?.nonce ?? 0) + 1,
       }));
+    };
+
+    const handleWorkspaceCellRunUpdated = (event: {
+      rootPath?: unknown;
+      path?: unknown;
+      run?: import("@/server/jupyter/cell-run").JupyterCellRunPayload;
+    }) => {
+      const current = draftRef.current;
+      if (!activeDeepWorkWorkspace(projectWorkspaceRef.current, current?.path ?? null) && !activeBoundWorkspaceRef.current) return;
+      if (!sameDeepWorkRootPath(event?.rootPath, workspaceSessionRef.current?.rootPath)) return;
+      const file = normalizeJupyterWorkspacePath(event.path);
+      if (!file || file !== activeJupyterFocusRef.current?.workspacePath || !event.run?.runId) return;
+      setWorkspaceCellRun((previous) => ({ path: file, nonce: (previous?.nonce ?? 0) + 1, run: event.run! }));
     };
 
     socket.on("connect", handleSocketConnect);
@@ -2630,6 +2866,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     socket.on("file_updated", handleFileUpdated);
     socket.on("jupyter_notebook_updated", handleJupyterNotebookUpdated);
     socket.on("workspace_source_updated", handleWorkspaceSourceUpdated);
+    socket.on("workspace_cell_run_updated", handleWorkspaceCellRunUpdated);
+    // SN-377: Jupyter cell wakes. Reconnect resyncs so a missed event never leaves a stale "Waiting for cell...".
+    const handleCellWake = (wake: CompanionCellWake) => cellWakeEventRef.current?.(wake);
+    const handleCellWakeResync = () => cellWakeSyncRef.current?.();
+    socket.on("companion_cell_wake", handleCellWake);
+    socket.on("connect", handleCellWakeResync);
 
     return () => {
       socket.off("connect", handleSocketConnect);
@@ -2639,11 +2881,14 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       socket.off("file_updated", handleFileUpdated);
       socket.off("jupyter_notebook_updated", handleJupyterNotebookUpdated);
       socket.off("workspace_source_updated", handleWorkspaceSourceUpdated);
+      socket.off("workspace_cell_run_updated", handleWorkspaceCellRunUpdated);
+      socket.off("companion_cell_wake", handleCellWake);
+      socket.off("connect", handleCellWakeResync);
       socket.disconnect();
       socketRef.current = null;
       setSyncConnectionState("disconnected");
     };
-  }, [checkActivePageForExternalUpdate, clearCompanionActiveTurnPointer, reloadActiveJupyterFrame, updateAiMessage]);
+  }, [checkActivePageForExternalUpdate, clearCompanionActiveTurnPointer, isCompanionThreadViewedNow, reloadActiveJupyterFrame, updateAiMessage]);
 
   React.useEffect(() => {
     let ignore = false;
@@ -3356,6 +3601,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         setWorkspaceSession(null);
         setActiveJupyterFocus(null);
         setWorkspaceDocumentReload(null);
+        setWorkspaceCellRun(null);
       }
       if (shouldLeaveDeepWorkForVaultSelection(projectWorkspaceRef.current, nextPath)) {
         // SN-266: selecting a vault note has the same live-session boundary as
@@ -3366,6 +3612,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         setWorkspaceSession(null);
         setActiveJupyterFocus(null);
         setWorkspaceDocumentReload(null);
+        setWorkspaceCellRun(null);
         workspaceReturnStateRef.current = null;
         // SN-347/SN-348: drop the orphan Deep Work frame immediately so a
         // launching/dead sticky frame cannot stay visible during the handoff
@@ -5866,6 +6113,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         ...activeProjectWorkspace,
         requestedAccess: workspaceSession?.accessMode ?? activeProjectWorkspace.requestedAccess,
         capability: workspaceSession?.capability,
+        notebookSessionReady: workspaceSession?.status === "ready",
         returnUrl: workspaceSession?.returnUrl,
         executionContext: workspaceSession?.executionContext,
       } : null,
@@ -5916,6 +6164,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     watchedTurnIdRef.current = turnId;
     setCompanionTurnPending(true);
     setCompanionAnswerReady(false);
+    // SN-373: this thread's sidebar row starts pulsing (supersedes its own
+    // unread ready dot only; other pages/sections keep theirs).
+    setCompanionThreadIndicators((current) =>
+      markCompanionThreadWorking(current, { storePath: submitPath, scopeKey: submitScopeKey, turnId })
+    );
     const visibleSnapshot = snapshot.map((message) =>
       message.id === assistantMessageId ? { ...message, isStreaming: true } : message
     );
@@ -6048,6 +6301,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         watchedTurnIdRef.current = null;
         setCompanionTurnPending(false);
       }
+      setCompanionThreadIndicators((current) => clearCompanionThreadTurn(current, turnId));
       if (activeTurnIdRef.current === turnId && activeTurnContextRef.current?.path === submitPath &&
           activeTurnContextRef.current.scopeKey === submitScopeKey) {
         activeTurnIdRef.current = null;
@@ -6138,6 +6392,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     // the ready badge for it (the transcript stays the source of truth).
     watchedTurnIdRef.current = null;
     setCompanionTurnPending(false);
+    // SN-373: a stopped turn never leaves a green sidebar dot.
+    setCompanionThreadIndicators((current) => clearCompanionThreadTurn(current, currentTurnId));
     // SN-362: release the popup mirror of a stopped shared turn.
     const relay = inlineRelayRef.current;
     if (relay && relay.turnId === currentTurnId) {
@@ -6401,6 +6657,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       turnPending: companionTurnPending,
       panelOpen: aiOpen,
     });
+  // SN-373: sidebar row projection of the per-thread indicators (stable identity
+  // between changes so the memoized Sidebar does not re-render on every tick).
+  const companionSidebarIndicators = React.useMemo(
+    () => resolveCompanionSidebarIndicators(companionThreadIndicators),
+    [companionThreadIndicators]
+  );
 
   const canExportCurrentTextPage = Boolean(
     draft && draft.noteType === "text" && !activeVersionPreview
@@ -6612,6 +6874,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           setWorkspaceSession(null);
           setActiveJupyterFocus(null);
           setWorkspaceDocumentReload(null);
+          setWorkspaceCellRun(null);
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not bind the Deep Work folder to this page.");
@@ -6640,6 +6903,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setWorkspaceSession(null);
     setActiveJupyterFocus(null);
     setWorkspaceDocumentReload(null);
+    setWorkspaceCellRun(null);
     setActiveNotebookPath(null);
     setActiveSectionPath(null);
     setActivePagePath(workspaceDraft.path);
@@ -6721,6 +6985,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     setWorkspaceSession(null);
     setActiveJupyterFocus(null);
     setWorkspaceDocumentReload(null);
+    setWorkspaceCellRun(null);
     setJupyterFrameCache((current) => dropDeepWorkPendingJupyterFrames(current));
     setActiveNotebookPath(previous?.activeNotebookPath ?? null);
     setActiveSectionPath(previous?.activeSectionPath ?? null);
@@ -6868,6 +7133,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       storePath: companionStorePath,
       scopeKey: companionScopeKey,
     });
+  const displayedCellWakes = selectThreadCellWakeItems(
+    companionCellWakes,
+    { storePath: companionStorePath, scopeKey: companionScopeKey },
+    { cancelling: cancellingCellWakeIds, errors: cellWakeErrors }
+  );
   // One shared prop bundle and one AiSidebar element serve every shell presentation.
   const companionProps = {
     pageTitle: paperShellTitle ?? draft?.title ?? "No note selected",
@@ -6912,6 +7182,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     onSubmit: (prompt: string, attachments?: AiComposerAttachment[]) =>
       void handleAiSubmit(prompt, attachments, { origin: "composer" }),
     failedSend: aiFailedSend,
+    cellWakes: displayedCellWakes,
+    onCancelCellWake: (wakeId: string, interrupt: boolean) => void handleCancelCellWake(wakeId, interrupt),
     onRetryFailedSend: handleAiRetryFailedSend,
     onEditFailedSend: handleAiEditFailedSend,
     onCancel: handleAiCancel,
@@ -7028,6 +7300,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                   onCollapseRail={() => setNotebookRailCollapsedAndStore(true)}
                   variant="desktop"
                   tree={treeWithOverrides}
+                  companionIndicators={companionSidebarIndicators}
                   isTreeLoading={isLoadingTree}
                   ghostVersions={ghostVersions}
                   activeNotebookPath={activeNotebookPath}
@@ -7154,6 +7427,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                     sidebarLayout="page-tree"
                     variant="desktop"
                     tree={treeWithOverrides}
+                    companionIndicators={companionSidebarIndicators}
                     isTreeLoading={isLoadingTree}
                     ghostVersions={ghostVersions}
                     activeNotebookPath={activeNotebookPath}
@@ -7526,6 +7800,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                         onFocusChange={setActiveJupyterFocus}
                         onWorkspaceReady={setWorkspaceSession}
                         externalReload={visible && activeProjectWorkspace ? workspaceDocumentReload : null}
+                        externalConflict={visible && activeProjectWorkspace ? workspaceDocumentConflict : null}
+                        externalRun={visible && activeProjectWorkspace ? workspaceCellRun : null}
                         onAskInCompanion={visible ? handleJupyterAskInCompanion : undefined}
                       />
                     </div>
@@ -7609,6 +7885,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
               <Sidebar
                 sidebarLayout="rail"
                 tree={treeWithOverrides}
+                companionIndicators={companionSidebarIndicators}
                 isTreeLoading={isLoadingTree}
                 activeNotebookPath={activeNotebookPath}
                 activeSectionPath={activeSectionPath}
@@ -7707,6 +7984,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
                 <Sidebar
                   sidebarLayout="page-tree"
                   tree={treeWithOverrides}
+                  companionIndicators={companionSidebarIndicators}
                   pageScope={mobileDrillNotebookPath ? { notebookPath: mobileDrillNotebookPath, sectionPath: mobileDrillSectionPath } : null}
                   isTreeLoading={isLoadingTree}
                   activeNotebookPath={activeNotebookPath}
@@ -8538,6 +8816,39 @@ function TopBar({
   );
 }
 
+/**
+ * SN-373: per-thread companion dot on a page or section sidebar row. Mirrors the
+ * SN-211 companion-icon language: working = quiet muted pulse (reduced-motion
+ * aware, decorative); ready = solid --accent attention dot announced politely.
+ */
+function CompanionThreadDot({ status, testId }: { status: CompanionThreadIndicatorStatus | null; testId: string }) {
+  if (status === "ready") {
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full bg-accent"
+        role="status"
+        aria-live="polite"
+        aria-label="Companion answer ready"
+        title="Companion answer ready"
+        data-testid={testId}
+        data-companion-indicator="ready"
+      />
+    );
+  }
+  if (status === "working") {
+    return (
+      <span
+        className="size-2 shrink-0 rounded-full bg-muted-foreground/70 animate-pulse motion-reduce:animate-none"
+        aria-hidden="true"
+        title="Companion working"
+        data-testid={testId}
+        data-companion-indicator="working"
+      />
+    );
+  }
+  return null;
+}
+
 function InlineSectionName({ path, name, onCommit, kind = "section" }: { path: string; name: string; onCommit: (path: string, name: string) => Promise<void>; kind?: "section" | "page" }) {
   const [value, setValue] = React.useState(name);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -8670,8 +8981,11 @@ export const Sidebar = React.memo(function Sidebar({
   onExportPage,
   onExportDocxPage,
   onExportPagePackage,
+  companionIndicators,
 }: {
   sidebarLayout?: "unified" | "rail" | "page-tree";
+  /** SN-373: per-page / per-section companion working/ready dots. */
+  companionIndicators?: CompanionSidebarIndicators;
   onCollapseRail?: () => void;
   /** Page-tree layout only; defaults to the active notebook/section. */
   pageScope?: SidebarPageScope | null;
@@ -9373,6 +9687,10 @@ export const Sidebar = React.memo(function Sidebar({
                             data-testid={`rail-section-tab-${section.path}`}
                           />
                           <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass, sectionActive ? "font-medium" : "font-normal")}>{section.name}</span>
+                          <CompanionThreadDot
+                            status={lookupCompanionSidebarIndicator(companionIndicators, "section", section.path)}
+                            testId={`companion-thread-dot-rail-section-${section.path}`}
+                          />
                         </button>
                         <DropdownMenu>
                           <DropdownMenuTrigger
@@ -9720,6 +10038,10 @@ export const Sidebar = React.memo(function Sidebar({
                             >
                               {node.page.title}
                             </p>}
+                            <CompanionThreadDot
+                              status={lookupCompanionSidebarIndicator(companionIndicators, "page", node.page.path)}
+                              testId={`companion-thread-dot-page-${node.page.path}`}
+                            />
                           </button>
                           {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? (
                             <InlineSectionName path={node.page.path} name={node.page.title} kind="page" onCommit={onCommitPageTitle} />
@@ -9929,6 +10251,10 @@ export const Sidebar = React.memo(function Sidebar({
                             {inlineSectionPath !== section.path ? (
                               <span className="truncate text-sm text-foreground">{section.name}</span>
                             ) : null}
+                            <CompanionThreadDot
+                              status={lookupCompanionSidebarIndicator(companionIndicators, "section", section.path)}
+                              testId={`companion-thread-dot-section-${section.path}`}
+                            />
                           </button>
                           {inlineSectionPath === section.path ? (
                             <InlineSectionName path={section.path} name={section.name} onCommit={onCommitSectionName} />
@@ -10253,6 +10579,10 @@ export const Sidebar = React.memo(function Sidebar({
                                         isAppPage && "text-accent",
                                         isSpreadsheetPage && "text-chart-2",
                                       )}>{node.page.title}</p>}
+                                    <CompanionThreadDot
+                                      status={lookupCompanionSidebarIndicator(companionIndicators, "page", node.page.path)}
+                                      testId={`companion-thread-dot-page-${node.page.path}`}
+                                    />
                                     </button>
                                     {inlinePageTitlePath === node.page.path && node.page.noteType !== "text" ? (
                                       <InlineSectionName path={node.page.path} name={node.page.title} kind="page" onCommit={onCommitPageTitle} />
