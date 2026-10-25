@@ -388,6 +388,7 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
         ? modelRevision(activeModel.sharedModel)
         : null,
       isDirty,
+      hasUnsavedCellEdits: isDirty ? hasUnsavedCellEdits(parts) : false,
       caret: editorState.caret,
       selection: editorState.selection,
       selectionRects: editorState.selectionRects,
@@ -543,7 +544,7 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
         reason = 'No Jupyter document is open to reload.';
       } else if (parts.workspacePath !== focusPath) {
         reason = FOCUS_CHANGED_REASON;
-      } else if (model && model.dirty) {
+      } else if (model && model.dirty && hasUnsavedCellEdits(parts)) {
         reason = 'This document has unsaved changes, so it was not reloaded from disk.';
       }
     }
@@ -556,9 +557,15 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
         reason = 'This command is unavailable in the managed JupyterLab profile.';
       } else {
         try {
+          const reloadContext = semantic === 'reload-document' && app.shell.currentWidget && app.shell.currentWidget.context;
           const execute = () => semantic === 'focus-file'
             ? app.commands.execute(commandId, { path: focusPath })
-            : app.commands.execute(commandId);
+            // SN-381: the guards above already proved no owner cell edits are
+            // unsaved; revert directly so Lab's kernel-metadata dirtiness does
+            // not raise docmanager:reload's "discard changes?" dialog.
+            : reloadContext && typeof reloadContext.revert === 'function'
+              ? reloadContext.revert()
+              : app.commands.execute(commandId);
           // SN-381: a Companion cell edit reloads in place without losing the owner's cell or scroll position.
           const result = semantic === 'reload-document'
             ? await keepNotebookPlace(app, focusPath, execute)
@@ -622,6 +629,7 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
     const result = await reload();
     const after = currentParts(app);
     if (after.workspacePath === path) {
+      if (after.widget && after.widget.context && !after.widget.context.model.dirty) rememberBaseline(after.widget.context, after.content);
       if (previousIndex !== null && after.isNotebook && after.content.widgets.length) {
         after.content.activeCellIndex = Math.min(previousIndex, after.content.widgets.length - 1);
       }
@@ -639,19 +647,47 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
     }
   };
 
-  // Fingerprint of everything an owner could change, except the run cell's
-  // outputs and execution count (the only things this bridge writes).
-  const ownerSignature = (content, runModel) => (Array.isArray(content && content.widgets) ? content.widgets : [])
+  // Per-cell fingerprints: "full" covers everything a cell holds, "bare"
+  // omits outputs and execution count (the only things a Companion run writes).
+  const cellSignatures = (content) => (Array.isArray(content && content.widgets) ? content.widgets : [])
     .map((widget) => {
       const model = widget && widget.model;
+      const id = model && typeof model.id === 'string' ? model.id : '';
       const json = cellJson(model);
-      if (!json || typeof json !== 'object') return (model && model.id || '') + ':' + sourceRevision(cellSource(model));
-      if (model === runModel) {
-        delete json.outputs;
-        delete json.execution_count;
+      if (!json || typeof json !== 'object') {
+        const fallback = sourceRevision(cellSource(model));
+        return { id, full: fallback, bare: fallback };
       }
-      return sourceRevision(JSON.stringify(json));
-    }).join('|');
+      if (json.metadata && typeof json.metadata === 'object') delete json.metadata.trusted;
+      const full = sourceRevision(JSON.stringify(json));
+      delete json.outputs;
+      delete json.execution_count;
+      return { id, full, bare: sourceRevision(JSON.stringify(json)) };
+    });
+
+  // Cell baseline of each open notebook as last loaded, saved, or reloaded.
+  const documentBaselines = new WeakMap();
+  const rememberBaseline = (context, content) => {
+    if (context && content && Array.isArray(content.widgets)) documentBaselines.set(context, cellSignatures(content));
+  };
+
+  // True only when the owner changed cells since the document last matched
+  // disk. Notebook-level metadata JupyterLab rewrites on kernel connect
+  // (kernelspec, language_info) is not owner work. A run cell's outputs are
+  // excluded when runModel is given, because the run wrote them.
+  const hasUnsavedCellEdits = (parts, runModel) => {
+    const context = parts.widget && parts.widget.context;
+    const documentModel = context && context.model;
+    if (!documentModel || !documentModel.dirty) return false;
+    if (!parts.isNotebook) return true;
+    const baseline = documentBaselines.get(context);
+    if (!baseline) return true;
+    const current = cellSignatures(parts.content);
+    if (current.length !== baseline.length) return true;
+    const runId = runModel && typeof runModel.id === 'string' ? runModel.id : null;
+    return current.some((cell, index) => cell.id !== baseline[index].id ||
+      (runId && cell.id === runId ? cell.bare !== baseline[index].bare : cell.full !== baseline[index].full));
+  };
 
   const findRunModel = (content, cell) => {
     const widgets = Array.isArray(content && content.widgets) ? content.widgets : [];
@@ -730,20 +766,16 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
     const documentModel = context && context.model;
     let tracked = liveCellRuns.get(run.runId);
     if (!tracked) {
-      tracked = { path, baseline: null, shown: '', notice: undefined };
+      tracked = { path, shown: '', notice: undefined };
       liveCellRuns.set(run.runId, tracked);
       while (liveCellRuns.size > MAX_TRACKED_RUNS) liveCellRuns.delete(liveCellRuns.keys().next().value);
     }
     const model = findRunModel(parts.content, run.cell);
-    const dirty = Boolean(documentModel && documentModel.dirty);
-    // Remember the last moment the document matched disk. From then on only
-    // this run's output patches are ours to discard.
-    if (!dirty) tracked.baseline = ownerSignature(parts.content, model);
     const persistence = run.persistence && typeof run.persistence.status === 'string' ? run.persistence : null;
     let notice = null;
 
     if (persistence && persistence.status === 'saved') {
-      const onlyRunOutput = !dirty || (tracked.baseline !== null && ownerSignature(parts.content, model) === tracked.baseline);
+      const onlyRunOutput = !(documentModel && documentModel.dirty) || !hasUnsavedCellEdits(parts, model);
       if (onlyRunOutput && context && typeof context.revert === 'function') {
         try {
           // context.revert() reloads from disk without JupyterLab's
@@ -778,6 +810,16 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
     const content = parts.content;
     const context = parts.widget && parts.widget.context;
     connect(context && context.pathChanged, () => scheduleReport(app));
+    // SN-381: the cell baseline follows what is on disk - on load, then after
+    // every save or revert (fileChanged), never while owner edits are pending.
+    if (parts.isNotebook && context && !documentBaselines.has(context)) {
+      Promise.resolve(context.ready).then(() => {
+        if (!documentBaselines.has(context)) rememberBaseline(context, content);
+      }).catch(() => {});
+    }
+    connect(context && context.fileChanged, () => {
+      if (parts.isNotebook) rememberBaseline(context, content);
+    });
 
     const bindEditor = (editor) => {
       connect(editor && editor.model && editor.model.selections && editor.model.selections.changed,

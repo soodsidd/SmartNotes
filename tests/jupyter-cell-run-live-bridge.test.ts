@@ -76,6 +76,7 @@ function fakeNotebook(path: string, disk: FakeCell[]) {
     path,
     model: document,
     revert: jest.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
       cells = build(disk);
       content.activeCellIndex = 0; // a reload resets Lab's active cell
       scroller.scrollTop = 0;
@@ -249,6 +250,40 @@ describe("SN-381 Companion cell runs in the open JupyterLab notebook", () => {
     expect(lab.cell(1).source).toBe("train(epochs=2)");
     expect(lab.cell(1).outputs).toEqual([{ output_type: "stream", name: "stdout", text: "epoch 1\n" }]);
     expect(notices().filter((entry) => entry.reason)).toHaveLength(0);
+  });
+
+  it("treats JupyterLab kernel-metadata dirtiness as reloadable, without the discard dialog", async () => {
+    // Lab rewrites kernelspec/language_info on kernel connect: dirty, but no owner cell edit.
+    lab.document.dirty = true;
+    lab.setDisk([CELLS[0], { ...CELLS[1], source: "train(epochs=3)" }]);
+    send({ kind: "command", requestId: "r2", command: "reload-document", path: "analysis.ipynb" });
+    await settle();
+    expect(lab.cell(1).source).toBe("train(epochs=3)");
+    expect(lab.app.commands.execute).not.toHaveBeenCalledWith("docmanager:reload");
+    const result = posted.filter((entry) => entry.kind === "command-result").pop();
+    expect(result.result).toMatchObject({ requestId: "r2", ok: true });
+    expect(result.focus.hasUnsavedCellEdits).toBe(false);
+  });
+
+  it("reports a real owner cell edit so the host and frame both refuse the reload", async () => {
+    lab.model(0).sharedModel.setSource("owner draft");
+    lab.setDisk([CELLS[0], { ...CELLS[1], source: "train(epochs=3)" }]);
+    send({ kind: "command", requestId: "r3", command: "reload-document", path: "analysis.ipynb" });
+    await settle();
+    expect(lab.context.revert).not.toHaveBeenCalled();
+    expect(lab.cell(0).source).toBe("owner draft");
+    const result = posted.filter((entry) => entry.kind === "command-result").pop();
+    expect(result.result).toMatchObject({ requestId: "r3", ok: false });
+    expect(result.focus).toMatchObject({ isDirty: true, hasUnsavedCellEdits: true });
+  });
+
+  it("reloads saved run output even when only Lab metadata was dirty", async () => {
+    lab.document.dirty = true;
+    lab.setDisk([CELLS[0], { ...CELLS[1], execution_count: 3, outputs: [{ output_type: "stream", name: "stdout", text: "done\n" }] }]);
+    send({ kind: "cell-run-update", path: "analysis.ipynb", run: run({ status: "completed", stillRunning: false, executionCount: 3, persistence: { status: "saved" } }) });
+    await settle();
+    expect(lab.context.revert).toHaveBeenCalledTimes(1);
+    expect(lab.cell(1).outputs).toEqual([{ output_type: "stream", name: "stdout", text: "done\n" }]);
   });
 
   it("shares one source fingerprint with the server", () => {

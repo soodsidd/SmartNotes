@@ -2827,7 +2827,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           Boolean(activeBoundWorkspaceRef.current),
         sessionRootPath: workspaceSessionRef.current?.rootPath ?? null,
         activeWorkspacePath: activeJupyterFocusRef.current?.workspacePath ?? null,
-        activeDocumentDirty: activeJupyterFocusRef.current?.isDirty ?? null,
+        // SN-381: Lab's own kernel-metadata churn is not owner work; prefer the
+        // bridge's cell-level answer and fall back to plain dirty state.
+        activeDocumentDirty:
+          activeJupyterFocusRef.current?.hasUnsavedCellEdits ?? activeJupyterFocusRef.current?.isDirty ?? null,
         event,
       });
       if (decision.kind === "blocked-dirty") {
