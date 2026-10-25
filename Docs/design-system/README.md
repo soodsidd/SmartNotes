@@ -270,6 +270,17 @@ an 8px solid `--accent` dot. The dot sits after the row label and never
 shrinks, so long titles truncate before it. No new color, spacing, or
 typography token was added.
 
+## Companion cell-run wake row (SN-377)
+
+While a Jupyter cell wake is pending on the open companion thread, the
+transcript ends with a compact status row ("Waiting for cell…", or "Cell
+finished — resuming…" once settle has begun). It reuses the SN-373 working
+pulse (`size-2` `--muted-foreground` at 70%, `motion-reduce:animate-none`),
+`--border` / `--muted` / `--foreground` / `--muted-foreground` / `--destructive`
+surfaces and copy, ghost `Button` `size="xs"` for Stop waiting / Interrupt, and
+the existing companion mobile `min-h-11` touch target. No new color, spacing,
+radius, or typography token was added.
+
 This folder is the tracked UI reference set for Smart Notes.
 
 **System:** Clarity v1.0 — cool neutral grays, teal accent, all-sans Hanken Grotesk typography.
