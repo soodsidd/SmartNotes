@@ -86,8 +86,11 @@ export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
           if (controller.signal.aborted) return;
           setAnswer(text); setAnsweredQuestion(askedQuestion); setWorking(false);
           if (!editTurn) return;
-          if (invocation.applyEdit?.(text)) setInserted(true);
-          else setError("The answer could not be inserted into this editor.");
+          void Promise.resolve(invocation.applyEdit?.(text)).catch(() => false).then((applied) => {
+            if (controller.signal.aborted) return;
+            if (applied) setInserted(true);
+            else setError("The answer could not be inserted into this editor.");
+          });
         },
         onError: (message) => { if (!controller.signal.aborted) { setError(message); setWorking(false); } },
       });

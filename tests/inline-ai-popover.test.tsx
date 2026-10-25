@@ -51,7 +51,7 @@ it("uses Slow for one request and keeps Summarize on the same relay path", () =>
   expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
 });
 
-it("applies a finished Edit answer once and does not edit during streaming", () => {
+it("applies a finished Edit answer once and does not edit during streaming", async () => {
   const applyEdit = jest.fn(() => true);
   const { onAsk } = renderPopover();
   act(() => invokeInlineAi({ context, x: 10, y: 10, applyEdit }));
@@ -64,11 +64,11 @@ it("applies a finished Edit answer once and does not edit during streaming", () 
   act(() => onAsk.mock.calls[0][1].onDone("Final edit"));
   expect(applyEdit).toHaveBeenCalledTimes(1);
   expect(applyEdit).toHaveBeenCalledWith("Final edit");
-  expect(screen.getByText("Inserted into the page.")).toBeVisible();
+  expect(await screen.findByText("Inserted into the page.")).toBeVisible();
   expect(screen.getByText("Final edit")).toBeVisible();
 });
 
-it("shows the answer without editing when Edit is off, and reports a refused insertion", () => {
+it("shows the answer without editing when Edit is off, and reports a refused insertion", async () => {
   const applyEdit = jest.fn(() => false);
   const { onAsk } = renderPopover();
   act(() => invokeInlineAi({ context, x: 10, y: 10, applyEdit }));
@@ -81,6 +81,22 @@ it("shows the answer without editing when Edit is off, and reports a refused ins
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
   act(() => onAsk.mock.calls[1][1].onDone("Not insertable"));
+  expect(await screen.findByRole("alert")).toHaveTextContent("could not be inserted");
+});
+
+// SN-363: Jupyter Lab confirms the cell write asynchronously through its bridge.
+it("waits for an async Edit confirmation before reporting the insert", async () => {
+  let settle: (applied: boolean) => void = () => {};
+  const applyEdit = jest.fn(() => new Promise<boolean>((resolve) => { settle = resolve; }));
+  const { onAsk } = renderPopover();
+  act(() => invokeInlineAi({ context: { ...context, surface: "jupyter", target: "Cell" }, x: 10, y: 10, applyEdit }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "Vectorize" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
+  act(() => onAsk.mock.calls[0][1].onDone("y = x * 2"));
+  expect(applyEdit).toHaveBeenCalledWith("y = x * 2");
+  expect(screen.queryByText("Inserted into the page.")).not.toBeInTheDocument();
+  await act(async () => settle(false));
   expect(screen.getByRole("alert")).toHaveTextContent("could not be inserted");
 });
 

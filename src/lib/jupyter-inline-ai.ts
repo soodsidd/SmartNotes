@@ -56,7 +56,7 @@ export function pickJupyterFastLaneModel(providerId: string, models: string[]): 
 
 const STANDARD_ACTIONS: ReadonlyArray<Pick<JupyterInlineAiAction, "id" | "label" | "testId">> = [
   { id: "explain", label: "Explain", testId: "jupyter-inline-explain" },
-  { id: "ask", label: "Ask", testId: "jupyter-inline-ask" },
+  { id: "ask", label: "Ask Companion...", testId: "jupyter-inline-ask" },
   { id: "fix", label: "Fix", testId: "jupyter-inline-fix" },
   { id: "rewrite", label: "Rewrite", testId: "jupyter-inline-rewrite" },
 ];

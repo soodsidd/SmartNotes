@@ -1,6 +1,6 @@
 /** Shared, text-only capture contract. Frames supply data, never host commands. */
 export const INLINE_AI_TEXT_LIMIT = 16000;
-export type InlineAiSurface = "text" | "design" | "pdf" | "app";
+export type InlineAiSurface = "text" | "design" | "pdf" | "app" | "jupyter";
 export interface InlineAiContext {
   surface: InlineAiSurface;
   target: string;
@@ -16,8 +16,11 @@ export interface InlineAiInvocation {
   /** Optional owner of a live selection; used to dismiss a stale PDF target. */
   sourceId?: string;
   onClose?: () => void;
-  /** Host-only edit action. Frames and PDF selections never supply one. */
-  applyEdit?: (answer: string) => boolean;
+  /**
+   * Host-only edit action. Frames and PDF selections never supply one. Jupyter
+   * Lab (SN-363) resolves asynchronously once the bridge confirms the cell write.
+   */
+  applyEdit?: (answer: string) => boolean | Promise<boolean>;
   /**
    * SN-310: host-supplied menu items shown after "Ask Companion..." in menu
    * mode (e.g. design Preview "Add comment"). Host-only — never from a frame.
@@ -43,8 +46,8 @@ export function parseInlineAiContext(value: unknown): InlineAiContext | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const c = value as Record<string, unknown>;
   if (Object.keys(c).sort().join() !== "pageText,surface,tableText,target,text") return null;
-  if (!["text", "design", "pdf", "app"].includes(String(c.surface))) return null;
-  if (!["Selection", "Clicked paragraph", "Table", "PDF page"].includes(String(c.target))) return null;
+  if (!["text", "design", "pdf", "app", "jupyter"].includes(String(c.surface))) return null;
+  if (!["Selection", "Clicked paragraph", "Table", "PDF page", "Cell", "File"].includes(String(c.target))) return null;
   if ([c.text, c.pageText, c.tableText].some(t => typeof t !== "string" || t.length > INLINE_AI_TEXT_LIMIT)) return null;
   return c as unknown as InlineAiContext;
 }

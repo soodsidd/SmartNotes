@@ -161,7 +161,7 @@ describe("Jupyter inline AI action routing (SN-249)", () => {
   it("builds the four shared selection/context actions in order", () => {
     expect(buildJupyterInlineAiActions(focus()).map(({ id, label }) => ({ id, label }))).toEqual([
       { id: "explain", label: "Explain" },
-      { id: "ask", label: "Ask" },
+      { id: "ask", label: "Ask Companion..." },
       { id: "fix", label: "Fix" },
       { id: "rewrite", label: "Rewrite" },
     ]);
@@ -353,7 +353,7 @@ describe("Jupyter inline AI action routing (SN-249)", () => {
     expect(view.queryByTestId("jupyter-inline-comment-answer")).toBeNull();
     expect(
       view.getAllByRole("button").map((button) => button.textContent).filter(Boolean)
-    ).toEqual(["Explain", "Ask", "Fix", "Rewrite"]);
+    ).toEqual(["Explain", "Ask Companion...", "Fix", "Rewrite"]);
   });
 
   it("shows the selection actions, a visible working state, and keeps Explain in the overlay", async () => {
@@ -738,7 +738,7 @@ describe("Jupyter inline AI action routing (SN-249)", () => {
     });
     expect((await view.findByTestId("jupyter-inline-ai-overlay")).getAttribute("data-trigger")).toBe("contextmenu");
     expect(view.getAllByRole("button").map((button) => button.textContent)).toEqual(expect.arrayContaining([
-      "Explain", "Ask", "Fix", "Rewrite",
+      "Explain", "Ask Companion...", "Fix", "Rewrite",
     ]));
   });
 

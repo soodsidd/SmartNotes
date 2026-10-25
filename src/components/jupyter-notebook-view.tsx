@@ -49,8 +49,11 @@ import {
   jupyterInlineAiAnswerRoute,
   jupyterInlineAiExpectsCode,
   jupyterInlineAiStreamsToOverlay,
+  stripJupyterCodeFence,
   type JupyterInlineAiActionId,
 } from "@/lib/jupyter-inline-ai";
+import { invokeInlineAi } from "@/lib/inline-ai";
+import { jupyterAskCompanionContext, jupyterAskCompanionEditTarget } from "@/lib/jupyter-ask-companion";
 import { workspacePathBlockReason } from "@/lib/deep-work";
 import { jupyterLabWorkspaceUrl } from "@/lib/jupyter-page-workspace";
 import {
@@ -135,7 +138,6 @@ type ViewState =
 
 type InlineSurfacePhase =
   | "actions"
-  | "ask"
   | "fix-hint"
   | "working"
   | "stream"
@@ -283,6 +285,8 @@ export function JupyterNotebookView({
   const latestFocusRef = React.useRef<JupyterFocusState | null>(null);
   const inlineSurfaceRef = React.useRef<InlineSurfaceState | null>(null);
   const inlineRequestRef = React.useRef<AbortController | null>(null);
+  /** SN-363: Ask Companion Edit writes awaiting the bridge's apply-answer-result. */
+  const pendingAskEditsRef = React.useRef(new Map<string, (applied: boolean) => void>());
   inlineSurfaceRef.current = inlineSurface;
   const runInlineActionRef = React.useRef<
     ((
@@ -501,6 +505,38 @@ export function JupyterNotebookView({
     });
   }, [dismissInlineSurfaceFromPassiveEvent, focusAnchor, workspace]);
 
+  // SN-363: Ask opens the shared Ask Companion popover (SN-362 contract), which
+  // relays Fast/Slow into the live Companion sidebar turn — never a parallel
+  // fast-lane session. Edit writes the finished answer through the same
+  // revision-guarded apply-answer bridge as Fix/Rewrite (one Jupyter undo step).
+  // SN-323's plain right-click bubble should open Lab Ask through this path.
+  const openAskCompanion = React.useCallback((focus: JupyterFocusState, x: number, y: number) => {
+    if (inlineSurfaceRef.current?.trigger === "contextmenu") dismissEmbeddedLabMenus();
+    dismissInlineSurface();
+    const applyEdit = workspaceAccessMode === "read-only" ? undefined : (answer: string) => {
+      const target = jupyterAskCompanionEditTarget(focus, latestFocusRef.current);
+      const text = stripJupyterCodeFence(answer);
+      if (!target || !text) return false;
+      const requestId = applyAnswer(text, target.focus, undefined, target.selection);
+      if (!requestId) return false;
+      return new Promise<boolean>((resolve) => {
+        const timer = window.setTimeout(() => settle(false), 10_000);
+        const settle = (applied: boolean) => {
+          window.clearTimeout(timer);
+          pendingAskEditsRef.current.delete(requestId);
+          resolve(applied);
+        };
+        pendingAskEditsRef.current.set(requestId, settle);
+      });
+    };
+    invokeInlineAi({ context: jupyterAskCompanionContext(focus), x, y, applyEdit });
+  }, [applyAnswer, dismissEmbeddedLabMenus, dismissInlineSurface, workspaceAccessMode]);
+
+  React.useEffect(() => {
+    const pending = pendingAskEditsRef.current;
+    return () => { [...pending.values()].forEach((settle) => settle(false)); };
+  }, []);
+
   const runInlineAction = React.useCallback(async (
     action: JupyterInlineAiActionId,
     focus: JupyterFocusState,
@@ -513,8 +549,9 @@ export function JupyterNotebookView({
         : current);
       return;
     }
-    if (action === "ask" && !question.trim()) {
-      setInlineSurface((current) => current ? { ...current, phase: "ask", action, error: undefined } : current);
+    if (action === "ask") {
+      const surface = inlineSurfaceRef.current;
+      openAskCompanion(focus, surface?.x ?? 16, surface?.y ?? 16);
       return;
     }
     // Fix always collects an optional hint first (Ask-like flow, SN-251), even
@@ -646,7 +683,7 @@ export function JupyterNotebookView({
         error: error instanceof Error ? error.message : "The inline AI request failed.",
       } : current);
     }
-  }, [applyAnswer, dismissEmbeddedLabMenus, pagePath, state, workspace, workspaceAccessMode]);
+  }, [applyAnswer, dismissEmbeddedLabMenus, openAskCompanion, pagePath, state, workspace, workspaceAccessMode]);
   runInlineActionRef.current = runInlineAction;
 
   React.useEffect(() => {
@@ -751,6 +788,7 @@ export function JupyterNotebookView({
           onFocusChangeRef.current?.(answerResult.focus);
         }
         onAnswerAppliedRef.current?.(answerResult);
+        pendingAskEditsRef.current.get(answerResult.requestId)?.(answerResult.ok);
         setInlineSurface((current) => {
           if (!current?.requestId || current.requestId !== answerResult.requestId) return current;
           return answerResult.ok
@@ -1249,34 +1287,6 @@ export function JupyterNotebookView({
                 </button>
               ))}
             </div>
-          ) : null}
-          {inlineSurface.phase === "ask" ? (
-            <form
-              className="flex min-w-[18rem] items-end gap-1 p-1"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void runInlineAction("ask", inlineSurface.focus, inlineSurface.question);
-              }}
-            >
-              <textarea
-                autoFocus
-                data-testid="jupyter-inline-ask-input"
-                value={inlineSurface.question}
-                onChange={(event) => setInlineSurface((current) => current ? { ...current, question: event.target.value } : current)}
-                placeholder="Ask about this code…"
-                rows={2}
-                className="min-h-14 flex-1 resize-none rounded border border-input bg-background px-2 py-1.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
-              />
-              <Button
-                type="submit"
-                size="icon-sm"
-                disabled={!inlineSurface.question.trim()}
-                aria-label="Send inline question"
-                data-testid="jupyter-inline-ask-send"
-              >
-                <Send className="size-3.5" />
-              </Button>
-            </form>
           ) : null}
           {inlineSurface.phase === "fix-hint" ? (
             <form
