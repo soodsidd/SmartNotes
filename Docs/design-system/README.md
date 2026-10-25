@@ -1,5 +1,15 @@
 # Smart Notes Design System
 
+## Companion cell wake row (SN-378)
+
+The waiting row in the Companion transcript uses existing `--border`,
+`--muted`, `--muted-foreground`, `--foreground`, and `--destructive` colors.
+Its muted surface is shown at 45% opacity and its pulse dot at 70% opacity.
+It uses the established 11px secondary text, 8px gap and vertical padding,
+10px horizontal padding, and the 44px mobile button touch target. The row
+restores the SN-377 waiting, resuming, and cancel controls without a new color,
+spacing, or typography token.
+
 ## Companion quick prompts (SN-374)
 
 The right-side composer dropdown reuses the existing `--border`, `--secondary`,
