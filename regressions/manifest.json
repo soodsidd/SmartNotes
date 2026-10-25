@@ -5338,6 +5338,32 @@
       ]
     },
     {
+      "id": "unit-sn-364-editor-calculator",
+      "name": "SN-364 editor scientific calculator",
+      "description": "Component checks for shortcut open and close, 60-second inactivity, numeric selection, caret focus toggle, calculation, and clipboard copy.",
+      "intent": "Protects the in-editor calculation and paste workflow without involving Companion or a separate window.",
+      "whenToRun": "Pre-merge when changing the editor calculator, its shortcut, or its expression evaluator.",
+      "failureMeaning": "The calculator may fail to open in the editor, lose the invoking caret, time out incorrectly, or copy the wrong result.",
+      "appType": "node",
+      "command": "npm test -- tests/editor-calculator.test.tsx",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "component", "editor", "calculator", "targeted"],
+      "feature": "editor",
+      "testType": "component",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-364",
+      "addedAt": "2026-10-24",
+      "sourceFiles": [
+        { "path": "tests/editor-calculator.test.tsx" },
+        { "path": "src/components/editor-calculator.tsx" },
+        { "path": "src/components/rich-text-editor.tsx" }
+      ]
+    },
+    {
       "id": "e2e-recipes",
       "name": "SN-305 recipe page-menu toggles and companion recipe tools",
       "description": "Playwright: e2e/sn-305-recipes.spec.ts — page menu marks/unmarks a recipe and notebook instructions, recipe_list/recipe_run via /api/agent/vault, and instructions appear only in the owning notebook's companion context.",
