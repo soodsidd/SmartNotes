@@ -26,13 +26,25 @@ it("submits the default quick prompt immediately without consuming a draft or at
   const onSubmit = jest.fn();
   renderCompanion({ onSubmit, initialComposerAttachments: [{ id: "draft-attachment", kind: "markdown", name: "source.md", content: "Source" }] });
   expect(screen.getByTestId("ai-composer-provider-switcher")).toBeInTheDocument();
-  fireEvent.change(screen.getByTestId("ai-input"), { target: { value: "Draft for later" } });
   fireEvent.click(screen.getByRole("button", { name: "Quick prompts" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Add short note" }));
   expect(onSubmit).toHaveBeenCalledTimes(1);
   expect(onSubmit).toHaveBeenCalledWith("Add a short note about this to the current note.", []);
-  expect(screen.getByTestId("ai-input")).toHaveValue("Draft for later");
+  expect(screen.getByTestId("ai-input")).toHaveValue("");
   expect(screen.getByText("source.md")).toBeInTheDocument();
+});
+
+it("grays out the quick-prompt picker while the composer has typed text", () => {
+  const onSubmit = jest.fn();
+  renderCompanion({ onSubmit });
+  const trigger = screen.getByRole("button", { name: "Quick prompts" });
+  expect(trigger).not.toBeDisabled();
+  fireEvent.change(screen.getByTestId("ai-input"), { target: { value: "Draft for later" } });
+  expect(trigger).toBeDisabled();
+  fireEvent.click(trigger);
+  expect(onSubmit).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByTestId("ai-input"), { target: { value: "   " } });
+  expect(trigger).not.toBeDisabled();
 });
 
 it("persists edits, enabled state, order, additions and removal across a new Companion mount", () => {

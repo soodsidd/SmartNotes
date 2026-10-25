@@ -2307,8 +2307,9 @@ function AiConversation({
             {quickPrompts.some(item => item.enabled && item.label.trim() && item.prompt.trim()) ? (
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  disabled={composerLocked || isTurnActive}
+                  disabled={composerLocked || isTurnActive || Boolean(composerDraft.trim())}
                   aria-label="Quick prompts"
+                  title={composerDraft.trim() ? "Clear the composer to use a quick prompt" : undefined}
                   className={cn("flex min-w-0 max-w-[132px] items-center gap-1 rounded border border-border bg-secondary px-2 text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60", mobile ? "min-h-11 shrink" : "min-h-6 shrink-0")}
                   data-testid="ai-quick-prompts"
                 >
