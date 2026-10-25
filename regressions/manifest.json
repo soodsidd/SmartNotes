@@ -1640,9 +1640,9 @@
     {
       "id": "unit-ai-sidebar-ui",
       "name": "Ai Sidebar Ui",
-      "description": "Jest: tests/ai-sidebar-ui.test.ts tests/ai-sidebar-composer-draft.test.tsx — companion UI wiring, kept-thread provider save triggers, and composer behavior.",
+      "description": "Jest: companion UI wiring, kept-thread provider save triggers, composer behavior, and quick-prompt submission/settings persistence.",
       "appType": "node",
-      "command": "npm test -- tests/ai-sidebar-ui.test.ts tests/ai-sidebar-composer-draft.test.tsx",
+      "command": "npm test -- tests/ai-sidebar-ui.test.ts tests/ai-sidebar-composer-draft.test.tsx tests/sn-374-quick-prompts.test.tsx",
       "timeoutMs": 120000,
       "enabled": true,
       "tags": [
@@ -1663,9 +1663,12 @@
         },
         {
           "path": "tests/ai-sidebar-composer-draft.test.tsx"
+        },
+        {
+          "path": "tests/sn-374-quick-prompts.test.tsx"
         }
       ],
-      "intent": "Guards companion UI wiring, including provider/model/effort changes triggering durable and volatile companion persistence without requiring another message.",
+      "intent": "Guards Companion UI wiring, provider/model/effort persistence, and one-click quick prompts with editable saved settings.",
       "whenToRun": "Pre-merge when touching companion UI, persistence effects, provider selection, or composer behavior."
     },
     {
@@ -1740,6 +1743,27 @@
       "sourceFiles": [{ "path": "e2e/sn-303-ask-companion.spec.ts" }],
       "intent": "Protects the one-click Explain relay, popup mirror, and Open in Companion handoff on a real page.",
       "whenToRun": "Pre-merge when changing Ask Companion quick actions or their relay into the sidebar."
+    },
+    {
+      "id": "e2e-sn-374-quick-prompts",
+      "name": "Companion quick prompts",
+      "description": "Playwright desktop: composer chip and settings editor are visible, saved edits survive reload, and one chip click sends its prompt.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-374-quick-prompts.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": ["e2e", "companion", "targeted"],
+      "feature": "companion",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-374",
+      "addedAt": "2026-10-25",
+      "sourceFiles": [{ "path": "e2e/sn-374-quick-prompts.spec.ts" }],
+      "intent": "Protects one-click Companion prompt shortcuts and their browser-local settings on a real page.",
+      "whenToRun": "Pre-merge when changing Companion quick prompts or their settings."
     },
     {
       "id": "unit-sn-193-pdf-reader-selection",

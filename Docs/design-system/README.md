@@ -1,5 +1,13 @@
 # Smart Notes Design System
 
+## Companion quick prompts (SN-374)
+
+Composer shortcuts reuse the existing `--surface`, `--border`, `--secondary`,
+`--foreground`, `--muted`, and `--ring` colors. Chips use the established 11px
+secondary label, 24px desktop control height, and 44px phone touch height.
+The AI Settings editor uses the existing 8px and 12px spacing, 12px and 14px
+text, and 44px phone controls. No new design values were added.
+
 ## Editor scientific calculator (SN-364)
 
 The editor scientific calculator is a body-level fixed utility popup (not a

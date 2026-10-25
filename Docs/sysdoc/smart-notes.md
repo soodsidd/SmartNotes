@@ -1376,6 +1376,10 @@ Builder functions: `appendAiTimelineText()`, `appendAiTimelineReasoning()`, `app
 
 **Thread-local busy state (SN-322):** The shell marks the composer busy only when its observed `activeTurnIdRef` belongs to the displayed resolved thread. A live turn on page A does not block a composer or app-initiated send on page B. A shared section or page-tree address remains one thread, so its composer stays busy across pages within that shared scope. The server still enforces same-thread supersede for a newer send from another tab. No new visual tokens or design values were added.
 
+**Quick prompts (SN-374):** Small chips above the Companion input start a turn immediately through the current thread's normal submit path, using the active page and provider/model/Computer choices. The default **Add short note** chip asks Companion to add a short note about the current context to the current note. A chip sends only its configured prompt; an unfinished typed draft and its attachments remain in the composer. Chips are disabled while this thread is busy or attachments are processing.
+
+The owner edits these shortcuts under **Companion → AI Settings → Quick prompts**. Each chip has an enabled switch, label, and prompt text; the editor also supports reorder, add, and remove. The ordered list is saved in this browser's localStorage under `smart-notes-companion-quick-prompts` and loaded whenever the Companion mounts. An explicitly empty list stays empty; invalid saved data falls back to the default chip. This preference is browser-local, while Companion provider/model and Computer controls keep their existing behavior.
+
 ### Companion document attachments (SN-86)
 
 ### Companion document attachments (SN-86)

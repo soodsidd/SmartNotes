@@ -99,6 +99,26 @@ const CHAT_MARKDOWN_COMPONENTS = {
 const COMPOSER_MAX_HEIGHT_DESKTOP = 160;
 const COMPOSER_MAX_HEIGHT_MOBILE = 128;
 const COMPANION_ATTACHMENT_ACCEPT = "image/*,.txt,.md,.markdown,.html,.htm,.pdf,text/plain,text/markdown,text/html,application/pdf";
+const QUICK_PROMPTS_STORAGE_KEY = "smart-notes-companion-quick-prompts";
+type QuickPrompt = { id: string; label: string; prompt: string; enabled: boolean };
+const DEFAULT_QUICK_PROMPTS: QuickPrompt[] = [
+  { id: "add-short-note", label: "Add short note", prompt: "Add a short note about this to the current note.", enabled: true },
+];
+
+function readQuickPrompts(): QuickPrompt[] {
+  try {
+    const stored = window.localStorage.getItem(QUICK_PROMPTS_STORAGE_KEY);
+    if (stored === null) return DEFAULT_QUICK_PROMPTS;
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed) || !parsed.every((item) =>
+      item && typeof item === "object" && typeof item.id === "string" &&
+      typeof item.label === "string" && typeof item.prompt === "string" && typeof item.enabled === "boolean"
+    )) return DEFAULT_QUICK_PROMPTS;
+    return parsed;
+  } catch {
+    return DEFAULT_QUICK_PROMPTS;
+  }
+}
 
 export type AiComposerAttachment =
   | { id: string; kind: "image"; name: string; path: string; url: string }
@@ -545,6 +565,43 @@ function AiScopeControl({
   );
 }
 
+function QuickPromptSettings({ prompts, onChange }: { prompts: QuickPrompt[]; onChange: (prompts: QuickPrompt[]) => void }) {
+  const update = (index: number, patch: Partial<QuickPrompt>) =>
+    onChange(prompts.map((item, position) => position === index ? { ...item, ...patch } : item));
+  const move = (index: number, direction: -1 | 1) => {
+    const reordered = [...prompts];
+    [reordered[index], reordered[index + direction]] = [reordered[index + direction], reordered[index]];
+    onChange(reordered);
+  };
+  return (
+    <section className="border-t border-border pt-4" aria-labelledby="quick-prompts-heading" data-testid="quick-prompt-settings">
+      <p id="quick-prompts-heading" className="text-sm font-medium text-foreground">Quick prompts</p>
+      <p className="mb-3 text-xs text-muted-foreground">Shortcuts that start a Companion turn immediately.</p>
+      <div className="space-y-3">
+        {prompts.map((item, index) => (
+          <div key={item.id} className="rounded border border-border p-2" data-testid="quick-prompt-editor">
+            <div className="mb-2 flex items-center gap-2">
+              <label className="flex min-h-11 items-center gap-2 text-xs text-foreground sm:min-h-0">
+                <input type="checkbox" checked={item.enabled} onChange={event => update(index, { enabled: event.target.checked })} />
+                Enabled
+              </label>
+              <div className="flex-1" />
+              <Button type="button" variant="ghost" size="xs" className="min-h-11 min-w-11 sm:min-h-6 sm:min-w-0" aria-label={`Move ${item.label} up`} disabled={index === 0} onClick={() => move(index, -1)}>↑</Button>
+              <Button type="button" variant="ghost" size="xs" className="min-h-11 min-w-11 sm:min-h-6 sm:min-w-0" aria-label={`Move ${item.label} down`} disabled={index === prompts.length - 1} onClick={() => move(index, 1)}>↓</Button>
+              <Button type="button" variant="ghost" size="xs" className="min-h-11 sm:min-h-6" aria-label={`Remove ${item.label}`} onClick={() => onChange(prompts.filter((_, position) => position !== index))}>Remove</Button>
+            </div>
+            <label className="mb-1 block text-xs text-muted-foreground" htmlFor={`quick-prompt-label-${item.id}`}>Chip label</label>
+            <Input id={`quick-prompt-label-${item.id}`} value={item.label} maxLength={40} onChange={event => update(index, { label: event.target.value })} className="mb-2" />
+            <label className="mb-1 block text-xs text-muted-foreground" htmlFor={`quick-prompt-text-${item.id}`}>Prompt text</label>
+            <Textarea id={`quick-prompt-text-${item.id}`} value={item.prompt} maxLength={4000} rows={2} onChange={event => update(index, { prompt: event.target.value })} />
+          </div>
+        ))}
+      </div>
+      <Button type="button" variant="secondary" size="sm" className="mt-3 min-h-11 sm:min-h-0" onClick={() => onChange([...prompts, { id: `quick-${Date.now()}-${Math.random().toString(36).slice(2)}`, label: "New prompt", prompt: "", enabled: true }])}>Add prompt</Button>
+    </section>
+  );
+}
+
 function AiSettingsDialog({
   open,
   onOpenChange,
@@ -566,6 +623,8 @@ function AiSettingsDialog({
   fastLaneModelLabel,
   onFastLaneProviderChange,
   onFastLaneModelChange,
+  quickPrompts,
+  onQuickPromptsChange,
   floatingLayerZ,
 }: {
   open: boolean;
@@ -588,6 +647,8 @@ function AiSettingsDialog({
   fastLaneModelLabel?: string;
   onFastLaneProviderChange?: (providerId: string) => void;
   onFastLaneModelChange?: (providerId: string, model: string) => void;
+  quickPrompts: QuickPrompt[];
+  onQuickPromptsChange: (prompts: QuickPrompt[]) => void;
   floatingLayerZ?: string;
 }) {
   return (
@@ -623,6 +684,7 @@ function AiSettingsDialog({
                 onVerboseChange={onVerboseChange}
               />
             </section>
+            <QuickPromptSettings prompts={quickPrompts} onChange={onQuickPromptsChange} />
             <section className="border-t border-border pt-4" aria-labelledby="fast-lane-heading" data-testid="ai-fast-lane-settings">
               <div className="mb-3">
                 <p id="fast-lane-heading" className="text-sm font-medium text-foreground">Jupyter inline AI</p>
@@ -1532,6 +1594,7 @@ function AiConversation({
   const initialComposerDraftRef = React.useRef(initialComposerDraft);
   initialComposerDraftRef.current = initialComposerDraft;
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [quickPrompts, setQuickPrompts] = React.useState<QuickPrompt[]>(DEFAULT_QUICK_PROMPTS);
   const [composerDraft, setComposerDraft] = React.useState(initialComposerDraft);
   const [attachments, setAttachments] = React.useState<AiComposerAttachment[]>(initialComposerAttachments);
   const [attachmentError, setAttachmentError] = React.useState<string | null>(null);
@@ -1540,6 +1603,11 @@ function AiConversation({
   // SN-287: a running turn no longer locks the composer — the owner can draft a
   // follow-up (text and attachments) while reading. Only Send is unavailable.
   const composerLocked = Boolean(disabled || isAttaching);
+  React.useEffect(() => { setQuickPrompts(readQuickPrompts()); }, []);
+  const updateQuickPrompts = React.useCallback((prompts: QuickPrompt[]) => {
+    setQuickPrompts(prompts);
+    try { window.localStorage.setItem(QUICK_PROMPTS_STORAGE_KEY, JSON.stringify(prompts)); } catch { /* Browser storage may be unavailable. */ }
+  }, []);
   const compositionActiveRef = React.useRef(false);
   const compositionEndedAtRef = React.useRef<number | null>(null);
 
@@ -1910,6 +1978,8 @@ function AiConversation({
         fastLaneModelLabel={fastLaneModelLabel}
         onFastLaneProviderChange={onFastLaneProviderChange}
         onFastLaneModelChange={onFastLaneModelChange}
+        quickPrompts={quickPrompts}
+        onQuickPromptsChange={updateQuickPrompts}
         floatingLayerZ={floatingLayerZ}
       />
 
@@ -2133,6 +2203,20 @@ function AiConversation({
               >
                 Retry
               </Button>
+            </div>
+          ) : null}
+          {quickPrompts.some(item => item.enabled && item.label.trim() && item.prompt.trim()) ? (
+            <div className="mb-2 flex min-w-0 gap-1 overflow-x-auto" aria-label="Companion quick prompts" data-testid="ai-quick-prompts">
+              {quickPrompts.filter(item => item.enabled && item.label.trim() && item.prompt.trim()).map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={composerLocked || isTurnActive}
+                  onClick={() => onSubmit(item.prompt, [])}
+                  className={cn("shrink-0 rounded border border-border bg-secondary px-2 text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60", mobile ? "min-h-11" : "min-h-6")}
+                  data-testid="ai-quick-prompt"
+                ><span className="text-[11px]">{item.label}</span></button>
+              ))}
             </div>
           ) : null}
           {!mobile ? (
