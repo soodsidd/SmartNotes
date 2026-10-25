@@ -16,6 +16,7 @@ import {
   __configureCellRunWakesForTesting,
   __flushCellRunWakesForTesting,
   cancelCellRunWake,
+  cellWakeFileName,
   listCellRunWakes,
   parseCompanionThreadKey,
   type CompanionTurnInfo,
@@ -271,7 +272,7 @@ describe("Jupyter cell-run wake (SN-377)", () => {
     });
     // Durable: written to the app state dir, and the client view omits provider context.
     await __flushCellRunWakesForTesting();
-    const persisted = JSON.parse(await fs.readFile(path.join(stateDir, "jupyter-cell-wakes.json"), "utf8"));
+    const persisted = JSON.parse(await fs.readFile(path.join(stateDir, cellWakeFileName(vaultRoot, undefined)), "utf8"));
     expect(persisted.wakes).toHaveLength(1);
     expect(persisted.wakes[0]).toMatchObject({ wakeId: wake.wakeId, status: "pending", appContext: expect.any(String) });
     expect((wake as any).appContext).toBeUndefined();
@@ -438,6 +439,25 @@ describe("Jupyter cell-run wake (SN-377)", () => {
     const wake = await waitFor(async () => (await listCellRunWakes()).find((entry) => entry.status === "resumed"));
     expect(wake.outcome).toBe("lost");
     expect(host.started[0].message).toContain("Smart Notes restarted while waiting");
+  });
+
+  it("keeps one wake file per instance (vault root + listen port) so previews never load production wakes", async () => {
+    const source = host.addTurn(THREAD_A);
+    await runSlow({ cellId: "slow-1", _companionTurnId: source.turnId });
+    await __flushCellRunWakesForTesting();
+    expect(await fs.readdir(stateDir)).toEqual([cellWakeFileName(vaultRoot, undefined)]);
+    expect(cellWakeFileName(vaultRoot, 3002)).not.toBe(cellWakeFileName(vaultRoot, 52662));
+    expect(cellWakeFileName(vaultRoot, 3002)).not.toBe(cellWakeFileName(path.join(vaultRoot, "other"), 3002));
+
+    // Another instance on the same state dir sees none of these wakes.
+    (globalThis as Record<string, unknown>)._smartNotesListenPort = 52662;
+    try {
+      __configureCellRunWakesForTesting({ host, pollMs: 10, graceMs: 0, maxIdleWaitMs: 5_000 });
+      expect(await listCellRunWakes()).toEqual([]);
+      expect(host.started).toHaveLength(0);
+    } finally {
+      delete (globalThis as Record<string, unknown>)._smartNotesListenPort;
+    }
   });
 
   it("only parses vault page/section thread keys", () => {

@@ -9,6 +9,7 @@ import {
   type JupyterCellRunPayload,
   type RunJupyterCellDeps,
 } from "@/server/jupyter/cell-run";
+import { getVaultRoot } from "@/server/vault/config";
 import { VaultError } from "@/server/vault/errors";
 import { readCompanionSessions, saveCompanionSessions } from "@/server/vault/pages";
 
@@ -49,7 +50,7 @@ const FINISHED_WAKE_TTL_MS = 60 * 60_000;
 const WAKE_STORE_LIMIT = 100;
 const STATE_KEY = "__smartNotesJupyterCellWakes__";
 const HOST_KEY = "_smartNotesCompanionHost";
-const WAKE_FILE = "jupyter-cell-wakes.json";
+const WAKE_FILE_PREFIX = "jupyter-cell-wakes";
 
 export type CellWakeStatus = "pending" | "resuming" | "resumed" | "cancelled" | "failed";
 export type CellWakeOutcome = "completed" | "error" | "interrupted" | "failed" | "timed_out" | "lost";
@@ -241,8 +242,20 @@ export function parseCompanionThreadKey(threadKey: string): { storePath: string;
 // Persistence
 // ---------------------------------------------------------------------------
 
+/**
+ * One wake file per Smart Notes instance. Production and worktree previews
+ * share the chat state dir, and a run only lives in the process that started
+ * it, so instances must never load (and "lose") each other's wakes. The key is
+ * vault root + bound listen port: stable across restarts of the same instance.
+ */
+export function cellWakeFileName(vaultRoot: string, port: unknown): string {
+  const key = crypto.createHash("sha256").update(`${path.resolve(vaultRoot).toLowerCase()}|${String(port ?? "")}`).digest("hex").slice(0, 16);
+  return `${WAKE_FILE_PREFIX}-${key}.json`;
+}
+
 function wakeFilePath(): string {
-  return path.join(getAppStateDir(), WAKE_FILE);
+  const port = (globalThis as Record<string, unknown>)._smartNotesListenPort;
+  return path.join(getAppStateDir(), cellWakeFileName(getVaultRoot(), port));
 }
 
 function prune(): void {
