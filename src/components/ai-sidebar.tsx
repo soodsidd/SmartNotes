@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import type { CompanionCellWakeItem } from "@/lib/api/companion-cell-wakes";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -775,6 +776,53 @@ interface AiConversationProps {
   onClose?: () => void;
   /** Raises only companion-owned portaled dialogs and menus above the immersive reader. */
   elevateFloatingLayers?: boolean;
+  /** Running Jupyter cells parked on this companion thread. */
+  cellWakes?: CompanionCellWakeItem[];
+  onCancelCellWake?: (wakeId: string, interrupt: boolean) => void;
+}
+
+function formatWakeClock(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function CellWakeRow({ wake, mobile, onCancel }: {
+  wake: CompanionCellWakeItem;
+  mobile?: boolean;
+  onCancel?: (wakeId: string, interrupt: boolean) => void;
+}) {
+  const started = formatWakeClock(wake.startedAt);
+  const timeout = formatWakeClock(wake.timeoutAt);
+  return (
+    <div role="status" aria-live="polite"
+      className="flex items-start gap-2 rounded border border-border bg-muted/45 px-2.5 py-2 text-[11px]"
+      data-testid="ai-cell-wake" data-wake-id={wake.wakeId}
+      data-wake-state={wake.resuming ? "resuming" : "waiting"}>
+      <span aria-hidden="true" className="mt-1 size-2 shrink-0 rounded-full bg-muted-foreground/70 animate-pulse motion-reduce:animate-none" />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-foreground">{wake.resuming ? "Cell finished — resuming…" : "Waiting for cell…"}</p>
+        <p className="text-muted-foreground">
+          {wake.cellLabel}{started ? ` · started ${started}` : ""}
+          {!wake.resuming && timeout ? ` · gives up at ${timeout}` : ""}
+          {" · the companion continues automatically when it finishes."}
+        </p>
+        {wake.note ? <p className="truncate text-muted-foreground" title={wake.note}>Note: {wake.note}</p> : null}
+        {wake.error ? <p className="text-destructive">{wake.error}</p> : null}
+      </div>
+      {!wake.resuming && onCancel ? (
+        <div className="flex shrink-0 gap-1">
+          <Button type="button" variant="ghost" size="xs" className={cn(mobile && "min-h-11")}
+            disabled={wake.cancelling} onClick={() => onCancel(wake.wakeId, false)} data-testid="ai-cell-wake-stop">
+            Stop waiting
+          </Button>
+          <Button type="button" variant="ghost" size="xs" className={cn("text-destructive", mobile && "min-h-11")}
+            disabled={wake.cancelling} onClick={() => onCancel(wake.wakeId, true)} data-testid="ai-cell-wake-interrupt">
+            Interrupt
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function EmptyConversation({ disabled }: { disabled?: boolean }) {
@@ -1578,6 +1626,8 @@ function AiConversation({
   onEditFailedSend,
   onClose,
   elevateFloatingLayers,
+  cellWakes = [],
+  onCancelCellWake,
 }: AiConversationProps) {
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   // SN-285: follow the stream only while the reader is parked at the live bottom.
@@ -2056,7 +2106,7 @@ function AiConversation({
           onScroll={handleTranscriptScroll}
           data-testid="ai-transcript"
         >
-          {messages.length === 0 ? (
+          {messages.length === 0 && cellWakes.length === 0 ? (
             <EmptyConversation disabled={disabled} />
           ) : (
             messages.map((message) => {
@@ -2102,6 +2152,9 @@ function AiConversation({
               );
             })
           )}
+          {cellWakes.map((wake) => (
+            <CellWakeRow key={wake.wakeId} wake={wake} mobile={mobile} onCancel={onCancelCellWake} />
+          ))}
         </div>
         {detachedFromLatest && messages.length > 0 ? (
           <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
