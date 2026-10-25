@@ -45,10 +45,13 @@ describe("editor scientific calculator", () => {
     fireEvent.keyDown(window, { key: "c", code: "KeyC", ctrlKey: true, altKey: true });
   }
 
-  it("opens in the editor surface and closes with X", async () => {
+  it("opens as a body-level utility popup (not inside the editor surface) and closes with X", async () => {
     await mount();
     shortcut();
-    expect(screen.getByTestId("editor-surface")).toContainElement(screen.getByTestId("editor-calculator"));
+    const calc = screen.getByTestId("editor-calculator");
+    expect(calc).toBeInTheDocument();
+    expect(screen.getByTestId("editor-surface")).not.toContainElement(calc);
+    expect(calc.parentElement).toBe(document.body);
     expect(screen.getByRole("textbox", { name: "Expression" })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Close calculator" }));
     expect(screen.queryByTestId("editor-calculator")).not.toBeInTheDocument();

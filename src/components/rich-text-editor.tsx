@@ -404,7 +404,6 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       drawableBottom,
     });
     const scrollAreaRef = React.useRef<HTMLDivElement>(null);
-    const calculatorHostRef = React.useRef<HTMLDivElement>(null);
     const calculatorRef = React.useRef<HTMLDivElement>(null);
     const [calculatorOpen, setCalculatorOpen] = React.useState(false);
     const [calculatorSeed, setCalculatorSeed] = React.useState("");
@@ -2752,7 +2751,6 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
         {/* Glass overlay: TipTap stays visible; ink layer covers the full page frame */}
         <div
-          ref={calculatorHostRef}
           className="relative min-h-0 flex-1"
           data-testid="editor-surface"
           onPointerDownCapture={handleEditorPointerDownCapture}
@@ -3039,16 +3037,16 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             </div>
             </div>
           </div>
-          {calculatorOpen && editor && !readOnly && !isDrawMode && !inkCaptureMode ? (
-            <EditorCalculator
-              hostRef={calculatorHostRef}
-              popupRef={calculatorRef}
-              initialExpression={calculatorSeed}
-              focusToken={calculatorFocusToken}
-              onClose={closeCalculator}
-            />
-          ) : null}
         </div>
+
+        {calculatorOpen && editor && !readOnly && !isDrawMode && !inkCaptureMode ? (
+          <EditorCalculator
+            popupRef={calculatorRef}
+            initialExpression={calculatorSeed}
+            focusToken={calculatorFocusToken}
+            onClose={closeCalculator}
+          />
+        ) : null}
 
         {/* Right-click context menu */}
         {!readOnly && contextMenu && editor && (

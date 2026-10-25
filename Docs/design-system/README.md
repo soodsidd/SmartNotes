@@ -2,14 +2,15 @@
 
 ## Editor scientific calculator (SN-364)
 
-The editor-only floating calculator reuses the Ask Companion popover's
-`--popover`, `--foreground`, `--muted-foreground`, `--border`, `--input`,
-`--background`, `--secondary`, `--accent`, `--accent-foreground`, and `--ring`
-colors with the existing `--radius-sm` / `--radius-md`, `shadow-md`, and
-`--font-sans` styles. Its 22rem card width, 8px edge gap, 4px/8px/12px spacing,
-12px/14px labels, 16px input text, and 44px touch buttons are all documented
-popover and mobile control values. The popup stays inside `editor-surface`,
-with no backdrop or blur. No new design values were added.
+The editor scientific calculator is a body-level fixed utility popup (not a
+document block and not mounted inside `editor-surface`). It reuses the Ask
+Companion popover's `--popover`, `--foreground`, `--muted-foreground`,
+`--border`, `--input`, `--background`, `--secondary`, `--accent`,
+`--accent-foreground`, and `--ring` colors with the existing `--radius-sm` /
+`--radius-md`, `shadow-md`, and `--font-sans` styles. Its 22rem card width,
+8px edge gap, 4px/8px/12px spacing, 12px/14px labels, 16px input text, and
+44px touch buttons are all documented popover and mobile control values. No
+backdrop or blur. No new design values were added.
 
 ## Dual left sidebars (SN-324)
 

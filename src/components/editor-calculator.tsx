@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { calculateExpression } from "@/lib/scientific-calculator";
 
@@ -16,13 +17,11 @@ const KEYS = [
 ];
 
 export function EditorCalculator({
-  hostRef,
   initialExpression,
   focusToken,
   onClose,
   popupRef,
 }: {
-  hostRef: React.RefObject<HTMLDivElement>;
   initialExpression: string;
   focusToken: number;
   onClose: () => void;
@@ -49,24 +48,22 @@ export function EditorCalculator({
   React.useEffect(() => { inputRef.current?.focus(); }, [focusToken]);
 
   const clampPosition = React.useCallback((left: number, top: number) => {
-    const host = hostRef.current;
     const panel = popupRef.current;
-    if (!host || !panel) return { left, top };
+    const width = panel?.offsetWidth ?? 352;
+    const height = panel?.offsetHeight ?? 420;
     return {
-      left: Math.max(EDGE, Math.min(left, host.clientWidth - panel.offsetWidth - EDGE)),
-      top: Math.max(EDGE, Math.min(top, host.clientHeight - panel.offsetHeight - EDGE)),
+      left: Math.max(EDGE, Math.min(left, window.innerWidth - width - EDGE)),
+      top: Math.max(EDGE, Math.min(top, window.innerHeight - height - EDGE)),
     };
-  }, [hostRef, popupRef]);
+  }, [popupRef]);
 
   React.useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const observer = new ResizeObserver(() => {
+    const onResize = () => {
       setPosition((current) => current ? clampPosition(current.left, current.top) : current);
-    });
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, [clampPosition, hostRef]);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clampPosition]);
 
   React.useEffect(() => {
     const move = (event: PointerEvent) => {
@@ -108,13 +105,15 @@ export function EditorCalculator({
     inputRef.current?.focus();
   };
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <section
       ref={popupRef}
       aria-label="Scientific calculator"
       data-testid="editor-calculator"
-      className="absolute z-20 flex max-h-[calc(100%_-_1rem)] w-[min(22rem,calc(100%_-_1rem))] flex-col overflow-auto rounded-md border border-border bg-popover p-3 font-sans text-foreground shadow-md"
-      style={position ? position : { right: EDGE, top: EDGE }}
+      className="fixed z-[80] flex max-h-[calc(100vh_-_1rem)] w-[min(22rem,calc(100vw_-_1rem))] flex-col overflow-auto rounded-md border border-border bg-popover p-3 font-sans text-foreground shadow-md"
+      style={position ? { left: position.left, top: position.top } : { right: EDGE, top: EDGE }}
       onPointerDown={resetTimeout}
       onKeyDown={(event) => {
         resetTimeout();
@@ -125,14 +124,13 @@ export function EditorCalculator({
         className="mb-2 flex cursor-move touch-none select-none items-center justify-between gap-2 text-sm font-medium"
         onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest("button")) return;
-          const host = hostRef.current;
           const panel = popupRef.current;
-          if (!host || !panel) return;
+          if (!panel) return;
           // Without this, dragging starts a native text selection across the editor.
           event.preventDefault();
-          const hostRect = host.getBoundingClientRect();
           const panelRect = panel.getBoundingClientRect();
-          dragRef.current = { x: event.clientX, y: event.clientY, left: panelRect.left - hostRect.left, top: panelRect.top - hostRect.top };
+          dragRef.current = { x: event.clientX, y: event.clientY, left: panelRect.left, top: panelRect.top };
+          setPosition({ left: panelRect.left, top: panelRect.top });
         }}
       >
         <span>Scientific calculator</span>
@@ -163,6 +161,7 @@ export function EditorCalculator({
         ))}
       </div>
       <p role="status" className="mt-2 min-h-4 text-xs text-muted-foreground">{message || "Enter or = calculates and copies"}</p>
-    </section>
+    </section>,
+    document.body
   );
 }
