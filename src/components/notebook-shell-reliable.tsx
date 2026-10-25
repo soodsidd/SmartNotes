@@ -1,5 +1,7 @@
 "use client";
 import { InlineAiPopover } from "@/components/inline-ai-popover";
+import { inlineAiRelayPrompt, inlineAiTurnProvider, type InlineAiRelayObserver, type InlineAiRelayRequest } from "@/lib/inline-ai";
+import { applyInlineAiRelayEvent, createInlineAiRelayMirror, type InlineAiRelayMirror } from "@/lib/inline-ai-relay";
 import { PdfRecordPanel } from "@/components/pdf-record-panel";
 
 import * as React from "react";
@@ -490,8 +492,12 @@ type AiFailedSendRecord = AiComposerFailedSend & {
 
 type AiSubmitOptions = {
   /** "composer" sends own their attachments and are retained on failure. */
-  origin?: "composer" | "app";
+  origin?: "composer" | "app" | "inline";
   retryOf?: AiFailedSendRecord | null;
+  /** SN-362: one-turn provider/model (Ask Companion Fast); never saved as the sidebar choice. */
+  providerOverride?: { providerId: string; model: string };
+  assistantLabel?: string;
+  relayObserver?: InlineAiRelayObserver;
 };
 
 function revokeComposerAttachmentUrls(attachments: AiComposerAttachment[]) {
@@ -1202,6 +1208,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const socketRef = React.useRef<Socket | null>(null);
   const syncOriginIdRef = React.useRef<string | null>(null);
   const activeTurnIdRef = React.useRef<string | null>(null);
+  const inlineRelayRef = React.useRef<InlineAiRelayMirror | null>(null);
   const activeAssistantMessageIdRef = React.useRef<string | null>(null);
   const aiSubmitGenerationRef = React.useRef(0);
   // SN-80 companion session persistence refs.
@@ -2328,6 +2335,15 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           watchedTurnIdRef.current = null;
           setCompanionTurnPending(false);
         }
+      }
+
+      // SN-362: the Ask Companion popup mirrors this shared sidebar turn. Like the
+      // SN-211 watcher it runs BEFORE the transcript-binding guard, with its own
+      // seq cursor, so a detach (panel close, thread change) never strands the
+      // popup; the transcript below stays the single source of truth.
+      const inlineRelay = inlineRelayRef.current;
+      if (inlineRelay && applyInlineAiRelayEvent(inlineRelay, event) && inlineRelayRef.current === inlineRelay) {
+        inlineRelayRef.current = null;
       }
 
       if (!event.turn_id || event.turn_id !== activeTurnIdRef.current) {
@@ -5753,6 +5769,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       (activeProjectWorkspace && !workspaceSession?.capability) ||
       busyOnSubmitThread
     ) {
+      options.relayObserver?.onError(busyOnSubmitThread
+        ? "Smart Notes AI is still working on the previous reply."
+        : "Smart Notes AI is not available for this page.");
       // Nothing reached the server: keep the draft so it is never silently lost.
       retainFailedSend(
         busyOnSubmitThread
@@ -5843,6 +5862,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     const submitGeneration = aiSubmitGenerationRef.current + 1;
     aiSubmitGenerationRef.current = submitGeneration;
     const turnId = retryIdentity?.turnId ?? safeRandomUUID();
+    if (options.relayObserver) inlineRelayRef.current = createInlineAiRelayMirror(turnId, options.relayObserver);
     const pointer: CompanionActiveTurn = {
       turnId,
       assistantMessageId,
@@ -5854,7 +5874,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         (message) => message.id !== userMessageId && message.id !== assistantMessageId
       ),
       { id: userMessageId, role: "user", content: prompt },
-      { id: assistantMessageId, role: "assistant", content: "", modelLabel: aiAssistantLabel, timeline: [] },
+      { id: assistantMessageId, role: "assistant", content: "", modelLabel: options.assistantLabel ?? aiAssistantLabel, timeline: [] },
     ];
     // Allocate and persist the durable identity BEFORE /api/chat/send. This
     // closes the mobile teardown window where the server accepted a turn but
@@ -5935,8 +5955,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           pageContext,
           operatingContext,
           browserOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
-          providerId: aiActiveProviderId,
-          model: aiActiveModel,
+          providerId: options.providerOverride?.providerId ?? aiActiveProviderId,
+          model: options.providerOverride?.model ?? aiActiveModel,
           // SN-356: read at send time so a mid-session toggle arms/disarms
           // the very next turn on this thread.
           computerAccess: computerAccessThreadsRef.current.has(submitThreadKey),
@@ -5985,6 +6005,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       // Accepted: the composer attachments' preview URLs are no longer needed.
       revokeComposerAttachmentUrls(attachments);
     } catch (error) {
+      if (inlineRelayRef.current?.turnId === turnId) {
+        inlineRelayRef.current = null;
+        options.relayObserver?.onError(error instanceof Error ? error.message : "Could not reach Smart Notes AI.");
+      }
       await clearCompanionActiveTurnPointer(submitPath, submitScopeKey, turnId);
       // SN-211: the turn never launched — drop the closed-panel watcher so no
       // stale working affordance lingers and a failed send never lights ready.
@@ -6022,6 +6046,16 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     }
   }, [aiActiveModel, aiActiveProviderId, aiAssistantLabel, aiPageTreeContext, aiParentContextMarkdown, aiScope, aiScopeLabel, aiSectionMarkdown, clearCompanionActiveTurnPointer, draft, pdfReader, pdfReaderOpen, paperShellPath, persistCompanionActiveTurn, activeProjectWorkspace, reattachOrReconcileTurn, setAiFailedSend, updateAiMessage, vaultRoot, workspaceSession]);
 
+  const handleInlineAiAsk = React.useCallback((request: InlineAiRelayRequest, observer: InlineAiRelayObserver) => {
+    const provider = inlineAiTurnProvider(request.speed,
+      { providerId: aiActiveProviderId, model: aiActiveModel },
+      { providerId: fastLaneProviderId, model: fastLaneModel });
+    void handleAiSubmit(inlineAiRelayPrompt(request.question, request.context, { edit: request.edit }), [], {
+      origin: "inline", providerOverride: provider, relayObserver: observer,
+      assistantLabel: request.speed === "fast" ? fastLaneModel || fastLaneProviderLabel : undefined,
+    });
+  }, [aiActiveModel, aiActiveProviderId, fastLaneModel, fastLaneProviderId, fastLaneProviderLabel, handleAiSubmit]);
+
   // SN-287: Retry re-sends the failed prompt/attachments under the original
   // turn identity (see AiFailedSendRecord). Never runs while a turn is live.
   const handleAiRetryFailedSend = React.useCallback(() => {
@@ -6058,6 +6092,10 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   const handleAiCancel = React.useCallback(() => {
     const currentTurnId = activeTurnIdRef.current;
+    if (inlineRelayRef.current?.turnId === currentTurnId) {
+      inlineRelayRef.current.observer.onError("Companion turn stopped.");
+      inlineRelayRef.current = null;
+    }
     const assistantMessageId = activeAssistantMessageIdRef.current;
     // SN-132: explicit user cancellation is the one path that stops the
     // server-owned turn; clear the durable pointer for its page+scope too.
@@ -6858,7 +6896,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   return (
     <main className="h-screen overflow-hidden bg-background text-foreground" data-testid="app-shell" data-paper-inline={paperInline ? "true" : undefined} data-paper-dock={paperDock ? "true" : undefined}>
-      {draft?.path && <InlineAiPopover pagePath={draft.path} onContinue={handleJupyterAskInCompanion} />}
+      {draft?.path && <InlineAiPopover pagePath={draft.path} onAsk={handleInlineAiAsk} onOpenCompanion={() => setAiOpen(true)} />}
       <PdfRecordPanel onOpenNote={(path) => { void closePdfReader().then((closed) => { if (closed) handleSidebarOpenPage(path); }); }} />
       <input
         ref={docxImportInputRef}

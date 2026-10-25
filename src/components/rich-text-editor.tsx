@@ -1,5 +1,6 @@
 "use client";
 import { captureInlineAi, invokeInlineAi, type InlineAiContext } from "@/lib/inline-ai";
+import { applyInlineAiEditorAnswer } from "@/lib/inline-ai-edit";
 
 import * as React from "react";
 import { PageTitleBar } from "@/components/page-title-bar";
@@ -1026,6 +1027,18 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     }
 
     // ── Context menu ─────────────────────────────────────────────────────────
+
+    function invokeEditorInlineAi(context: InlineAiContext, x: number, y: number) {
+      if (!editor) return;
+      const { from, to } = editor.state.selection;
+      const text = editor.state.doc.textBetween(from, to, "");
+      const captured = from !== to && text.trim() === context.text.trim() ? { from, to, text } : null;
+      const sourcePath = pagePathRef.current;
+      const sourceGeneration = pageGenerationRef.current;
+      invokeInlineAi({ context, x, y, applyEdit: (answer) =>
+        pagePathRef.current === sourcePath && pageGenerationRef.current === sourceGeneration &&
+        !editor.isDestroyed && applyInlineAiEditorAnswer(editor, answer, captured) });
+    }
 
     function handleContextMenu(e: React.MouseEvent) {
       e.preventDefault();
@@ -2563,7 +2576,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                 const context = captureInlineAi(editor.view.dom, editor.view.dom, "text");
                 context.target = "Selection";
                 context.text = editor.state.doc.textBetween(from, to, "").trim().slice(0, 16000);
-                invokeInlineAi({ context, x: rect.left, y: rect.bottom });
+                invokeEditorInlineAi(context, rect.left, rect.bottom);
               }} />
               <BubbleBtn
                 onClick={() => editor.chain().focus().toggleHighlight().run()}
@@ -2981,7 +2994,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         {!readOnly && contextMenu && editor && (
           <EditorContextMenu
             onAskCompanion={() => {
-              if (contextMenu.inlineContext) invokeInlineAi({ context: contextMenu.inlineContext, x: contextMenu.x, y: contextMenu.y });
+              if (contextMenu.inlineContext) invokeEditorInlineAi(contextMenu.inlineContext, contextMenu.x, contextMenu.y);
             }}
             x={contextMenu.x}
             y={contextMenu.y}

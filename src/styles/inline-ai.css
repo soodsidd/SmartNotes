@@ -15,6 +15,7 @@
 .inline-ai-popover blockquote { border-left: 2px solid var(--border); padding-left: .75rem; margin: 0 0 .75rem; max-height: 8rem; overflow: auto; white-space: pre-wrap; color: var(--secondary-foreground); }
 .inline-ai-chips { display: flex; gap: .5rem; margin-bottom: .75rem; }
 .inline-ai-chips button { padding: .25rem .5rem; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--secondary-foreground); }
+.inline-ai-chips button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .inline-ai-popover label { display: block; font-size: .75rem; margin-bottom: .25rem; }
 .inline-ai-popover textarea { width: 100%; min-height: 5rem; resize: vertical; border: 1px solid var(--input); border-radius: var(--radius-sm); padding: .5rem; background: var(--background); }
 .inline-ai-popover :is(button,textarea):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
