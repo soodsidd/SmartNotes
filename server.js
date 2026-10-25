@@ -32,7 +32,11 @@ const {
   handleJupyterProxyRequest,
   handleJupyterProxyUpgrade,
 } = require('./server/jupyter-proxy');
-const { startCompanionLogFormBridge } = require('./server/companion-log-form-bridge');
+const {
+  startCompanionLogFormBridge,
+  WORKSPACE_TOOLS,
+  workspaceToolRequest,
+} = require('./server/companion-log-form-bridge');
 const { createCompanionAppChannel } = require('./server/companion-app-channel');
 
 // AV preview injects NODE_ENV=production for runtimeMode projects while still
@@ -331,49 +335,18 @@ app.prepare().then(async () => {
     return loadAgentSettings(chatRuntimeDir).systemPrompt;
   }
 
-  const workspaceBridgeTools = new Set([
-    'workspace_source_list',
-    'workspace_source_read',
-    'workspace_source_create',
-    'workspace_source_edit',
-    'workspace_annotations_get',
-    'workspace_annotations_put',
-  ]);
   const deepWorkBridges = new Map();
 
   async function invokeCompanionTool(tool, args) {
     const address = server.address();
     const boundPort = address && typeof address === 'object' ? address.port : 0;
     if (!boundPort) throw new Error('Smart Notes server is not listening.');
-    let endpoint = `http://127.0.0.1:${boundPort}/api/agent/vault`;
-    let method = 'POST';
-    let body = { tool, args };
-    if (tool === 'workspace_source_list' || tool === 'workspace_source_read' || tool === 'workspace_annotations_get') {
-      const route = tool === 'workspace_annotations_get' ? 'annotations' : 'source';
-      const query = new URLSearchParams({ workspace: String(args.workspace || '') });
-      if (tool === 'workspace_source_list') {
-        query.set('operation', 'list');
-        if (args.maxCount !== undefined) query.set('maxCount', String(args.maxCount));
-      } else {
-        query.set('path', String(args.path || ''));
-        if (tool === 'workspace_source_read' && args.maxBytes !== undefined) {
-          query.set('maxBytes', String(args.maxBytes));
-        }
-      }
-      endpoint = `http://127.0.0.1:${boundPort}/api/workspace/${route}?${query}`;
-      method = 'GET';
-      body = undefined;
-    } else if (
-      tool === 'workspace_source_create' ||
-      tool === 'workspace_source_edit' ||
-      tool === 'workspace_annotations_put'
-    ) {
-      endpoint = `http://127.0.0.1:${boundPort}/api/workspace/${
-        tool === 'workspace_annotations_put' ? 'annotations' : 'source'
-      }`;
-      method = tool === 'workspace_source_create' ? 'POST' : 'PUT';
-      body = args;
-    }
+    const workspaceRequest = workspaceToolRequest(tool, args, `http://127.0.0.1:${boundPort}`);
+    const { endpoint, method, body } = workspaceRequest || {
+      endpoint: `http://127.0.0.1:${boundPort}/api/agent/vault`,
+      method: 'POST',
+      body: { tool, args },
+    };
     const response = await fetch(endpoint, {
       method,
       headers: { 'Content-Type': 'application/json' },
@@ -398,7 +371,7 @@ app.prepare().then(async () => {
       const bridge = startCompanionLogFormBridge({
         rootDir: path.join(__dirname, '.smart-notes-companion-log-form-bridge', 'deep-work', capabilityHash),
         invokeTool: invokeCompanionTool,
-        allowedTools: workspaceBridgeTools,
+        allowedTools: WORKSPACE_TOOLS,
         authorizeTool: (_tool, args) => args.workspace === capability,
       });
       registered = { bridge, expiresAt: record.expiresAt };

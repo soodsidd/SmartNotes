@@ -8,7 +8,7 @@ import { JUPYTER_NOTEBOOK_FILE_NAME, jupyterDirRelativePath } from "./page-forma
 
 export type JupyterCellType = "code" | "markdown" | "raw";
 
-interface NotebookCell {
+export interface NotebookCell {
   id?: unknown;
   cell_type?: unknown;
   source?: unknown;
@@ -70,7 +70,7 @@ export const NOTEBOOK_CONTEXT_DEFAULTS = {
   maxTotalChars: 24_000,
 } as const;
 
-function normalizeSource(source: unknown): string {
+export function normalizeSource(source: unknown): string {
   if (typeof source === "string") {
     return source;
   }
@@ -80,14 +80,14 @@ function normalizeSource(source: unknown): string {
   return "";
 }
 
-function sourceForNotebook(source: string): string[] {
+export function sourceForNotebook(source: string): string[] {
   if (!source) {
     return [];
   }
   return (source.endsWith("\n") ? source : `${source}\n`).match(/.*\n/g) ?? [];
 }
 
-function normalizeCellType(value: unknown): JupyterCellType {
+export function normalizeCellType(value: unknown): JupyterCellType {
   if (value === "code" || value === "markdown" || value === "raw") {
     return value;
   }
@@ -101,7 +101,7 @@ export function requireCellType(value: unknown): JupyterCellType {
   throw new VaultError("INVALID_INPUT", '"cellType" must be "code", "markdown", or "raw".');
 }
 
-function truncateText(text: string, maxChars: number) {
+export function truncateText(text: string, maxChars: number) {
   if (text.length <= maxChars) {
     return { text, truncated: false };
   }
@@ -131,7 +131,7 @@ function textFromMimeBundle(data: unknown): string {
   return "";
 }
 
-function serializeOutputs(outputs: unknown, maxChars: number): SerializedNotebookCell["outputs"] {
+export function serializeOutputs(outputs: unknown, maxChars: number): SerializedNotebookCell["outputs"] {
   if (!Array.isArray(outputs)) {
     return [];
   }
@@ -231,13 +231,13 @@ function cellsOf(notebook: NotebookDocument): NotebookCell[] {
   return notebook.cells as NotebookCell[];
 }
 
-function normalizeCellId(value: unknown): string | null {
+export function normalizeCellId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
   return normalized && normalized.length <= 200 ? normalized : null;
 }
 
-function requireCellIndex(cells: NotebookCell[], value: unknown, field = "index") {
+export function requireCellIndex(cells: NotebookCell[], value: unknown, field = "index") {
   if (!Number.isInteger(value)) {
     throw new VaultError("INVALID_INPUT", `"${field}" must be an integer.`);
   }
@@ -248,7 +248,7 @@ function requireCellIndex(cells: NotebookCell[], value: unknown, field = "index"
   return index;
 }
 
-function resolveCellSelector(
+export function resolveCellSelector(
   cells: NotebookCell[],
   selector: { index?: number; cellId?: string },
   options: { required?: boolean } = {}
@@ -286,7 +286,7 @@ function resolveCellSelector(
   return indexFromNumber ?? indexFromId;
 }
 
-function insertIndex(cells: NotebookCell[], value: unknown) {
+export function insertIndex(cells: NotebookCell[], value: unknown) {
   if (value === undefined || value === null) {
     return cells.length;
   }

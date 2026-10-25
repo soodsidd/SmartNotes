@@ -136,6 +136,26 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
     expect(context).toContain("pytest: one focused failure");
     expect(context).toContain("dwc_test_capability");
     expect(context).not.toContain("jupyter_cell_edit");
+    // SN-359: notebook authoring goes through capability-scoped cell tools.
+    expect(context).toContain("workspace_notebook_context");
+    expect(context).toContain("workspace_cell_create");
+    expect(context).toContain("workspace_cell_edit");
+    expect(context).toContain("workspace_cell_reorder");
+    expect(context).toContain("workspace_cell_delete");
+    expect(context).toContain("never start, stop, or execute kernels");
+    expect(context).not.toMatch(/jupyter_(?:cell|notebook)_/);
+
+    const readOnly = buildSmartNotesOperatingContext({
+      title: descriptor.projectName,
+      path: pagePath,
+      noteType: "jupyter",
+      projectWorkspace: { ...descriptor, requestedAccess: "read-only", capability: "dwc_test_capability" },
+      activeJupyterFocus: focus,
+      apiBaseUrl: "http://127.0.0.1:3002",
+    });
+    expect(readOnly).toContain("workspace_notebook_context");
+    expect(readOnly).not.toContain("workspace_cell_create");
+    expect(readOnly).toContain("Do not attempt source or notebook cell mutations");
   });
 
   it("blocks hidden, secret-shaped, dependency, VCS, and build paths from source context", () => {

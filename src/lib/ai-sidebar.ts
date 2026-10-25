@@ -1668,10 +1668,23 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
       workspace.capability
         ? `- Bridge annotations: workspace_annotations_get / workspace_annotations_put with args { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<relative-path>", "annotations": [...] } as appropriate.`
         : "",
+      "- Notebook (.ipynb) cells: never hand-author nbformat JSON or byte-offset patches into an existing notebook. Use the capability-scoped cell tools, which preserve unrelated cells, outputs, and metadata and never start, stop, or execute kernels. Each read/mutation returns a sha256 revision; pass the latest one as expectedRevision. Use index and/or cellId (both must match). A 409 means re-read with workspace_notebook_context.",
+      workspace.capability
+        ? `- Bridge notebook read: { "tool": "workspace_notebook_context", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<relative-path>.ipynb" } } (add index and/or cellId to read one cell; startIndex to page)`
+        : "",
+      workspace.capability && workspace.requestedAccess === "editable"
+        ? `- Bridge cell create: { "tool": "workspace_cell_create", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<relative-path>.ipynb", "expectedRevision": "sha256:...", "cellType": "code", "source": "print('hello')", "index": 0 } } (omit index to append; cellType code, markdown, or raw)`
+        : "",
+      workspace.capability && workspace.requestedAccess === "editable"
+        ? `- Bridge cell edit/delete/reorder: workspace_cell_edit { workspace, path, expectedRevision, index and/or cellId, source and/or cellType }; workspace_cell_delete { workspace, path, expectedRevision, index and/or cellId }; workspace_cell_reorder { workspace, path, expectedRevision, fromIndex and/or cellId, toIndex }.`
+        : "",
+      workspace.requestedAccess === "editable"
+        ? "- New notebook: create an empty skeleton once with workspace_source_create and source {\"cells\":[],\"metadata\":{},\"nbformat\":4,\"nbformat_minor\":5}, then add each cell in order with workspace_cell_create, chaining the returned revision."
+        : "",
       workspace.requestedAccess === "editable"
         ? "- This workspace is editable through the bounded source API. POST may atomically create one new allowed UTF-8 source file or valid .ipynb, but creation is create-only and never overwrites."
-        : "- This workspace is read-only. Do not attempt source mutations.",
-      "- Vault page/tree/Jupyter-note APIs are outside this Deep Work turn and must never be used as a fallback for project discovery, reads, creation, or edits.",
+        : "- This workspace is read-only. Do not attempt source or notebook cell mutations.",
+      "- Vault page/tree/Jupyter-note APIs are outside this Deep Work turn and must never be used as a fallback for project discovery, reads, creation, or edits. Vault Jupyter cell tools do not apply to project notebooks; use the workspace_* notebook tools above.",
       "- Never use direct filesystem writes, arbitrary commands, or Jupyter lifecycle commands for project source work.",
       "- Do not change the provider working directory to the project root. The capability-authenticated workspace API/bridge is the only project read or mutation path.",
       "- Smart Notes has no authority to commit, record verification, review, approve, merge, release, deploy, clean up the worktree, or mutate Ascent Vector brief/fleet state.",

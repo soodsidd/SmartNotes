@@ -17,6 +17,78 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 
+// SN-258 project-workspace operations. The server dispatcher routes these to
+// capability-authenticated /api/workspace/* endpoints, never vault tools. A
+// Deep Work bridge is bound to exactly this set plus one capability.
+const WORKSPACE_TOOLS = new Set([
+  "workspace_source_list",
+  "workspace_source_read",
+  "workspace_source_create",
+  "workspace_source_edit",
+  "workspace_annotations_get",
+  "workspace_annotations_put",
+  // SN-359 capability-scoped notebook cell tools (/api/workspace/notebook).
+  "workspace_notebook_context",
+  "workspace_cell_create",
+  "workspace_cell_edit",
+  "workspace_cell_reorder",
+  "workspace_cell_delete",
+]);
+
+const WORKSPACE_CELL_OPERATIONS = new Map([
+  ["workspace_cell_create", "cell_create"],
+  ["workspace_cell_edit", "cell_edit"],
+  ["workspace_cell_reorder", "cell_reorder"],
+  ["workspace_cell_delete", "cell_delete"],
+]);
+
+/**
+ * Map one workspace_* tool call onto its capability-authenticated
+ * /api/workspace/* HTTP request. Returns null for non-workspace tools.
+ */
+function workspaceToolRequest(tool, args, baseUrl) {
+  const input = args && typeof args === "object" ? args : {};
+  if (tool === "workspace_source_list" || tool === "workspace_source_read" || tool === "workspace_annotations_get") {
+    const route = tool === "workspace_annotations_get" ? "annotations" : "source";
+    const query = new URLSearchParams({ workspace: String(input.workspace || "") });
+    if (tool === "workspace_source_list") {
+      query.set("operation", "list");
+      if (input.maxCount !== undefined) query.set("maxCount", String(input.maxCount));
+    } else {
+      query.set("path", String(input.path || ""));
+      if (tool === "workspace_source_read" && input.maxBytes !== undefined) {
+        query.set("maxBytes", String(input.maxBytes));
+      }
+    }
+    return { endpoint: `${baseUrl}/api/workspace/${route}?${query}`, method: "GET", body: undefined };
+  }
+  if (tool === "workspace_source_create" || tool === "workspace_source_edit" || tool === "workspace_annotations_put") {
+    return {
+      endpoint: `${baseUrl}/api/workspace/${tool === "workspace_annotations_put" ? "annotations" : "source"}`,
+      method: tool === "workspace_source_create" ? "POST" : "PUT",
+      body: input,
+    };
+  }
+  if (tool === "workspace_notebook_context") {
+    const query = new URLSearchParams({
+      workspace: String(input.workspace || ""),
+      path: String(input.path || ""),
+    });
+    for (const key of ["index", "cellId", "startIndex"]) {
+      if (input[key] !== undefined && input[key] !== null) query.set(key, String(input[key]));
+    }
+    return { endpoint: `${baseUrl}/api/workspace/notebook?${query}`, method: "GET", body: undefined };
+  }
+  if (WORKSPACE_CELL_OPERATIONS.has(tool)) {
+    return {
+      endpoint: `${baseUrl}/api/workspace/notebook`,
+      method: "POST",
+      body: { ...input, operation: WORKSPACE_CELL_OPERATIONS.get(tool) },
+    };
+  }
+  return null;
+}
+
 const ALLOWED_TOOLS = new Set([
   "recipe_list", "recipe_run", "recipe_mark", "notebook_instructions_set",
   "page_get",
@@ -66,14 +138,7 @@ const ALLOWED_TOOLS = new Set([
   "paper_reference_add",
   "paper_remove",
   "paper_attach_pdf",
-  // SN-258 project-workspace operations. The server dispatcher routes these
-  // to capability-authenticated /api/workspace/* endpoints, never vault tools.
-  "workspace_source_list",
-  "workspace_source_read",
-  "workspace_source_create",
-  "workspace_source_edit",
-  "workspace_annotations_get",
-  "workspace_annotations_put",
+  ...WORKSPACE_TOOLS,
 ]);
 const MAX_REQUEST_BYTES = 24 * 1024 * 1024;
 
@@ -240,6 +305,8 @@ function startCompanionLogFormBridge({
 
 module.exports = {
   ALLOWED_TOOLS,
+  WORKSPACE_TOOLS,
+  workspaceToolRequest,
   MAX_REQUEST_BYTES,
   responsePathFor,
   processBridgeRequest,

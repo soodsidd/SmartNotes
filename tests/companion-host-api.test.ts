@@ -81,6 +81,8 @@ describe("companion host-local vault API target", () => {
     expect(extractDeepWorkCapability(context)).toBe(capability);
     expect(rewritten).toContain("Host-side Deep Work connection (server-authoritative)");
     expect(rewritten).toContain("accepts only workspace_source_list, workspace_source_read, workspace_source_create");
+    expect(rewritten).toContain("workspace_notebook_context, workspace_cell_create, workspace_cell_edit, workspace_cell_reorder, and workspace_cell_delete");
+    expect(rewritten).not.toContain("jupyter_cell_");
     expect(rewritten).toContain("Vault page/tree/Jupyter-note tools are outside its authority");
     expect(rewritten).not.toContain("Vault tool shell");
     expect(rewritten).not.toContain("otherwise use the shell-less vault bridge");
