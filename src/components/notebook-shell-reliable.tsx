@@ -5812,6 +5812,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       activePdfPage: pdfReaderOpen ? pdfReader?.page : undefined,
       activePdfPageCount: pdfReaderOpen ? pdfReader?.pageCount : undefined,
       activeJupyterFocus: turnJupyterFocus,
+      userRequest: prompt,
       // SN-262: only bind the companion to the disk workspace while the Deep Work
       // draft is actually open. On an explicitly selected vault page the turn
       // must operate on that note, not on a lingering disk root.

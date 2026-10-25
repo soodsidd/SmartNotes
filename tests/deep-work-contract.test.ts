@@ -132,10 +132,69 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
     expect(context).toContain("workspace_source_create");
     expect(context).toContain("registered disk root are authoritative for the entire turn");
     expect(context).toContain("Vault page/tree/Jupyter-note APIs are outside this Deep Work turn");
+    expect(context).toContain("jupyter_cell_* and jupyter_notebook_context are unavailable");
+    expect(context).toContain("Vault Jupyter page tools are unavailable too");
+    expect(context).toContain("Do not attempt or search for them");
     expect(context).toContain("no authority to commit, record verification, review, approve, merge, release, deploy");
     expect(context).toContain("pytest: one focused failure");
     expect(context).toContain("dwc_test_capability");
     expect(context).not.toContain("jupyter_cell_edit");
+    expect(context).not.toContain('"tool": "jupyter_notebook_context"');
+    expect(context).not.toContain("Workspace .ipynb create-then-edit playbook");
+  });
+
+  it("gives a focused workspace notebook a complete capability-only create/read/edit sequence", () => {
+    const descriptor = parseDeepWorkDescriptor(descriptorParams({ file: "analysis/walkthrough.ipynb" }))!;
+    const context = buildSmartNotesOperatingContext({
+      title: descriptor.projectName,
+      path: deepWorkPendingPath(descriptor),
+      noteType: "jupyter",
+      projectWorkspace: { ...descriptor, capability: "dwc_test_capability" },
+    });
+
+    expect(context).toContain("Workspace .ipynb create-then-edit playbook");
+    expect(context).toContain('"tool": "workspace_source_create"');
+    expect(context).toContain('"tool": "workspace_source_read"');
+    expect(context).toContain('"tool": "workspace_source_edit"');
+    expect(context).toContain('\\"nbformat\\":4');
+    expect(context).toContain('\\"nbformat_minor\\":5');
+    expect(context).toContain('"path": "analysis/walkthrough.ipynb"');
+    expect(context).toContain('"expectedRevision": "<read.revision>"');
+    expect(context).toContain('"end": "<read.source.length in UTF-16 code units>"');
+    expect(context).toContain("require truncated=false");
+    expect(context).toContain("instead of attempting cell-offset surgery");
+    expect(context).not.toContain('"tool": "jupyter_cell_');
+    expect(context).not.toContain('"tool": "jupyter_notebook_context"');
+    expect(context).not.toContain('"tool": "page_');
+  });
+
+  it("includes the notebook playbook when the owner requests authoring before notebook focus exists", () => {
+    const descriptor = parseDeepWorkDescriptor(descriptorParams())!;
+    const context = buildSmartNotesOperatingContext({
+      title: descriptor.projectName,
+      path: deepWorkPendingPath(descriptor),
+      noteType: "jupyter",
+      projectWorkspace: { ...descriptor, capability: "dwc_test_capability" },
+      userRequest: "Create a Jupyter notebook explaining the analysis",
+    });
+    expect(context).toContain("Workspace .ipynb create-then-edit playbook");
+    expect(context).toContain('"tool": "workspace_source_create"');
+    expect(context).toContain('"workspace": "dwc_test_capability"');
+  });
+
+  it("keeps notebook mutation guidance gated in a read-only workspace", () => {
+    const descriptor = parseDeepWorkDescriptor(descriptorParams({
+      access: "read-only",
+      file: "analysis/walkthrough.ipynb",
+    }))!;
+    const context = buildSmartNotesOperatingContext({
+      title: descriptor.projectName,
+      path: deepWorkPendingPath(descriptor),
+      noteType: "jupyter",
+      projectWorkspace: { ...descriptor, capability: "dwc_test_capability" },
+    });
+    expect(context).toContain("use the read step only");
+    expect(context).toContain("before attempting create or edit");
   });
 
   it("blocks hidden, secret-shaped, dependency, VCS, and build paths from source context", () => {
