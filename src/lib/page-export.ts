@@ -103,7 +103,7 @@ body {
 
 .editor-content [data-type="floating-text-box"] {
   z-index: 3;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   background: #ffffff;
   padding: 7px 9px;
 }

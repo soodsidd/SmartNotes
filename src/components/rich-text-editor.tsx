@@ -1385,7 +1385,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       const fallbackY = (scrollAreaRef.current?.scrollTop ?? 0) + 140;
       const inserted = editor.commands.insertContentAt(position, {
         type: "floatingTextBox",
-        attrs: { x: Math.round(x ?? fallbackX), y: Math.round(y ?? fallbackY), width: 360, height: 48 },
+        attrs: { x: Math.round(x ?? fallbackX), y: Math.round(y ?? fallbackY), width: 360 },
         content: [{ type: "paragraph" }],
       });
       if (inserted) editor.chain().focus().setTextSelection(position + 2).run();

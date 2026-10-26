@@ -1,14 +1,10 @@
 import { Node, mergeAttributes } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
 import type { NodeView } from "@tiptap/pm/view";
 import {
-  FLOATING_BOX_DEFAULT_HEIGHT,
   FLOATING_BOX_DEFAULT_WIDTH,
-  FLOATING_BOX_MIN_HEIGHT,
   fitFloatingBoxWidthToContent,
   moveFloatingBox,
   normalizeFloatingBoxGeometry,
-  resizeFloatingBox,
   resizeFloatingBoxWidth,
   type FloatingBoxGeometry,
 } from "./floating-text-box";
@@ -17,7 +13,6 @@ const attrs = (element: HTMLElement) => normalizeFloatingBoxGeometry({
   x: Number(element.dataset.x),
   y: Number(element.dataset.y),
   width: Number(element.dataset.width),
-  height: Number(element.dataset.height),
 });
 
 export const FloatingTextBox = Node.create({
@@ -31,7 +26,6 @@ export const FloatingTextBox = Node.create({
       x: { default: 0, parseHTML: (el: HTMLElement) => attrs(el).x },
       y: { default: 0, parseHTML: (el: HTMLElement) => attrs(el).y },
       width: { default: FLOATING_BOX_DEFAULT_WIDTH, parseHTML: (el: HTMLElement) => attrs(el).width },
-      height: { default: FLOATING_BOX_DEFAULT_HEIGHT, parseHTML: (el: HTMLElement) => attrs(el).height },
     };
   },
   parseHTML() { return [{ tag: 'div[data-type="floating-text-box"]' }]; },
@@ -42,8 +36,7 @@ export const FloatingTextBox = Node.create({
       "data-x": geometry.x,
       "data-y": geometry.y,
       "data-width": geometry.width,
-      "data-height": geometry.height,
-      style: `position:absolute;left:${geometry.x}px;top:${geometry.y}px;width:${geometry.width}px;min-height:${geometry.height}px`,
+      style: `position:absolute;left:${geometry.x}px;top:${geometry.y}px;width:${geometry.width}px`,
     }), ["div", { "data-floating-box-content": "" }, 0]];
   },
   addNodeView() {
@@ -71,30 +64,25 @@ export const FloatingTextBox = Node.create({
       const contentDOM = document.createElement("div");
       contentDOM.className = "floating-text-box__content";
       contentDOM.dataset.floatingBoxContent = "";
-      const resize = document.createElement("button");
-      resize.type = "button";
-      resize.className = "floating-text-box__resize";
-      resize.setAttribute("aria-label", "Resize text box");
-      resize.dataset.testid = "floating-text-box-resize";
       const resizeWidth = document.createElement("button");
       resizeWidth.type = "button";
       resizeWidth.className = "floating-text-box__resize-width";
       resizeWidth.title = "Drag to change width; arrow keys to adjust";
       resizeWidth.setAttribute("aria-label", "Resize text box width");
       resizeWidth.dataset.testid = "floating-text-box-resize-width";
-      dom.append(controls, contentDOM, resizeWidth, resize);
+      dom.append(controls, contentDOM, resizeWidth);
 
       // The content is inside ProseMirror's focused root, so :focus-within on
-      // contentDOM cannot tell which box owns the caret.
+      // contentDOM cannot tell which box owns the caret. Any selection within
+      // the box counts (SN-314): a caret, a text range, or a selected image.
       function syncEditingChrome() {
         const pos = getPos();
         const selection = editor.state.selection;
-        const caretInside = editor.isFocused && typeof pos === "number" &&
-          selection instanceof TextSelection &&
-          selection.from > pos && selection.to < pos + current.nodeSize;
+        const selectionInside = editor.isFocused && typeof pos === "number" &&
+          selection.from >= pos && selection.to <= pos + current.nodeSize;
         const chromeFocused = dom.dataset.editing === "true" &&
-          (controls.contains(document.activeElement) || document.activeElement === resize || document.activeElement === resizeWidth);
-        dom.dataset.editing = caretInside || chromeFocused ? "true" : "false";
+          (controls.contains(document.activeElement) || document.activeElement === resizeWidth);
+        dom.dataset.editing = selectionInside || chromeFocused ? "true" : "false";
       }
       const syncAfterBlur = () => queueMicrotask(syncEditingChrome);
       editor.on("selectionUpdate", syncEditingChrome);
@@ -111,22 +99,19 @@ export const FloatingTextBox = Node.create({
         dom.style.left = `${next.x}px`;
         dom.style.top = `${next.y}px`;
         dom.style.width = `${next.width}px`;
-        dom.style.minHeight = `${next.height}px`;
         Object.entries(next).forEach(([key, value]) => { dom.dataset[key] = String(value); });
       }
       function commit(next: FloatingBoxGeometry) {
         const pos = getPos();
         if (typeof pos !== "number") return;
         const prev = geometry();
-        if (prev.x === next.x && prev.y === next.y && prev.width === next.width && prev.height === next.height) return;
+        if (prev.x === next.x && prev.y === next.y && prev.width === next.width) return;
         editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, next));
       }
       // Width is explicit, so grow it when an embedded image is resized wider
       // than the box. Expanded tables are left to overflow on purpose (SN-278).
-      // Height is content-driven: measure scrollHeight on each resize and
-      // persist it so the stored min-height always matches the actual content.
-      // The outer box has padding:7px (top+bottom) + border:1px (top+bottom) =
-      // 16px of non-content vertical space (box-sizing: border-box).
+      // Height needs no work: the box is height:auto with no min-height, so it
+      // always wraps its text and images exactly (SN-314).
       function fitToContent() {
         if (!editor.isEditable || contentDOM.clientWidth === 0) return;
         const area = contentDOM.getBoundingClientRect();
@@ -136,13 +121,7 @@ export const FloatingTextBox = Node.create({
           right = Math.max(right, image.getBoundingClientRect().right);
         });
         const needed = contentDOM.clientWidth + (right - area.right) / scale;
-        const widthFitted = fitFloatingBoxWidthToContent(geometry(), needed, contentDOM.clientWidth);
-        // SN-344: track content height so the stored attribute (used as min-height)
-        // always contains all text. Apply immediately so the border redraws
-        // without waiting for the ProseMirror transaction round-trip.
-        const neededHeight = Math.max(FLOATING_BOX_MIN_HEIGHT, Math.ceil(contentDOM.scrollHeight) + 16);
-        dom.style.minHeight = `${neededHeight}px`;
-        commit({ ...widthFitted, height: neededHeight });
+        commit(fitFloatingBoxWidthToContent(geometry(), needed, contentDOM.clientWidth));
       }
       const resizeObserver = typeof ResizeObserver === "function"
         ? new ResizeObserver(() => fitToContent())
@@ -178,7 +157,6 @@ export const FloatingTextBox = Node.create({
         });
       }
       drag(move, moveFloatingBox);
-      drag(resize, resizeFloatingBox);
       drag(resizeWidth, (start, dx) => resizeFloatingBoxWidth(start, dx));
       resizeWidth.addEventListener("keydown", (event) => {
         const step = event.shiftKey ? 10 : 1;
@@ -221,7 +199,7 @@ export const FloatingTextBox = Node.create({
           editor.off("focus", syncEditingChrome);
           editor.off("blur", syncAfterBlur);
         },
-        stopEvent(event) { return (event.target instanceof globalThis.Node && controls.contains(event.target)) || event.target === resize || event.target === resizeWidth; },
+        stopEvent(event) { return (event.target instanceof globalThis.Node && controls.contains(event.target)) || event.target === resizeWidth; },
         ignoreMutation(mutation) { return mutation.type === "attributes" && mutation.target === dom; },
       };
     };

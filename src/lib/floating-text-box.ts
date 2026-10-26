@@ -3,14 +3,16 @@ import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
 
 export const FLOATING_BOX_DEFAULT_WIDTH = 360;
-export const FLOATING_BOX_DEFAULT_HEIGHT = 48;
 export const FLOATING_BOX_MIN_WIDTH = 160;
-export const FLOATING_BOX_MIN_HEIGHT = 48;
 
 /** Main editor column width — floating boxes sit on the canvas beside this frame. */
 export const EDITOR_MAIN_FLOW_WIDTH = 672;
 
-export type FloatingBoxGeometry = { x: number; y: number; width: number; height: number };
+/**
+ * SN-314: height is not geometry. The box always fits its content (CSS height
+ * auto), so a legacy `data-height` attribute in older page HTML is ignored.
+ */
+export type FloatingBoxGeometry = { x: number; y: number; width: number };
 
 export function normalizeFloatingBoxGeometry(value: Partial<FloatingBoxGeometry>): FloatingBoxGeometry {
   const finite = (number: number | undefined, fallback: number) =>
@@ -19,7 +21,6 @@ export function normalizeFloatingBoxGeometry(value: Partial<FloatingBoxGeometry>
     x: Math.max(0, finite(value.x, 0)),
     y: Math.max(0, finite(value.y, 0)),
     width: Math.max(FLOATING_BOX_MIN_WIDTH, finite(value.width, FLOATING_BOX_DEFAULT_WIDTH)),
-    height: Math.max(FLOATING_BOX_MIN_HEIGHT, finite(value.height, FLOATING_BOX_DEFAULT_HEIGHT)),
   };
 }
 
@@ -27,11 +28,7 @@ export function moveFloatingBox(geometry: FloatingBoxGeometry, dx: number, dy: n
   return normalizeFloatingBoxGeometry({ ...geometry, x: geometry.x + dx, y: geometry.y + dy });
 }
 
-export function resizeFloatingBox(geometry: FloatingBoxGeometry, dx: number, dy: number): FloatingBoxGeometry {
-  return normalizeFloatingBoxGeometry({ ...geometry, width: geometry.width + dx, height: geometry.height + dy });
-}
-
-/** Right-edge resize: only the width changes; text reflows and height follows content. */
+/** Right-edge resize, the only resize: width changes, text reflows, height follows content. */
 export function resizeFloatingBoxWidth(geometry: FloatingBoxGeometry, dx: number): FloatingBoxGeometry {
   return normalizeFloatingBoxGeometry({ ...geometry, width: geometry.width + dx });
 }

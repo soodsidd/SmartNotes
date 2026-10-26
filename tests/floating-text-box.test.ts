@@ -7,7 +7,6 @@ import {
   isFloatingTextBoxEmpty,
   moveFloatingBox,
   pruneEmptyFloatingTextBoxes,
-  resizeFloatingBox,
   resizeFloatingBoxWidth,
   selectionInFloatingTextBox,
 } from "@/lib/floating-text-box";
@@ -60,17 +59,16 @@ describe("floating text boxes", () => {
     instance.destroy();
   });
 
-  test("move and resize clamp to valid geometry", () => {
-    const start = { x: 40, y: 80, width: 360, height: 48 };
+  test("move clamps to valid geometry", () => {
+    const start = { x: 40, y: 80, width: 360 };
     expect(moveFloatingBox(start, -100, 9)).toEqual({ ...start, x: 0, y: 89 });
-    expect(resizeFloatingBox(start, -1000, 20)).toEqual({ ...start, width: 160, height: 68 });
   });
 
   test("rich text, table, image, and geometry survive HTML reload", () => {
     const first = editor();
     first.commands.insertContentAt(first.state.doc.content.size, {
       type: "floatingTextBox",
-      attrs: { x: 280, y: 190, width: 420, height: 60 },
+      attrs: { x: 280, y: 190, width: 420 },
       content: [
         { type: "paragraph", content: [{ type: "text", text: "Box text", marks: [{ type: "bold" }] }] },
         // SN-343: images are inline atoms — nest inside a paragraph, not as a block sibling.
@@ -159,7 +157,7 @@ describe("floating text boxes", () => {
     filled.destroy();
   });
 
-  test("Move and corner drag persist their geometry in page HTML", () => {
+  test("Move drag persists its geometry in page HTML", () => {
     const instance = editor('<div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Box</p></div></div>');
     const pointer = (type: string, x: number, y: number) => {
       const event = new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y });
@@ -173,18 +171,11 @@ describe("floating text boxes", () => {
     move.dispatchEvent(pointer("pointerup", 65, 62));
     expect(instance.getHTML()).toContain('data-x="35"');
     expect(instance.getHTML()).toContain('data-y="42"');
-    const resize = instance.view.dom.querySelector<HTMLButtonElement>('[data-testid="floating-text-box-resize"]')!;
-    resize.setPointerCapture = jest.fn();
-    resize.dispatchEvent(pointer("pointerdown", 100, 100));
-    resize.dispatchEvent(pointer("pointermove", 140, 120));
-    resize.dispatchEvent(pointer("pointerup", 140, 120));
-    expect(instance.getHTML()).toContain('data-width="400"');
-    expect(instance.getHTML()).toContain('data-height="68"');
     instance.destroy();
   });
 
-  test("SN-316: width-only resize keeps x/y/min-height and clamps width; content fit only grows", () => {
-    const start = { x: 40, y: 80, width: 360, height: 120 };
+  test("SN-316: width-only resize keeps x/y and clamps width; content fit only grows", () => {
+    const start = { x: 40, y: 80, width: 360 };
     expect(resizeFloatingBoxWidth(start, 140)).toEqual({ ...start, width: 500 });
     expect(resizeFloatingBoxWidth(start, -1000)).toEqual({ ...start, width: 160 });
     expect(fitFloatingBoxWidthToContent(start, 452.2, 340)).toEqual({ ...start, width: 473 });
@@ -192,7 +183,7 @@ describe("floating text boxes", () => {
     expect(fitFloatingBoxWidthToContent(start, Number.NaN, 340)).toBe(start);
   });
 
-  test("SN-316: right-edge handle changes only width, live on every pointer move, with min-height content sizing", () => {
+  test("SN-316/SN-314: right-edge handle changes only width, live on every pointer move, so text reflows", () => {
     const instance = editor('<div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Long wrapped text that reflows</p></div></div>');
     const pointer = (type: string, x: number, y: number) => {
       const event = new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y });
@@ -207,16 +198,20 @@ describe("floating text boxes", () => {
     handle.dispatchEvent(pointer("pointermove", 40, 180));
     // Mid-drag: the box DOM already has the new width, so text reflows live.
     expect(box.style.width).toBe("300px");
-    expect(box.style.minHeight).toBe("48px");
+    expect(box.style.minHeight).toBe("");
     expect(box.style.height).toBe("");
+    // The content column has no width of its own, so paragraphs wrap to the box.
+    const content = box.querySelector<HTMLElement>(".floating-text-box__content")!;
+    expect(content.style.width).toBe("");
+    expect(content.querySelector("p")?.textContent).toBe("Long wrapped text that reflows");
     handle.dispatchEvent(pointer("pointermove", 220, 300));
     handle.dispatchEvent(pointer("pointerup", 220, 300));
     const html = instance.getHTML();
     expect(html).toContain('data-width="480"');
-    expect(html).toContain('data-height="48"');
     expect(html).toContain('data-x="20"');
     expect(html).toContain('data-y="30"');
-    expect(html).toContain("min-height: 48px");
+    expect(html).not.toContain("data-height");
+    expect(html).not.toContain("min-height");
 
     handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
     expect(instance.getHTML()).toContain('data-width="479"');
@@ -244,8 +239,6 @@ describe("floating text boxes", () => {
       image.getBoundingClientRect = () => rect(10, 420);
       callbacks.forEach((callback) => callback());
       expect(instance.getHTML()).toContain('data-width="440"');
-      // scrollHeight is 0 in jsdom so neededHeight = max(48, 0+16) = 48
-      expect(instance.getHTML()).toContain('data-height="48"');
       // Image fits again: the box never shrinks on its own.
       image.getBoundingClientRect = () => rect(10, 200);
       callbacks.forEach((callback) => callback());
@@ -256,7 +249,7 @@ describe("floating text boxes", () => {
     }
   });
 
-  test("SN-344: content height drives the stored height so all text stays inside the border", () => {
+  test("SN-314: height always fits content: no min-height, stale data-height ignored, image growth never pins height", () => {
     const callbacks: Array<() => void> = [];
     const original = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
     (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
@@ -265,35 +258,66 @@ describe("floating text boxes", () => {
       disconnect() {}
     };
     try {
-      const instance = editor('<div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Line 1</p><p>Line 2</p><p>Line 3</p></div></div>');
-      const content = instance.view.dom.querySelector<HTMLElement>(".floating-text-box__content")!;
-      const box = instance.view.dom.querySelector<HTMLElement>("[data-testid=\"floating-text-box\"]")!;
+      // Older pages stored data-height and rendered it as min-height (SN-344), which left
+      // empty chrome below short content. It must no longer influence layout.
+      const instance = editor('<div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="300" style="min-height:300px"><div data-floating-box-content><p>One line</p><img src="/vault/notes/a.png" width="200"></div></div>');
+      const box = instance.view.dom.querySelector<HTMLElement>('[data-testid="floating-text-box"]')!;
+      const content = box.querySelector<HTMLElement>(".floating-text-box__content")!;
+      const image = content.querySelector<HTMLImageElement>("img")!;
+      expect(box.style.minHeight).toBe("");
+      expect(box.style.height).toBe("");
+      expect(box.dataset.height).toBeUndefined();
+      expect(instance.getHTML()).not.toContain("data-height");
+      expect(instance.getHTML()).not.toContain("min-height");
+
       const rect = (left: number, width: number) => ({ left, right: left + width, width, top: 0, bottom: 0, height: 0, x: left, y: 0, toJSON() {} }) as DOMRect;
       Object.defineProperty(content, "clientWidth", { configurable: true, value: 340 });
+      Object.defineProperty(content, "scrollHeight", { configurable: true, value: 640 });
       content.getBoundingClientRect = () => rect(10, 340);
-      // Simulate 3 paragraphs at 100px total content height.
-      Object.defineProperty(content, "scrollHeight", { configurable: true, value: 100 });
+      // The image is resized larger than the box: width grows to contain it; height
+      // stays auto so the box grows with the taller image instead of clipping it.
+      image.getBoundingClientRect = () => rect(10, 600);
       callbacks.forEach((callback) => callback());
-      // neededHeight = max(48, ceil(100)+16) = 116
-      expect(instance.getHTML()).toContain('data-height="116"');
-      expect(box.style.minHeight).toBe("116px");
-
-      // Content grows further (user keeps typing).
-      Object.defineProperty(content, "scrollHeight", { configurable: true, value: 200 });
-      callbacks.forEach((callback) => callback());
-      // neededHeight = max(48, ceil(200)+16) = 216
-      expect(instance.getHTML()).toContain('data-height="216"');
-      expect(box.style.minHeight).toBe("216px");
-
-      // Content shrinks (user deletes) — height re-fits down to min if needed.
+      expect(instance.getHTML()).toContain('data-width="620"');
+      expect(box.style.width).toBe("620px");
+      expect(box.style.minHeight).toBe("");
+      expect(box.style.height).toBe("");
+      // A content change that needs no wider box makes no transaction at all.
+      const before = instance.getHTML();
+      image.getBoundingClientRect = () => rect(10, 100);
       Object.defineProperty(content, "scrollHeight", { configurable: true, value: 20 });
       callbacks.forEach((callback) => callback());
-      // neededHeight = max(48, ceil(20)+16) = max(48, 36) = 48
-      expect(instance.getHTML()).toContain('data-height="48"');
-      expect(box.style.minHeight).toBe("48px");
+      expect(instance.getHTML()).toBe(before);
+      expect(box.style.minHeight).toBe("");
       instance.destroy();
     } finally {
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = original;
     }
+  });
+
+  test("SN-314: border/chrome shows for any selection inside the box (image node, box node), and there is no corner resize", () => {
+    const instance = editor('<p>Main</p><div data-type="floating-text-box" data-x="20" data-y="30" data-width="360"><div data-floating-box-content><p>Box <img src="/vault/notes/a.png"></p></div></div>');
+    document.body.append(instance.view.dom);
+    const box = instance.view.dom.querySelector<HTMLElement>(".floating-text-box")!;
+    expect(box.querySelector('[data-testid="floating-text-box-resize"]')).toBeNull();
+    expect(box.querySelectorAll('[data-testid="floating-text-box-resize-width"]')).toHaveLength(1);
+    let boxPos = -1;
+    let imagePos = -1;
+    instance.state.doc.descendants((node, pos) => {
+      if (node.type.name === "floatingTextBox") boxPos = pos;
+      if (node.type.name === "image") imagePos = pos;
+    });
+    instance.view.focus();
+    expect(box.dataset.editing).toBe("false");
+    instance.commands.setNodeSelection(imagePos);
+    expect(box.dataset.editing).toBe("true");
+    instance.commands.setTextSelection(1);
+    expect(box.dataset.editing).toBe("false");
+    instance.commands.setNodeSelection(boxPos);
+    expect(box.dataset.editing).toBe("true");
+    instance.commands.selectAll();
+    expect(box.dataset.editing).toBe("false");
+    instance.view.dom.remove();
+    instance.destroy();
   });
 });
