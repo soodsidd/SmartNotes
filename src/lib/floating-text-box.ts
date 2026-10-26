@@ -87,6 +87,14 @@ export function selectionInFloatingTextBox(state: EditorState): boolean {
   return false;
 }
 
+/** Delete the box currently at this document position, even if focus moved to its chrome. */
+export function deleteFloatingTextBox(editor: Editor, pos: number): boolean {
+  const node = editor.state.doc.nodeAt(pos);
+  if (node?.type.name !== "floatingTextBox") return false;
+  editor.view.dispatch(editor.state.tr.delete(pos, pos + node.nodeSize));
+  return true;
+}
+
 /**
  * Delete empty floating text boxes that are not under the current selection
  * and not currently focused via Move/Delete/resize chrome.

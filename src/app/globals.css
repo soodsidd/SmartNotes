@@ -583,6 +583,8 @@ body.page-print-active .editor-main-flow-outline { visibility: visible; }
 /* SN-314: keep a capped image's margin box inside the line so ProseMirror's trailing
    break does not wrap onto an empty line, and so the width fit never chases it. */
 .floating-text-box [data-resize-container][data-node="image"] { max-width: calc(100% - 0.35rem); }
+/* A pixel-sized image must contribute its full dimensions to inline layout. */
+.floating-text-box [data-resize-container][data-node="image"]:has(img[style*="px"]) { max-width: none; }
 .floating-text-box__content > :first-child { margin-top: 0; }
 .floating-text-box__content > :last-child { margin-bottom: 0; }
 .editor-readonly .floating-text-box__controls,

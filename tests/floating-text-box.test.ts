@@ -4,6 +4,7 @@ import { createEditorExtensions, insertUploadedEditorAsset, setEditorHtmlSilent 
 import {
   EDITOR_MAIN_FLOW_WIDTH,
   fitFloatingBoxWidthToContent,
+  deleteFloatingTextBox,
   isFloatingTextBoxEmpty,
   moveFloatingBox,
   pruneEmptyFloatingTextBoxes,
@@ -104,6 +105,20 @@ describe("floating text boxes", () => {
     instance.view.dom.querySelector<HTMLButtonElement>('[data-testid="floating-text-box-delete"]')?.click();
     expect(instance.getHTML()).not.toContain('data-type="floating-text-box"');
     expect(instance.getHTML()).toContain("Main");
+    instance.destroy();
+  });
+
+  test("Delete keeps the box selection on pointer press and removes only its box", () => {
+    const instance = editor('<p>Main</p><div data-type="floating-text-box" data-x="20" data-y="30" data-width="360"><div data-floating-box-content><p>First</p></div></div><div data-type="floating-text-box" data-x="40" data-y="50" data-width="360"><div data-floating-box-content><p>Second</p></div></div>');
+    const boxes = instance.view.dom.querySelectorAll<HTMLElement>('[data-testid="floating-text-box"]');
+    const remove = boxes[1].querySelector<HTMLButtonElement>('[data-testid="floating-text-box-delete"]')!;
+    const press = new MouseEvent("pointerdown", { bubbles: true, cancelable: true });
+    remove.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+    remove.click();
+    expect(instance.getHTML()).toContain("First");
+    expect(instance.getHTML()).not.toContain("Second");
+    expect(deleteFloatingTextBox(instance, 0)).toBe(false);
     instance.destroy();
   });
 

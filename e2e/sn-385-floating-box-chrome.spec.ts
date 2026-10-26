@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import fs from "node:fs/promises";
 import { PNG } from "pngjs";
 import path from "node:path";
+import type { Editor } from "@tiptap/core";
 
 test.use({ serviceWorkers: "block" });
 
@@ -158,6 +159,21 @@ test("SN-314 floating box fits its content; width drag reflows text; a wider ima
       return { imageBottom: image.bottom, tailTop: tail?.top ?? -Infinity };
     });
     expect(trailing.tailTop).toBeLessThan(trailing.imageBottom);
+    // A resized pixel image must take part in line layout, so later text stays
+    // inside the content-fit border instead of appearing below it (SN-314 rework).
+    await page.locator(".ProseMirror.editor-content").evaluate((element) => {
+      const editor = (element as HTMLElement & { editor: Editor }).editor;
+      let imagePos = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === "image") imagePos = pos;
+      });
+      if (imagePos < 0) throw new Error("Image missing from the editor document");
+      editor.view.dispatch(editor.state.tr.insertText(" after image", imagePos + 1));
+    });
+    await expect(imageBox.getByText("after image")).toBeVisible();
+    const contentBottom = await imageBox.getByText("after image").evaluate((el) => el.getBoundingClientRect().bottom);
+    const boxBottom = await imageBox.evaluate((el) => el.getBoundingClientRect().bottom);
+    expect(contentBottom).toBeLessThanOrEqual(boxBottom);
     await page.screenshot({ path: path.join(evidenceDir, "image-growth.png") });
   } finally {
     await request.delete(`/api/page?path=${encodeURIComponent(pagePath)}`).catch(() => undefined);

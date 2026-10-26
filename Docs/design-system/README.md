@@ -198,6 +198,10 @@ text and images inside the existing 7px/9px padding. Image containers in a box
 are capped at `calc(100% - 0.35rem)`, reusing the existing 0.35rem image margin.
 Exported pages draw the box border transparent. No new token was introduced.
 
+SN-314's overflow rework lets explicitly pixel-sized images contribute their full
+width to the box's line layout, so text following an image remains inside the
+content-fit border. It reuses the same image spacing and border tokens.
+
 SN-318 gives the main editor flow frame (the bordered column) the same
 right-edge, width-only affordance. A full-height 12px hit strip carries the same
 8×16px `--surface` / `--border` grip. The grip is sticky, so it stays in view on

@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import type { NodeView } from "@tiptap/pm/view";
 import {
   FLOATING_BOX_DEFAULT_WIDTH,
+  deleteFloatingTextBox,
   fitFloatingBoxWidthToContent,
   moveFloatingBox,
   normalizeFloatingBoxGeometry,
@@ -60,6 +61,8 @@ export const FloatingTextBox = Node.create({
       remove.textContent = "Delete";
       remove.setAttribute("aria-label", "Delete text box");
       remove.dataset.testid = "floating-text-box-delete";
+      // Keep the editor selection in this box until the click deletes it.
+      remove.addEventListener("pointerdown", (event) => event.preventDefault());
       controls.append(move, remove);
       const contentDOM = document.createElement("div");
       contentDOM.className = "floating-text-box__content";
@@ -187,7 +190,7 @@ export const FloatingTextBox = Node.create({
         event.preventDefault();
         const pos = getPos();
         if (typeof pos !== "number") return;
-        editor.view.dispatch(editor.state.tr.delete(pos, pos + current.nodeSize));
+        deleteFloatingTextBox(editor, pos);
       });
       paint();
       syncEditingChrome();
