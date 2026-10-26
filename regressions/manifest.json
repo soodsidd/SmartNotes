@@ -5504,6 +5504,28 @@
       "sourceFiles": [{ "path": "e2e/sn-305-recipes.spec.ts" }, { "path": "src/components/notebook-shell-reliable.tsx Updated 2026-10-25 (SN-381): added tests/jupyter-cell-run-live-bridge.test.ts (real bridge source in jsdom against a fake Lab notebook) and extended deep-work-cell-run and deep-work-companion-refresh for persistence, conflict, and run routing; no E2E added." }]
     },
     {
+      "id": "e2e-sn-383-create-focus",
+      "name": "SN-383 sidebar create selects new page and section titles",
+      "description": "Desktop Playwright check of sidebar, menu, and toolbar creation with full title selection after new section and page rows mount.",
+      "intent": "Protects create-then-rename focus for pages and sections after asynchronous vault writes across primary entry points.",
+      "whenToRun": "Pre-merge when changing page or section creation or inline rename focus.",
+      "failureMeaning": "A new title may open without focus or full selection, or the create action may return to a naming dialog.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-383-create-focus.spec.ts e2e/sn-352-sidebar-blank-context-menus.spec.ts --project=desktop --workers=1 --retries=0",
+      "timeoutMs": 240000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "sidebar", "create", "targeted"],
+      "feature": "editor",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-383",
+      "addedAt": "2026-10-25",
+      "sourceFiles": [{ "path": "e2e/sn-383-create-focus.spec.ts" }, { "path": "e2e/sn-352-sidebar-blank-context-menus.spec.ts" }]
+    },
+    {
       "id": "e2e-sn-385-floating-box-chrome",
       "name": "SN-385 floating text box editing chrome",
       "description": "Desktop Playwright check and idle/editing screenshots for floating box border, controls, hover and click-away behavior.",

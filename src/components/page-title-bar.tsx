@@ -21,12 +21,18 @@ export function PageTitleBar({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const cancelCommitRef = React.useRef(false);
   React.useEffect(() => setValue(title), [pagePath, title]);
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (focusOnCreate && !readOnly) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+      const frame = window.requestAnimationFrame(() => {
+        if (document.activeElement === input && input.value === title) input.select();
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
-  }, [focusOnCreate, pagePath, readOnly]);
+  }, [focusOnCreate, pagePath, readOnly, title]);
 
   const date = createdAt ? new Date(createdAt) : null;
   const hasDate = date && !Number.isNaN(date.getTime());

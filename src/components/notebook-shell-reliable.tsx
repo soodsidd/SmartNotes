@@ -5341,10 +5341,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     try {
       const section = await createVaultSection({ notebookPath, name });
       setExpandedNotebooks((current) => new Set([...current, notebookPath]));
-      await loadTree({ notebookPath, sectionPath: section.path });
+      // Keep the rename request pending while the refreshed row mounts.
       setInlineSectionPath(section.path);
       if (window.matchMedia("(max-width: 767px)").matches) setSidebarOpen(true);
+      await loadTree({ notebookPath, sectionPath: section.path });
     } catch (error) {
+      setInlineSectionPath(null);
       toast.error(error instanceof Error ? error.message : "Failed to create section.");
     }
   }, [flushSave, loadTree]);
@@ -5378,10 +5380,12 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       setExpandedNotebooks((current) => new Set([...current, page.notebookPath]));
       if (page.sectionPath) setExpandedSections((current) => new Set([...current, page.sectionPath!]));
       if (target.parentId) setExpandedPages((current) => new Set([...current, target.parentId!]));
-      await loadTree({ pagePath: page.path });
+      // The title/row can mount during loadTree, so publish the request first.
       setInlinePageTitlePath(page.path);
       if (noteType && window.matchMedia("(max-width: 767px)").matches) setSidebarOpen(true);
+      await loadTree({ pagePath: page.path });
     } catch (error) {
+      setInlinePageTitlePath(null);
       toast.error(error instanceof Error ? error.message : "Failed to create page.");
     }
   }, [flushSave, loadTree]);
@@ -8849,19 +8853,34 @@ function CompanionThreadDot({ status, testId }: { status: CompanionThreadIndicat
   return null;
 }
 
-function InlineSectionName({ path, name, onCommit, kind = "section" }: { path: string; name: string; onCommit: (path: string, name: string) => Promise<void>; kind?: "section" | "page" }) {
+export function InlineSectionName({ path, name, onCommit, kind = "section" }: { path: string; name: string; onCommit: (path: string, name: string) => Promise<void>; kind?: "section" | "page" }) {
   const [value, setValue] = React.useState(name);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const cancelCommitRef = React.useRef(false);
-  React.useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      if (inputRef.current?.getClientRects().length) {
-        inputRef.current.focus();
-        inputRef.current.select();
-      }
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
+  React.useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    let selected = false;
+    let frame = 0;
+    const selectWhenVisible = () => {
+      if (selected || (!input.getClientRects().length && typeof IntersectionObserver !== "undefined")) return;
+      selected = true;
+      input.focus();
+      input.select();
+      // The tree selection update can rerender the controlled input after this
+      // layout effect. Reapply the untouched default selection after paint.
+      frame = window.requestAnimationFrame(() => {
+        if (document.activeElement === input && input.value === name) input.select();
+      });
+    };
+    selectWhenVisible();
+    const observer = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(selectWhenVisible);
+    observer?.observe(input);
+    return () => {
+      observer?.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [name]);
   return (
     <input
       ref={inputRef}
@@ -9671,7 +9690,8 @@ export const Sidebar = React.memo(function Sidebar({
                           type="button"
                           data-testid={`rail-section-row-${section.path}`}
                           className={cn(
-                            "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            "flex min-w-0 items-center gap-2 rounded-md px-2 text-left text-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            inlineSectionPath === section.path ? "shrink-0" : "flex-1",
                             compactDesktop ? scopedListDesktopRowClass : "min-h-11"
                           )}
                           onClick={() => {
@@ -9686,12 +9706,17 @@ export const Sidebar = React.memo(function Sidebar({
                             aria-hidden
                             data-testid={`rail-section-tab-${section.path}`}
                           />
-                          <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass, sectionActive ? "font-medium" : "font-normal")}>{section.name}</span>
+                          {inlineSectionPath !== section.path ? (
+                            <span className={cn("min-w-0 flex-1 truncate", scopedListTextClass, sectionActive ? "font-medium" : "font-normal")}>{section.name}</span>
+                          ) : null}
                           <CompanionThreadDot
                             status={lookupCompanionSidebarIndicator(companionIndicators, "section", section.path)}
                             testId={`companion-thread-dot-rail-section-${section.path}`}
                           />
                         </button>
+                        {inlineSectionPath === section.path ? (
+                          <InlineSectionName path={section.path} name={section.name} onCommit={onCommitSectionName} />
+                        ) : null}
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             className={railMenuTriggerClass}

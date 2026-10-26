@@ -5,7 +5,7 @@
 import "@testing-library/jest-dom";
 import * as React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { Sidebar, notebookHasRootPagesRow, sectionTabColor } from "@/components/notebook-shell-reliable";
+import { InlineSectionName, Sidebar, notebookHasRootPagesRow, sectionTabColor } from "@/components/notebook-shell-reliable";
 import type { VaultNotebook, VaultPage } from "@/lib/vault-contract";
 
 jest.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
@@ -107,6 +107,38 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
   };
   return { ...render(<Sidebar {...props} />), props };
 }
+
+describe("rename after create", () => {
+  it("renders the inline section input in the desktop notebook rail", () => {
+    renderSidebar({
+      sidebarLayout: "rail",
+      activeNotebookPath: "Work",
+      expandedNotebooks: new Set(["Work"]),
+      inlineSectionPath: "Work/Research",
+    });
+    const input = screen.getByRole("textbox", { name: "Section name" }) as HTMLInputElement;
+    expect(input).toHaveFocus();
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Research".length]);
+  });
+
+  it.each(["section", "page"] as const)("focuses and selects the new %s row after it mounts", (kind) => {
+    const onCommit = jest.fn().mockResolvedValue(undefined);
+    const name = kind === "section" ? "New Section" : "Untitled notebook";
+    const view = render(<div data-testid="creating" />);
+    view.rerender(<InlineSectionName path={`Work/${name}`} name={name} kind={kind} onCommit={onCommit} />);
+    const input = screen.getByRole("textbox", { name: kind === "section" ? "Section name" : "Page name" }) as HTMLInputElement;
+    expect(input).toHaveFocus();
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, name.length]);
+    fireEvent.change(input, { target: { value: "Chosen name" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCommit).toHaveBeenCalledWith(`Work/${name}`, "Chosen name");
+    onCommit.mockClear();
+    input.focus();
+    fireEvent.change(input, { target: { value: "Discard me" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onCommit).toHaveBeenCalledWith(`Work/${name}`, name);
+  });
+});
 
 describe("SN-352 sidebar context menus", () => {
   it("opens app actions on blank rail space and suppresses the browser menu", () => {

@@ -165,6 +165,10 @@ test("SN-352 blank-space New section and New page create the expected entities",
     const after = await fs.readdir(path.join(VAULT, notebookName));
     const created = after.find((name) => !before.has(name) && /^New Section/.test(name))!;
     createdSectionDirs.push(path.join(VAULT, notebookName, created));
+    const sectionInput = rail.getByRole("textbox", { name: "Section name" });
+    await expect(sectionInput).toBeFocused();
+    await expect.poll(() => sectionInput.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd]))
+      .toEqual([0, created.length]);
     // Leave inline rename without renaming.
     await page.keyboard.press("Escape");
 
@@ -192,6 +196,10 @@ test("SN-352 blank-space New section and New page create the expected entities",
       return fresh.length;
     }, { timeout: 10_000 }).toBe(1);
     await expect(page.getByRole("textbox", { name: "Page title" }).first()).toBeVisible();
+    const titleInput = page.getByRole("textbox", { name: "Page title" }).first();
+    await expect(titleInput).toBeFocused();
+    await expect.poll(() => titleInput.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd]))
+      .toEqual([0, "Untitled page".length]);
   } finally {
     for (const file of createdPageFiles) await fs.rm(file, { force: true });
     for (const dir of createdSectionDirs) await fs.rm(dir, { recursive: true, force: true });
