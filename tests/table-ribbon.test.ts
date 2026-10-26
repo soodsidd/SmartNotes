@@ -3,7 +3,10 @@ import { Editor } from "@tiptap/core";
 import { CellSelection } from "@tiptap/pm/tables";
 import { createEditorExtensions, setEditorHtmlSilent } from "@/lib/rich-text-editor-config";
 import {
+  activeColumnFilterTarget,
+  activeColumnFilters,
   alignCellsCommand,
+  clearAllColumnFiltersCommand,
   clearCellContentsCommand,
   compareCellText,
   computeSelectionStats,
@@ -139,6 +142,28 @@ describe("ribbon commands", () => {
     expect(exec(editor, filterHeaderColumnCommand(0, 1, "10"))).toBe(true);
     editor.view.dispatch(editor.state.tr.setNodeMarkup(0, undefined, { ...editor.state.doc.nodeAt(0)!.attrs, columnFilters: { 9: "x" } }));
     expect([...editor.view.dom.querySelectorAll("table tr")].filter((row) => (row as HTMLElement).style.display === "none")).toHaveLength(0);
+    editor.destroy();
+  });
+  test("SN-396: filtered headers stay marked, the caret column drives Filter, and Clear all restores rows", () => {
+    const editor = makeEditor();
+    const hidden = () => [...editor.view.dom.querySelectorAll("table tr")].filter((row) => (row as HTMLElement).style.display === "none").length;
+    const marked = () => [...editor.view.dom.querySelectorAll("th")].map((th) => th.getAttribute("data-filter-active") === "true");
+    caretIn(editor, 1, 1);
+    expect(activeColumnFilterTarget(editor.state)).toMatchObject({ tablePos: 0, column: 1, label: "Qty", values: ["2.5", "10", ""], current: undefined });
+    expect(exec(editor, clearAllColumnFiltersCommand)).toBe(false);
+    expect(marked()).toEqual([false, false]);
+    expect(exec(editor, filterHeaderColumnCommand(0, 1, "10"))).toBe(true);
+    expect(exec(editor, filterHeaderColumnCommand(0, 0, "pear"))).toBe(true);
+    expect(activeColumnFilters(editor.state.doc.nodeAt(0)!)).toEqual([[0, "pear"], [1, "10"]]);
+    expect(marked()).toEqual([true, true]);
+    expect(editor.view.dom.querySelectorAll("th")[1].getAttribute("title")).toBe("Filtered: 10");
+    expect(hidden()).toBe(2);
+    expect(activeColumnFilterTarget(editor.state)?.current).toBe("10");
+    roundTrip(editor);
+    expect(exec(editor, clearAllColumnFiltersCommand)).toBe(true);
+    expect(hidden()).toBe(0);
+    expect(marked()).toEqual([false, false]);
+    expect(editor.getHTML()).not.toContain("data-column-filters");
     editor.destroy();
   });
   test("Delete removes selected full columns or rows without changing retained cells", () => {

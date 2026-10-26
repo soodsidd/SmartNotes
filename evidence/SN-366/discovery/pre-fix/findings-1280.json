@@ -1,0 +1,10 @@
+[
+  {
+    "step": "A.context-menu promote item visible",
+    "observed": true
+  },
+  {
+    "step": "errors",
+    "observed": []
+  }
+]
