@@ -3,6 +3,7 @@
  */
 
 import { Editor } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
 import { createEditorExtensions } from "@/lib/rich-text-editor-config";
 
 function makeEditor(content = "<p></p>") {
@@ -63,6 +64,21 @@ describe("image layout extension (SN-59)", () => {
     expect(html).toMatch(/width="50%"/);
     expect(html).toContain('style="width: 50%; height: auto;"');
 
+    editor.destroy();
+  });
+
+  test("width and align presets keep the image selected (SN-391)", () => {
+    const editor = makeEditor("<p>before</p>");
+    editor.commands.setImage({ src: "/vault/nb/sec/page.assets/chart.png", alt: "chart" });
+    const imagePos = selectImage(editor);
+    for (const run of [() => editor.commands.setImageWidth("50%"), () => editor.commands.setImageAlign("center")]) {
+      expect(run()).toBe(true);
+      const { selection } = editor.state;
+      expect(selection).toBeInstanceOf(NodeSelection);
+      expect((selection as NodeSelection).node.type.name).toBe("image");
+      expect(selection.from).toBe(imagePos);
+    }
+    expect(editor.view.dom.querySelector(".ProseMirror-selectednode[data-node=\"image\"]")).not.toBeNull();
     editor.destroy();
   });
 

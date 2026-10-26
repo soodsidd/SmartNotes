@@ -1,0 +1,162 @@
+[
+  {
+    "probe": "P0 unselected images hide resize handles",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"Intro paragraph above the pictures.\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P1 tap image selects it with handles",
+    "ok": true,
+    "detail": "{\"selection\":\"node\",\"nodeName\":\"image\",\"parentText\":\"\",\"selectedNodes\":1,\"visibleHandles\":2,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P2 tap paragraph dismisses image and places caret",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"Middle paragraph between images.\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P2b typing after dismiss keeps all images",
+    "ok": true,
+    "detail": "3"
+  },
+  {
+    "probe": "P3 tap beside image edge does not start a resize",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"Middle paragraph between images. typed-after-dismiss\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P4 later swipe leaves image width unchanged",
+    "ok": true,
+    "detail": "{\"before\":142.09375,\"after\":142.09375}"
+  },
+  {
+    "probe": "P6a tap the right-hand image selects it",
+    "ok": true,
+    "detail": "{\"selection\":\"node\",\"nodeName\":\"image\",\"parentText\":\"\",\"selectedNodes\":1,\"visibleHandles\":2,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P15 toolbar for a right-hand image stays inside the viewport",
+    "ok": true,
+    "detail": "{\"menuLeft\":163.671875,\"menuRight\":297.765625,\"viewport\":430,\"scrollWidth\":430}"
+  },
+  {
+    "probe": "P16 tap neighbouring image selects it",
+    "ok": true,
+    "detail": "{\"selection\":\"node\",\"nodeName\":\"image\",\"parentText\":\"\",\"selectedNodes\":1,\"visibleHandles\":2,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P16b the tapped neighbour is the selected one",
+    "ok": true,
+    "detail": "1"
+  },
+  {
+    "probe": "P6 tap below last image places a flow caret",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P6b typing after tap-below lands after the last image",
+    "ok": true,
+    "detail": "below"
+  },
+  {
+    "probe": "P5 tap beside last image places caret in its line",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"below\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P5b typing lands after the image row",
+    "ok": true,
+    "detail": "belowafter-row"
+  },
+  {
+    "probe": "P7 tap the gap between images places a caret",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"belowafter-row\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P7b text inserted between the two images",
+    "ok": true,
+    "detail": "IMG|MID|IMG|belowafter-row"
+  },
+  {
+    "probe": "P8 tap above image places caret there",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"Intro paragraph above the pictures.\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P9a tap after a line places caret at its end",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"Middle paragraph between images. typed-after-dismiss\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P9 empty paragraph exists",
+    "ok": true,
+    "detail": "{\"x\":42,\"y\":497.984375}"
+  },
+  {
+    "probe": "P9b tap empty paragraph places caret",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P10 double-tap text stays a text selection",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"Middle paragraph between images. typed-after-dismiss\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P11a a text line is visible after scrolling",
+    "ok": true,
+    "detail": "{\"x\":32,\"y\":260.09375,\"text\":\"Middle parag\"}"
+  },
+  {
+    "probe": "P11 scroll then tap places caret in the tapped line",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"Middle paragraph between images. typed-after-dismiss\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P11b scrolling resizes no image",
+    "ok": true,
+    "detail": "{\"widthsBefore\":[400.40625,142.09375,142.09375],\"widthsAfter\":[400.40625,142.09375,142.09375]}"
+  },
+  {
+    "probe": "P12a tap image selects it for resizing",
+    "ok": true,
+    "detail": "{\"selection\":\"node\",\"nodeName\":\"image\",\"parentText\":\"\",\"selectedNodes\":1,\"visibleHandles\":2,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P12 selected image exposes a right handle",
+    "ok": true,
+    "detail": "{\"handle\":{\"x\":402.40625,\"y\":226.390625,\"width\":10,\"height\":10},\"selectedForResize\":{\"selection\":\"node\",\"nodeName\":\"image\",\"parentText\":\"\",\"selectedNodes\":1,\"visibleHandles\":2,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true},\"editable\":true,\"handlesInDom\":6}"
+  },
+  {
+    "probe": "P12b touch resize ends (not stuck resizing)",
+    "ok": true,
+    "detail": "{\"selection\":\"node\",\"nodeName\":\"image\",\"parentText\":\"\",\"selectedNodes\":1,\"visibleHandles\":2,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P12d resized image stays selected with handles",
+    "ok": true,
+    "detail": "{\"selection\":\"node\",\"nodeName\":\"image\",\"parentText\":\"\",\"selectedNodes\":1,\"visibleHandles\":2,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P12c later swipe does not keep resizing",
+    "ok": true,
+    "detail": "{\"resized\":280,\"after\":280}"
+  },
+  {
+    "probe": "P13a tap text after resize places caret",
+    "ok": true,
+    "detail": "{\"selection\":\"text\",\"nodeName\":null,\"parentText\":\"Intro paragraph above the pictures.\",\"selectedNodes\":0,\"visibleHandles\":0,\"resizing\":0,\"floatingBoxes\":0,\"focused\":true}"
+  },
+  {
+    "probe": "P13 type after resize keeps image",
+    "ok": true,
+    "detail": "3"
+  },
+  {
+    "probe": "P14 Backspace deletes the selected image",
+    "ok": true,
+    "detail": "2"
+  }
+]

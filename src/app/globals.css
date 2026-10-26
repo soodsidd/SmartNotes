@@ -1388,6 +1388,26 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
   touch-action: none;
 }
 
+/* SN-391: handles are selection chrome. On an unselected image they would
+   swallow taps at its edges (and start a touch resize) instead of letting the
+   tap place a text caret, so they only exist while the image is selected. */
+[data-resize-container][data-node="image"]:not(.ProseMirror-selectednode) [data-resize-handle] {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  /* Invisible 44px touch target around the 10px visual handle. */
+  [data-resize-container][data-node="image"] [data-resize-handle]::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+
 [data-resize-container][data-node="image"] [data-resize-handle="right"] {
   top: 50%;
   right: -5px;

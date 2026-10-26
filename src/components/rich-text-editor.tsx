@@ -247,6 +247,37 @@ interface HeadingChevronControl extends CollapsibleHeadingSection {
 }
 
 const HEADING_COLLAPSE_ANIMATION_MS = 180;
+/** Design-system phone touch target; finger taps this close count as "on" a block. */
+const TOUCH_TARGET_PX = 44;
+/**
+ * SN-391: on touch, a phone-wide image toolbar floating 8px outside the picture
+ * covered the text line above it and neighbouring images, so a tap meant for
+ * them pressed a toolbar button and the image stayed selected (the next
+ * keystroke replaced it). On coarse pointers the toolbar is capped to the
+ * picture's width (it already scrolls horizontally) and pulled inside the
+ * picture's top edge when it covers at most half the picture. Desktop keeps the stock
+ * 8px gap; `shift` keeps any toolbar inside the viewport.
+ */
+function isCoarsePointer() {
+  return typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+}
+type FloatingRects = { reference: { width: number; height: number }; floating: { height: number } };
+const IMAGE_BUBBLE_OPTIONS = {
+  shift: { padding: 8 },
+  offset: ({ rects }: { rects: FloatingRects }) => {
+    const inset = rects.floating.height + 8;
+    return isCoarsePointer() && rects.reference.height >= 2 * inset ? -inset : 8;
+  },
+  size: {
+    apply: ({ rects, elements }: { rects: FloatingRects; elements: { floating: HTMLElement } }) => {
+      const toolbar = elements.floating.firstElementChild as HTMLElement | null;
+      if (!toolbar) return;
+      toolbar.style.maxWidth = isCoarsePointer()
+        ? `${Math.max(rects.reference.width - 8, 2 * TOUCH_TARGET_PX + 16)}px`
+        : "";
+    },
+  },
+};
 const DISABLED_HEADING_TOOLTIP = "Ink marks present - collapse unavailable";
 const MOBILE_EDITOR_FRAME_PADDING = "px-3 pb-8 pt-3 md:px-8 md:pb-10 md:pt-4 xl:px-6 xl:pb-8 xl:pt-3";
 /** Fixed viewport height used for headless ink capture (SN-122) to avoid the
@@ -433,6 +464,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     // A drag that starts inside a floating box (e.g. image resize) and is released
     // on the canvas fires click on a common ancestor; it must not create a box.
     const pressStartedInFloatingBoxRef = React.useRef(false);
+    const lastPressPointerTypeRef = React.useRef("");
     const lastEmittedRef = React.useRef(content);
     const [linkDialog, setLinkDialog] = React.useState<{ open: boolean; href: string }>({
       open: false,
@@ -704,6 +736,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     }
 
     function handleEditorPointerDownCapture(e: React.PointerEvent) {
+      lastPressPointerTypeRef.current = e.pointerType;
       pressStartedInFloatingBoxRef.current =
         e.target instanceof Element && Boolean(e.target.closest('[data-type="floating-text-box"]'));
       if (readOnly || isDrawMode) return;
@@ -734,9 +767,20 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         const clickedEmpty = e.target === proseMirror || e.target === contentSizerRef.current ||
           e.target === scrollAreaRef.current || e.target === e.currentTarget ||
           Boolean(flowBlock?.parentElement === proseMirror && e.clientX > textRight + 20);
+        const lastFlowBottom = lastFlow?.getBoundingClientRect().bottom ?? rect.top;
+        // SN-391: a block ending in an image has no text line to tap, so a finger
+        // landing just under it means "type after the picture", not "new box".
+        if (clickedEmpty && lastFlow && lastPressPointerTypeRef.current === "touch" &&
+            e.clientX <= mainFlowRight + 8 && e.clientY > lastFlowBottom &&
+            e.clientY <= lastFlowBottom + TOUCH_TARGET_PX) {
+          const $inside = editor.state.doc.resolve(editor.view.posAtDOM(lastFlow, 0));
+          if ($inside.parent.isTextblock && $inside.parent.lastChild?.type.name === "image") {
+            editor.chain().focus().setTextSelection($inside.end()).run();
+            return;
+          }
+        }
         // Empty canvas beside or beneath the main flow creates a OneNote-style box.
-        if (clickedEmpty && (e.clientX > mainFlowRight + 8 ||
-            e.clientY > (lastFlow?.getBoundingClientRect().bottom ?? rect.top) + 20)) {
+        if (clickedEmpty && (e.clientX > mainFlowRight + 8 || e.clientY > lastFlowBottom + 20)) {
           insertFloatingBox(Math.max(0, (e.clientX - rect.left) / scale),
             Math.max(0, (e.clientY - rect.top) / scale));
           return;
@@ -2711,6 +2755,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             editor={editor}
             updateDelay={100}
             className="bubble-menu"
+            options={IMAGE_BUBBLE_OPTIONS}
             shouldShow={({ editor: ed }) => ed.isActive("image")}
           >
             <div className="bubble-toolbar" data-testid="image-bubble-menu">

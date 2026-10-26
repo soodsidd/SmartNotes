@@ -1,5 +1,6 @@
 import Image from "@tiptap/extension-image";
-import { mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, type CommandProps } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
 
 export type ImageAlign = "left" | "center" | "right";
 
@@ -23,6 +24,24 @@ function normalizeWidth(value: unknown): string | null {
   if (/^\d+(\.\d+)?%$/.test(raw)) return raw;
   if (/^\d+(\.\d+)?px$/.test(raw)) return raw;
   return null;
+}
+
+/**
+ * Updating a leaf image's attributes replaces the node, which maps a
+ * NodeSelection on it to a text caret. Re-select it so the toolbar and resize
+ * handles (shown only on the selected image, SN-391) stay put after a change.
+ */
+function updateKeepingSelection(
+  { commands, state }: CommandProps,
+  name: string,
+  attributes: Record<string, unknown>
+) {
+  const { selection } = state;
+  const selected =
+    selection instanceof NodeSelection && selection.node.type.name === name ? selection.from : null;
+  if (!commands.updateAttributes(name, attributes)) return false;
+  if (selected !== null) commands.setNodeSelection(selected);
+  return true;
 }
 
 export const ImageLayout = Image.extend({
@@ -70,12 +89,12 @@ export const ImageLayout = Image.extend({
       ...this.parent?.(),
       setImageAlign:
         (align) =>
-        ({ commands }) =>
-          commands.updateAttributes(this.name, { align }),
+        (props) =>
+          updateKeepingSelection(props, this.name, { align }),
       setImageWidth:
         (width) =>
-        ({ commands }) =>
-          commands.updateAttributes(this.name, { width: normalizeWidth(width) }),
+        (props) =>
+          updateKeepingSelection(props, this.name, { width: normalizeWidth(width) }),
     };
   },
 
@@ -122,6 +141,49 @@ export const ImageLayout = Image.extend({
           });
         }
       }
+      // SN-391: TipTap's resize view only finishes a drag on `mouseup`. A touch
+      // drag never produces one (the handle's touchstart is preventDefault-ed),
+      // so the resize never committed and its document `touchmove` listener kept
+      // resizing the image on every later swipe. End touch drags explicitly.
+      const resizable = nodeView as unknown as {
+        isResizing: boolean;
+        handleMouseUp: () => void;
+        handleTouchMove: (event: TouchEvent) => void;
+        onCommit: (width: number, height: number) => void;
+      };
+      // The stock commit selects the image and then updates its attributes,
+      // but replacing a leaf node maps that NodeSelection to a text caret. With
+      // handles shown only on the selected image (SN-391) they would vanish
+      // after every drag, so re-select the image at its unchanged position.
+      const commit = resizable.onCommit;
+      resizable.onCommit = (width, height) => {
+        const pos = typeof props.getPos === "function" ? props.getPos() : undefined;
+        commit(width, height);
+        if (typeof pos === "number") props.editor.commands.setNodeSelection(pos);
+      };
+      const endTouchResize = () => {
+        document.removeEventListener("touchend", endTouchResize);
+        document.removeEventListener("touchcancel", endTouchResize);
+        document.removeEventListener("touchmove", resizable.handleTouchMove);
+        if (resizable.isResizing) resizable.handleMouseUp();
+      };
+      // Listen on the container: handles are recreated when editability toggles.
+      (nodeView.dom as HTMLElement).addEventListener(
+        "touchstart",
+        (event) => {
+          if (!(event.target instanceof Element) || !event.target.closest("[data-resize-handle]")) return;
+          document.addEventListener("touchend", endTouchResize);
+          document.addEventListener("touchcancel", endTouchResize);
+        },
+        { capture: true }
+      );
+      const originalDestroy = nodeView.destroy?.bind(nodeView);
+      nodeView.destroy = () => {
+        document.removeEventListener("touchend", endTouchResize);
+        document.removeEventListener("touchcancel", endTouchResize);
+        document.removeEventListener("touchmove", resizable.handleTouchMove);
+        originalDestroy?.();
+      };
       const originalUpdate = nodeView.update.bind(nodeView);
 
       nodeView.update = (updatedNode, decorations, innerDecorations) => {
