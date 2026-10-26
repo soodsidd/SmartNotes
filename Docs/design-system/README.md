@@ -190,6 +190,14 @@ with the same `--surface` fill and `--border` outline as the corner handle and a
 `ew-resize` cursor. Both resize handles show a `--ring` focus outline. No new
 token was introduced.
 
+SN-314 makes the box chrome OneNote-style: the 1px `--border` outline is
+transparent at rest and on hover and shows only while the selection is inside the
+box (caret, text range or selected image). The corner handle is gone; the
+right-edge width tab is the only resize. Height is never fixed: the box hugs its
+text and images inside the existing 7px/9px padding. Image containers in a box
+are capped at `calc(100% - 0.35rem)`, reusing the existing 0.35rem image margin.
+Exported pages draw the box border transparent. No new token was introduced.
+
 SN-318 gives the main editor flow frame (the bordered column) the same
 right-edge, width-only affordance. A full-height 12px hit strip carries the same
 8×16px `--surface` / `--border` grip. The grip is sticky, so it stays in view on
