@@ -17,6 +17,33 @@ function editor(content = "<p>Main flow</p>") {
 }
 
 describe("floating text boxes", () => {
+  test("chrome follows the caret inside its own content, not hover or another selection", async () => {
+    const instance = editor('<p>Main</p><div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Box</p></div></div>');
+    document.body.append(instance.view.dom);
+    const box = instance.view.dom.querySelector<HTMLElement>(".floating-text-box")!;
+    const content = box.querySelector<HTMLElement>(".floating-text-box__content")!;
+    let boxPos = -1;
+    instance.state.doc.descendants((node, pos) => {
+      if (node.type.name === "floatingTextBox") boxPos = pos;
+    });
+    expect(box.dataset.editing).toBe("false");
+    box.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    expect(box.dataset.editing).toBe("false");
+    instance.commands.setTextSelection(boxPos + 2);
+    instance.view.focus();
+    expect(box.dataset.editing).toBe("true");
+    expect(content.contains(instance.view.domAtPos(instance.state.selection.from).node)).toBe(true);
+    instance.commands.setTextSelection(1);
+    expect(box.dataset.editing).toBe("false");
+    instance.commands.setTextSelection(boxPos + 2);
+    expect(box.dataset.editing).toBe("true");
+    instance.view.dom.blur();
+    await Promise.resolve();
+    expect(box.dataset.editing).toBe("false");
+    instance.view.dom.remove();
+    instance.destroy();
+  });
+
   test("main flow selection stays distinct from floating box content and node selection", () => {
     const instance = editor('<p>Main</p><div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Box</p></div></div>');
     let boxPos = -1;

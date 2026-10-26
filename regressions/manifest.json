@@ -5502,6 +5502,28 @@
       "addedBy": "SN-305",
       "addedAt": "2026-10-14",
       "sourceFiles": [{ "path": "e2e/sn-305-recipes.spec.ts" }, { "path": "src/components/notebook-shell-reliable.tsx Updated 2026-10-25 (SN-381): added tests/jupyter-cell-run-live-bridge.test.ts (real bridge source in jsdom against a fake Lab notebook) and extended deep-work-cell-run and deep-work-companion-refresh for persistence, conflict, and run routing; no E2E added." }]
+    },
+    {
+      "id": "e2e-sn-385-floating-box-chrome",
+      "name": "SN-385 floating text box editing chrome",
+      "description": "Desktop Playwright check and idle/editing screenshots for floating box border, controls, hover and click-away behavior.",
+      "intent": "Keeps floating text boxes visually quiet unless their content is being edited.",
+      "whenToRun": "Pre-merge when changing floating text box selection or chrome visibility.",
+      "failureMeaning": "The box border or controls may appear at rest, fail to appear while editing, or remain after click-away.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-385-floating-box-chrome.spec.ts --project=desktop --workers=1 --retries=0",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "editor", "floating-text-box", "targeted"],
+      "feature": "editor",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-385",
+      "addedAt": "2026-10-25",
+      "sourceFiles": [{ "path": "e2e/sn-385-floating-box-chrome.spec.ts" }]
     }
   ]
 }

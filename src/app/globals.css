@@ -529,22 +529,26 @@ body.page-print-active .editor-main-flow-outline { visibility: visible; }
   position: absolute;
   z-index: 20;
   box-sizing: border-box;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   background: var(--surface);
   padding: 7px 9px;
   overflow: visible;
 }
+.editor-content .floating-text-box[data-editing="true"],
+.editor-content .floating-text-box[data-interacting="true"] { border-color: var(--border); }
 .floating-text-box__controls {
   position: absolute;
   left: -1px;
   bottom: 100%;
-  display: flex;
+  display: none;
   border: 1px solid var(--border);
   border-bottom: 0;
   background: var(--surface);
   font-size: 11px;
   line-height: 18px;
 }
+.floating-text-box[data-editing="true"] .floating-text-box__controls,
+.floating-text-box[data-interacting="true"] .floating-text-box__controls { display: flex; }
 .floating-text-box__controls button {
   border: 0;
   background: transparent;
@@ -580,6 +584,12 @@ body.page-print-active .editor-main-flow-outline { visibility: visible; }
   cursor: ew-resize;
   touch-action: none;
 }
+.floating-text-box__resize,
+.floating-text-box__resize-width { display: none; }
+.floating-text-box[data-editing="true"] .floating-text-box__resize,
+.floating-text-box[data-editing="true"] .floating-text-box__resize-width,
+.floating-text-box[data-interacting="true"] .floating-text-box__resize,
+.floating-text-box[data-interacting="true"] .floating-text-box__resize-width { display: block; }
 .floating-text-box__resize:focus-visible,
 .floating-text-box__resize-width:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .floating-text-box__content { overflow-wrap: anywhere; }

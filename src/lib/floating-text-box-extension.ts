@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import type { NodeView } from "@tiptap/pm/view";
 import {
   FLOATING_BOX_DEFAULT_HEIGHT,
@@ -83,6 +84,25 @@ export const FloatingTextBox = Node.create({
       resizeWidth.dataset.testid = "floating-text-box-resize-width";
       dom.append(controls, contentDOM, resizeWidth, resize);
 
+      // The content is inside ProseMirror's focused root, so :focus-within on
+      // contentDOM cannot tell which box owns the caret.
+      function syncEditingChrome() {
+        const pos = getPos();
+        const selection = editor.state.selection;
+        const caretInside = editor.isFocused && typeof pos === "number" &&
+          selection instanceof TextSelection &&
+          selection.from > pos && selection.to < pos + current.nodeSize;
+        const chromeFocused = dom.dataset.editing === "true" &&
+          (controls.contains(document.activeElement) || document.activeElement === resize || document.activeElement === resizeWidth);
+        dom.dataset.editing = caretInside || chromeFocused ? "true" : "false";
+      }
+      const syncAfterBlur = () => queueMicrotask(syncEditingChrome);
+      editor.on("selectionUpdate", syncEditingChrome);
+      editor.on("focus", syncEditingChrome);
+      editor.on("blur", syncAfterBlur);
+      dom.addEventListener("focusin", syncEditingChrome);
+      dom.addEventListener("focusout", syncAfterBlur);
+
       function geometry(): FloatingBoxGeometry {
         return normalizeFloatingBoxGeometry(current.attrs as FloatingBoxGeometry);
       }
@@ -134,6 +154,7 @@ export const FloatingTextBox = Node.create({
           event.preventDefault();
           event.stopPropagation();
           handle.focus();
+          dom.dataset.interacting = "true";
           const start = geometry();
           const originX = event.clientX;
           const originY = event.clientY;
@@ -148,6 +169,8 @@ export const FloatingTextBox = Node.create({
             handle.removeEventListener("pointermove", onMove);
             handle.removeEventListener("pointerup", onEnd);
             handle.removeEventListener("pointercancel", onEnd);
+            delete dom.dataset.interacting;
+            syncEditingChrome();
           };
           handle.addEventListener("pointermove", onMove);
           handle.addEventListener("pointerup", onEnd);
@@ -182,15 +205,22 @@ export const FloatingTextBox = Node.create({
         editor.view.dispatch(editor.state.tr.delete(pos, pos + current.nodeSize));
       });
       paint();
+      syncEditingChrome();
       return {
         dom, contentDOM,
         update(next) {
           if (next.type !== current.type) return false;
           current = next;
           paint();
+          syncEditingChrome();
           return true;
         },
-        destroy() { resizeObserver?.disconnect(); },
+        destroy() {
+          resizeObserver?.disconnect();
+          editor.off("selectionUpdate", syncEditingChrome);
+          editor.off("focus", syncEditingChrome);
+          editor.off("blur", syncAfterBlur);
+        },
         stopEvent(event) { return (event.target instanceof globalThis.Node && controls.contains(event.target)) || event.target === resize || event.target === resizeWidth; },
         ignoreMutation(mutation) { return mutation.type === "attributes" && mutation.target === dom; },
       };
