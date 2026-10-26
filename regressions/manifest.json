@@ -6090,6 +6090,32 @@
           "path": "e2e/sn-382-notebook-open.spec.ts"
         }
       ]
+    },
+    {
+      "id": "e2e-sn-397-table-row-highlighting",
+      "name": "SN-397 table row highlighting persists",
+      "description": "Playwright desktop and mobile apply, clear, and reload a light shade and two color schemes on rich-text table rows.",
+      "intent": "Keeps row highlight controls and saved table HTML working across editor reloads.",
+      "whenToRun": "Pre-merge when changing table row highlighting or table HTML persistence.",
+      "failureMeaning": "A selected row may lose its highlight, fail to clear, or fail to reload.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-397-table-row-highlighting.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
+      "timeoutMs": 420000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "editor", "table", "row-highlight", "targeted"],
+      "feature": "editor",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-397",
+      "addedAt": "2026-10-26",
+      "sourceFiles": [
+        { "path": "e2e/sn-397-table-row-highlighting.spec.ts" },
+        { "path": "src/lib/table-ribbon.ts" },
+        { "path": "src/components/table-ribbon.tsx" }
+      ]
     }
   ]
 }

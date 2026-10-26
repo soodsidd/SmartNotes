@@ -939,6 +939,19 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
   font-size: inherit;
   letter-spacing: 0.03em;
 }
+/* SN-397: row schemes live on <tr> so sorting moves the color with the row. */
+.editor-content tr[data-row-highlight="shade"] > :is(th, td) {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.editor-content tr[data-row-highlight="accent"] > :is(th, td) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  color: var(--foreground);
+}
+.editor-content tr[data-row-highlight="inverse"] > :is(th, td) {
+  background: var(--foreground);
+  color: var(--background);
+}
 .editor-content .tableWrapper .activeCell {
   position: relative;
   box-shadow: inset 0 0 0 2px var(--accent);

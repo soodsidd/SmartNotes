@@ -21,6 +21,7 @@ import {
   selectCellsCommand,
   selectionMatrix,
   selectionStatsForState,
+  setRowHighlightCommand,
   setTableModeCommand,
   sortTableCommand,
   sortHeaderColumnCommand,
@@ -122,6 +123,40 @@ describe("selection stats", () => {
 });
 
 describe("ribbon commands", () => {
+  test("row highlights apply to touched rows, survive HTML reload and sorting, and clear without changing cell formatting", () => {
+    const editor = makeEditor();
+    selectRange(editor, [1, 0], [2, 1]);
+    expect(exec(editor, alignCellsCommand("right"))).toBe(true);
+    expect(exec(editor, setRowHighlightCommand("shade"))).toBe(true);
+    expect(editor.getHTML().match(/data-row-highlight="shade"/g)).toHaveLength(2);
+    expect(setRowHighlightCommand("shade")(editor.state, undefined)).toBe(false);
+    roundTrip(editor);
+    expect(exec(editor, setRowHighlightCommand("accent"))).toBe(true);
+    expect(editor.getHTML().match(/data-row-highlight="accent"/g)).toHaveLength(2);
+    roundTrip(editor);
+    caretIn(editor, 1, 0);
+    expect(exec(editor, sortTableCommand("asc"))).toBe(true);
+    const rows = editor.state.doc.nodeAt(0)!;
+    expect([...Array(rows.childCount)].map((_, i) => [rows.child(i).firstChild?.textContent, rows.child(i).attrs.rowHighlight])).toEqual([
+      ["Name", null], ["apple", "accent"], ["fig", null], ["pear", "accent"],
+    ]);
+    expect(editor.getHTML().match(/data-align="right"/g)).toHaveLength(4);
+    caretIn(editor, 1, 0);
+    expect(exec(editor, filterHeaderColumnCommand(0, 0, "apple"))).toBe(true);
+    expect([...editor.view.dom.querySelectorAll("tr")].filter((row) => (row as HTMLElement).style.display === "none")).toHaveLength(2);
+    expect(exec(editor, filterHeaderColumnCommand(0, 0, null))).toBe(true);
+    expect(exec(editor, resizeColumnsCommand(40))).toBe(true);
+    expect(editor.getHTML()).toContain('data-row-highlight="accent"');
+    expect(exec(editor, setRowHighlightCommand("inverse"))).toBe(true);
+    expect(editor.getHTML()).toContain('data-row-highlight="inverse"');
+    selectRange(editor, [1, 0], [3, 1]);
+    expect(exec(editor, setRowHighlightCommand(null))).toBe(true);
+    expect(editor.getHTML()).not.toContain("data-row-highlight");
+    expect(setRowHighlightCommand(null)(editor.state, undefined)).toBe(false);
+    roundTrip(editor);
+    editor.destroy();
+  });
+
   test("header controls sort body rows and filter exact column values across HTML reload", () => {
     const editor = makeEditor();
     const table = editor.state.doc.nodeAt(0)!;

@@ -119,6 +119,14 @@ Bullet, numbered, and checklist markers live in `.editor-content` CSS (`src/app/
 
 ## Table ribbon and selection stats (SN-278)
 
+Row highlighting (SN-397) uses the existing Rows menu spacing, typography,
+focus ring, and 44px mobile targets. Saved `data-row-highlight` values select
+three documented token pairs on every cell in the row: Light shade uses
+`--muted` / `--foreground`; Accent scheme uses an 18% `--accent` mix over
+`--surface` / `--foreground`; Inverse scheme uses `--foreground` /
+`--background`. The same token pairs style standalone page exports. No new
+colors, spacing, or typography values were added.
+
 Fork photo #16 shows a bordered ribbon card under the format bar. It reuses
 `--surface`, `--border`, `--radius-md` (card), `--radius-sm` (tabs and pills),
 `--secondary` (hover), `--secondary-foreground` (labels and the stats line),
