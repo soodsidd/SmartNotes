@@ -176,6 +176,12 @@ describe("jupyter runtime — pure helpers (SN-101)", () => {
           serverSettings: {
             "pylsp.plugins.jedi_completion.include_params": true,
             "pylsp.plugins.jedi_signature_help.enabled": true,
+            "pylsp.plugins.jedi_hover.enabled": true,
+            "pylsp.plugins.rope_rename.enabled": true,
+            "pylsp.plugins.autopep8.enabled": true,
+            "pylsp.plugins.pycodestyle.enabled": false,
+            "pylsp.plugins.pyflakes.enabled": false,
+            "pylsp.plugins.mccabe.enabled": false,
           },
         },
       },
@@ -216,12 +222,24 @@ describe("jupyter runtime — pure helpers (SN-101)", () => {
 
     // Curated values are defaults, not a launch-time policy: owner changes and
     // unrelated settings survive later workspace starts.
+    const lspPath = path.join(settingsDir, "@jupyter-lsp", "jupyterlab-lsp", "plugin.jupyterlab-settings");
+    await fs.writeFile(lspPath, JSON.stringify({
+      language_servers: { pylsp: { serverSettings: { "pylsp.plugins.pycodestyle.enabled": true } } },
+    }), "utf8");
     await fs.writeFile(editorPath, JSON.stringify({
       editorConfig: { fontSize: 16, lineNumbers: false },
       scrollPastEnd: false,
       toolbar: [{ name: "owner-command", command: "docmanager:save" }],
     }), "utf8");
     await __testInternals.writeLabUserSettings(settingsDir);
+    expect(JSON.parse(await fs.readFile(lspPath, "utf8"))).toMatchObject({
+      language_servers: { pylsp: { serverSettings: {
+        "pylsp.plugins.pycodestyle.enabled": true,
+        "pylsp.plugins.pyflakes.enabled": false,
+        "pylsp.plugins.mccabe.enabled": false,
+        "pylsp.plugins.jedi_completion.enabled": true,
+      } } },
+    });
     expect(JSON.parse(await fs.readFile(editorPath, "utf8"))).toMatchObject({
       editorConfig: {
         fontSize: 16,
