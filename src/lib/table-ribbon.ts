@@ -109,6 +109,8 @@ export function compareCellText(a: string, b: string): number {
 // ── Table context ───────────────────────────────────────────────────────────
 
 export type TableModeAttr = "gridMode" | "dataMode" | "expanded";
+export type RowHighlight = "shade" | "accent" | "inverse";
+export const ROW_HIGHLIGHTS: RowHighlight[] = ["shade", "accent", "inverse"];
 export const TABLE_MODE_ATTRS: Record<TableModeAttr, string> = {
   gridMode: "data-grid-mode",
   dataMode: "data-data-mode",
@@ -301,6 +303,23 @@ export function moveRowCommand(delta: -1 | 1) {
     const to = from + delta;
     if (context.rect.bottom - context.rect.top !== 1 || to < 0 || to >= context.map.height) return false;
     return moveTableRow({ from, to, select: false })(state, dispatch);
+  };
+}
+
+/** Apply one scheme to every row touched by the current cell selection. */
+export function setRowHighlightCommand(highlight: RowHighlight | null) {
+  return (state: EditorState, dispatch: Dispatch): boolean => {
+    const context = getTableContext(state);
+    if (!context) return false;
+    const tr = state.tr;
+    let changed = false;
+    context.table.forEach((row, offset, index) => {
+      if (index < context.rect.top || index >= context.rect.bottom || row.attrs.rowHighlight === highlight) return;
+      tr.setNodeMarkup(context.tableStart + offset, undefined, { ...row.attrs, rowHighlight: highlight });
+      changed = true;
+    });
+    if (changed && dispatch) dispatch(tr);
+    return changed;
   };
 }
 
@@ -687,6 +706,16 @@ export const TableRibbonSupport = Extension.create({
             },
             renderHTML: (attributes: Record<string, unknown>) => attributes.rowHeight
               ? { "data-row-height": String(attributes.rowHeight), style: `height: ${attributes.rowHeight}px` } : {},
+          },
+          rowHighlight: {
+            default: null,
+            parseHTML: (element: HTMLElement) => {
+              const value = element.getAttribute("data-row-highlight");
+              return ROW_HIGHLIGHTS.find((highlight) => highlight === value) ?? null;
+            },
+            renderHTML: (attributes: Record<string, unknown>) =>
+              ROW_HIGHLIGHTS.includes(attributes.rowHighlight as RowHighlight)
+                ? { "data-row-highlight": attributes.rowHighlight } : {},
           },
         },
       },

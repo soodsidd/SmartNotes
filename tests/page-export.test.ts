@@ -132,4 +132,15 @@ describe("page-export", () => {
     expect(bundle).toContain('style="min-height:640px"');
     expect(bundle).toContain("<svg");
   });
+
+  test("standalone HTML keeps token-based row highlight schemes", () => {
+    const bundle = buildStandaloneHtmlBundle({
+      title: "Table",
+      bodyHtml: '<table><tbody><tr data-row-highlight="accent"><td>apple</td></tr></tbody></table>',
+      frameHeight: 400,
+    });
+    expect(bundle).toContain('tr data-row-highlight="accent"');
+    expect(bundle).toContain('.editor-content tr[data-row-highlight="accent"]');
+    expect(bundle).toContain('background: color-mix(in srgb, var(--accent) 18%, var(--surface))');
+  });
 });
