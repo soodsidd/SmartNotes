@@ -292,18 +292,34 @@ export function validateWorkspaceNotebookDocument(notebook: unknown): void {
 async function resolveCreateTarget(
   request: ProjectWorkspaceRequest,
   relativeValue: unknown
-): Promise<{ workspace: ResolvedProjectWorkspace; relativePath: string; absolutePath: string }> {
+): Promise<{
+  workspace: ResolvedProjectWorkspace;
+  relativePath: string;
+  absolutePath: string;
+  missingDirectories: string[];
+}> {
   const resolved = await resolveWorkspacePath(request, relativeValue);
   if (resolved.workspace.accessMode !== "editable") {
     throw new VaultError("WORKSPACE_READ_ONLY", "This workspace is read-only.", 403);
   }
   const segments = resolved.relativePath.split("/");
   let parent = resolved.workspace.realRoot;
+  let existingParent = parent;
+  // SN-387: missing parent directories are created (after source validation)
+  // so a module can start a new subpackage. Every segment has already passed
+  // the workspace path policy; existing segments must still be real
+  // directories, never symlinks or junctions.
+  const missingDirectories: string[] = [];
   for (const segment of segments.slice(0, -1)) {
     parent = path.join(parent, segment);
+    if (missingDirectories.length > 0) {
+      missingDirectories.push(parent);
+      continue;
+    }
     const stat = await fs.lstat(parent).catch(() => null);
     if (!stat) {
-      throw new VaultError("WORKSPACE_PARENT_MISSING", "The destination directory does not exist.", 404);
+      missingDirectories.push(parent);
+      continue;
     }
     if (stat.isSymbolicLink()) {
       throw new VaultError("WORKSPACE_SYMLINK_ESCAPE", "Workspace source tools do not follow symlinks.", 403);
@@ -311,13 +327,28 @@ async function resolveCreateTarget(
     if (!stat.isDirectory()) {
       throw new VaultError("WORKSPACE_PARENT_NOT_DIRECTORY", "The destination parent is not a directory.");
     }
+    existingParent = parent;
   }
-  const realParent = await fs.realpath(parent);
+  const realParent = await fs.realpath(existingParent);
   const parentCheck = path.relative(resolved.workspace.realRoot, realParent);
   if (parentCheck.startsWith("..") || path.isAbsolute(parentCheck)) {
     throw new VaultError("WORKSPACE_SYMLINK_ESCAPE", "Workspace source tools do not follow paths outside the root.", 403);
   }
-  return resolved;
+  return { ...resolved, missingDirectories };
+}
+
+async function createMissingDirectories(directories: string[]): Promise<void> {
+  for (const directory of directories) {
+    try {
+      await fs.mkdir(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const stat = await fs.lstat(directory);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new VaultError("WORKSPACE_PARENT_NOT_DIRECTORY", "The destination parent is not a directory.");
+    }
+  }
 }
 
 /**
@@ -344,6 +375,7 @@ export async function createWorkspaceSource(
 ): Promise<WorkspaceSourceRead> {
   const resolved = await resolveCreateTarget(request, relativePath);
   const bytes = validateCreateSource(resolved.relativePath, source);
+  await createMissingDirectories(resolved.missingDirectories);
 
   const created = await withFileMutation(resolved.absolutePath, async () => {
     const existing = await fs.lstat(resolved.absolutePath).catch((error: NodeJS.ErrnoException) => {

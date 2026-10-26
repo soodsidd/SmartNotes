@@ -48,6 +48,7 @@ import {
   reorderNotebookCell,
   requireCellType,
 } from "./jupyter-notebook";
+import { readJupyterPageFile, writeJupyterPageFile } from "./jupyter-files";
 import { CELL_RUN_NOTE_MAX_CHARS, runJupyterCell } from "@/server/jupyter/cell-run";
 import { registerCellRunWake } from "@/server/jupyter/cell-run-wake";
 import { getAppTemplate, listAppTemplates, APP_TEMPLATE_CATALOG_VERSION } from "./app-templates";
@@ -1825,6 +1826,37 @@ async function runJupyterCommand(action: string, args: Record<string, unknown>):
       };
     }
 
+    case "file_read": {
+      // SN-387: module files beside notebook.ipynb in the page's .jupyter folder.
+      const pagePath = requireString(args.path, "path");
+      const result = await readJupyterPageFile({
+        path: pagePath,
+        file: args.file,
+        maxBytes: args.maxBytes,
+        maxCount: args.maxCount,
+      });
+      return { ok: true, group: "jupyter", action, data: result };
+    }
+
+    case "file_write": {
+      const pagePath = requireString(args.path, "path");
+      const result = await writeJupyterPageFile({
+        path: pagePath,
+        file: args.file,
+        source: args.source,
+        expectedRevision: args.expectedRevision,
+      });
+      return {
+        ok: true,
+        group: "jupyter",
+        action,
+        data: {
+          ...result,
+          hint: "Saved. The page kernel live-imports this folder (autoreload 2): the next cell run uses the new code without a restart. Use revision as expectedRevision for the next replace.",
+        },
+      };
+    }
+
     default:
       throw new VaultError("UNKNOWN_COMMAND", `Unknown jupyter command: ${action}`, 400);
   }
@@ -1947,7 +1979,7 @@ export function listVaultCommands() {
     version: ["page_versions", "page_restore"],
     vault: ["tree"],
     pdf: ["read_page", "read_pages", "page_count"],
-    jupyter: ["context", "cell_create", "cell_edit", "cell_delete", "cell_reorder", "cell_run"],
+    jupyter: ["context", "cell_create", "cell_edit", "cell_delete", "cell_reorder", "cell_run", "file_read", "file_write"],
     log: ["get", "put", "query", "render", "asset_put"],
     spreadsheet: ["list_sheets", "read_range", "write_cells", "summarize"],
     design: ["render"],

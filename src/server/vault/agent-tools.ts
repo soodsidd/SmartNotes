@@ -887,6 +887,32 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
       wakeTimeoutMinutes: { type: "number", description: "SN-377: how long the wake waits for a still-running cell before resuming with a timed-out result (clamped 1-360, default 30)." },
     },
   },
+  {
+    name: "jupyter_file_read",
+    description:
+      "SN-387: list the files in a Jupyter page's own .jupyter folder (omit file), or read one UTF-8 file there (for example a module the notebook imports) with its strong sha256 revision. Hidden, dependency, cache, build, and secret-shaped paths are excluded.",
+    group: "jupyter",
+    action: "file_read",
+    parameters: {
+      path: { type: "string", required: true, description: "Vault-relative Jupyter page path." },
+      file: { type: "string", description: "Path relative to the page's .jupyter folder, e.g. \"signals.py\" or \"lib/filters.py\". Omit to list files." },
+      maxBytes: { type: "number", description: "Optional read cap in bytes (1-65536, default 65536)." },
+      maxCount: { type: "number", description: "Optional list cap (1-500, default 200)." },
+    },
+  },
+  {
+    name: "jupyter_file_write",
+    description:
+      "SN-387: create a module or other text file in a Jupyter page's own .jupyter folder (missing subdirectories are created), or replace an existing one in full. Replacing requires expectedRevision from jupyter_file_read or the previous write. The managed kernel live-imports the folder (autoreload 2), so the next cell run uses the new code without a restart. .ipynb files are refused; use the jupyter_cell_* tools for notebook.ipynb.",
+    group: "jupyter",
+    action: "file_write",
+    parameters: {
+      path: { type: "string", required: true, description: "Vault-relative Jupyter page path." },
+      file: { type: "string", required: true, description: "Path relative to the page's .jupyter folder, e.g. \"signals.py\" or \"lib/filters.py\"." },
+      source: { type: "string", required: true, description: "Full file text (UTF-8, at most 64 KiB)." },
+      expectedRevision: { type: "string", description: "Required to replace an existing file: its current sha256 revision. Omit to create a new file." },
+    },
+  },
 
   // ---- SN-282: Bibliography paper tools ----
 
@@ -1049,7 +1075,7 @@ Workflows:
 - Update frontmatter only: page_update_frontmatter with { fields: { key: value, ... } } — leaves HTML body unchanged
 - List sibling pages: page_siblings with path → lists all pages in the same section
 - Get parent page: page_parent with path → returns parent page (via parent_id) or section/notebook context
-- Jupyter context/mutations: jupyter_notebook_context reads bounded cell source/outputs; jupyter_cell_create/edit/reorder/delete changes notebook.ipynb without executing code or owning kernels. jupyter_cell_run (SN-376) is the only execute path: it runs one saved code cell on the page's live kernel, blocks up to awaitSeconds (≤60), and returns bounded outputs or { run.stillRunning: true, handoff: { runId, cellId, note }, wake } — save edits first, never re-run a still-running cell. With a wake (SN-377), end the turn; Smart Notes resumes this thread with the run outputs and note when it finishes. Create shape: { "tool": "jupyter_cell_create", "args": { "path": "<page.html>", "cellType": "code", "source": "print('hello')", "index": 0 } } (omit index to append; cellType may be code, markdown, or raw)
+- Jupyter context/mutations: jupyter_notebook_context reads bounded cell source/outputs; jupyter_cell_create/edit/reorder/delete changes notebook.ipynb without executing code or owning kernels. jupyter_cell_run (SN-376) is the only execute path: it runs one saved code cell on the page's live kernel, blocks up to awaitSeconds (≤60), and returns bounded outputs or { run.stillRunning: true, handoff: { runId, cellId, note }, wake } — save edits first, never re-run a still-running cell. With a wake (SN-377), end the turn; Smart Notes resumes this thread with the run outputs and note when it finishes. Create shape: { "tool": "jupyter_cell_create", "args": { "path": "<page.html>", "cellType": "code", "source": "print('hello')", "index": 0 } } (omit index to append; cellType may be code, markdown, or raw) Module files (SN-387): jupyter_file_read lists the page's .jupyter folder (omit file) or reads one file with its sha256 revision; jupyter_file_write creates a file (missing subdirectories included) or, with expectedRevision, replaces it in full. The page kernel live-imports the folder (autoreload 2), so the next jupyter_cell_run uses edited module code without a restart. Shape: { "tool": "jupyter_file_write", "args": { "path": "<page.html>", "file": "lib/filters.py", "source": "def smooth(xs):\\n    return xs\\n" } }
 - Comment triage: comment_list → comment_context → comment_address (or page_write for broad rewrites)
 - Bibliography papers (SN-282 / SN-302): papers are canonical pages under .bibliography/<id>.html, referenced from other pages by id. From an article: paper_list { query } to find an existing paper, else paper_create { title, referenceFromPath: "<article path>" } (the paper's home notebook defaults to that article's notebook; pass homeNotebookPath when creating without a referring page); for an existing paper use paper_reference_add { path, paper }. Promote an existing vault PDF with paper_create_from_pdf { sourcePath|href, title?, homeNotebookPath?, referenceFromPath?, replaceChip? } (copies PDF bytes onto the paper; reuses an existing paper when that exact asset is already attached). Attach a web PDF with paper_attach_pdf { paper, url } (direct http(s) link only), then read it with pdf_read_pages using the returned href. Edit paper notes with the normal page tools on the paper path. Remove with paper_remove (clears references, then deletes) — never page_delete/page_move/page_create inside .bibliography.
 - Page delete: page_delete with vault-relative path (never filesystem delete; clears assets and triggers tree reload warning)

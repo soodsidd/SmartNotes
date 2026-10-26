@@ -141,6 +141,9 @@ const ALLOWED_TOOLS = new Set([
   "jupyter_cell_edit",
   // SN-376 short-await execution on the page's live kernel (blocks <=60s).
   "jupyter_cell_run",
+  // SN-387 module files in the page's own .jupyter folder (revision-safe).
+  "jupyter_file_read",
+  "jupyter_file_write",
   // SN-282 Bibliography paper tools. The PDF download runs on the server, so a
   // network-less sandbox can still attach a paper PDF through this bridge.
   "paper_list",

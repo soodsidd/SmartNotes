@@ -1,4 +1,5 @@
 import type { JupyterFocusState } from "@/lib/jupyter-focus";
+import { jupyterModularAuthoringGuidance } from "@/lib/jupyter-modular-authoring";
 import {
   projectFocusSource,
   type DeepWorkDescriptor,
@@ -1695,6 +1696,12 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
       workspace.requestedAccess === "editable"
         ? "- New notebook: create an empty skeleton once with workspace_source_create and source {\"cells\":[],\"metadata\":{},\"nbformat\":4,\"nbformat_minor\":5}, then add each cell in order with workspace_cell_create, chaining the returned revision."
         : "",
+      ...(workspace.requestedAccess === "editable" && /\.ipynb$/i.test(activeWorkspacePath || "")
+        ? jupyterModularAuthoringGuidance({
+            kind: "workspace",
+            writeHint: "- Module files: create with workspace_source_create (missing subdirectories are created) and change an existing module with workspace_source_edit (a single { start: 0, end: <current source length>, text } edit replaces it in full), chaining revisions. Then update cells with workspace_cell_edit.",
+          })
+        : []),
       workspace.requestedAccess === "editable"
         ? "- This workspace is editable through the bounded source API. POST may atomically create one new allowed UTF-8 source file or valid .ipynb, but creation is create-only and never overwrites."
         : "- This workspace is read-only. Do not attempt source or notebook cell mutations.",
@@ -1852,7 +1859,11 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
         ? `- Run the active cell on the live kernel (only when the owner asks to run/execute it): { "tool": "jupyter_cell_run", "args": { "path": ${JSON.stringify(notePath)}, ${focusedCellSelector} } }`
         : "",
       "- When index and cellId are both known, pass both: the server rejects the edit if a reorder made them disagree. After success, the active frame refreshes; the owner can also use the Smart Notes Reload/Refresh button to re-read notebook.ipynb.",
-      "- Existing jupyter_* tools remain the only notebook mutation path and still target this note's notebook.ipynb saved on disk; they do not edit another focused workspace file, execute cells, or change kernel ownership. jupyter_cell_run is the only execute path: it runs the saved source of one code cell on this page's live kernel (save unsaved Lab edits first), blocks at most 60s, and returns a stillRunning runId for longer runs — do not re-run it. A long run parks a wake on this thread (SN-377): end your turn and Smart Notes resumes it with the outputs and your note."
+      "- Existing jupyter_* tools remain the only notebook mutation path and still target this note's notebook.ipynb saved on disk; they do not edit another focused workspace file, execute cells, or change kernel ownership. jupyter_cell_run is the only execute path: it runs the saved source of one code cell on this page's live kernel (save unsaved Lab edits first), blocks at most 60s, and returns a stillRunning runId for longer runs — do not re-run it. A long run parks a wake on this thread (SN-377): end your turn and Smart Notes resumes it with the outputs and your note.",
+      ...jupyterModularAuthoringGuidance({
+        kind: "page",
+        writeHint: `- Module files: list or read with { "tool": "jupyter_file_read", "args": { "path": ${JSON.stringify(notePath)}, "file": "signals.py" } } (omit file to list the folder); create with { "tool": "jupyter_file_write", "args": { "path": ${JSON.stringify(notePath)}, "file": "lib/filters.py", "source": "..." } } (missing subdirectories are created); replace in full by adding "expectedRevision" from the read or previous write. Then update cells with jupyter_cell_edit and re-run them with jupyter_cell_run.`,
+      })
     );
   }
 
