@@ -119,6 +119,13 @@ export const FloatingTextBox = Node.create({
         let right = area.right;
         contentDOM.querySelectorAll("img").forEach((image) => {
           right = Math.max(right, image.getBoundingClientRect().right);
+          // Include the resize container's right margin: if only the bitmap fits,
+          // ProseMirror's trailing separator/break wraps onto an empty line under it.
+          const container = image.closest<HTMLElement>("[data-resize-container]");
+          if (container) {
+            const margin = parseFloat(getComputedStyle(container).marginRight) || 0;
+            right = Math.max(right, container.getBoundingClientRect().right + margin * scale);
+          }
         });
         const needed = contentDOM.clientWidth + (right - area.right) / scale;
         commit(fitFloatingBoxWidthToContent(geometry(), needed, contentDOM.clientWidth));

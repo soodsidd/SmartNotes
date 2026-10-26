@@ -5876,13 +5876,13 @@
     {
       "id": "e2e-sn-385-floating-box-chrome",
       "name": "SN-385 floating text box editing chrome",
-      "description": "Desktop Playwright check and idle/editing screenshots for floating box border, controls, hover and click-away behavior.",
-      "intent": "Keeps floating text boxes visually quiet unless their content is being edited.",
-      "whenToRun": "Pre-merge when changing floating text box selection or chrome visibility.",
-      "failureMeaning": "The box border or controls may appear at rest, fail to appear while editing, or remain after click-away.",
+      "description": "Desktop Playwright check and idle/editing screenshots for floating box border, controls, hover and click-away behavior; SN-314 adds content-fit height (stale data-height ignored), width-handle text reflow, and pasted-image resize growing the box with no empty line.",
+      "intent": "Keeps floating text boxes visually quiet unless their content is being edited, and always exactly as tall as their text and images.",
+      "whenToRun": "Pre-merge when changing floating text box selection, chrome visibility, resize, or content sizing.",
+      "failureMeaning": "The box border or controls may appear at rest, fail to appear while editing, or remain after click-away; or the box may show empty chrome, fail to reflow on width drag, or clip or ratchet around an embedded image.",
       "appType": "browser",
       "command": "npm run test:e2e -- e2e/sn-385-floating-box-chrome.spec.ts --project=desktop --workers=1 --retries=0",
-      "timeoutMs": 180000,
+      "timeoutMs": 300000,
       "enabled": true,
       "tags": [
         "e2e",

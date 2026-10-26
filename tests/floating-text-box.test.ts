@@ -295,6 +295,35 @@ describe("floating text boxes", () => {
     }
   });
 
+  test("SN-314: image growth includes the resize container's right margin so no empty line wraps under the image", () => {
+    const callbacks: Array<() => void> = [];
+    const original = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+      constructor(callback: () => void) { callbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    };
+    try {
+      const instance = editor('<div data-type="floating-text-box" data-x="20" data-y="30" data-width="360"><div data-floating-box-content><p><img src="/vault/notes/a.png" width="300"></p></div></div>');
+      const content = instance.view.dom.querySelector<HTMLElement>(".floating-text-box__content")!;
+      const image = content.querySelector<HTMLImageElement>("img")!;
+      const container = image.closest<HTMLElement>("[data-resize-container]")!;
+      expect(container).not.toBeNull();
+      const rect = (left: number, width: number) => ({ left, right: left + width, width, top: 0, bottom: 0, height: 0, x: left, y: 0, toJSON() {} }) as DOMRect;
+      Object.defineProperty(content, "clientWidth", { configurable: true, value: 340 });
+      content.getBoundingClientRect = () => rect(10, 340);
+      image.getBoundingClientRect = () => rect(10, 400);
+      container.getBoundingClientRect = () => rect(10, 400);
+      container.style.marginRight = "6px";
+      callbacks.forEach((callback) => callback());
+      // 400px image + 6px margin needs 406px of content: 66px past the 340px column.
+      expect(instance.getHTML()).toContain('data-width="426"');
+      instance.destroy();
+    } finally {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = original;
+    }
+  });
+
   test("SN-314: border/chrome shows for any selection inside the box (image node, box node), and there is no corner resize", () => {
     const instance = editor('<p>Main</p><div data-type="floating-text-box" data-x="20" data-y="30" data-width="360"><div data-floating-box-content><p>Box <img src="/vault/notes/a.png"></p></div></div>');
     document.body.append(instance.view.dom);
