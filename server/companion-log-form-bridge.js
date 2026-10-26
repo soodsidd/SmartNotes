@@ -144,6 +144,9 @@ const ALLOWED_TOOLS = new Set([
   // SN-387 module files in the page's own .jupyter folder (revision-safe).
   "jupyter_file_read",
   "jupyter_file_write",
+  // SN-370 sidebar images. The download/validation runs on the server, so a
+  // network-less sandbox can still show a web or generated image inline.
+  "companion_image_put",
   // SN-282 Bibliography paper tools. The PDF download runs on the server, so a
   // network-less sandbox can still attach a paper PDF through this bridge.
   "paper_list",

@@ -2002,6 +2002,80 @@
       "whenToRun": "Pre-merge when changing Companion quick prompts or their settings."
     },
     {
+      "id": "unit-sn-369-370-companion-math-images",
+      "name": "Companion chat math + sidebar images",
+      "description": "Jest: currency-safe dollar-math rule rendered through the real remark-math/rehype-katex stack (SN-274 tow-email and Hims fixtures), server page-write math normalizer, companion_image_put download/generate/failure paths, CompanionChatImage fallback, and sandbox bridge allowlist.",
+      "appType": "node",
+      "command": "npm test -- tests/sn-369-companion-chat-math.test.ts tests/vault-math-normalize.test.ts tests/sn-370-companion-images.test.ts tests/sn-370-companion-chat-image.test.tsx tests/companion-log-form-bridge.test.ts",
+      "timeoutMs": 180000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "companion",
+        "targeted"
+      ],
+      "feature": "companion",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-369",
+      "addedAt": "2026-10-26",
+      "sourceFiles": [
+        {
+          "path": "tests/sn-369-companion-chat-math.test.ts"
+        },
+        {
+          "path": "tests/fixtures/render-chat-markdown.mjs"
+        },
+        {
+          "path": "tests/vault-math-normalize.test.ts"
+        },
+        {
+          "path": "tests/sn-370-companion-images.test.ts"
+        },
+        {
+          "path": "tests/sn-370-companion-chat-image.test.tsx"
+        },
+        {
+          "path": "tests/companion-log-form-bridge.test.ts"
+        }
+      ],
+      "intent": "Keeps currency dollars literal while intentional equations render as KaTeX in Companion chat and on companion page writes, and keeps agent-displayed sidebar images durable with a readable failure fallback.",
+      "whenToRun": "Pre-merge when touching Companion chat markdown/math, math-normalize, companion_image_put, or the sandbox bridge allowlist."
+    },
+    {
+      "id": "e2e-sn-369-370-companion-math-images",
+      "name": "Companion sidebar equations vs currency + inline images",
+      "description": "Playwright desktop: equations render via KaTeX beside literal currency/code dollars; downloaded and generated images from companion_image_put render inline, bounded, durable after reload, with a fallback chip; composer image attachments still preview.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-369-370-companion-math-images.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "companion",
+        "targeted"
+      ],
+      "feature": "companion",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-370",
+      "addedAt": "2026-10-26",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-369-370-companion-math-images.spec.ts"
+        }
+      ],
+      "intent": "Protects the real Companion rail rendering of math, currency, and agent-displayed images end to end.",
+      "whenToRun": "Pre-merge when changing Companion transcript rendering, chat math, or companion image display."
+    },
+    {
       "id": "unit-sn-193-pdf-reader-selection",
       "name": "PDF read-mode selection and Companion handoff",
       "description": "Jest: tests/pdf-reader-selection.test.ts and tests/inline-ai-popover.test.tsx — read-mode selection/copy, touch navigation, and captured PDF text through Companion prompts and handoff; SN-334 adds tests/pdf-selection-highlight.test.ts and tests/pdf-passage-actions.test.tsx for the Highlight/Record/Ask Companion menu, duplicate-free Highlight, and phone highlight taps.",

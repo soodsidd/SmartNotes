@@ -61,6 +61,7 @@ import {
   type TranscriptSnapshot,
 } from "@/lib/companion-scroll";
 import { cn } from "@/lib/utils";
+import { CHAT_REMARK_MATH_OPTIONS, normalizeChatMath } from "@/lib/math-delimiters";
 
 export interface AiSidebarMessage {
   id: string;
@@ -91,11 +92,56 @@ const CHAT_MARKDOWN_COMPONENTS = {
       <table>{children}</table>
     </div>
   ),
-  img: ({ alt, src }: React.ImgHTMLAttributes<HTMLImageElement>) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img alt={alt ?? ""} src={src ?? ""} loading="lazy" />
+  img: ({ alt, src, title }: React.ImgHTMLAttributes<HTMLImageElement>) => (
+    <CompanionChatImage alt={alt} src={typeof src === "string" ? src : undefined} title={title} />
   ),
 };
+
+// SN-369: currency-safe math. remark-math only sees explicit `$$` math; the
+// shared rule in normalizeChatMath decides which single `$` pairs are math.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CHAT_REMARK_PLUGINS: any[] = [remarkGfm, [remarkMath, CHAT_REMARK_MATH_OPTIONS]];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CHAT_REHYPE_PLUGINS: any[] = [[rehypeKatex, { throwOnError: false, strict: "ignore" }]];
+
+/**
+ * SN-370: inline image in a Companion message (agent-displayed via
+ * companion_image_put or any markdown image). Bounded size, alt text, opens
+ * full size in a new tab, and a readable fallback when the image fails.
+ */
+export function CompanionChatImage({ alt, src, title }: { alt?: string; src?: string; title?: string }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => setFailed(false), [src]);
+  const label = (alt ?? "").trim();
+
+  if (!src || failed) {
+    return (
+      <span
+        role="img"
+        aria-label={label ? `Image unavailable: ${label}` : "Image unavailable"}
+        data-testid="companion-chat-image-fallback"
+        className="companion-chat-image-fallback"
+      >
+        <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span>{label ? `Image unavailable: ${label}` : "Image unavailable"}</span>
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="companion-chat-image"
+      data-testid="companion-chat-image"
+      title={title || label || undefined}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img alt={label} src={src} loading="lazy" decoding="async" onError={() => setFailed(true)} />
+    </a>
+  );
+}
 
 const COMPOSER_MAX_HEIGHT_DESKTOP = 160;
 const COMPOSER_MAX_HEIGHT_MOBILE = 128;
@@ -1533,11 +1579,12 @@ function AssistantMessageRow({
                 return (
                   <div key={entry.id} className="chat-prose break-words">
                     <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
+                      remarkPlugins={CHAT_REMARK_PLUGINS}
+                      rehypePlugins={CHAT_REHYPE_PLUGINS}
                       components={CHAT_MARKDOWN_COMPONENTS}
                     >
-                      {entry.text || (message.isStreaming && entry.id === lastTextEntryId ? "…" : "")}
+                      {normalizeChatMath(entry.text, { streaming: message.isStreaming && entry.id === lastTextEntryId })
+                        || (message.isStreaming && entry.id === lastTextEntryId ? "…" : "")}
                     </ReactMarkdown>
                     {message.isStreaming && entry.id === lastTextEntryId ? (
                       <span className="ml-0.5 inline-block text-[color:var(--accent)]">▍</span>
@@ -1556,11 +1603,12 @@ function AssistantMessageRow({
         ) : (
           <div className="chat-prose break-words">
             <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex]}
+              remarkPlugins={CHAT_REMARK_PLUGINS}
+              rehypePlugins={CHAT_REHYPE_PLUGINS}
               components={CHAT_MARKDOWN_COMPONENTS}
             >
-              {message.content || (message.isStreaming ? "…" : "")}
+              {normalizeChatMath(message.content, { streaming: message.isStreaming })
+                || (message.isStreaming ? "…" : "")}
             </ReactMarkdown>
             {message.isStreaming ? (
               <span className="ml-0.5 inline-block text-[color:var(--accent)]">▍</span>
