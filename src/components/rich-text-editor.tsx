@@ -94,7 +94,7 @@ import {
   scrollEditorToPageToc,
   stripLegacyPageTocIfPresent,
 } from "@/lib/page-toc";
-import { pruneEmptyFloatingTextBoxes, selectionInFloatingTextBox } from "@/lib/floating-text-box";
+import { floatingTextBoxMenuActions, floatingTextBoxPosAtElement, pruneEmptyFloatingTextBoxes, selectionInFloatingTextBox } from "@/lib/floating-text-box";
 import { cn } from "@/lib/utils";
 import { MAX_INSERT_TABLE_DIMENSION, tableCellCount, tableDimension } from "@/lib/table-insert";
 import { TableRibbon } from "@/components/table-ribbon";
@@ -521,8 +521,33 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       pdfTarget?: PdfAttachmentTarget | null;
       /** SN-308: right-click landed in a table cell; show the table menu. */
       inTable?: boolean;
+      floatingBoxPos?: number;
       inlineContext?: InlineAiContext;
     } | null>(null);
+    const floatingBoxLongPressRef = React.useRef<{ timer: number; x: number; y: number } | null>(null);
+    function cancelFloatingBoxLongPress() {
+      if (floatingBoxLongPressRef.current) window.clearTimeout(floatingBoxLongPressRef.current.timer);
+      floatingBoxLongPressRef.current = null;
+    }
+    function startFloatingBoxLongPress(e: React.TouchEvent) {
+      cancelFloatingBoxLongPress();
+      if (readOnly || isDrawMode || !editor || e.touches.length !== 1) return;
+      if (e.target instanceof Element && e.target.closest('button, [data-resize-handle]')) return;
+      const pos = floatingTextBoxPosAtElement(editor, e.target instanceof Element ? e.target : null);
+      if (pos === null) return;
+      const { clientX: x, clientY: y } = e.touches[0];
+      floatingBoxLongPressRef.current = { x, y, timer: window.setTimeout(() => {
+        floatingBoxLongPressRef.current = null;
+        setContextMenu({ x, y, selectionFrom: pos, selectionTo: pos, mobile: true, floatingBoxPos: pos });
+      }, 550) };
+    }
+    function moveFloatingBoxLongPress(e: React.TouchEvent) {
+      const start = floatingBoxLongPressRef.current;
+      const touch = e.touches[0];
+      if (start && touch && (Math.abs(touch.clientX - start.x) > 10 || Math.abs(touch.clientY - start.y) > 10)) {
+        cancelFloatingBoxLongPress();
+      }
+    }
     const [composerPending, setComposerPending] = React.useState<{
       from: number;
       to: number;
@@ -1116,6 +1141,13 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         coarsePointer,
         viewportWidth: typeof window !== "undefined" ? window.innerWidth : undefined,
       });
+
+      const boxPos = floatingTextBoxPosAtElement(editor, e.target instanceof Element ? e.target : null);
+      if (boxPos !== null) {
+        setContextMenu({ x: e.clientX, y: e.clientY, selectionFrom: boxPos, selectionTo: boxPos,
+          mobile: isMobile, floatingBoxPos: boxPos });
+        return;
+      }
 
       const inlineContext = captureInlineAi(editor.view.dom, e.target as Element, "text");
       // SN-308: right-click does not move the selection; put it in the clicked cell first.
@@ -2798,6 +2830,10 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           className="relative min-h-0 flex-1"
           data-testid="editor-surface"
           onPointerDownCapture={handleEditorPointerDownCapture}
+          onTouchStartCapture={startFloatingBoxLongPress}
+          onTouchMoveCapture={moveFloatingBoxLongPress}
+          onTouchEndCapture={cancelFloatingBoxLongPress}
+          onTouchCancelCapture={cancelFloatingBoxLongPress}
           onClickCapture={handleEditorClickCapture}
           onClick={handleEditorClick}
           onMouseLeave={() => setHoveredHeadingKey(null)}
@@ -3130,6 +3166,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                   })()
                 : null
             }
+            floatingBoxGroups={contextMenu.floatingBoxPos === undefined ? null : [floatingTextBoxMenuActions(editor, contextMenu.floatingBoxPos)]}
             onClose={() => setContextMenu(null)}
           />
         )}

@@ -5933,6 +5933,28 @@
       ]
     },
     {
+      "id": "e2e-sn-395-floating-box-menu",
+      "name": "SN-395 floating box context menu",
+      "description": "Desktop right-click and mobile long-press checks for Move, Delete, Escape, outside dismissal, and persisted removal, with menu screenshots.",
+      "intent": "Makes the same floating box actions reachable from a short context menu on pointer and touch devices.",
+      "whenToRun": "Pre-merge when changing floating box context actions or menu positioning.",
+      "failureMeaning": "The menu may target the wrong box, fail to move or delete, obscure other editor chrome, or fail to persist removal.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-395-floating-box-menu.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
+      "timeoutMs": 420000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "editor", "floating-text-box", "targeted"],
+      "feature": "editor",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-395",
+      "addedAt": "2026-10-26",
+      "sourceFiles": [{ "path": "e2e/sn-395-floating-box-menu.spec.ts" }]
+    },
+    {
       "id": "unit-sn-382-notebook-open",
       "name": "SN-382 scoped notebook tree hydration",
       "description": "Jest verifies that closed notebooks remain identity-only rows and reopening reads only the selected notebook.",

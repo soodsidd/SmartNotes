@@ -5,6 +5,8 @@ import {
   EDITOR_MAIN_FLOW_WIDTH,
   fitFloatingBoxWidthToContent,
   deleteFloatingTextBox,
+  floatingTextBoxMenuActions,
+  floatingTextBoxPosAtElement,
   isFloatingTextBoxEmpty,
   moveFloatingBox,
   pruneEmptyFloatingTextBoxes,
@@ -120,6 +122,26 @@ describe("floating text boxes", () => {
     expect(instance.getHTML()).not.toContain("Second");
     expect(deleteFloatingTextBox(instance, 0)).toBe(false);
     instance.destroy();
+  });
+
+  test("right-click target resolves its box and the menu Delete removes that node", () => {
+    const instance = editor('<p>Main</p><div data-type="floating-text-box" data-x="20" data-y="30" data-width="360"><div data-floating-box-content><p>First</p></div></div><div data-type="floating-text-box" data-x="40" data-y="50" data-width="360"><div data-floating-box-content><p>Second</p></div></div>');
+    document.body.append(instance.view.dom);
+    const boxes = instance.view.dom.querySelectorAll<HTMLElement>('[data-testid="floating-text-box"]');
+    const target = boxes[1].querySelector("p")!;
+    const pos = floatingTextBoxPosAtElement(instance, target);
+    expect(pos).not.toBeNull();
+    expect(floatingTextBoxPosAtElement(instance, document.body)).toBeNull();
+    const actions = floatingTextBoxMenuActions(instance, pos!);
+    expect(actions.map((action) => action.label)).toEqual(["Move", "Delete"]);
+    actions[0].run();
+    expect(document.activeElement).toBe(boxes[1].querySelector('[data-testid="floating-text-box-move"]'));
+    actions[1].run();
+    expect(instance.getHTML()).toContain("First");
+    expect(instance.getHTML()).not.toContain("Second");
+    const dom = instance.view.dom;
+    instance.destroy();
+    dom.remove();
   });
 
   test("the shared image upload insertion publishes box HTML for the page draft", () => {

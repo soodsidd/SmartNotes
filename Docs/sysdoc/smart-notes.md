@@ -1024,6 +1024,8 @@ New sections are created immediately with a unique default New Section name, the
 
 **Overflow and Delete rework (SN-314):** A pixel-sized embedded image contributes its full width to the line layout, then the floating box grows to contain it; text after the image stays within the content-fit border. The Move/Delete tab keeps the box selection on Delete pointer press and deletes the current floating node from the document, so the existing page autosave persists removal.
 
+**Right-click and long-press menu (SN-395):** Right-clicking a floating box on desktop or holding it for 550ms on touch opens the existing viewport-clamped editor menu with Move and Delete. Move focuses the same tab control for arrow-key nudging or a later drag; Delete uses the same node deletion path as the tab and persists through page autosave. Escape and outside pointer presses dismiss the menu. Touch movement beyond 10px cancels the hold, preserving normal scrolling and text interaction.
+
 ### Page rule and grid lines (SN-297)
 
 **Plain English:** Like OneNote, a text page can show ruled notebook lines or graph-paper grid lines behind the writing. Pick them from the grid button in the editor toolbar. The lines are only a backdrop. They never move your text, are never copied or exported, and are not part of the page's saved HTML. Each page remembers its own choice, so it looks the same after a reload or on another device. A switch at the bottom of the popover, "Always create pages with these lines", makes new text pages in this browser start with the same lines. That default is stored only in this browser.

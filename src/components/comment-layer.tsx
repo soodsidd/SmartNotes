@@ -26,6 +26,7 @@ export interface EditorContextMenuProps {
   onPromotePdf?: () => void;
   /** SN-308: when set (right-click inside a table), these groups replace the text-editing groups. */
   tableGroups?: EditorContextMenuAction[][] | null;
+  floatingBoxGroups?: EditorContextMenuAction[][] | null;
   onAskCompanion?: () => void;
   onClose: () => void;
 }
@@ -49,6 +50,7 @@ export function EditorContextMenu({
   onOpenLink,
   onPromotePdf,
   tableGroups,
+  floatingBoxGroups,
   onAskCompanion,
   onClose,
 }: EditorContextMenuProps) {
@@ -76,13 +78,18 @@ export function EditorContextMenu({
     [actions]
   );
   const renderedGroups: EditorContextMenuAction[][] = React.useMemo(() => {
+    if (floatingBoxGroups?.length) return floatingBoxGroups;
     if (tableGroups && tableGroups.length > 0) return tableGroups;
     const ids = mobile ? MOBILE_CONTEXT_MENU_GROUPS : CONTEXT_MENU_GROUPS;
     return ids
       .map((group) => group.map((id) => actionMap.get(id)).filter((a): a is EditorContextMenuAction => Boolean(a)))
       .map(group => group.filter(action => action.id !== "copy" || canCopy))
       .filter((group) => group.length > 0);
-  }, [actionMap, mobile, tableGroups, canCopy]);
+  }, [actionMap, mobile, tableGroups, floatingBoxGroups, canCopy]);
+
+  React.useEffect(() => {
+    if (floatingBoxGroups?.length) menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+  }, [floatingBoxGroups]);
 
   // Keep the whole menu on screen (long table menus, right-clicks near an edge).
   React.useLayoutEffect(() => {
@@ -120,7 +127,7 @@ export function EditorContextMenu({
       className="comment-context-menu editor-context-menu"
       style={{ left: position.left, top: position.top }}
       data-testid="editor-context-menu"
-      data-menu-kind={tableGroups && tableGroups.length > 0 ? "table" : "text"}
+      data-menu-kind={floatingBoxGroups?.length ? "floating-box" : tableGroups?.length ? "table" : "text"}
     >
       {renderedGroups.map((group, groupIndex) => (
         <React.Fragment key={group.map((action) => action.id).join("-")}>
@@ -152,7 +159,7 @@ export function EditorContextMenu({
           })}
         </React.Fragment>
       ))}
-      {!tableGroups?.length && [
+      {!tableGroups?.length && !floatingBoxGroups?.length && [
         { label: "Format", ids: ["bold", "italic", "strike", "code"] },
         { label: "Turn into", ids: ["h1", "h2", "h3", "bullet", "ordered", "task"] },
       ].map(group => <div key={group.label}>
@@ -163,9 +170,9 @@ export function EditorContextMenu({
           {group.ids.map(id => actionMap.get(id)).filter((action): action is EditorContextMenuAction => Boolean(action)).map(action => <button key={action.id} type="button" role="menuitem" className="comment-context-item" data-testid={action.testId} onClick={() => { action.run(); onClose(); }}>{action.label}</button>)}
         </div>}
       </div>)}
-      {!tableGroups?.length && canAddComment && <button type="button" role="menuitem" className="comment-context-item" data-testid="ctx-add-comment" onClick={() => { onAddComment(); onClose(); }}>Add comment</button>}
-      {canPromotePdf && <button type="button" role="menuitem" className="comment-context-item" data-testid="ctx-promote-pdf" onClick={() => { onPromotePdf?.(); onClose(); }}>Promote to paper</button>}
-      {onAskCompanion && <>
+      {!tableGroups?.length && !floatingBoxGroups?.length && canAddComment && <button type="button" role="menuitem" className="comment-context-item" data-testid="ctx-add-comment" onClick={() => { onAddComment(); onClose(); }}>Add comment</button>}
+      {!floatingBoxGroups?.length && canPromotePdf && <button type="button" role="menuitem" className="comment-context-item" data-testid="ctx-promote-pdf" onClick={() => { onPromotePdf?.(); onClose(); }}>Promote to paper</button>}
+      {!floatingBoxGroups?.length && onAskCompanion && <>
         <div className="comment-context-separator" role="separator" />
         <button type="button" role="menuitem" className="comment-context-item" data-testid="ctx-ask-companion" onClick={() => { onAskCompanion(); onClose(); }}>
           <Sparkles size={16} className="text-accent" /> Ask Companion...

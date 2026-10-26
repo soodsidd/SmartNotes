@@ -1,6 +1,7 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
+import type { EditorContextMenuAction } from "./editor-context-menu";
 
 export const FLOATING_BOX_DEFAULT_WIDTH = 360;
 export const FLOATING_BOX_MIN_WIDTH = 160;
@@ -93,6 +94,30 @@ export function deleteFloatingTextBox(editor: Editor, pos: number): boolean {
   if (node?.type.name !== "floatingTextBox") return false;
   editor.view.dispatch(editor.state.tr.delete(pos, pos + node.nodeSize));
   return true;
+}
+
+export function floatingTextBoxPosAtElement(editor: Editor, target: Element | null): number | null {
+  const box = target?.closest('[data-type="floating-text-box"]');
+  if (!box || !editor.view.dom.contains(box)) return null;
+  const pos = editor.view.posAtDOM(box, 0);
+  if (editor.state.doc.nodeAt(pos)?.type.name === "floatingTextBox") return pos;
+  const $pos = editor.state.doc.resolve(pos);
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if ($pos.node(depth).type.name === "floatingTextBox") return $pos.before(depth);
+  }
+  return null;
+}
+
+export function floatingTextBoxMenuActions(editor: Editor, pos: number): EditorContextMenuAction[] {
+  return [
+    { id: "moveBox", label: "Move", testId: "ctx-floating-box-move", run: () => {
+      const box = editor.view.nodeDOM(pos) as HTMLElement | null;
+      if (box) box.dataset.editing = "true";
+      box?.querySelector<HTMLButtonElement>('[data-testid="floating-text-box-move"]')?.focus();
+    } },
+    { id: "deleteBox", label: "Delete", testId: "ctx-floating-box-delete", destructive: true,
+      run: () => { deleteFloatingTextBox(editor, pos); } },
+  ];
 }
 
 /**

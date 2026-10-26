@@ -202,6 +202,11 @@ SN-314's overflow rework lets explicitly pixel-sized images contribute their ful
 width to the box's line layout, so text following an image remains inside the
 content-fit border. It reuses the same image spacing and border tokens.
 
+SN-395 uses the existing editor context menu surface for floating boxes. Its
+Move and Delete items inherit the menu's `--popover`, `--foreground`, `--border`,
+`--ring`, and destructive-action tokens, including the documented touch target.
+The menu stays within the viewport and dismisses on Escape or outside press.
+
 SN-318 gives the main editor flow frame (the bordered column) the same
 right-edge, width-only affordance. A full-height 12px hit strip carries the same
 8×16px `--surface` / `--border` grip. The grip is sticky, so it stays in view on
