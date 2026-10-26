@@ -19,6 +19,74 @@ function columnWidths(table: HTMLTableElement): number[] {
     Math.max(TABLE_MIN_COLUMN_WIDTH, col.getBoundingClientRect().width));
 }
 
+/** Round exactly as setTableSizes does, so the committed table matches the last previewed frame. */
+const snapWidths = (widths: number[]) => widths.map((width) => Math.max(TABLE_MIN_COLUMN_WIDTH, Math.round(width)));
+const snapHeights = (heights: number[]) => heights.map((height) => Math.max(1, Math.round(height)));
+let previewSeq = 0;
+
+/**
+ * SN-394: a corner/row gesture previews sizes on the live DOM and commits one transaction on
+ * release. Dispatching per pointermove made ProseMirror rebuild every cell and row (the flash).
+ * Cols and the table element sit outside TableView's contentDOM, whose mutations it ignores; row
+ * heights go through a head stylesheet so ProseMirror never observes a change inside the rows.
+ */
+function livePreview(table: HTMLTableElement) {
+  const wrapper = table.closest<HTMLElement>(".tableWrapper");
+  const cols = Array.from(table.querySelectorAll<HTMLTableColElement>("colgroup > col"));
+  const saved = { table: table.style.cssText, cols: cols.map((col) => col.style.cssText), fixed: wrapper?.getAttribute("data-fixed-widths") ?? null };
+  const id = String(++previewSeq);
+  const sheet = document.head.appendChild(document.createElement("style"));
+  wrapper?.setAttribute("data-table-resize-live", id);
+  return {
+    apply(widths?: number[], heights?: number[]) {
+      if (widths) {
+        widths.forEach((width, index) => cols[index]?.style.setProperty("width", `${width}px`));
+        table.style.minWidth = "";
+        table.style.width = `${widths.reduce((total, width) => total + width, 0)}px`;
+        wrapper?.setAttribute("data-fixed-widths", "true");
+      }
+      if (heights) {
+        sheet.textContent = heights.map((height, index) =>
+          `.tableWrapper[data-table-resize-live="${id}"] > table > tbody > tr:nth-of-type(${index + 1}) { height: ${height}px !important; }`).join("\n");
+      }
+    },
+    restore() {
+      table.style.cssText = saved.table;
+      cols.forEach((col, index) => { col.style.cssText = saved.cols[index]; });
+      if (saved.fixed === null) wrapper?.removeAttribute("data-fixed-widths");
+      else wrapper?.setAttribute("data-fixed-widths", saved.fixed);
+      wrapper?.removeAttribute("data-table-resize-live");
+      sheet.remove();
+    },
+  };
+}
+
+/** Coalesce pointermoves to one preview per frame; `finish` restores the DOM and commits the last sizes. */
+function previewGesture(editor: Editor, table: HTMLTableElement, onFrame: () => void) {
+  const preview = livePreview(table);
+  let latest: { widths?: number[]; heights?: number[] } | null = null;
+  let frame = 0;
+  return {
+    update(widths?: number[], heights?: number[]) {
+      latest = { widths: widths && snapWidths(widths), heights: heights && snapHeights(heights) };
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (latest) preview.apply(latest.widths, latest.heights);
+        onFrame();
+      });
+    },
+    finish() {
+      cancelAnimationFrame(frame);
+      preview.restore();
+      // Same task as restore: TableView repaints the committed sizes before the browser paints.
+      const tablePos = latest ? tablePosition(editor, table) : null;
+      if (latest && tablePos !== null) setTableSizes(editor, tablePos, latest.widths, latest.heights);
+      onFrame();
+    },
+  };
+}
+
 function fitRow(editor: Editor, table: HTMLTableElement, rowIndex: number) {
   const tablePos = tablePosition(editor, table);
   if (tablePos === null) return;
@@ -57,10 +125,17 @@ function hotZone(table: HTMLTableElement, x: number, y: number): Zone | null {
  * rects and shown only for the hot zone under the pointer. Never render React into ProseMirror's
  * table DOM: the node view does not own those children and positions computed at render go stale.
  */
-export function TableResizeControls({ editor }: { editor: Editor | null }) {
+export function TableResizeControls({ editor, onLiveResize }: { editor: Editor | null; onLiveResize?: () => void }) {
   const [hot, setHot] = React.useState<Hot | null>(null);
   const [, setTick] = React.useState(0);
   const dragging = React.useRef(false);
+  const liveResize = React.useRef(onLiveResize);
+  liveResize.current = onLiveResize;
+  // Live gestures dispatch nothing, so re-place the chrome and let the editor frame follow per frame.
+  const onFrame = React.useCallback(() => {
+    setTick((tick) => tick + 1);
+    liveResize.current?.();
+  }, []);
 
   React.useEffect(() => {
     if (!editor) return;
@@ -94,6 +169,22 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
       const tablePos = tablePosition(editor, table);
       if (tablePos !== null) setTableSizes(editor, tablePos, columnWidths(table), undefined, { history: false });
     };
+    // The colwidth plugin drags columns on the DOM until mouseup; let the editor frame grow with it
+    // so the wrapper never clips the table behind a scrollbar mid-drag (SN-394).
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0 || !root.classList.contains("resize-cursor")) return;
+      let frame = 0;
+      const follow = () => {
+        if (!frame) frame = requestAnimationFrame(() => { frame = 0; liveResize.current?.(); });
+      };
+      const stop = () => {
+        cancelAnimationFrame(frame);
+        window.removeEventListener("mousemove", follow);
+        window.removeEventListener("mouseup", stop);
+      };
+      window.addEventListener("mousemove", follow);
+      window.addEventListener("mouseup", stop);
+    };
     const onDoubleClick = (event: MouseEvent) => {
       const cell = event.target instanceof Element ? event.target.closest("th,td") : null;
       const table = cell?.closest("table");
@@ -121,6 +212,7 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
     window.addEventListener("resize", clear);
     editor.on("transaction", rerender);
     root.addEventListener("mousemove", onMouseMove);
+    root.addEventListener("mousedown", onMouseDown);
     root.addEventListener("dblclick", onDoubleClick, true);
     return () => {
       document.removeEventListener("pointermove", onMove);
@@ -128,6 +220,7 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
       window.removeEventListener("resize", clear);
       editor.off("transaction", rerender);
       root.removeEventListener("mousemove", onMouseMove);
+      root.removeEventListener("mousedown", onMouseDown);
       root.removeEventListener("dblclick", onDoubleClick, true);
     };
   }, [editor]);
@@ -152,18 +245,20 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
     const xSign = corner.endsWith("e") ? 1 : -1;
     const ySign = corner.startsWith("s") ? 1 : -1;
     dragging.current = true;
+    const gesture = previewGesture(editor, table, onFrame);
     const move = (pointer: PointerEvent) => {
       const dx = xSign * (pointer.clientX - startX) / Math.max(rect.width, 1);
       const dy = ySign * (pointer.clientY - startY) / Math.max(rect.height, 1);
       const delta = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
       const scale = Math.min(5, 1 + delta);
       // Once rows reach their content height, columns can still shrink toward text (and vice versa).
-      setTableSizes(editor, tablePos,
+      gesture.update(
         widths.map((width) => width * Math.max(minWidthScale, scale)),
         heights.map((height) => height * Math.max(minHeightScale, scale)));
     };
     const finish = () => {
       dragging.current = false;
+      gesture.finish();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
@@ -183,16 +278,18 @@ export function TableResizeControls({ editor }: { editor: Editor | null }) {
     const heights = Array.from(table.rows, (row) => row.getBoundingClientRect().height);
     const minHeight = contentRowHeights(table)[rowIndex];
     dragging.current = true;
+    const gesture = previewGesture(editor, table, onFrame);
     let moved = false;
     const move = (pointer: PointerEvent) => {
-      if (Math.abs(pointer.clientY - startY) <= 2) return;
+      if (!moved && Math.abs(pointer.clientY - startY) <= 2) return;
       moved = true;
       const next = [...heights];
       next[rowIndex] = Math.max(minHeight, heights[rowIndex] + pointer.clientY - startY);
-      setTableSizes(editor, tablePos, undefined, next);
+      gesture.update(undefined, next);
     };
     const finish = () => {
       dragging.current = false;
+      gesture.finish();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);

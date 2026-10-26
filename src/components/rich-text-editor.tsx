@@ -257,6 +257,12 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+/** TipTap gives fully sized tables a pixel width; the widest main-flow table widens the editor frame. */
+function mainFlowTableWidth(proseMirror: HTMLElement): number {
+  return Math.max(0, ...Array.from(proseMirror.querySelectorAll<HTMLTableElement>(":scope > .tableWrapper[data-fixed-widths] > table"),
+    (table) => parseFloat(table.style.width) || 0));
+}
+
 function resolveSectionContext(editor: Editor): EditorSectionContext | null {
   const selectionFrom = editor.state.selection.from;
   let sectionIndex = -1;
@@ -1758,6 +1764,11 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isDrawMode]);
 
+    // SN-394: table resize gestures preview on the DOM without transactions; follow them per frame.
+    const syncLiveTableFlowWidth = React.useCallback(() => {
+      if (editor) setTableFlowWidth(mainFlowTableWidth(editor.view.dom as HTMLElement));
+    }, [editor]);
+
     React.useEffect(() => {
       if (!editor) return;
       const proseMirror = editor.view.dom as HTMLElement;
@@ -1765,10 +1776,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       const syncTextHeight = () => {
         setTextHeight(Math.max(proseMirror.scrollHeight, proseMirror.offsetHeight));
         setMainFlowInset(proseMirror.offsetParent === contentSizerRef.current ? proseMirror.offsetLeft : 0);
-        // TipTap gives fully sized tables a pixel width. Reflect the widest main-flow table
-        // in the editor frame; tables beyond the frame limit retain local scrolling.
-        setTableFlowWidth(Math.max(0, ...Array.from(proseMirror.querySelectorAll<HTMLTableElement>(":scope > .tableWrapper[data-fixed-widths] > table"),
-          (table) => parseFloat(table.style.width) || 0)));
+        // Tables beyond the frame limit retain local scrolling.
+        setTableFlowWidth(mainFlowTableWidth(proseMirror));
         const flowChildren = Array.from(proseMirror.children).filter(
           (child) => !(child as HTMLElement).matches('[data-type="floating-text-box"]')
         ) as HTMLElement[];
@@ -2355,7 +2364,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
         ) : null}
         {!readOnly && !hideFormatToolbar && annotationMode !== "draw" ? <TableRibbon editor={editor} mobile /> : null}
         {!readOnly && annotationMode !== "draw" ? <TableHeaderTools editor={editor} /> : null}
-        {!readOnly && annotationMode !== "draw" ? <TableResizeControls editor={editor} /> : null}
+        {!readOnly && annotationMode !== "draw" ? <TableResizeControls editor={editor} onLiveResize={syncLiveTableFlowWidth} /> : null}
 
         {!readOnly && !hideFormatToolbar && annotationMode === "draw" ? (
           <div

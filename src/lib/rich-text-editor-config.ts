@@ -42,6 +42,9 @@ class ScrollableTableView extends TableView {
   }
 
   update(node: ProseMirrorNode) {
+    // SN-394: decoration-only redraws (every React render calls setOptions) pass the same node.
+    // Re-applying stored colwidths then would snap a live column/corner drag back mid-gesture.
+    if (node === this.node) return true;
     const updated = super.update(node);
     if (updated) {
       this.syncModes(node);
