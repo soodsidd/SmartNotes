@@ -539,7 +539,8 @@ function buildConfig(
     userSettingsDir: string | null;
     workspacesDir?: string | null;
   },
-  hideGlobs?: string[]
+  hideGlobs?: string[],
+  kernelConfigPath?: string | null
 ): string {
   const posixFolder = folder.replace(/\\/g, "/");
   const csp = `frame-ancestors ${frameAncestors(frameOrigins)}`;
@@ -578,7 +579,70 @@ function buildConfig(
       `c.LanguageServerManager.language_servers = {"pylsp": {"version": 2, "argv": [r"${pylspExecutable}"], "languages": ["python"], "mime_types": ["text/x-python", "text/x-ipython"], "display_name": "pylsp"}}`
     );
   }
+  if (kernelConfigPath) {
+    config.push(...kernelSpecManagerConfig(kernelConfigPath));
+  }
   return [...config, ""].join("\n");
+}
+
+/** Per-session IPython kernel config (SN-387), written into the session artifact dir. */
+const KERNEL_CONFIG_FILE_NAME = "smart_notes_kernel_config.py";
+
+/**
+ * SN-387 live import. Managed kernels load this IPython config through
+ * `--config` (BaseIPythonApplication.extra_config_file), so it adds to the
+ * owner's own IPython profile and nothing is written into the page or project
+ * folder. It:
+ *   - puts the workspace root (the page's `.jupyter` folder or the
+ *     project-backed root) and its `src/` directory, when one exists, at the
+ *     front of sys.path, so modules and packages there import no matter which
+ *     subfolder the notebook lives in, with or without a pyproject;
+ *   - loads IPython autoreload in mode 2, so an edited module is reloaded
+ *     before the next cell runs, without a kernel restart.
+ */
+function buildKernelConfig(workspaceRoot: string): string {
+  const posixRoot = workspaceRoot.replace(/\\/g, "/");
+  return [
+    "# Smart Notes managed kernel defaults (SN-387). Generated per Jupyter session; do not edit.",
+    "import os as _sn_os",
+    "import sys as _sn_sys",
+    `_sn_root = _sn_os.path.normpath(r"${posixRoot}")`,
+    `for _sn_path in (_sn_os.path.join(_sn_root, "src"), _sn_root):`,
+    "    if _sn_os.path.isdir(_sn_path) and _sn_path not in _sn_sys.path:",
+    "        _sn_sys.path.insert(0, _sn_path)",
+    `c.InteractiveShellApp.extensions.append("autoreload")`,
+    `c.InteractiveShellApp.exec_lines.append("%autoreload 2")`,
+    "",
+  ].join("\n");
+}
+
+/**
+ * Server-config lines that send every ipykernel launch through the session
+ * kernel config. The wrapper only appends `--config=<file>` to Python ipykernel
+ * kernelspecs. Other kernels, kernelspec discovery, and kernelspec files on
+ * disk are untouched. If anything fails to import, the stock
+ * KernelSpecManager stays in place so the server still starts.
+ */
+function kernelSpecManagerConfig(kernelConfigPath: string): string[] {
+  const posixPath = kernelConfigPath.replace(/\\/g, "/");
+  return [
+    "# SN-387: live-import defaults for kernels launched by this Smart Notes session.",
+    "try:",
+    "    from jupyter_client.kernelspec import KernelSpecManager as _SNBaseKernelSpecManager",
+    "",
+    "    class SmartNotesKernelSpecManager(_SNBaseKernelSpecManager):",
+    "        def get_kernel_spec(self, kernel_name, *args, **kwargs):",
+    "            spec = super().get_kernel_spec(kernel_name, *args, **kwargs)",
+    "            argv = [str(part) for part in (spec.argv or [])]",
+    `            is_ipykernel = (spec.language or "").lower() == "python" and any("ipykernel" in part for part in argv)`,
+    `            if is_ipykernel and not any(part.startswith("--config=") for part in argv):`,
+    `                spec.argv = argv + [r"--config=${posixPath}"]`,
+    "            return spec",
+    "",
+    "    c.ServerApp.kernel_spec_manager_class = SmartNotesKernelSpecManager",
+    "except Exception:",
+    "    pass",
+  ];
 }
 
 const COMPLETER_SETTINGS = {
@@ -862,11 +926,13 @@ async function spawnServer(
   const artifactDir = path.join(configDir, `session-${proxyId}`);
   const { userSettingsDir, workspacesDir } = jupyterLabStatePaths();
   const configPath = path.join(artifactDir, "jupyter_server_config.py");
+  const kernelConfigPath = path.join(artifactDir, KERNEL_CONFIG_FILE_NAME);
   await Promise.all([
     fs.mkdir(artifactDir, { recursive: true }),
     fs.mkdir(workspacesDir, { recursive: true }),
   ]);
   await writeLabUserSettings(userSettingsDir);
+  await fs.writeFile(kernelConfigPath, buildKernelConfig(resolved.folder), "utf8");
 
   const capabilities = await getJupyterProfileStatus({ staleOk: false });
   const pylspExecutable = capabilities.pylspReachable
@@ -879,7 +945,7 @@ async function spawnServer(
       pylspExecutable,
       userSettingsDir,
       workspacesDir,
-    }, resolved.hideGlobs),
+    }, resolved.hideGlobs, kernelConfigPath),
     "utf8"
   );
 
@@ -1303,6 +1369,8 @@ export function __resetForTesting(): void {
 
 export const __testInternals = {
   buildConfig,
+  buildKernelConfig,
+  kernelSpecManagerConfig,
   executableEnv,
   frameAncestors,
   findFreePort,
