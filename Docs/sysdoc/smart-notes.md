@@ -309,16 +309,11 @@ All routes are Next.js App Router route handlers under `src/app/api/`.
 
 ### GET /api/vault
 
-Returns the full notebook tree: all notebooks, their sections, and the page summaries used by the reliable shell. Each page summary includes title, preview, timestamps, the full HTML body in `content`, frontmatter-derived `metadata`, nesting `parentId`, `noteType`, and SN-229 `keyNote`, so selecting a page can hydrate the editor and comments from the tree without an eager `GET /api/page` round-trip. Key-note gems in the sidebar read `keyNote` from this payload.
+The vault endpoint supplies the notebook tree used for browsing. Open notebooks include sections and page bodies so selecting a page can hydrate immediately. Closed notebooks are returned as identity-only rows; reopening one requests just that notebook while a loading toast shows progress.
 
-`GET /api/page` is still used for explicit reload paths that need a canonical reread from disk.
+GET /api/vault accepts repeated closed=<notebook-path> parameters and leaves those notebooks with empty pages and sections. GET /api/vault?notebook=<path> returns only that registered or vault-root notebook and responds 404 for an unknown path. The shell sends its current closed set on refresh and merges the one-notebook response on reopen. Other callers that omit these parameters retain the full-tree contract. Each open page summary still includes title, preview, timestamps, full HTML content, metadata, parentId, noteType, and keyNote. GET /api/page remains the canonical reread for explicit reload flows.
 
-**Response:** `{ tree: VaultNotebook[], root: string }`
-
-**Server-side cache:** `readVaultTree()` in `src/server/vault/pages.ts` maintains a module-level in-memory cache (`_vaultTreeCache`). The cache is populated on first call and is explicitly invalidated by all write operations (`savePage`, `createPage`, `nestPage`, `setPageKeyNote`, `renamePage`, `deletePage`, `createNotebook`, `renameNotebook`, `deleteNotebook`, `createSection`, `renameSection`, `deleteSection`, `movePage`). This means burst reads (e.g., rapid navigations or agent calls) hit memory instead of doing repeated filesystem scans and cheerio HTML parses.
-
-**Freshness reads:** `skipCache=1` bypasses the server-side tree cache. The reliable shell uses this on mount/resume and after cross-session structure signals so an installed PWA shell cannot rely only on a cached SSR `initialVault` payload.
-
+Response: { tree: VaultNotebook[], root: string }. The module-level readVaultTree cache applies to unscoped reads and is invalidated by vault writes. Scoped/closed reads bypass that shared full-tree cache; skipCache=1 also bypasses it. The shell uses skipCache on mount and resume to see external changes.
 
 ### GET/PATCH /api/ui-state
 
@@ -776,17 +771,17 @@ Agent-facing vault command surface for the AI companion (SN-33). Dispatches stru
 
 ### Two state systems (and why they coexist)
 
-**1. Vault-backed state (the real system)** is used by `notebook-shell-reliable.tsx` — the main shell component. It:
-- Loads the tree from `GET /api/vault` on mount and tree refreshes.
-- Applies the SSR `initialVault` immediately when available, then revalidates with live `GET /api/vault?skipCache=1` on mount and on window focus/visibility resume.
-- Hydrates page selection directly from the tree payload (`content` + `metadata`) so sidebar clicks do not wait on `GET /api/page`.
-- Uses `GET /api/page` for explicit reload and remote-change reconciliation flows that need a canonical reread from disk.
-- Saves page content via `PUT /api/page` through the `usePageDraft` hook with 1200ms debounce autosave.
-- All CRUD operations go through the REST API, which writes to disk.
+**1. Vault-backed state (the real system)** is used by `notebook-shell-reliable.tsx`, the main shell. It:
+- Loads the tree from GET /api/vault on mount and tree refreshes, sending the current closed-notebook paths so their page bodies are not read or sent.
+- Applies the server-rendered initialVault immediately. The server reads saved UI state first and leaves closed notebooks as identity-only rows. The client revalidates open notebooks on mount and window focus/visibility resume.
+- Reopens a closed notebook with one scoped GET /api/vault?notebook=<path>, merges that notebook into the tree, and shows loading progress. Closing a notebook releases its pages and sections from client state.
+- Hydrates selected open pages from tree content and metadata without a per-click GET /api/page. A mini-app page link into a closed notebook first loads that notebook.
+- Uses GET /api/page for explicit reload and remote-change reconciliation, and PUT /api/page through usePageDraft for autosave.
+- Sends all CRUD operations through the REST API, which writes to disk.
 
-**2. In-memory mock state** lives in `src/lib/app-state.tsx` (`AppProvider` + `useApp()`). It initializes from `src/lib/mock-data.ts` and never touches the filesystem. This was the initial prototype shell. It is still imported by some components but is not wired to the main app path in production.
+**2. In-memory mock state** lives in `src/lib/app-state.tsx` (`AppProvider` and `useApp()`). It initializes from mock data and never touches the filesystem. It is still imported by some components but is not wired to the production main app path.
 
-**Rule for agents:** If you are modifying note persistence, CRUD operations, or anything that should survive a page reload — work in the vault-backed system (`notebook-shell-reliable.tsx`, `usePageDraft`, the API routes). Don't touch `app-state.tsx` for production behavior changes.
+**Rule for agents:** For persistent notes, CRUD, or notebook loading, work in the vault-backed shell and API. The in-memory mock state does not persist production changes.
 
 ### The notebook/section/page hierarchy
 
@@ -801,7 +796,7 @@ Notebook-root and section pages both support custom page order through `_page-or
 
 **Notebook picker organization (SN-232).** The tree sidebar remains the familiar navigation surface: open, non-archived notebooks appear in vault order; notebook expansion remains multi-expand; and picker filter, lens, notebook reorder, groups, and archive actions do not render there. Page Pin/Unpin lives in the tree page context menu so any ordinary page can enter the picker’s Pinned section. The folder button opens the organization picker, which contains all non-archived open and closed notebooks. Selecting a closed notebook preserves the existing reopen behavior.
 
-The picker’s normal grouped list is notebook-only: notebook rows do not disclose sections or pages. Structural filtering still matches notebook, section, and page names, but a section/page match retains only its notebook row. Pinned pages and the Key notes lens are the explicit page-shortcut surfaces; both show page rows grouped or subtitled by notebook without duplicating the normal list.
+The picker’s normal grouped list is notebook-only: notebook rows do not disclose sections or pages. Structural filtering matches every notebook name and section/page names in open notebooks; a section/page match retains only its notebook row. Closed notebooks keep no page metadata in the shell until reopened. Pinned pages and the Key notes lens are the explicit page-shortcut surfaces; both show page rows grouped or subtitled by notebook without duplicating the normal list.
 
 User groups and the Ungrouped bucket have accessible collapse/expand headers. User-group collapse persists, while the Ungrouped bucket collapse is local to the open picker. A single Collapse all / Expand all action changes every group at once and replaces the obsolete notebook accordion control. Filtering temporarily reveals matching collapsed groups without changing saved state. Notebook drag persists picker order and group membership. Deleting a group never deletes notebooks.
 
@@ -869,11 +864,11 @@ The reliable shell also has an in-place refresh-note path. The top-bar sync icon
 
 ### Lessons Learned
 
-- **`content` vs `body` in the API.** The PUT /api/page route accepts both `content` and `body` for the Markdown text (`content` takes precedence). This was introduced for compatibility when the reliable shell switched from `body` to `content`. New code should use `content`; old code using `body` still works.
-- **The tree response includes full page body content.** This was a deliberate performance decision ? load everything on first call so page switching is instant. If the vault grows very large (thousands of pages), this becomes a problem. The field is called `content` in `VaultPageSummary` even though the type name suggests it's a summary.
-- **Selection metadata now rides with the tree.** `GET /api/vault` also carries page `metadata`, and the reliable shell hydrates drafts from that tree payload instead of doing a per-click `GET /api/page`. If a future feature needs extra page fields during selection, prefer extending the tree payload over reintroducing an eager network fetch on every click.
-- **Optimistic tree selection (SN-53).** Sidebar clicks set `activePagePath` immediately before the async leave/save work finishes, so the active row highlights without waiting on flush/snapshot. Rows expose `data-selected="true"` and `aria-current="page"` for tests and assistive tech.
-- **Local tree patch on page create (SN-53).** Creating a page appends the returned `ApiPageDocument` to in-memory tree state and selects it directly. Do not follow create with a full `GET /api/vault` refresh ? that caused visible shell flash and unnecessary latency.
+- **Tree bodies are scoped to open notebooks (SN-382).** A page summary still carries full content and metadata for instant selection, but a closed notebook has only its identity row in the shell tree. Do not make a full-tree request on reopen: fetch that notebook alone, then merge it. This keeps unrelated notebooks off the reopen I/O and JSON path. Merge the scoped row with mergeScopedNotebook so it keeps the color the full tree assigned (a one-notebook read colors its only result as index 0). Commit closed-set changes through commitClosedNotebooks, which no-ops on equal contents, so in-flight tree revalidations only retry when the scope really changed. Reopening selects the notebook without auto-opening its first page, so no editor/Jupyter/ink surface mounts until the owner picks a page. Measured on the owner vault (30 notebooks, 27 closed): tree read 1687 ms / 4.91 MB before, 320 ms / 0.83 MB after; a single-notebook reopen is 22-175 ms. This is the SN-124 open-notebooks-only loading outcome for the reliable shell.
+- **Content vs body in the API.** PUT /api/page accepts both fields for page HTML; content takes precedence. New code should send content.
+- **Selection metadata rides with open pages.** GET /api/vault includes page metadata, so the shell can hydrate a selected open page without GET /api/page.
+- **Optimistic tree selection (SN-53).** Sidebar clicks set activePagePath before asynchronous leave/save work finishes. Rows expose data-selected and aria-current for tests and assistive tech.
+- **Local tree patch on page create (SN-53).** Creation appends the returned page to the in-memory tree and selects it directly. A full vault refresh after create caused visible shell flash and unnecessary latency.
 
 ### Bibliography paper identity and references (SN-279)
 
