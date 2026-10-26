@@ -26,6 +26,28 @@ function selectImage(editor: Editor) {
 }
 
 describe("image layout extension (SN-59)", () => {
+  test("percentage presets size the image and resize bounds together on insert and reload", () => {
+    const editor = makeEditor("<p></p>");
+    editor.commands.setImage({ src: "/vault/nb/sec/page.assets/chart.png", alt: "chart" });
+    const imagePos = selectImage(editor);
+    editor.chain().focus().setNodeSelection(imagePos).setImageWidth("50%").run();
+
+    const assertSizing = (root: ParentNode) => {
+      const container = root.querySelector<HTMLElement>('[data-resize-container][data-node="image"]');
+      const image = container?.querySelector<HTMLImageElement>("[data-resize-wrapper] > img");
+      expect(container?.style.width).toBe("50%");
+      expect(image?.style.width).toBe("100%");
+      expect(image?.style.height).toBe("auto");
+      expect(container?.querySelector('[data-resize-handle="right"]')).not.toBeNull();
+    };
+    assertSizing(editor.view.dom);
+
+    const reloaded = makeEditor(editor.getHTML());
+    assertSizing(reloaded.view.dom);
+    reloaded.destroy();
+    editor.destroy();
+  });
+
   test("persists width and alignment attributes through getHTML", () => {
     const editor = makeEditor("<p></p>");
     editor.commands.setImage({ src: "/vault/nb/sec/page.assets/chart.png", alt: "chart" });

@@ -940,6 +940,8 @@ The reliable shell also has an in-place refresh-note path. The top-bar sync icon
 
 All extensions are imported from `@tiptap/extension-text-style` (FontFamily and FontSize ship in that package at v3.x). Registered in `src/lib/rich-text-editor-config.ts` via `createEditorExtensions()`.
 
+Pasted images use their natural dimensions within the editor column or floating text box; insertion no longer stores a 40% width. The image resize NodeView sizes the outer container for saved 25/50/75/100% presets, so its handles share the displayed image bounds on first selection and after reload. A drag converts the displayed width to pixels and persists the new dimensions. Existing saved percentage widths remain supported (SN-384).
+
 ### Lists and nested markers (SN-317)
 
 **Plain English:** Bullet, numbered, and checklist items always show their markers (dots, numbers, or checkboxes). Nesting with Tab / Shift+Tab changes the marker style the way Word and OneNote do — deeper bullets alternate disc, circle, square; deeper numbers alternate 1/2/3, a/b/c, i/ii/iii.

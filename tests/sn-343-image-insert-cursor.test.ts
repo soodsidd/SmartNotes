@@ -5,7 +5,6 @@ import { Editor } from "@tiptap/core";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
   createEditorExtensions,
-  DEFAULT_INSERTED_IMAGE_WIDTH,
   insertUploadedEditorAsset,
   placeCursorAfterInsertedImage,
   type UploadedEditorAsset,
@@ -45,7 +44,8 @@ describe("cursor lands beside an inserted image (SN-343)", () => {
       // Caret shares the paragraph with the image (same line), not a trailing block below.
       expect(resolved.parent.childCount).toBeGreaterThanOrEqual(1);
       expect(resolved.parent.child(0).type.name).toBe("image");
-      expect(resolved.parent.child(0).attrs.width).toBe(DEFAULT_INSERTED_IMAGE_WIDTH);
+      expect(resolved.parent.child(0).attrs.width).toBeNull();
+      expect(editor.getHTML()).not.toContain('width="40%"');
       // Position is after the image node inside that paragraph.
       expect(selection.from).toBeGreaterThan(resolved.before() + 1);
     } finally {

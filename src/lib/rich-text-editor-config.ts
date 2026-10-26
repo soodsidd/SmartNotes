@@ -353,9 +353,6 @@ export interface UploadedEditorAsset {
   isImage: boolean;
 }
 
-/** Default width for freshly inserted images so two fit on one row (SN-343). */
-export const DEFAULT_INSERTED_IMAGE_WIDTH = "40%";
-
 /**
  * Tiptap's setImage/insertContent leaves the freshly inserted image as a
  * NodeSelection (ProseMirror's default after inserting a node). That is
@@ -396,7 +393,6 @@ export function insertUploadedEditorAsset(
           attrs: {
             src: asset.url,
             alt: originalFileName,
-            width: DEFAULT_INSERTED_IMAGE_WIDTH,
           },
         })
         .run()

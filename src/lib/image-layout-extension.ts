@@ -83,7 +83,8 @@ export const ImageLayout = Image.extend({
    * TipTap's stock resize NodeView `onUpdate` returns true without syncing
    * `img.src`. Across SN-55 page swaps the editor stays mounted, so ProseMirror
    * can reuse the NodeView while the model already holds the next page's URL —
-   * leaving the previous bitmap visible. Rebuild when `src` changes (SN-280).
+   * leaving the previous bitmap visible. Rebuild when `src` changes (SN-280)
+   * or sizing changes so the image and its resize wrapper stay in sync.
    */
   addNodeView() {
     const parent = this.parent?.();
@@ -97,7 +98,30 @@ export const ImageLayout = Image.extend({
         return nodeView;
       }
 
-      let appliedSrc = String(props.node.attrs.src ?? "");
+      const appliedSrc = String(props.node.attrs.src ?? "");
+      const appliedWidth = normalizeWidth(props.node.attrs.width);
+      // TipTap's resize view appends "px" to the width attribute. For a
+      // percentage preset that produces an invalid value such as "50%px".
+      // Size the outer inline container against the editor column instead;
+      // the picture and handles then share exactly the same width.
+      if (appliedWidth?.endsWith("%")) {
+        const container = nodeView.dom as HTMLElement;
+        const image = container.querySelector("[data-resize-wrapper] > img") as HTMLImageElement | null;
+        container.style.width = appliedWidth;
+        if (image) {
+          image.style.width = "100%";
+          image.style.height = "auto";
+          const beginResize = () => {
+            const width = image.getBoundingClientRect().width;
+            if (width > 0) image.style.width = `${width}px`;
+            container.style.width = "";
+          };
+          container.querySelectorAll("[data-resize-handle]").forEach((handle) => {
+            handle.addEventListener("mousedown", beginResize, { capture: true });
+            handle.addEventListener("touchstart", beginResize, { capture: true });
+          });
+        }
+      }
       const originalUpdate = nodeView.update.bind(nodeView);
 
       nodeView.update = (updatedNode, decorations, innerDecorations) => {
@@ -106,7 +130,7 @@ export const ImageLayout = Image.extend({
         }
 
         const nextSrc = String(updatedNode.attrs.src ?? "");
-        if (nextSrc !== appliedSrc) {
+        if (nextSrc !== appliedSrc || normalizeWidth(updatedNode.attrs.width) !== appliedWidth) {
           return false;
         }
 
