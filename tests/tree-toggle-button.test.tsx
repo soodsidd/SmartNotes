@@ -67,9 +67,9 @@ test("a drag gesture that begins on the toggle does not start a row drag", () =>
   expect(screen.getByTestId("state")).toHaveTextContent("open:0:1");
 });
 
-test("hit target is a 44px-tall touch box on phones and the 26px affordance on compact desktop", () => {
+test("hit target is a 44px touch box on phones and the 26px affordance on compact desktop", () => {
   const { rerender } = render(<Row />);
-  expect(screen.getByTestId("toggle")).toHaveClass("h-11", "w-8");
+  expect(screen.getByTestId("toggle")).toHaveClass("size-11");
   rerender(<Row compact />);
   expect(screen.getByTestId("toggle")).toHaveClass("h-[var(--desktop-tree-affordance-size)]", "w-5");
   const { container } = render(<TreeToggleSpacer compact />);

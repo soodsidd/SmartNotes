@@ -4938,6 +4938,13 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     setExpandedNotebooks((currentSet) => toggleSetValue(currentSet, path));
   }, []);
 
+  // SN-392: the rail no longer force-expands the active notebook (that made its chevron a no-op),
+  // so reveal a notebook's sections when it becomes active or the tree finishes loading.
+  React.useEffect(() => {
+    if (!activeNotebookPath || isLoadingTree) return;
+    setExpandedNotebooks((current) => (current.has(activeNotebookPath) ? current : new Set([...current, activeNotebookPath])));
+  }, [activeNotebookPath, isLoadingTree]);
+
   const handleTogglePinnedNotebook = React.useCallback((path: string) => {
     setPinnedNotebooks((current) => toggleSetValue(current, path));
   }, []);
@@ -9682,33 +9689,38 @@ export const Sidebar = React.memo(function Sidebar({
         <div className={cn(compactDesktop ? "space-y-2" : "space-y-1")}>
           {visibleNotebooks.map((notebook) => {
             const notebookActive = notebook.path === activeNotebookPath;
-            const notebookExpanded = notebookActive || expandedNotebooks.has(notebook.path);
+            // SN-392: honour the expand set even for the active notebook so its chevron can collapse it;
+            // the shell adds a notebook to the set when it becomes active.
+            const notebookExpanded = expandedNotebooks.has(notebook.path);
             const hasSections = notebook.sections.length > 0;
             return (
               <div key={notebook.path} data-testid={`notebook-rail-row-${notebook.path}`}>
                 <div className={cn("group flex items-center rounded transition", notebookActive ? "bg-surface" : "hover:bg-surface/70")}
                   onContextMenu={(event) => openSidebarContextMenu(event, notebook)}>
+                {hasSections ? (
+                  <TreeToggleButton
+                    expanded={notebookExpanded}
+                    onToggle={() => onToggleNotebook(notebook.path)}
+                    compact={compactDesktop}
+                    label={`${notebook.name} sections`}
+                    testId={`rail-notebook-toggle-${notebook.path}`}
+                  />
+                ) : (
+                  <TreeToggleSpacer compact={compactDesktop} />
+                )}
                 <button
                   type="button"
                   className={cn(
-                    "flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "flex min-w-0 flex-1 items-center gap-1.5 rounded pr-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     compactDesktop ? "min-h-[var(--desktop-tree-section-row-height)] py-0.5 [@media(pointer:coarse)]:min-h-11" : "min-h-11 py-1"
                   )}
                   onClick={() => {
+                    // Selecting reveals the notebook's sections; collapsing is the chevron's job only.
                     onSelectNotebook(notebook.path);
-                    onToggleNotebook(notebook.path);
+                    if (!notebookExpanded) onToggleNotebook(notebook.path);
                   }}
                   aria-current={notebookActive ? "page" : undefined}
                 >
-                  {hasSections ? (
-                    notebookExpanded ? (
-                      <ChevronDown className={cn("shrink-0 text-muted-foreground", compactDesktop ? "size-3.5" : "size-4")} />
-                    ) : (
-                      <ChevronRight className={cn("shrink-0 text-muted-foreground", compactDesktop ? "size-3.5" : "size-4")} />
-                    )
-                  ) : (
-                    <span className={cn("shrink-0", compactDesktop ? "size-3.5" : "size-4")} />
-                  )}
                   <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: notebook.color }} aria-hidden />
                   <span className={cn("min-w-0 flex-1 truncate text-sm", notebookActive ? "font-semibold" : "font-medium")}>{notebook.name}</span>
                   {notebook.isPortable ? (

@@ -1,0 +1,29 @@
+{
+  "project": "mobile",
+  "railNotebookToggle": {
+    "hitBox": {
+      "width": 44,
+      "height": 44
+    },
+    "toggles": 11,
+    "misses": 0
+  },
+  "nestedPageToggle": {
+    "hitBox": {
+      "width": 44,
+      "height": 44
+    },
+    "toggles": 11,
+    "misses": 0
+  },
+  "activeBeforeToggles": [
+    "Personal Notebook",
+    "Quick Notes"
+  ],
+  "activeAfterToggles": [
+    "SN392 Child 1792991130630"
+  ],
+  "childStillSelectedAfterToggles": true,
+  "liveRefreshObserved": true,
+  "stayedCollapsedAfterLiveRefresh": true
+}

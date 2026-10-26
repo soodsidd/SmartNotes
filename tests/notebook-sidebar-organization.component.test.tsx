@@ -35,8 +35,8 @@ const tree: VaultNotebook[] = [
   },
 ];
 
-function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
-  const props: React.ComponentProps<typeof Sidebar> = {
+function renderProps(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}): React.ComponentProps<typeof Sidebar> {
+  return {
     tree,
     activeNotebookPath: null,
     activeSectionPath: null,
@@ -105,6 +105,10 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
     onExportDocxPage: jest.fn(),
     ...overrides,
   };
+}
+
+function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
+  const props = renderProps(overrides);
   return { ...render(<Sidebar {...props} />), props };
 }
 
@@ -228,7 +232,7 @@ describe("SN-352 sidebar context menus", () => {
 
 describe("SN-324 dual-pane navigation", () => {
   it("shows token-colored section tabs and a surface highlight on the selected section", () => {
-    renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
+    renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", expandedNotebooks: new Set(["Work"]), activeSectionPath: "Work/Research" });
     const section = screen.getByTestId("rail-section-row-Work/Research");
     // SN-346: the highlight sits on the row wrapper so it spans the ⋯ trigger too.
     expect(section.parentElement).toHaveClass("bg-surface");
@@ -247,7 +251,7 @@ describe("SN-324 dual-pane navigation", () => {
 
   it("keeps inactive section names prominent and creation actions quieter at both densities", () => {
     for (const variant of ["desktop", "mobile"] as const) {
-      const rail = renderSidebar({ sidebarLayout: "rail", variant, activeNotebookPath: "Work", onSelectRootPages: jest.fn() });
+      const rail = renderSidebar({ sidebarLayout: "rail", variant, activeNotebookPath: "Work", expandedNotebooks: new Set(["Work"]), onSelectRootPages: jest.fn() });
       const notebookRow = within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: "Work" });
       const section = screen.getByTestId("rail-section-row-Work/Research");
       const rootPages = screen.getByTestId("rail-root-pages-Work");
@@ -276,7 +280,7 @@ describe("SN-324 dual-pane navigation", () => {
   });
 
   it("uses one nav label size for notebooks, sections, pages, and creation actions", () => {
-    const rail = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work", onSelectRootPages: jest.fn() });
+    const rail = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work", expandedNotebooks: new Set(["Work"]), onSelectRootPages: jest.fn() });
     const labels = [
       within(within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: "Work" })).getByText("Work"),
       within(screen.getByTestId("rail-section-row-Work/Research")).getByText("Research"),
@@ -313,7 +317,7 @@ describe("SN-324 dual-pane navigation", () => {
 
   it("offers notebook root pages in the rail and selects that scope", () => {
     const onSelectRootPages = jest.fn();
-    renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", onSelectRootPages });
+    renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", expandedNotebooks: new Set(["Work"]), onSelectRootPages });
     fireEvent.click(screen.getByTestId("rail-root-pages-Work"));
     expect(onSelectRootPages).toHaveBeenCalledWith("Work");
     expect(notebookHasRootPagesRow({ pages: [], sections: [] })).toBe(true);
@@ -337,7 +341,7 @@ describe("SN-324 dual-pane navigation", () => {
     expect(child).toHaveStyle({ paddingLeft: "20px" });
     expect(screen.queryByTestId("page-Work/Roadmap")).not.toBeInTheDocument();
     expect(screen.queryByTestId("page-Personal/Travel")).not.toBeInTheDocument();
-    fireEvent.click(within(parent).getByRole("button", { name: /Parent/ }));
+    fireEvent.click(within(parent).getByRole("button", { name: /^Parent/ }));
     expect(onOpenPage).toHaveBeenCalledWith("Work/Research/Parent");
     fireEvent.click(screen.getByTestId("page-pane-add-page"));
     expect(onDirectCreatePage).toHaveBeenCalledWith(expect.objectContaining({ notebookPath: "Work", sectionPath: "Work/Research" }));
@@ -363,7 +367,7 @@ describe("SN-324 dual-pane navigation", () => {
   it("keeps separate collapse controls for the two desktop panes", () => {
     const onCollapseRail = jest.fn();
     const onCollapseTree = jest.fn();
-    const rail = renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", onCollapseRail });
+    const rail = renderSidebar({ sidebarLayout: "rail", activeNotebookPath: "Work", expandedNotebooks: new Set(["Work"]), onCollapseRail });
     fireEvent.click(within(rail.container).getByTestId("notebook-rail-collapse"));
     expect(onCollapseRail).toHaveBeenCalledTimes(1);
     rail.unmount();
@@ -604,7 +608,7 @@ describe("rail layout — sections under active notebook (SN-324)", () => {
 
 describe("SN-346 rail notebook and section menus", () => {
   it("reveals each sidebar ellipsis on its own row hover while preserving focus and touch access", () => {
-    const rail = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work" });
+    const rail = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work", expandedNotebooks: new Set(["Work"]) });
     for (const testId of ["rail-notebook-menu-Work", "rail-section-menu-Work/Research"]) {
       const trigger = screen.getByTestId(testId);
       expect(trigger.parentElement).toHaveClass("group");
@@ -619,7 +623,7 @@ describe("SN-346 rail notebook and section menus", () => {
   });
 
   it("exposes delete/rename actions from the rail notebook and section rows", async () => {
-    const { props } = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work" });
+    const { props } = renderSidebar({ sidebarLayout: "rail", variant: "desktop", activeNotebookPath: "Work", expandedNotebooks: new Set(["Work"]) });
 
     fireEvent.click(screen.getByTestId("rail-notebook-menu-Work"));
     fireEvent.click(await screen.findByText("Delete notebook"));
@@ -629,5 +633,55 @@ describe("SN-346 rail notebook and section menus", () => {
     expect(await screen.findByText("Rename section")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Delete section"));
     expect(props.onDeleteSection).toHaveBeenCalledWith("Work/Research", "Research");
+  });
+});
+
+describe("SN-392 tree expand/collapse toggles", () => {
+  function RailHarness({ onSelectNotebook }: { onSelectNotebook: jest.Mock }) {
+    const [expanded, setExpanded] = React.useState<Set<string>>(new Set(["Work"]));
+    const toggle = (path: string) => setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    });
+    const props = renderProps({ sidebarLayout: "rail", activeNotebookPath: "Work", expandedNotebooks: expanded, onToggleNotebook: toggle, onSelectNotebook });
+    return <Sidebar {...props} />;
+  }
+
+  it("collapses the active notebook's sections from its chevron without selecting, and the name re-expands", () => {
+    const onSelectNotebook = jest.fn();
+    render(<RailHarness onSelectNotebook={onSelectNotebook} />);
+    const toggle = screen.getByTestId("rail-notebook-toggle-Work");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.click(toggle);
+      const open = i % 2 === 1;
+      expect(toggle).toHaveAttribute("aria-expanded", String(open));
+      expect(screen.queryByTestId("rail-section-row-Work/Research") !== null).toBe(open);
+    }
+    expect(onSelectNotebook).not.toHaveBeenCalled();
+    // Collapsed: clicking the notebook name selects and reveals its sections (never collapses).
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const name = within(screen.getByTestId("notebook-rail-row-Work")).getByRole("button", { name: "Work" });
+    fireEvent.click(name);
+    expect(onSelectNotebook).toHaveBeenCalledWith("Work");
+    expect(screen.getByTestId("rail-section-row-Work/Research")).toBeInTheDocument();
+    fireEvent.click(name);
+    expect(screen.getByTestId("rail-section-row-Work/Research")).toBeInTheDocument();
+  });
+
+  it("toggles nested pages from a dedicated chevron that does not open or drag the row", () => {
+    const { props } = renderSidebar({ sidebarLayout: "page-tree", variant: "mobile", activeNotebookPath: "Work", activeSectionPath: "Work/Research" });
+    const toggle = screen.getByRole("button", { name: "Expand Parent" });
+    expect(toggle).toHaveClass("size-11");
+    fireEvent.click(toggle);
+    expect(props.onTogglePage).toHaveBeenCalledWith("Work/Research/Parent");
+    expect(props.onOpenPage).not.toHaveBeenCalled();
+    const row = screen.getByTestId("page-Work/Research/Parent");
+    fireEvent.pointerDown(toggle);
+    const drag = fireEvent.dragStart(row, { dataTransfer: { effectAllowed: "" } });
+    expect(drag).toBe(false);
+    fireEvent.click(within(row).getByText("Parent"));
+    expect(props.onOpenPage).toHaveBeenCalledWith("Work/Research/Parent");
   });
 });
