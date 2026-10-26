@@ -493,3 +493,13 @@ established phone touch target); the visual size is unchanged. The image toolbar
 (`--surface`, `--border`, 44px touch buttons, horizontal scroll). On touch it is capped to the selected
 picture's width and sits 8px inside the picture's top edge when it covers at most half the picture;
 desktop keeps the stock 8px gap above. No new color, type, or spacing tokens were added.
+
+## Companion chat equations and images (SN-369, SN-370)
+
+Typeset equations in Companion replies use KaTeX's own type at the current `.chat-prose` size; wide display
+equations scroll horizontally inside `.katex-display` instead of widening the rail. Agent-displayed images
+reuse the existing `.chat-prose img` frame (`--border`, `--radius-md`, full column width) and add one value:
+a `max-height: min(60vh, 420px)` cap with `object-fit: contain` on a 3% `--foreground` tint, so a tall image
+cannot push the transcript off-screen. A failed image becomes a dashed `--border` chip with
+`--muted-foreground` text at 0.88em, `--radius-md`, and the Lucide `AlertCircle` icon at 14px. No new color,
+type, or spacing tokens were added.
