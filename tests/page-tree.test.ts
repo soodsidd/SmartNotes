@@ -7,6 +7,7 @@ import {
   mergeTreeExpandState,
   remapPagePathToSection,
   resolveSidebarCrossContainerDrop,
+  resolveLiveRefreshExpandPaths,
   resolveSidebarPageDrop,
   resolveTreeExpandPathsForPage,
 } from "@/lib/page-tree";
@@ -384,5 +385,44 @@ describe("tree expand state preservation", () => {
     expect(merged.notebooks).toEqual(new Set(["notebook-a"]));
     expect(merged.sections).toEqual(new Set(["notebook-a/section-b"]));
     expect(merged.sections.has("notebook-a/section-a")).toBe(false);
+  });
+});
+
+describe("live refresh expand state (SN-392)", () => {
+  const child = makePage("Work/Notes/child.html", "Child", "Work/Notes/parent.html");
+  const parent = makePage("Work/Notes/parent.html", "Parent", null);
+  const tree = [
+    { path: "Work", pages: [], sections: [{ path: "Work/Notes", pages: [parent, child] }, { path: "Work/Ideas", pages: [] }] },
+  ];
+
+  it("leaves a collapsed section alone when the active page did not move", () => {
+    expect(resolveLiveRefreshExpandPaths(tree, tree, child.path)).toEqual({});
+    const merged = mergeTreeExpandState(
+      { notebooks: new Set(["Work"]), sections: new Set(), pages: new Set() },
+      resolveLiveRefreshExpandPaths(tree, tree, child.path),
+      [parent, child]
+    );
+    expect(merged.sections.has("Work/Notes")).toBe(false);
+    expect(merged.pages.has(parent.path)).toBe(false);
+  });
+
+  it("reveals the active page when it moved to another section or parent", () => {
+    const moved = { ...child, path: child.path, parentId: null };
+    const nextTree = [
+      { path: "Work", pages: [], sections: [{ path: "Work/Notes", pages: [parent] }, { path: "Work/Ideas", pages: [moved] }] },
+    ];
+    expect(resolveLiveRefreshExpandPaths(tree, nextTree, child.path)).toEqual({
+      notebookPath: "Work",
+      sectionPath: "Work/Ideas",
+      pagePath: child.path,
+    });
+    const unnested = [
+      { path: "Work", pages: [], sections: [{ path: "Work/Notes", pages: [parent, moved] }, { path: "Work/Ideas", pages: [] }] },
+    ];
+    expect(resolveLiveRefreshExpandPaths(tree, unnested, child.path).sectionPath).toBe("Work/Notes");
+  });
+
+  it("does nothing without an active page", () => {
+    expect(resolveLiveRefreshExpandPaths(tree, tree, null)).toEqual({});
   });
 });

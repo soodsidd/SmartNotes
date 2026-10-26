@@ -64,6 +64,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { TreeToggleButton, TreeToggleSpacer, isTreeToggleTarget } from "@/components/tree-toggle-button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
@@ -363,6 +364,7 @@ import {
   mergeTreeExpandState,
   resolveSidebarCrossContainerDrop,
   resolveSidebarPageDrop,
+  resolveLiveRefreshExpandPaths,
   resolveTreeExpandPathsForPage,
   type PageNestingActionLookup,
   type TreeExpandEnsurePaths,
@@ -3710,7 +3712,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
             new Set(payload.tree.flatMap((notebook) => notebook.sections.map((section) => section.path)))
           );
         }
-      } else if (ensureExpanded) {
+      } else if (ensureExpanded && (ensureExpanded.notebookPath || ensureExpanded.sectionPath || ensureExpanded.pagePath)) {
         const merged = mergeTreeExpandState(
           {
             notebooks: expandedNotebooksRef.current,
@@ -3852,7 +3854,10 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       ) {
         return false;
       }
-      applyVaultPayload(payload, { pagePath }, { draftSnapshot });
+      applyVaultPayload(payload, { pagePath }, {
+        draftSnapshot,
+        ensureExpanded: resolveLiveRefreshExpandPaths(treeRef.current, payload.tree, pagePath),
+      });
       setPendingVaultReload(null);
       return true;
     } catch {
@@ -9187,6 +9192,8 @@ export const Sidebar = React.memo(function Sidebar({
     });
   };
   const dragStartXRef = React.useRef<number>(0);
+  // SN-392: a gesture that starts on an expand/collapse toggle must never become a row drag.
+  const dragFromToggleRef = React.useRef(false);
   // Ref (not state) so onDragOver closures see the current section path synchronously
   const draggedPageSectionPathRef = React.useRef<string | null>(null);
   const clearSidebarPageDrag = React.useCallback(() => {
@@ -9949,7 +9956,7 @@ export const Sidebar = React.memo(function Sidebar({
                           aria-current={active ? "page" : undefined}
                           onClick={(event) => {
                             const target = event.target as HTMLElement;
-                            if (target.closest("button[data-page-menu]")) return;
+                            if (target.closest("button[data-page-menu]") || isTreeToggleTarget(target)) return;
                             onOpenPage(node.page.path);
                           }}
                           onContextMenu={(event) => {
@@ -9972,7 +9979,14 @@ export const Sidebar = React.memo(function Sidebar({
                             });
                           }}
                           draggable
+                          onPointerDownCapture={(e) => {
+                            dragFromToggleRef.current = isTreeToggleTarget(e.target);
+                          }}
                           onDragStart={(e) => {
+                            if (dragFromToggleRef.current) {
+                              e.preventDefault();
+                              return;
+                            }
                             dragStartXRef.current = e.clientX;
                             draggedPageSectionPathRef.current = notebook.path;
                             setDraggedPagePath(node.page.path);
@@ -10053,23 +10067,15 @@ export const Sidebar = React.memo(function Sidebar({
                             aria-hidden
                           />
                           {node.children.length > 0 ? (
-                            <button
-                              type="button"
-                              className="shrink-0 text-muted-foreground hover:text-foreground"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onTogglePage(node.page.path);
-                              }}
-                              aria-label={expandedPages.has(node.page.path) ? "Collapse" : "Expand"}
-                            >
-                              {expandedPages.has(node.page.path) ? (
-                                <ChevronDown className="size-3" />
-                              ) : (
-                                <ChevronRight className="size-3" />
-                              )}
-                            </button>
+                            <TreeToggleButton
+                              expanded={expandedPages.has(node.page.path)}
+                              onToggle={() => onTogglePage(node.page.path)}
+                              compact={compactDesktop}
+                              label={node.page.title}
+                              testId={`page-toggle-${node.page.path}`}
+                            />
                           ) : (
-                            <span className="size-3 shrink-0" />
+                            <TreeToggleSpacer compact={compactDesktop} />
                           )}
                           <button
                             type="button"
@@ -10321,19 +10327,25 @@ export const Sidebar = React.memo(function Sidebar({
                             clearSidebarPageDrag();
                           }}
                         >
+                          <TreeToggleButton
+                            expanded={sectionOpen}
+                            onToggle={() => onToggleSection(section.path)}
+                            compact={compactDesktop}
+                            label={section.name}
+                            testId={`section-toggle-${section.path}`}
+                          />
                           <button
                             type="button"
-                            className={cn("flex min-w-0 items-center text-left", inlineSectionPath === section.path ? "shrink-0" : "flex-1", compactDesktop ? "gap-1.5" : "gap-2")}
+                            className={cn(
+                              "flex min-w-0 items-center self-stretch text-left",
+                              inlineSectionPath === section.path ? "shrink-0" : "flex-1",
+                              compactDesktop ? "gap-1.5" : "min-h-11 gap-2"
+                            )}
                             onClick={() => {
                               onSelectSection(section.path);
                               onToggleSection(section.path);
                             }}
                           >
-                            {sectionOpen ? (
-                              <ChevronDown className={cn("text-muted-foreground", compactDesktop ? "size-3" : "size-3.5")} />
-                            ) : (
-                              <ChevronRight className={cn("text-muted-foreground", compactDesktop ? "size-3" : "size-3.5")} />
-                            )}
                             {section.name === "Inbox" ? (
                               <Inbox className={cn("text-accent", compactDesktop ? "size-3" : "size-3.5")} />
                             ) : null}
@@ -10485,7 +10497,7 @@ export const Sidebar = React.memo(function Sidebar({
                                     aria-current={active ? "page" : undefined}
                                     onClick={(event) => {
                                       const target = event.target as HTMLElement;
-                                      if (target.closest("button[data-page-menu]")) return;
+                                      if (target.closest("button[data-page-menu]") || isTreeToggleTarget(target)) return;
                                       onOpenPage(node.page.path);
                                     }}
                                     onContextMenu={(event) => {
@@ -10508,7 +10520,14 @@ export const Sidebar = React.memo(function Sidebar({
                                       });
                                     }}
                                     draggable
+                                    onPointerDownCapture={(e) => {
+                                      dragFromToggleRef.current = isTreeToggleTarget(e.target);
+                                    }}
                                     onDragStart={(e) => {
+                                      if (dragFromToggleRef.current) {
+                                        e.preventDefault();
+                                        return;
+                                      }
                                       dragStartXRef.current = e.clientX;
                                       draggedPageSectionPathRef.current = section.path;
                                       setDraggedPagePath(node.page.path);
@@ -10598,23 +10617,15 @@ export const Sidebar = React.memo(function Sidebar({
                                       aria-hidden
                                     />
                                     {node.children.length > 0 ? (
-                                      <button
-                                        type="button"
-                                        className="shrink-0 text-muted-foreground hover:text-foreground"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onTogglePage(node.page.path);
-                                        }}
-                                        aria-label={expandedPages.has(node.page.path) ? "Collapse" : "Expand"}
-                                      >
-                                        {expandedPages.has(node.page.path) ? (
-                                          <ChevronDown className="size-3" />
-                                        ) : (
-                                          <ChevronRight className="size-3" />
-                                        )}
-                                      </button>
+                                      <TreeToggleButton
+                                        expanded={expandedPages.has(node.page.path)}
+                                        onToggle={() => onTogglePage(node.page.path)}
+                                        compact={compactDesktop}
+                                        label={node.page.title}
+                                        testId={`page-toggle-${node.page.path}`}
+                                      />
                                     ) : (
-                                      <span className="size-3 shrink-0" />
+                                      <TreeToggleSpacer compact={compactDesktop} />
                                     )}
                                     <button
                                       type="button"

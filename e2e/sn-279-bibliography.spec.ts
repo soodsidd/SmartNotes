@@ -44,7 +44,7 @@ test("Bibliography creates a standard paper, references it and edits its canonic
   expect(parentContent.indexOf("<h1")).toBeLessThan(parentContent.indexOf(paper.id));
   tree = await sidebar(page);
   // The child row lives under the parent; expand it if persisted tree state collapsed it.
-  const expand = tree.getByRole("button", { name: parent.title, exact: true }).locator("..").getByRole("button", { name: "Expand", exact: true });
+  const expand = tree.getByRole("button", { name: parent.title, exact: true }).locator("..").getByRole("button", { name: `Expand ${parent.title}`, exact: true });
   if (await expand.isVisible()) await expand.evaluate((button: HTMLElement) => button.click());
   await expect(tree.getByTestId(`paper-child-${paper.id}`)).toBeVisible(COMPILE_TIMEOUT);
   await tree.getByTestId(`paper-child-${paper.id}`).click();

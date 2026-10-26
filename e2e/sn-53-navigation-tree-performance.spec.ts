@@ -44,7 +44,7 @@ async function ensureSectionExpanded(tree: Locator) {
   await expect(byTestId(tree, `section-${SECTION_PATH}`)).toBeVisible();
   const samplePage = byTestId(tree, `page-${SECTION_PATH}/Welcome to Smart Notes.html`);
   if (!(await samplePage.isVisible())) {
-    await byTestId(tree, `section-${SECTION_PATH}`).locator("button").first().click();
+    await byTestId(tree, `section-toggle-${SECTION_PATH}`).click();
     await expect(samplePage).toBeVisible({ timeout: 5000 });
   }
 }

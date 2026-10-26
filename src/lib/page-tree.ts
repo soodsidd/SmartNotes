@@ -114,6 +114,37 @@ export function resolveTreeExpandPathsForPage(
   return { pagePath };
 }
 
+type ExpandLookupTree = Parameters<typeof resolveTreeExpandPathsForPage>[0];
+
+/**
+ * SN-392: background (socket/focus) vault refreshes must not undo a user's
+ * collapse. Only reveal the active page when it actually moved to a different
+ * notebook, section, or parent; otherwise leave the expand state untouched.
+ */
+export function resolveLiveRefreshExpandPaths(
+  previousTree: ExpandLookupTree,
+  nextTree: ExpandLookupTree,
+  pagePath: string | null | undefined
+): TreeExpandEnsurePaths {
+  if (!pagePath) return {};
+  const before = resolveTreeExpandPathsForPage(previousTree, pagePath);
+  const after = resolveTreeExpandPathsForPage(nextTree, pagePath);
+  const parentOf = (tree: ExpandLookupTree) => {
+    for (const notebook of tree) {
+      const page =
+        notebook.pages?.find((item) => item.path === pagePath) ??
+        notebook.sections.flatMap((section) => section.pages).find((item) => item.path === pagePath);
+      if (page) return page.parentId ?? null;
+    }
+    return undefined;
+  };
+  const moved =
+    (before.notebookPath ?? null) !== (after.notebookPath ?? null) ||
+    (before.sectionPath ?? null) !== (after.sectionPath ?? null) ||
+    parentOf(previousTree) !== parentOf(nextTree);
+  return moved ? after : {};
+}
+
 export function flattenPageTree(nodes: PageTreeNode[], expanded: Set<string>): PageTreeNode[] {
   const result: PageTreeNode[] = [];
   for (const node of nodes) {
