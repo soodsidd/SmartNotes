@@ -354,6 +354,32 @@
       ]
     },
     {
+      "id": "e2e-sn-384-image-paste-geometry",
+      "name": "SN-384 pasted image and resize geometry",
+      "description": "Playwright desktop and mobile: paste a 480px clipboard image, compare its bounds with the resize wrapper and handle, click a handle, reload, and apply a 50% preset.",
+      "intent": "Keeps pasted images at a sensible size with selection chrome aligned from insertion through reload and width changes.",
+      "whenToRun": "Pre-merge when changing image paste sizing or the image resize NodeView.",
+      "failureMeaning": "A pasted image may appear artificially small or its resize handles may be offset before a corrective click.",
+      "appType": "browser",
+      "command": "node node_modules/@playwright/test/cli.js test e2e/sn-384-image-paste-geometry.spec.ts --workers=1 --retries=0",
+      "timeoutMs": 900000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "editor", "image", "paste", "targeted"],
+      "feature": "editor",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-384",
+      "addedAt": "2026-10-25",
+      "sourceFiles": [
+        { "path": "e2e/sn-384-image-paste-geometry.spec.ts" },
+        { "path": "src/lib/image-layout-extension.ts" },
+        { "path": "src/lib/rich-text-editor-config.ts" }
+      ]
+    },
+    {
       "id": "e2e-sn-361-table-resize-flow",
       "name": "SN-361 table shrink and editor width coupling",
       "description": "Playwright desktop real-pointer drags: repeated corner shrink, row-divider shrink, and table stretch with measured wrapper and main-flow widths.",
