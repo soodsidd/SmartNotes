@@ -189,7 +189,7 @@ describe("SN-205 openPage host navigation contract", () => {
     expect(shellSource).toContain("setExpandedSections(expanded.sections)");
     expect(shellSource).toContain("setExpandedPages(expanded.pages)");
     expect(shellSource).toContain("next.delete(notebookPath)");
-    expect(shellSource).toContain("await openPage(canonical)");
+    expect(shellSource).toContain("await openPage(canonical, currentTree)");
     expect(shellSource).toContain("onOpenPage={handleAppOpenPage}");
     // Deep-link honored on first hydration so a focused app can land the notebook.
     expect(shellSource).toContain('searchParams?.get("page")');

@@ -255,7 +255,14 @@
       "command": "npm run test:e2e -- e2e/sn-245-drag-selection.spec.ts --project=desktop --workers=1 --retries=0",
       "timeoutMs": 300000,
       "enabled": true,
-      "tags": ["e2e", "browser", "editor", "table", "selection", "targeted"],
+      "tags": [
+        "e2e",
+        "browser",
+        "editor",
+        "table",
+        "selection",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "e2e",
       "suite": "targeted",
@@ -265,9 +272,15 @@
       "addedBy": "SN-245",
       "addedAt": "2026-10-13",
       "sourceFiles": [
-        { "path": "e2e/sn-245-drag-selection.spec.ts" },
-        { "path": "src/components/rich-text-editor.tsx" },
-        { "path": "src/components/notebook-shell-reliable.tsx" }
+        {
+          "path": "e2e/sn-245-drag-selection.spec.ts"
+        },
+        {
+          "path": "src/components/rich-text-editor.tsx"
+        },
+        {
+          "path": "src/components/notebook-shell-reliable.tsx"
+        }
       ]
     },
     {
@@ -281,7 +294,13 @@
       "command": "node node_modules/jest/bin/jest.js --runInBand tests/sn-339-image-multi-select.test.ts",
       "timeoutMs": 60000,
       "enabled": true,
-      "tags": ["unit", "node", "editor", "image", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "image",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "unit",
       "suite": "targeted",
@@ -291,8 +310,12 @@
       "addedBy": "SN-339",
       "addedAt": "2026-10-19",
       "sourceFiles": [
-        { "path": "tests/sn-339-image-multi-select.test.ts" },
-        { "path": "src/components/rich-text-editor.tsx" }
+        {
+          "path": "tests/sn-339-image-multi-select.test.ts"
+        },
+        {
+          "path": "src/components/rich-text-editor.tsx"
+        }
       ]
     },
     {
@@ -306,7 +329,13 @@
       "command": "node node_modules/jest/bin/jest.js --runInBand tests/sn-343-image-insert-cursor.test.ts",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "node", "editor", "image", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "image",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "unit",
       "suite": "targeted",
@@ -315,7 +344,14 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-343",
       "addedAt": "2026-10-18",
-      "sourceFiles": [{ "path": "tests/sn-343-image-insert-cursor.test.ts" }, { "path": "src/lib/rich-text-editor-config.ts" }]
+      "sourceFiles": [
+        {
+          "path": "tests/sn-343-image-insert-cursor.test.ts"
+        },
+        {
+          "path": "src/lib/rich-text-editor-config.ts"
+        }
+      ]
     },
     {
       "id": "e2e-sn-361-table-resize-flow",
@@ -328,7 +364,14 @@
       "command": "node node_modules/@playwright/test/cli.js test e2e/sn-361-table-resize-flow.spec.ts --project=desktop --workers=1 --retries=0",
       "timeoutMs": 900000,
       "enabled": true,
-      "tags": ["e2e", "browser", "editor", "table", "resize", "targeted"],
+      "tags": [
+        "e2e",
+        "browser",
+        "editor",
+        "table",
+        "resize",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "e2e",
       "suite": "targeted",
@@ -338,9 +381,15 @@
       "addedBy": "SN-361",
       "addedAt": "2026-10-24",
       "sourceFiles": [
-        { "path": "e2e/sn-361-table-resize-flow.spec.ts" },
-        { "path": "src/components/table-resize-controls.tsx" },
-        { "path": "src/components/rich-text-editor.tsx" }
+        {
+          "path": "e2e/sn-361-table-resize-flow.spec.ts"
+        },
+        {
+          "path": "src/components/table-resize-controls.tsx"
+        },
+        {
+          "path": "src/components/rich-text-editor.tsx"
+        }
       ]
     },
     {
@@ -354,7 +403,13 @@
       "command": "node node_modules/jest/bin/jest.js --runInBand tests/table-insert.test.ts",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "node", "editor", "table", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "table",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "unit",
       "suite": "targeted",
@@ -363,7 +418,11 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-299",
       "addedAt": "2026-10-13",
-      "sourceFiles": [{ "path": "tests/table-insert.test.ts" }]
+      "sourceFiles": [
+        {
+          "path": "tests/table-insert.test.ts"
+        }
+      ]
     },
     {
       "id": "e2e-sn-299-insert-table",
@@ -376,7 +435,13 @@
       "command": "node node_modules/@playwright/test/cli.js test e2e/sn-299-insert-table.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
       "timeoutMs": 300000,
       "enabled": true,
-      "tags": ["e2e", "browser", "editor", "table", "targeted"],
+      "tags": [
+        "e2e",
+        "browser",
+        "editor",
+        "table",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "e2e",
       "suite": "targeted",
@@ -386,8 +451,12 @@
       "addedBy": "SN-299",
       "addedAt": "2026-10-13",
       "sourceFiles": [
-        { "path": "e2e/sn-299-insert-table.spec.ts" },
-        { "path": "tests/table-insert.test.ts" }
+        {
+          "path": "e2e/sn-299-insert-table.spec.ts"
+        },
+        {
+          "path": "tests/table-insert.test.ts"
+        }
       ]
     },
     {
@@ -401,7 +470,13 @@
       "command": "node node_modules/jest/bin/jest.js --runInBand tests/table-ribbon.test.ts",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "node", "editor", "table", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "table",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "unit",
       "suite": "targeted",
@@ -410,7 +485,14 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-278",
       "addedAt": "2026-10-13",
-      "sourceFiles": [{ "path": "tests/table-ribbon.test.ts" }, { "path": "src/lib/table-ribbon.ts" }]
+      "sourceFiles": [
+        {
+          "path": "tests/table-ribbon.test.ts"
+        },
+        {
+          "path": "src/lib/table-ribbon.ts"
+        }
+      ]
     },
     {
       "id": "e2e-sn-278-table-ribbon",
@@ -423,7 +505,13 @@
       "command": "node node_modules/@playwright/test/cli.js test e2e/sn-278-table-ribbon.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
       "timeoutMs": 300000,
       "enabled": true,
-      "tags": ["e2e", "browser", "editor", "table", "targeted"],
+      "tags": [
+        "e2e",
+        "browser",
+        "editor",
+        "table",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "e2e",
       "suite": "targeted",
@@ -433,8 +521,12 @@
       "addedBy": "SN-278",
       "addedAt": "2026-10-13",
       "sourceFiles": [
-        { "path": "e2e/sn-278-table-ribbon.spec.ts" },
-        { "path": "src/components/table-ribbon.tsx" }
+        {
+          "path": "e2e/sn-278-table-ribbon.spec.ts"
+        },
+        {
+          "path": "src/components/table-ribbon.tsx"
+        }
       ]
     },
     {
@@ -448,7 +540,13 @@
       "command": "node node_modules/jest/bin/jest.js --runInBand tests/table-context-menu.test.ts",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "node", "editor", "table", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "table",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "unit",
       "suite": "targeted",
@@ -457,7 +555,14 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-308",
       "addedAt": "2026-10-14",
-      "sourceFiles": [{ "path": "tests/table-context-menu.test.ts" }, { "path": "src/lib/table-context-menu.ts" }]
+      "sourceFiles": [
+        {
+          "path": "tests/table-context-menu.test.ts"
+        },
+        {
+          "path": "src/lib/table-context-menu.ts"
+        }
+      ]
     },
     {
       "id": "e2e-sn-308-table-context-menu",
@@ -470,7 +575,13 @@
       "command": "node node_modules/@playwright/test/cli.js test e2e/sn-308-table-context-menu.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
       "timeoutMs": 300000,
       "enabled": true,
-      "tags": ["e2e", "browser", "editor", "table", "targeted"],
+      "tags": [
+        "e2e",
+        "browser",
+        "editor",
+        "table",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "e2e",
       "suite": "targeted",
@@ -480,9 +591,15 @@
       "addedBy": "SN-308",
       "addedAt": "2026-10-14",
       "sourceFiles": [
-        { "path": "e2e/sn-308-table-context-menu.spec.ts" },
-        { "path": "src/components/comment-layer.tsx" },
-        { "path": "src/components/table-ribbon.tsx" }
+        {
+          "path": "e2e/sn-308-table-context-menu.spec.ts"
+        },
+        {
+          "path": "src/components/comment-layer.tsx"
+        },
+        {
+          "path": "src/components/table-ribbon.tsx"
+        }
       ]
     },
     {
@@ -1410,7 +1527,12 @@
       "command": "npm test -- tests/design-html-edit.test.ts tests/design-pagination.test.ts tests/design-pdf-guide-alignment.test.ts",
       "timeoutMs": 180000,
       "enabled": true,
-      "tags": ["unit", "node", "design", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "design",
+        "targeted"
+      ],
       "feature": "design-pages",
       "testType": "unit",
       "suite": "targeted",
@@ -1420,10 +1542,18 @@
       "addedBy": "SN-304",
       "addedAt": "2026-10-14",
       "sourceFiles": [
-        { "path": "tests/design-html-edit.test.ts" },
-        { "path": "tests/design-pagination.test.ts" },
-        { "path": "tests/design-pdf-guide-alignment.test.ts" },
-        { "path": "e2e/fixtures/sn-304-resume-template.html" }
+        {
+          "path": "tests/design-html-edit.test.ts"
+        },
+        {
+          "path": "tests/design-pagination.test.ts"
+        },
+        {
+          "path": "tests/design-pdf-guide-alignment.test.ts"
+        },
+        {
+          "path": "e2e/fixtures/sn-304-resume-template.html"
+        }
       ],
       "intent": "Protects verbatim HTML persistence around a selected edit, shared A4 page-break arithmetic, and Preview guide Y vs Export PDF page edges on the resume fixture.",
       "whenToRun": "Pre-merge when changing design Preview editing, max-page metadata, A4 guides, or design PDF export geometry."
@@ -1436,7 +1566,12 @@
       "command": "npm run test:e2e -- e2e/sn-304-design-pages.spec.ts --project=desktop --project=mobile",
       "timeoutMs": 720000,
       "enabled": true,
-      "tags": ["e2e", "browser", "design", "targeted"],
+      "tags": [
+        "e2e",
+        "browser",
+        "design",
+        "targeted"
+      ],
       "feature": "design-pages",
       "testType": "e2e",
       "suite": "targeted",
@@ -1445,7 +1580,14 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-304",
       "addedAt": "2026-10-14",
-      "sourceFiles": [{ "path": "e2e/sn-304-design-pages.spec.ts" }, { "path": "e2e/fixtures/sn-304-resume-template.html" }],
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-304-design-pages.spec.ts"
+        },
+        {
+          "path": "e2e/fixtures/sn-304-resume-template.html"
+        }
+      ],
       "intent": "Protects the owner editing and exporting a real self-contained resume design at desktop and mobile widths.",
       "whenToRun": "Pre-merge when changing WYSIWYG design Preview or its A4 PDF export."
     },
@@ -1679,7 +1821,13 @@
       "command": "npm test -- tests/companion-parallel-turns.test.ts tests/ai-sidebar.test.ts tests/ai-sidebar-ui.test.ts tests/sn-287-companion-composer.test.tsx",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "node", "ai", "parallel-turns", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "ai",
+        "parallel-turns",
+        "targeted"
+      ],
       "feature": "companion",
       "testType": "integration",
       "suite": "targeted",
@@ -1689,10 +1837,18 @@
       "addedBy": "SN-322",
       "addedAt": "2026-10-16",
       "sourceFiles": [
-        { "path": "tests/companion-parallel-turns.test.ts" },
-        { "path": "tests/ai-sidebar.test.ts" },
-        { "path": "tests/ai-sidebar-ui.test.ts" },
-        { "path": "tests/sn-287-companion-composer.test.tsx" }
+        {
+          "path": "tests/companion-parallel-turns.test.ts"
+        },
+        {
+          "path": "tests/ai-sidebar.test.ts"
+        },
+        {
+          "path": "tests/ai-sidebar-ui.test.ts"
+        },
+        {
+          "path": "tests/sn-287-companion-composer.test.tsx"
+        }
       ],
       "intent": "Protects independent live companion threads across pages and tabs while preserving one live turn per shared thread.",
       "whenToRun": "Pre-merge when changing CLI-chat supersede, companion thread addressing, reattach, or the shell busy gate.",
@@ -1706,7 +1862,12 @@
       "command": "npm test -- tests/inline-ai-popover.test.tsx tests/inline-ai-relay.test.ts tests/jupyter-ask-companion.test.tsx",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "node", "inline-ai", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "inline-ai",
+        "targeted"
+      ],
       "feature": "inline-ai",
       "testType": "component",
       "suite": "targeted",
@@ -1716,9 +1877,15 @@
       "addedBy": "SN-362",
       "addedAt": "2026-10-24",
       "sourceFiles": [
-        { "path": "tests/inline-ai-popover.test.tsx" },
-        { "path": "tests/inline-ai-relay.test.ts" },
-        { "path": "tests/jupyter-ask-companion.test.tsx" }
+        {
+          "path": "tests/inline-ai-popover.test.tsx"
+        },
+        {
+          "path": "tests/inline-ai-relay.test.ts"
+        },
+        {
+          "path": "tests/jupyter-ask-companion.test.tsx"
+        }
       ],
       "intent": "Protects one shared Companion turn while the popup mirrors its answer and applies finished text only to the intended rich-text editor or Jupyter Lab cell.",
       "whenToRun": "Pre-merge when changing Ask Companion relay, Fast/Slow choice, Edit insertion, or the Jupyter Lab Ask path."
@@ -1731,7 +1898,11 @@
       "command": "npm run test:e2e -- e2e/sn-303-ask-companion.spec.ts --project=desktop --grep=\"text page context menu\"",
       "timeoutMs": 300000,
       "enabled": true,
-      "tags": ["e2e", "inline-ai", "targeted"],
+      "tags": [
+        "e2e",
+        "inline-ai",
+        "targeted"
+      ],
       "feature": "inline-ai",
       "testType": "e2e",
       "suite": "targeted",
@@ -1740,7 +1911,11 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-375",
       "addedAt": "2026-10-25",
-      "sourceFiles": [{ "path": "e2e/sn-303-ask-companion.spec.ts" }],
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-303-ask-companion.spec.ts"
+        }
+      ],
       "intent": "Protects the one-click Explain relay, popup mirror, and Open in Companion handoff on a real page.",
       "whenToRun": "Pre-merge when changing Ask Companion quick actions or their relay into the sidebar."
     },
@@ -1752,7 +1927,11 @@
       "command": "npm run test:e2e -- e2e/sn-374-quick-prompts.spec.ts --project=desktop",
       "timeoutMs": 300000,
       "enabled": true,
-      "tags": ["e2e", "companion", "targeted"],
+      "tags": [
+        "e2e",
+        "companion",
+        "targeted"
+      ],
       "feature": "companion",
       "testType": "e2e",
       "suite": "targeted",
@@ -1761,7 +1940,11 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-374",
       "addedAt": "2026-10-25",
-      "sourceFiles": [{ "path": "e2e/sn-374-quick-prompts.spec.ts" }],
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-374-quick-prompts.spec.ts"
+        }
+      ],
       "intent": "Protects one-click Companion prompt shortcuts and their browser-local settings on a real page.",
       "whenToRun": "Pre-merge when changing Companion quick prompts or their settings."
     },
@@ -4563,7 +4746,11 @@
       "command": "npm test -- tests/page-tree.test.ts tests/vault-notebook-section.test.ts -t \"sidebar page drop resolution|page move\"",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "vault", "targeted"],
+      "tags": [
+        "unit",
+        "vault",
+        "targeted"
+      ],
       "feature": "vault",
       "testType": "unit",
       "suite": "targeted",
@@ -4573,8 +4760,12 @@
       "addedBy": "SN-307",
       "addedAt": "2026-10-14",
       "sourceFiles": [
-        { "path": "tests/page-tree.test.ts" },
-        { "path": "tests/vault-notebook-section.test.ts" }
+        {
+          "path": "tests/page-tree.test.ts"
+        },
+        {
+          "path": "tests/vault-notebook-section.test.ts"
+        }
       ]
     },
     {
@@ -4864,7 +5055,13 @@
       "command": "npm test -- tests/page-outline.test.ts",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "node", "editor", "outline", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "editor",
+        "outline",
+        "targeted"
+      ],
       "feature": "editor",
       "addedBy": "SN-298",
       "testType": "unit",
@@ -4874,8 +5071,12 @@
       "lifecycle": "pre-merge",
       "addedAt": "2026-10-12",
       "sourceFiles": [
-        { "path": "tests/page-outline.test.ts" },
-        { "path": "src/lib/page-outline.ts" }
+        {
+          "path": "tests/page-outline.test.ts"
+        },
+        {
+          "path": "src/lib/page-outline.ts"
+        }
       ],
       "intent": "Locks live heading nesting without modifying legacy saved TOC content.",
       "whenToRun": "Pre-merge when changing the page outline data model."
@@ -5035,7 +5236,12 @@
       "command": "npm test -- tests/quick-capture-draft.test.ts tests/api-notebook-workflow-route.test.ts",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "node", "capture", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "capture",
+        "targeted"
+      ],
       "feature": "capture",
       "testType": "integration",
       "suite": "targeted",
@@ -5045,8 +5251,12 @@
       "addedBy": "SN-286",
       "addedAt": "2026-10-11",
       "sourceFiles": [
-        { "path": "tests/quick-capture-draft.test.ts" },
-        { "path": "tests/api-notebook-workflow-route.test.ts" }
+        {
+          "path": "tests/quick-capture-draft.test.ts"
+        },
+        {
+          "path": "tests/api-notebook-workflow-route.test.ts"
+        }
       ]
     },
     {
@@ -5241,7 +5451,12 @@
       "command": "npm test -- tests/floating-text-box.test.ts",
       "timeoutMs": 180000,
       "enabled": true,
-      "tags": ["unit", "editor", "floating-text-box", "targeted"],
+      "tags": [
+        "unit",
+        "editor",
+        "floating-text-box",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "integration",
       "suite": "targeted",
@@ -5250,7 +5465,11 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-296",
       "addedAt": "2026-10-12",
-      "sourceFiles": [{ "path": "tests/floating-text-box.test.ts" }]
+      "sourceFiles": [
+        {
+          "path": "tests/floating-text-box.test.ts"
+        }
+      ]
     },
     {
       "id": "unit-sn-318-main-flow-width",
@@ -5300,7 +5519,13 @@
       "command": "npm run test:e2e -- e2e/sn-321-main-flow-outline.spec.ts",
       "timeoutMs": 300000,
       "enabled": true,
-      "tags": ["e2e", "browser", "editor", "main-flow", "targeted"],
+      "tags": [
+        "e2e",
+        "browser",
+        "editor",
+        "main-flow",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "e2e",
       "suite": "targeted",
@@ -5310,9 +5535,15 @@
       "addedBy": "SN-321",
       "addedAt": "2026-10-16",
       "sourceFiles": [
-        { "path": "e2e/sn-321-main-flow-outline.spec.ts" },
-        { "path": "src/components/rich-text-editor.tsx" },
-        { "path": "src/app/globals.css" }
+        {
+          "path": "e2e/sn-321-main-flow-outline.spec.ts"
+        },
+        {
+          "path": "src/components/rich-text-editor.tsx"
+        },
+        {
+          "path": "src/app/globals.css"
+        }
       ]
     },
     {
@@ -5326,7 +5557,12 @@
       "command": "npm test -- tests/server-supervisor.test.ts tests/server-settings-panel.test.tsx",
       "timeoutMs": 180000,
       "enabled": true,
-      "tags": ["settings", "server", "unit", "targeted"],
+      "tags": [
+        "settings",
+        "server",
+        "unit",
+        "targeted"
+      ],
       "feature": "server",
       "testType": "integration",
       "suite": "targeted",
@@ -5335,7 +5571,14 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-301",
       "addedAt": "2026-10-13",
-      "sourceFiles": [{ "path": "tests/server-supervisor.test.ts" }, { "path": "tests/server-settings-panel.test.tsx" }]
+      "sourceFiles": [
+        {
+          "path": "tests/server-supervisor.test.ts"
+        },
+        {
+          "path": "tests/server-settings-panel.test.tsx"
+        }
+      ]
     },
     {
       "id": "e2e-sn-301-server-settings",
@@ -5348,7 +5591,14 @@
       "command": "npm run test:e2e -- e2e/sn-301-server-settings.spec.ts --project=desktop --project=mobile",
       "timeoutMs": 300000,
       "enabled": true,
-      "tags": ["settings", "server", "e2e", "desktop", "mobile", "targeted"],
+      "tags": [
+        "settings",
+        "server",
+        "e2e",
+        "desktop",
+        "mobile",
+        "targeted"
+      ],
       "feature": "server",
       "testType": "e2e",
       "suite": "targeted",
@@ -5357,7 +5607,11 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-301",
       "addedAt": "2026-10-13",
-      "sourceFiles": [{ "path": "e2e/sn-301-server-settings.spec.ts" }]
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-301-server-settings.spec.ts"
+        }
+      ]
     },
     {
       "id": "unit-recipes",
@@ -5370,7 +5624,14 @@
       "command": "node node_modules/jest/bin/jest.js --runInBand tests/recipes.test.ts",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "node", "recipes", "notebook-instructions", "companion", "targeted"],
+      "tags": [
+        "unit",
+        "node",
+        "recipes",
+        "notebook-instructions",
+        "companion",
+        "targeted"
+      ],
       "feature": "recipes",
       "testType": "unit",
       "suite": "targeted",
@@ -5379,7 +5640,17 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-305",
       "addedAt": "2026-10-14",
-      "sourceFiles": [{ "path": "tests/recipes.test.ts" }, { "path": "src/server/vault/recipes.ts" }, { "path": "src/server/vault/page-copy.ts" }]
+      "sourceFiles": [
+        {
+          "path": "tests/recipes.test.ts"
+        },
+        {
+          "path": "src/server/vault/recipes.ts"
+        },
+        {
+          "path": "src/server/vault/page-copy.ts"
+        }
+      ]
     },
     {
       "id": "unit-job-inbox",
@@ -5439,7 +5710,13 @@
       "command": "npm test -- tests/editor-calculator.test.tsx",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "component", "editor", "calculator", "targeted"],
+      "tags": [
+        "unit",
+        "component",
+        "editor",
+        "calculator",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "component",
       "suite": "targeted",
@@ -5449,9 +5726,15 @@
       "addedBy": "SN-364",
       "addedAt": "2026-10-24",
       "sourceFiles": [
-        { "path": "tests/editor-calculator.test.tsx" },
-        { "path": "src/components/editor-calculator.tsx" },
-        { "path": "src/components/rich-text-editor.tsx" }
+        {
+          "path": "tests/editor-calculator.test.tsx"
+        },
+        {
+          "path": "src/components/editor-calculator.tsx"
+        },
+        {
+          "path": "src/components/rich-text-editor.tsx"
+        }
       ]
     },
     {
@@ -5465,7 +5748,12 @@
       "command": "npm test -- tests/companion-thread-indicators.test.ts tests/companion-ready-icon.test.ts",
       "timeoutMs": 120000,
       "enabled": true,
-      "tags": ["unit", "companion", "sidebar", "targeted"],
+      "tags": [
+        "unit",
+        "companion",
+        "sidebar",
+        "targeted"
+      ],
       "feature": "companion",
       "testType": "unit",
       "suite": "targeted",
@@ -5475,10 +5763,18 @@
       "addedBy": "SN-373",
       "addedAt": "2026-10-25",
       "sourceFiles": [
-        { "path": "tests/companion-thread-indicators.test.ts" },
-        { "path": "tests/companion-ready-icon.test.ts" },
-        { "path": "src/lib/companion-thread-indicators.ts" },
-        { "path": "src/components/notebook-shell-reliable.tsx" }
+        {
+          "path": "tests/companion-thread-indicators.test.ts"
+        },
+        {
+          "path": "tests/companion-ready-icon.test.ts"
+        },
+        {
+          "path": "src/lib/companion-thread-indicators.ts"
+        },
+        {
+          "path": "src/components/notebook-shell-reliable.tsx"
+        }
       ]
     },
     {
@@ -5492,7 +5788,13 @@
       "command": "npm run test:e2e -- e2e/sn-305-recipes.spec.ts --project=desktop --workers=1 --retries=0",
       "timeoutMs": 300000,
       "enabled": true,
-      "tags": ["e2e", "browser", "recipes", "notebook-instructions", "targeted"],
+      "tags": [
+        "e2e",
+        "browser",
+        "recipes",
+        "notebook-instructions",
+        "targeted"
+      ],
       "feature": "recipes",
       "testType": "e2e",
       "suite": "targeted",
@@ -5501,7 +5803,14 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-305",
       "addedAt": "2026-10-14",
-      "sourceFiles": [{ "path": "e2e/sn-305-recipes.spec.ts" }, { "path": "src/components/notebook-shell-reliable.tsx Updated 2026-10-25 (SN-381): added tests/jupyter-cell-run-live-bridge.test.ts (real bridge source in jsdom against a fake Lab notebook) and extended deep-work-cell-run and deep-work-companion-refresh for persistence, conflict, and run routing; no E2E added." }]
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-305-recipes.spec.ts"
+        },
+        {
+          "path": "src/components/notebook-shell-reliable.tsx Updated 2026-10-25 (SN-381): added tests/jupyter-cell-run-live-bridge.test.ts (real bridge source in jsdom against a fake Lab notebook) and extended deep-work-cell-run and deep-work-companion-refresh for persistence, conflict, and run routing; no E2E added."
+        }
+      ]
     },
     {
       "id": "e2e-sn-383-create-focus",
@@ -5514,7 +5823,13 @@
       "command": "npm run test:e2e -- e2e/sn-383-create-focus.spec.ts e2e/sn-352-sidebar-blank-context-menus.spec.ts --project=desktop --workers=1 --retries=0",
       "timeoutMs": 240000,
       "enabled": true,
-      "tags": ["e2e", "browser", "sidebar", "create", "targeted"],
+      "tags": [
+        "e2e",
+        "browser",
+        "sidebar",
+        "create",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "e2e",
       "suite": "targeted",
@@ -5523,7 +5838,14 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-383",
       "addedAt": "2026-10-25",
-      "sourceFiles": [{ "path": "e2e/sn-383-create-focus.spec.ts" }, { "path": "e2e/sn-352-sidebar-blank-context-menus.spec.ts" }]
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-383-create-focus.spec.ts"
+        },
+        {
+          "path": "e2e/sn-352-sidebar-blank-context-menus.spec.ts"
+        }
+      ]
     },
     {
       "id": "e2e-sn-385-floating-box-chrome",
@@ -5536,7 +5858,13 @@
       "command": "npm run test:e2e -- e2e/sn-385-floating-box-chrome.spec.ts --project=desktop --workers=1 --retries=0",
       "timeoutMs": 180000,
       "enabled": true,
-      "tags": ["e2e", "browser", "editor", "floating-text-box", "targeted"],
+      "tags": [
+        "e2e",
+        "browser",
+        "editor",
+        "floating-text-box",
+        "targeted"
+      ],
       "feature": "editor",
       "testType": "e2e",
       "suite": "targeted",
@@ -5545,7 +5873,74 @@
       "lifecycle": "pre-merge",
       "addedBy": "SN-385",
       "addedAt": "2026-10-25",
-      "sourceFiles": [{ "path": "e2e/sn-385-floating-box-chrome.spec.ts" }]
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-385-floating-box-chrome.spec.ts"
+        }
+      ]
+    },
+    {
+      "id": "unit-sn-382-notebook-open",
+      "name": "SN-382 scoped notebook tree hydration",
+      "description": "Jest verifies that closed notebooks remain identity-only rows and reopening reads only the selected notebook.",
+      "intent": "Prevents a closed or unrelated notebook from being read while one notebook opens.",
+      "whenToRun": "Pre-merge when changing vault tree hydration or notebook reopening.",
+      "failureMeaning": "Notebook opening may read the entire vault again or lose the selected notebook's pages.",
+      "appType": "node",
+      "command": "npm test -- tests/sn-382-notebook-open.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "vault",
+        "notebook",
+        "targeted"
+      ],
+      "feature": "vault",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-382",
+      "addedAt": "2026-10-25",
+      "sourceFiles": [
+        {
+          "path": "tests/sn-382-notebook-open.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "e2e-sn-382-notebook-open",
+      "name": "SN-382 closed notebook reopen",
+      "description": "Playwright verifies that the picker reopens one closed notebook and its pages become navigable through a scoped vault request.",
+      "intent": "Protects the owner-facing reopen workflow and its one-notebook network scope.",
+      "whenToRun": "Pre-merge when changing the notebook picker, closed state, or vault tree API.",
+      "failureMeaning": "A closed notebook may stay empty after reopening or fetch unrelated notebooks.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-382-notebook-open.spec.ts --project=desktop --workers=1 --retries=0",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": [
+        "e2e",
+        "browser",
+        "vault",
+        "notebook",
+        "targeted"
+      ],
+      "feature": "vault",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-382",
+      "addedAt": "2026-10-25",
+      "sourceFiles": [
+        {
+          "path": "e2e/sn-382-notebook-open.spec.ts"
+        }
+      ]
     }
   ]
 }

@@ -13,11 +13,18 @@ export async function GET(request: NextRequest) {
   try {
     const sequential = request.nextUrl.searchParams.get("sequential") === "1";
     const skipCache = request.nextUrl.searchParams.get("skipCache") === "1";
+    const notebookPath = request.nextUrl.searchParams.get("notebook") ?? undefined;
+    const closedNotebookPaths = new Set(request.nextUrl.searchParams.getAll("closed"));
 
     const tree = await readVaultTree({
       sequential: sequential || undefined,
       skipCache: skipCache || undefined,
+      notebookPath,
+      closedNotebookPaths,
     });
+    if (notebookPath && !tree.tree.some((notebook) => notebook.path === notebookPath)) {
+      return NextResponse.json({ error: "Notebook not found." }, { status: 404 });
+    }
     return NextResponse.json(tree);
   } catch (error) {
     const response = toErrorResponse(error);

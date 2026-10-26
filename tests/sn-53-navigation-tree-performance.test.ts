@@ -24,7 +24,7 @@ describe("SN-53 navigation tree performance wiring", () => {
 
   it("paints sidebar selection before background save and editor swap", () => {
     const openPageBlock = shellSrc.match(
-      /const openPage = React\.useCallback\(\s*async \(pagePath: string\) => \{[\s\S]*?\n\s*\},\s*\n\s*\[[^\]]*\]\s*\);/
+      /const openPage = React\.useCallback\(\s*async \(pagePath: string(?:, [^)]*)?\) => \{[\s\S]*?\n\s*\},\s*\n\s*\[[^\]]*\]\s*\);/
     )?.[0];
 
     expect(openPageBlock).toBeDefined();

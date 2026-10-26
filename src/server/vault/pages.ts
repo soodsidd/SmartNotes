@@ -82,6 +82,10 @@ export interface ReadVaultTreeOptions {
   sequential?: boolean;
   /** When true, bypass the module-level vault tree cache. */
   skipCache?: boolean;
+  /** Leave closed notebooks as identity-only rows without reading their pages. */
+  closedNotebookPaths?: ReadonlySet<string>;
+  /** Fetch one notebook for reopening, without reading any other notebook. */
+  notebookPath?: string;
 }
 
 /**
@@ -647,11 +651,19 @@ async function readPortableNotebook(
   };
 }
 
+function closedNotebook(path: string, name: string, portableRoot?: string): VaultNotebook {
+  return {
+    id: path, path, name, color: NOTEBOOK_COLORS[0], pages: [], sections: [],
+    ...(portableRoot ? { isPortable: true, rootPath: portableRoot } : {}),
+  };
+}
+
 export async function readVaultTree(options: ReadVaultTreeOptions = {}) {
   const sequential = options.sequential ?? false;
   const skipCache = options.skipCache ?? false;
+  const scoped = Boolean(options.notebookPath || options.closedNotebookPaths?.size);
 
-  if (!skipCache && _vaultTreeCache) {
+  if (!skipCache && !scoped && _vaultTreeCache) {
     return _vaultTreeCache;
   }
 
@@ -661,12 +673,22 @@ export async function readVaultTree(options: ReadVaultTreeOptions = {}) {
     ? await (async () => {
         const results: VaultNotebook[] = [];
         for (const notebookEntry of notebookEntries) {
-          results.push(await readNotebook(notebookEntry, vaultRoot, sequential));
+          const notebookPath = toVaultRelativePath(notebookEntry.name);
+          if (options.notebookPath && notebookPath !== options.notebookPath) continue;
+          results.push(options.closedNotebookPaths?.has(notebookPath)
+            ? closedNotebook(notebookPath, notebookEntry.name)
+            : await readNotebook(notebookEntry, vaultRoot, sequential));
         }
         return results;
       })()
     : await Promise.all(
-        notebookEntries.map((notebookEntry) => readNotebook(notebookEntry, vaultRoot, sequential))
+        notebookEntries.filter((entry) => !options.notebookPath || toVaultRelativePath(entry.name) === options.notebookPath)
+          .map((notebookEntry) => {
+            const notebookPath = toVaultRelativePath(notebookEntry.name);
+            return options.closedNotebookPaths?.has(notebookPath)
+              ? Promise.resolve(closedNotebook(notebookPath, notebookEntry.name))
+              : readNotebook(notebookEntry, vaultRoot, sequential);
+          })
       );
 
   const portableEntries = loadNotebookRegistry().notebooks.filter((entry) => {
@@ -682,7 +704,11 @@ export async function readVaultTree(options: ReadVaultTreeOptions = {}) {
         const results: VaultNotebook[] = [];
         for (const entry of portableEntries) {
           try {
-            results.push(await readPortableNotebook(entry, sequential));
+            const notebookPath = portableNotebookPath(entry.id);
+            if (options.notebookPath && notebookPath !== options.notebookPath) continue;
+            results.push(options.closedNotebookPaths?.has(notebookPath)
+              ? closedNotebook(notebookPath, entry.name, entry.rootPath)
+              : await readPortableNotebook(entry, sequential));
           } catch (error) {
             console.warn("[smart-notes] skipped unavailable portable notebook", entry.rootPath, error);
           }
@@ -692,7 +718,11 @@ export async function readVaultTree(options: ReadVaultTreeOptions = {}) {
     : await Promise.all(
         portableEntries.map(async (entry) => {
           try {
-            return await readPortableNotebook(entry, sequential);
+            const notebookPath = portableNotebookPath(entry.id);
+            if (options.notebookPath && notebookPath !== options.notebookPath) return null;
+            return options.closedNotebookPaths?.has(notebookPath)
+              ? closedNotebook(notebookPath, entry.name, entry.rootPath)
+              : await readPortableNotebook(entry, sequential);
           } catch (error) {
             console.warn("[smart-notes] skipped unavailable portable notebook", entry.rootPath, error);
             return null;
@@ -704,7 +734,7 @@ export async function readVaultTree(options: ReadVaultTreeOptions = {}) {
 
   // Always expose the library, even before its first paper exists. Hidden on
   // disk so it cannot accidentally become an ordinary, closable notebook.
-  const paperPages = await readSectionPages(path.join(vaultRoot, BIBLIOGRAPHY_PATH), BIBLIOGRAPHY_PATH, sequential);
+  const paperPages = options.notebookPath ? [] : await readSectionPages(path.join(vaultRoot, BIBLIOGRAPHY_PATH), BIBLIOGRAPHY_PATH, sequential);
   if (paperPages.length) notebooks.push({
     id: BIBLIOGRAPHY_PATH, path: BIBLIOGRAPHY_PATH, name: "Bibliography",
     color: "var(--accent)", sections: [],
@@ -716,7 +746,7 @@ export async function readVaultTree(options: ReadVaultTreeOptions = {}) {
     notebook.color = NOTEBOOK_COLORS[index % NOTEBOOK_COLORS.length];
   });
   const result = { tree: notebooks, root: vaultRoot };
-  if (!skipCache) {
+  if (!skipCache && !scoped) {
     _vaultTreeCache = result;
   }
   return result;

@@ -235,7 +235,7 @@ export function OpenClosedNotebooksDialog(props: NotebookPickerProps) {
 
   const chooseNotebook = React.useCallback((path: string) => {
     if (closedNotebooks.has(path)) onOpenNotebook(path);
-    onSelectNotebook(path);
+    else onSelectNotebook(path);
     onOpenChange(false);
   }, [closedNotebooks, onOpenChange, onOpenNotebook, onSelectNotebook]);
 

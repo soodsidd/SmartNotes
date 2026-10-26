@@ -122,6 +122,7 @@ import type { AppPageViewProps } from "@/components/app-page-view";
 import type { SpreadsheetPageHandle, SpreadsheetPageViewProps } from "@/components/spreadsheet-page-view";
 import { focusedLogUrl } from "@/lib/api/log";
 import { normalizeVaultRelativePagePath } from "@/lib/app-frame";
+import { mergeScopedNotebook, notebooksNeedingHydration, releaseNotebook, sameNotebookSet } from "@/lib/notebook-open-scope";
 import { clearQuickCaptureDraft, readQuickCaptureDraft, writeQuickCaptureDraft } from "@/lib/quick-capture-draft";
 import { captureDestinationLabel } from "@/lib/quick-capture-destination";
 import {
@@ -791,7 +792,7 @@ function deepWorkDraft(descriptor: DeepWorkDescriptor): PageDraft {
   };
 }
 
-export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTreeResponse } = {}) {
+export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [] }: { initialVault?: VaultTreeResponse; initialClosedNotebooks?: string[] } = {}) {
   const searchParams = useSearchParams();
   const paperInline = searchParams?.get("paperInline") === "1";
   // SN-281: the paper reading shell's notes frame; Companion stays with the host.
@@ -985,7 +986,15 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   }, [captureDialog]);
   const [expandedNotebooks, setExpandedNotebooks] = React.useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(new Set());
-  const [closedNotebooks, setClosedNotebooks] = React.useState<Set<string>>(new Set());
+  const [closedNotebooks, setClosedNotebooks] = React.useState<Set<string>>(() => new Set(initialClosedNotebooks));
+  const closedNotebooksRef = React.useRef<Set<string>>(new Set(initialClosedNotebooks));
+  // SN-382: keep the closed set's identity stable unless its contents change, so
+  // scoped tree requests only discard responses when the scope really moved.
+  const commitClosedNotebooks = React.useCallback((next: Set<string>) => {
+    if (sameNotebookSet(next, closedNotebooksRef.current)) return;
+    closedNotebooksRef.current = next;
+    setClosedNotebooks(next);
+  }, []);
   const [pinnedNotebooks, setPinnedNotebooks] = React.useState<Set<string>>(new Set());
   const [pinnedPages, setPinnedPages] = React.useState<Set<string>>(new Set());
   const [notebookOrder, setNotebookOrder] = React.useState<string[]>([]);
@@ -3777,10 +3786,19 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       preferred?: { notebookPath?: string | null; sectionPath?: string | null; pagePath?: string | null },
       options?: LoadTreeOptions & { coldStart?: boolean }
     ) => {
-      const payload = await fetchVaultTree({
-        sequential: startupBaselineMode || undefined,
-        skipCache: options?.skipCache || startupBaselineMode || undefined,
-      });
+      // SN-382: if the closed set changes mid-request, re-read with the new scope
+      // instead of dropping the revalidation or applying a mis-scoped tree.
+      let closedNotebookPaths = closedNotebooksRef.current;
+      let payload: VaultTreeResponse;
+      for (let attempt = 0; ; attempt += 1) {
+        payload = await fetchVaultTree({
+          sequential: startupBaselineMode || undefined,
+          skipCache: options?.skipCache || startupBaselineMode || undefined,
+          closedNotebookPaths,
+        });
+        if (closedNotebookPaths === closedNotebooksRef.current || attempt >= 2) break;
+        closedNotebookPaths = closedNotebooksRef.current;
+      }
       applyVaultPayload(payload, preferred, options);
     },
     [applyVaultPayload, startupBaselineMode]
@@ -3818,10 +3836,13 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       };
       const draftSnapshot = currentDraftSnapshot();
       const pagePath = activePagePathRef.current;
+      const closedNotebookPaths = closedNotebooksRef.current;
       const payload = await fetchVaultTree({
         sequential: startupBaselineMode || undefined,
         skipCache: true,
+        closedNotebookPaths,
       });
+      if (closedNotebookPaths !== closedNotebooksRef.current) return false;
       if (
         isVaultRefreshPayloadStale(fence, {
           draftEpoch: draftEpochRef.current,
@@ -4302,14 +4323,18 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   React.useEffect(() => {
     let ignore = false;
 
-    setClosedNotebooks(readPersistedClosedNotebooks());
+    if (!initialVault) {
+      const cached = readPersistedClosedNotebooks();
+      commitClosedNotebooks(cached);
+    }
 
     void (async () => {
       try {
         const response = await fetch("/api/ui-state", { cache: "no-store" });
         if (!response.ok) {
           if (!ignore) {
-            setClosedNotebooks(readPersistedClosedNotebooks());
+            const cached = readPersistedClosedNotebooks();
+            commitClosedNotebooks(cached);
           }
           return;
         }
@@ -4331,9 +4356,22 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
           setExpandedNotebooks(filterPersistedPaths(state.expandedNotebooks, notebookPaths));
           setExpandedSections(filterPersistedPaths(state.expandedSections, sectionPaths));
         }
-        setClosedNotebooks(
-          resolveClosedNotebooksFromVaultState(state, readPersistedClosedNotebooks())
-        );
+        const closed = resolveClosedNotebooksFromVaultState(state, readPersistedClosedNotebooks());
+        const previousClosed = closedNotebooksRef.current;
+        commitClosedNotebooks(closed);
+        // SN-382: a notebook the server rendered closed but saved state opens has
+        // only its identity row; hydrate just that notebook.
+        for (const notebookPath of notebooksNeedingHydration(treeRef.current, previousClosed, closed)) {
+          void fetchVaultTree({ notebookPath, skipCache: true })
+            .then((scoped) => {
+              const opened = scoped.tree.find((notebook) => notebook.path === notebookPath);
+              if (!opened || closedNotebooksRef.current.has(notebookPath)) return;
+              const nextTree = mergeScopedNotebook(treeRef.current, opened);
+              treeRef.current = nextTree;
+              setTree(nextTree);
+            })
+            .catch(() => undefined);
+        }
         setPinnedNotebooks(new Set(state?.pinnedNotebooks ?? []));
         setPinnedPages(new Set(state?.pinnedPages ?? []));
         setNotebookOrder(state?.notebookOrder ?? []);
@@ -4344,7 +4382,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         }
       } catch {
         if (!ignore) {
-          setClosedNotebooks(readPersistedClosedNotebooks());
+          const cached = readPersistedClosedNotebooks();
+          commitClosedNotebooks(cached);
         }
       } finally {
         if (!ignore) {
@@ -4356,7 +4395,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
     return () => {
       ignore = true;
     };
-  }, [activeProjectWorkspace]);
+  }, [activeProjectWorkspace, initialVault]);
 
   React.useEffect(() => {
     if (paperInline || !vaultUiStateHydrated || isLoadingTree) {
@@ -4550,7 +4589,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
 
   const openPage = React.useCallback(
-    async (pagePath: string) => {
+    async (pagePath: string, sourceTree = tree) => {
       if (!(await flushInlinePapers())) {
         toast.error("Save the open paper notes before leaving this page.");
         return;
@@ -4560,7 +4599,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         return;
       }
 
-      const selection = resolveSelection(tree, { pagePath });
+      const selection = resolveSelection(sourceTree, { pagePath });
       if (!selection.page) {
         return;
       }
@@ -4658,13 +4697,28 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       if (!normalized) {
         return { ok: false, error: "That is not a valid Smart Notes page path." };
       }
-      const canonical =
-        findExistingPagePath(pagePath) ?? findExistingPagePath(normalized);
-      if (!canonical) {
-        return { ok: false, error: "That Smart Notes page could not be found." };
-      }
       try {
-        const currentTree = treeRef.current;
+        let canonical =
+          findExistingPagePath(pagePath) ?? findExistingPagePath(normalized);
+        let currentTree = treeRef.current;
+        if (!canonical) {
+          const closedPath = [...closedNotebooksRef.current].find((path) => normalized.startsWith(`${path}/`));
+          if (closedPath) {
+            const payload = await fetchVaultTree({ notebookPath: closedPath, skipCache: true });
+            const opened = payload.tree.find((notebook) => notebook.path === closedPath);
+            if (opened) {
+              currentTree = mergeScopedNotebook(currentTree, opened);
+              treeRef.current = currentTree;
+              setTree(currentTree);
+              canonical = opened.pages.some((page) => page.path === normalized) ||
+                opened.sections.some((section) => section.pages.some((page) => page.path === normalized))
+                ? normalized : null;
+            }
+          }
+        }
+        if (!canonical) {
+          return { ok: false, error: "That Smart Notes page could not be found." };
+        }
         const ensureExpanded = resolveTreeExpandPathsForPage(currentTree, canonical);
         const expanded = mergeTreeExpandState(
           {
@@ -4680,13 +4734,11 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
         setExpandedPages(expanded.pages);
         const notebookPath = ensureExpanded.notebookPath;
         if (notebookPath) {
-          setClosedNotebooks((current) => {
-            const next = new Set(current);
-            next.delete(notebookPath);
-            return next;
-          });
+          const closed = new Set(closedNotebooksRef.current);
+          closed.delete(notebookPath);
+          commitClosedNotebooks(closed);
         }
-        await openPage(canonical);
+        await openPage(canonical, currentTree);
         return { ok: true };
       } catch (error) {
         return {
@@ -4717,7 +4769,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
 
   const selectNotebook = React.useCallback(
-    async (notebookPath: string) => {
+    async (notebookPath: string, sourceTree = tree, sectionOnly = false) => {
       const leavingPagePath = activePagePathRef.current;
       const canLeave = await flushSave();
       if (!canLeave) {
@@ -4728,8 +4780,8 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
       }
       dismissGhostVersions();
 
-      const selection = resolveSelection(tree, { notebookPath });
-      applySelection(selection);
+      const selection = resolveSelection(sourceTree, { notebookPath });
+      applySelection(sectionOnly ? { ...selection, page: null } : selection);
     },
     [applySelection, dismissGhostVersions, flushSave, snapshotLeavingPage, tree]
   );
@@ -4840,7 +4892,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
   const closeNotebook = React.useCallback(
     (notebookPath: string) => {
-      setClosedNotebooks((prev) => new Set([...prev, notebookPath]));
+      const closed = new Set([...closedNotebooksRef.current, notebookPath]);
+      commitClosedNotebooks(closed);
+      setTree((current) => releaseNotebook(current, notebookPath));
       if (activeNotebookPathRef.current === notebookPath) {
         setActiveNotebookPath(null);
         setActiveSectionPath(null);
@@ -4852,15 +4906,27 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   );
 
   const openNotebook = React.useCallback(
-    (notebookPath: string) => {
-      setClosedNotebooks((prev) => {
-        const next = new Set(prev);
-        next.delete(notebookPath);
-        return next;
-      });
+    async (notebookPath: string) => {
+      const toastId = toast.loading("Opening notebook…");
+      try {
+        const payload = await fetchVaultTree({ notebookPath, skipCache: true });
+        const opened = payload.tree.find((notebook) => notebook.path === notebookPath);
+        if (!opened) throw new Error("Notebook not found.");
+        const nextTree = mergeScopedNotebook(treeRef.current, opened);
+        treeRef.current = nextTree;
+        setTree(nextTree);
+        const closed = new Set(closedNotebooksRef.current);
+        closed.delete(notebookPath);
+        commitClosedNotebooks(closed);
+        await selectNotebook(notebookPath, nextTree, true);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not open notebook.");
+      } finally {
+        toast.dismiss(toastId);
+      }
       setExpandedNotebooks((prev) => new Set([...prev, notebookPath]));
     },
-    []
+    [selectNotebook]
   );
 
   const handleSidebarToggleNotebook = React.useCallback((path: string) => {
@@ -5309,11 +5375,9 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
   const handleRemoteNotebookRegistered = React.useCallback(
     async (notebook?: PortableNotebookRecord) => {
       if (notebook) {
-        setClosedNotebooks((prev) => {
-          const next = new Set(prev);
-          next.delete(notebook.path);
-          return next;
-        });
+        const closed = new Set(closedNotebooksRef.current);
+        closed.delete(notebook.path);
+        commitClosedNotebooks(closed);
         setExpandedNotebooks((prev) => new Set([...prev, notebook.path]));
       }
       try {
@@ -5955,7 +6019,7 @@ export function ReliableNotebookShell({ initialVault }: { initialVault?: VaultTr
 
     clearQuickCaptureDraft(window.localStorage);
     setCaptureDialog((current) => ({ ...current, captureId: null, content: "", isSubmitting: false, error: null, savedPagePath: page.path }));
-    void fetchVaultTree({ skipCache: true })
+    void fetchVaultTree({ skipCache: true, closedNotebookPaths: closedNotebooksRef.current })
       .then((payload) => {
         setTree(payload.tree);
         setVaultRoot(payload.root);
@@ -12093,13 +12157,19 @@ function isDialogInvalid(dialog: DialogState, value: string, selectValue: string
   return !value.trim();
 }
 
-async function fetchVaultTree(options?: { sequential?: boolean; skipCache?: boolean }): Promise<VaultTreeResponse> {
+async function fetchVaultTree(options?: { sequential?: boolean; skipCache?: boolean; closedNotebookPaths?: ReadonlySet<string>; notebookPath?: string }): Promise<VaultTreeResponse> {
   const params = new URLSearchParams();
   if (options?.sequential) {
     params.set("sequential", "1");
   }
   if (options?.skipCache) {
     params.set("skipCache", "1");
+  }
+  if (options?.notebookPath) {
+    params.set("notebook", options.notebookPath);
+  }
+  for (const path of options?.closedNotebookPaths ?? []) {
+    params.append("closed", path);
   }
   const query = params.toString();
   const response = await fetch(`/api/vault${query ? `?${query}` : ""}`, { cache: "no-store" });

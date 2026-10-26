@@ -444,7 +444,7 @@ describe("notebook picker organization component", () => {
     fireEvent.click(screen.getByTestId("open-closed-notebook-btn"));
     fireEvent.click(within(screen.getByTestId("picker-notebook-Work")).getByText("Work"));
     expect(onOpenNotebook).toHaveBeenCalledWith("Work");
-    expect(onSelectNotebook).toHaveBeenCalledWith("Work");
+    expect(onSelectNotebook).not.toHaveBeenCalled();
   });
 
   it("keeps pinned items first without removing ordinary sidebar rows", () => {
