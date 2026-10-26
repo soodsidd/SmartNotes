@@ -458,3 +458,12 @@ standard `--ring` focus ring. The hit box is 20px wide by the documented `--desk
 (26px) tall on compact desktop, and the established 44px touch target (`size-11`) on phones and coarse
 pointers. Leaf rows reserve the same width so titles align. The 20px desktop width is the existing
 Tailwind `w-5` spacing step; no new color, type, or spacing tokens were added.
+
+## Generic file attachment chip (SN-393)
+
+Pages accept any file type through Insert -> Attach, paste, and drop. Images and PDFs keep their inline
+rendering; every other type becomes the existing `.file-attachment-chip` pill (`--border`, `--secondary`,
+999px radius). The generic chip adds a `FILE` badge in `--muted` / `--muted-foreground`, the file name as
+the open link (inherits text color), an `EXT · size` meta label in `--muted-foreground` at 0.75rem,
+and a `Download` link in the documented `--link` editor-link token. PDF chips are unchanged. No new
+color, type, or spacing tokens were added.

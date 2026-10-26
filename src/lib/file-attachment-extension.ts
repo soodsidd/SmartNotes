@@ -7,7 +7,7 @@ export interface FileAttachmentOptions {
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     fileAttachment: {
-      insertFileAttachment: (attrs: { href: string; fileName: string }) => ReturnType;
+      insertFileAttachment: (attrs: { href: string; fileName: string; mimeType?: string; size?: number }) => ReturnType;
     };
   }
 }
@@ -45,6 +45,17 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
           element.querySelector("a")?.textContent ??
           null,
       },
+      mimeType: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-mime-type"),
+      },
+      size: {
+        default: null,
+        parseHTML: (element) => {
+          const value = element.getAttribute("data-file-size");
+          return value === null ? null : Number(value);
+        },
+      },
     };
   },
 
@@ -56,6 +67,12 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
     const fileName = HTMLAttributes.fileName ?? "Attachment";
     const href = HTMLAttributes.href ?? "#";
     const isPdf = isPdfHref(href);
+    const extension = String(fileName).match(/\.([^.]+)$/)?.[1]?.toUpperCase();
+    const typeLabel = extension ?? HTMLAttributes.mimeType ?? "FILE";
+    const size = HTMLAttributes.size == null ? null : Number(HTMLAttributes.size);
+    const sizeLabel = size !== null && Number.isFinite(size) && size >= 0
+      ? `${size < 1024 ? size : size < 1024 * 1024 ? (size / 1024).toFixed(1) : (size / (1024 * 1024)).toFixed(1)} ${size < 1024 ? "B" : size < 1024 * 1024 ? "KiB" : "MiB"}`
+      : null;
 
     const chipAttrs = mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
       "data-file-attachment": "",
@@ -75,8 +92,15 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
 
     return [
       "span",
-      chipAttrs,
-      ["a", { href, target: "_blank", rel: "noopener noreferrer", class: "file-attachment-name" }, fileName],
+      {
+        ...chipAttrs,
+        "data-mime-type": HTMLAttributes.mimeType ?? null,
+        "data-file-size": HTMLAttributes.size ?? null,
+      },
+      ["span", { class: "file-attachment-icon", "aria-hidden": "true" }, "FILE"],
+      ["a", { href, target: "_blank", rel: "noopener noreferrer", class: "file-attachment-name", title: "Open attachment" }, fileName],
+      ["span", { class: "file-attachment-meta" }, sizeLabel ? `${typeLabel} · ${sizeLabel}` : typeLabel],
+      ["a", { href, download: fileName, class: "file-attachment-download", title: `Download ${fileName}` }, "Download"],
     ];
   },
 

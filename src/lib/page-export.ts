@@ -298,6 +298,9 @@ body {
   font-size: 0.85rem;
 }
 
+.file-attachment-meta { color: var(--muted-foreground); font-size: 0.75rem; }
+.file-attachment-chip .file-attachment-download { color: var(--accent); text-decoration: underline; }
+
 mark {
   background-color: #f6e58d;
   border-radius: 2px;

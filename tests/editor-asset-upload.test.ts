@@ -8,6 +8,8 @@
 
 import {
   CLOUD_FILE_READ_HINT,
+  MAX_PAGE_ASSET_BYTES,
+  PAGE_ASSET_TOO_LARGE_HINT,
   describeAssetUploadFailure,
   readFileForUpload,
 } from "@/lib/editor-asset-upload";
@@ -36,6 +38,13 @@ describe("readFileForUpload", () => {
   test("rejects empty / still-syncing files before fetch", async () => {
     const empty = new File([], "cloud.pdf", { type: "application/pdf" });
     await expect(readFileForUpload(empty)).rejects.toThrow(/empty or still syncing/i);
+  });
+
+  test("rejects oversized files before reading bytes", async () => {
+    const read = jest.fn();
+    const file = { name: "archive.zip", size: MAX_PAGE_ASSET_BYTES + 1, type: "application/zip", arrayBuffer: read } as unknown as File;
+    await expect(readFileForUpload(file)).rejects.toThrow(PAGE_ASSET_TOO_LARGE_HINT);
+    expect(read).not.toHaveBeenCalled();
   });
 
   test("returns a Blob with the file bytes when readable", async () => {

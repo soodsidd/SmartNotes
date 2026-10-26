@@ -1515,6 +1515,21 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
   text-decoration: none;
 }
 
+.file-attachment-chip:not(.file-attachment-chip--pdf) .file-attachment-icon {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.file-attachment-meta {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.file-attachment-chip .file-attachment-download {
+  color: var(--link);
+  text-decoration: underline;
+}
+
 .file-attachment-chip--pdf {
   background: oklch(0.96 0.01 25);
   border-color: oklch(0.85 0.06 25);

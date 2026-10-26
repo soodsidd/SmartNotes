@@ -384,7 +384,8 @@ export function insertUploadedEditorAsset(
   editor: Editor,
   asset: UploadedEditorAsset,
   originalFileName: string,
-  publishHtml: (html: string) => void
+  publishHtml: (html: string) => void,
+  metadata?: { mimeType?: string; size?: number }
 ): string {
   const inserted = asset.isImage
     ? editor
@@ -402,7 +403,7 @@ export function insertUploadedEditorAsset(
     : editor
         .chain()
         .focus()
-        .insertFileAttachment({ href: asset.url, fileName: asset.fileName })
+        .insertFileAttachment({ href: asset.url, fileName: asset.fileName, ...metadata })
         .run();
 
   // SN-343: land the caret beside the image instead of leaving it NodeSelected.
@@ -431,9 +432,10 @@ export async function insertAndPersistUploadedEditorAsset(
   asset: UploadedEditorAsset,
   originalFileName: string,
   publishHtml: (html: string) => void,
-  persistHtml?: (html: string) => Promise<boolean>
+  persistHtml?: (html: string) => Promise<boolean>,
+  metadata?: { mimeType?: string; size?: number }
 ): Promise<string> {
-  const html = insertUploadedEditorAsset(editor, asset, originalFileName, publishHtml);
+  const html = insertUploadedEditorAsset(editor, asset, originalFileName, publishHtml, metadata);
   if (asset.isImage) {
     return html;
   }

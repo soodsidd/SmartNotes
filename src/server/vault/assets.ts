@@ -5,7 +5,6 @@ import { resolveVaultPath, siblingAssetDirectory, toVaultRelativePath } from "./
 import { readPage } from "./pages";
 
 const ALLOWED_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
-const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([...ALLOWED_IMAGE_EXTENSIONS, ".pdf"]);
 
 function sanitizeFileName(fileName: string) {
   const base = path.basename(fileName).replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").trim();
@@ -37,12 +36,6 @@ export async function uploadPageAsset(
   await readPage(pagePath);
 
   const extension = path.extname(fileName).toLowerCase();
-  if (!ALLOWED_ATTACHMENT_EXTENSIONS.has(extension)) {
-    throw new VaultError(
-      "INVALID_PATH",
-      "Unsupported file type. Allowed: images and PDF."
-    );
-  }
 
   const assetsRelative = siblingAssetDirectory(pagePath);
   const { absolutePath: assetsDir } = resolveVaultPath(assetsRelative, "section");

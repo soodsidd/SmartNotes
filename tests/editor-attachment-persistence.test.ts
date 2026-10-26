@@ -81,6 +81,47 @@ async function withVaultFixture(run: (vaultRoot: string) => Promise<void>) {
 }
 
 describe("editor attachment persistence (SN-272)", () => {
+  it("stores a generic file chip with metadata and working open/download links across reload", async () => {
+    await withVaultFixture(async (vaultRoot) => {
+      const created = await createPage({ sectionPath: "Notebook/Section", title: "Archive note" });
+      const bytes = Buffer.from("archive fixture");
+      const asset = await uploadPageAsset(created.path, "research notes.zip", bytes);
+      expect(asset.isImage).toBe(false);
+      expect(await fs.readFile(path.join(vaultRoot, asset.path))).toEqual(bytes);
+
+      const element = document.createElement("div");
+      document.body.appendChild(element);
+      const editor = new Editor({ element, extensions: createEditorExtensions(), content: created.body });
+      try {
+        await insertAndPersistUploadedEditorAsset(
+          editor, asset, "research notes.zip", () => undefined,
+          async (html) => {
+            const saved = await savePage({ path: created.path, title: created.title, body: html });
+            return saved.body.includes(asset.url);
+          },
+          { mimeType: "application/zip", size: bytes.length }
+        );
+        const reloaded = await readPage(created.path);
+        const restored = new Editor({ extensions: createEditorExtensions(), content: reloaded.body });
+        try {
+          const chip = document.createElement("div");
+          chip.innerHTML = restored.getHTML();
+          expect(chip.querySelector('[data-file-type="file"] .file-attachment-name')?.textContent).toBe(asset.fileName);
+          expect(chip.querySelector(".file-attachment-meta")?.textContent).toBe("ZIP · 15 B");
+          expect(chip.querySelector(".file-attachment-name")?.getAttribute("href")).toBe(asset.url);
+          expect(chip.querySelector(".file-attachment-download")?.getAttribute("href")).toBe(asset.url);
+          expect(chip.querySelector(".file-attachment-download")?.getAttribute("download")).toBe(asset.fileName);
+          expect(chip.querySelector("[data-file-size]")?.getAttribute("data-file-size")).toBe(String(bytes.length));
+        } finally {
+          restored.destroy();
+        }
+      } finally {
+        editor.destroy();
+        element.remove();
+      }
+    });
+  });
+
   it("persists a new page's first attachment with a long filename through save, reload, and reader resolution", async () => {
     await withVaultFixture(async () => {
       const created = await createPage({

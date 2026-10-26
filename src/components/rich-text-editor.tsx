@@ -607,7 +607,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
               assetUrl: asset.url,
             }) ?? Promise.resolve(false)
           );
-        }
+        },
+        { mimeType: file.type, size: file.size }
       );
     }
 
@@ -625,23 +626,13 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     }
 
     async function processAssetFiles(files: File[]) {
-      const supported: File[] = [];
-      for (const file of files) {
-        if (file.type.startsWith("image/") || /\.pdf$/i.test(file.name)) {
-          supported.push(file);
-        } else {
-          toast.error("Unsupported file type. Allowed: images and PDF.", { duration: 4000 });
-        }
-      }
-      if (!supported.length) return;
-
       // Pre-read all file bytes concurrently. Local I/O is fast and independent
       // of the serial snapshot queue (SN-283), so parallelism here is safe.
-      const reads = await Promise.allSettled(supported.map((f) => readFileForUpload(f)));
-      const total = supported.length;
+      const reads = await Promise.allSettled(files.map((f) => readFileForUpload(f)));
+      const total = files.length;
 
-      for (let i = 0; i < supported.length; i++) {
-        const file = supported[i];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         const readResult = reads[i];
 
         if (readResult.status === "rejected") {
@@ -649,7 +640,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           continue;
         }
 
-        const progressLabel = total > 1 ? `image ${i + 1}/${total}` : file.name;
+        const progressLabel = total > 1 ? `file ${i + 1}/${total}` : file.name;
         const toastId = toast.loading(`Uploading ${progressLabel}…`);
         try {
           await insertUploadedAsset(file, readResult.value);
@@ -659,7 +650,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           );
           // One rAF between inserts so the editor view settles before the next
           // image transaction fires (SN-339 render reliability).
-          if (i < supported.length - 1) {
+          if (i < files.length - 1) {
             await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
           }
         } catch (err) {
@@ -2405,7 +2396,6 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           ref={attachmentInputRef}
           data-testid="attachment-file-input"
           type="file"
-          accept=".pdf,image/*"
           className="hidden"
           onChange={(e) => {
             void handleAssetFiles(e.target.files);

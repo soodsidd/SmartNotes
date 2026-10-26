@@ -10,6 +10,9 @@
 export const CLOUD_FILE_READ_HINT =
   "Couldn't read that file. If it's on Google Drive or another cloud folder, open it once (or make it available offline), then attach again.";
 
+export const MAX_PAGE_ASSET_BYTES = 50 * 1024 * 1024;
+export const PAGE_ASSET_TOO_LARGE_HINT = "File is too large. Maximum attachment size is 50 MiB.";
+
 const EMPTY_OR_SYNCING_HINT =
   "That file looks empty or still syncing from the cloud. Wait for the download to finish, then try again.";
 
@@ -48,6 +51,9 @@ export function describeAssetUploadFailure(error: unknown): string {
  * cannot fail mid-upload with "Failed to fetch".
  */
 export async function readFileForUpload(file: File): Promise<Blob> {
+  if (file.size > MAX_PAGE_ASSET_BYTES) {
+    throw new Error(PAGE_ASSET_TOO_LARGE_HINT);
+  }
   if (!Number.isFinite(file.size) || file.size <= 0) {
     throw new Error(EMPTY_OR_SYNCING_HINT);
   }

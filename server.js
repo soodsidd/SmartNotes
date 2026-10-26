@@ -243,6 +243,8 @@ function serveVaultAsset(req, res) {
     const contentType = MIME[ext] || 'application/octet-stream';
 
     res.setHeader('Content-Type', contentType);
+    // SN-393: arbitrary attachments are served as-is; never let the browser sniff them into HTML.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     // Conditional GET: browser may cache, but must revalidate.
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('ETag', etag);
