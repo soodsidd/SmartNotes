@@ -178,4 +178,3 @@ export async function prepareGitProfile(options: GitProfileOptions): Promise<Git
 
   return { env: gitConfigEnv(entries, baseEnv), stripOutputs, ignoreFile, attributesFile };
 }
-
