@@ -1,0 +1,190 @@
+[
+  {
+    "step": "A.context-menu promote item visible",
+    "observed": true
+  },
+  {
+    "step": "A.reader opened after Promote click",
+    "observed": false
+  },
+  {
+    "step": "A.dialog visible",
+    "observed": true
+  },
+  {
+    "step": "A.dialog title default",
+    "observed": "alpha-900-mvpnq1v0"
+  },
+  {
+    "step": "A.dialog home default",
+    "observed": "Personal Notebook"
+  },
+  {
+    "step": "A.title after 4s idle",
+    "observed": "Promoted A 900-mvpnq1v0"
+  },
+  {
+    "step": "A.dialog still open after submit",
+    "observed": false
+  },
+  {
+    "step": "A.dialog error",
+    "observed": null
+  },
+  {
+    "step": "A.server page has paper-reference",
+    "observed": true
+  },
+  {
+    "step": "A.server reference before pdf chip",
+    "observed": true
+  },
+  {
+    "step": "A.editor shows paper chip",
+    "observed": 1
+  },
+  {
+    "step": "A.toasts",
+    "observed": []
+  },
+  {
+    "step": "A.server content after 3s settle still has reference",
+    "observed": true
+  },
+  {
+    "step": "A.editor chip count after settle",
+    "observed": 1
+  },
+  {
+    "step": "A.repromote papers delta",
+    "observed": 0
+  },
+  {
+    "step": "A.repromote reference count",
+    "observed": 1
+  },
+  {
+    "step": "A.repromote toasts",
+    "observed": []
+  },
+  {
+    "step": "B.save-as-paper visible",
+    "observed": true
+  },
+  {
+    "step": "B.dialog in DOM",
+    "observed": 1
+  },
+  {
+    "step": "B.dialog topmost",
+    "observed": "topmost"
+  },
+  {
+    "step": "B.submit click",
+    "observed": true
+  },
+  {
+    "step": "B.reader open after submit",
+    "observed": false
+  },
+  {
+    "step": "B.server page has paper-reference",
+    "observed": true
+  },
+  {
+    "step": "B.toasts",
+    "observed": []
+  },
+  {
+    "step": "C.insert trigger visible",
+    "observed": true
+  },
+  {
+    "step": "C.attach paper item visible",
+    "observed": true
+  },
+  {
+    "step": "C.page pdf select visible",
+    "observed": true
+  },
+  {
+    "step": "C.page pdf options",
+    "observed": [
+      "Upload a new PDF instead…",
+      "gamma-900-mvpnq1v0.pdf"
+    ]
+  },
+  {
+    "step": "C.title after choosing pdf",
+    "observed": "gamma-900-mvpnq1v0"
+  },
+  {
+    "step": "C.dialog still open",
+    "observed": false
+  },
+  {
+    "step": "C.dialog error",
+    "observed": null
+  },
+  {
+    "step": "C.server reference count",
+    "observed": 1
+  },
+  {
+    "step": "C.reference before pdf chip",
+    "observed": true
+  },
+  {
+    "step": "C.toasts",
+    "observed": []
+  },
+  {
+    "step": "D.paper A found with title",
+    "observed": true
+  },
+  {
+    "step": "D.paper body has pdf chip",
+    "observed": true
+  },
+  {
+    "step": "D.ref chip visible on referring page",
+    "observed": true
+  },
+  {
+    "step": "D.topbar buttons",
+    "observed": [
+      " Back to paper",
+      "Back to topic",
+      " Companion"
+    ]
+  },
+  {
+    "step": "D.reader close visible",
+    "observed": false
+  },
+  {
+    "step": "D.notes dock visible",
+    "observed": true
+  },
+  {
+    "step": "D.notes toggle visible",
+    "observed": true
+  },
+  {
+    "step": "D.after back-to-topic url",
+    "observed": "http://localhost:3366/?page=.bibliography%2F4835149f-7097-44db-9363-56a1501c03b3.html"
+  },
+  {
+    "step": "D.reader closed",
+    "observed": true
+  },
+  {
+    "step": "errors",
+    "observed": [
+      "console: Warning: Function components cannot be given refs. Attempts to access this ref will fail. Did you mean to use React.forwardRef()?%s%s \n\nCheck the render method of `DialogClose`. \n    at Button (webpack-internal:///(app-pages-browser)/./src/components/ui/button.tsx:44:11)\n    at DialogClose (webpack-",
+      "console: Warning: Function components cannot be given refs. Attempts to access this ref will fail. Did you mean to use React.forwardRef()?%s%s \n\nCheck the render method of `DialogClose`. \n    at Button (webpack-internal:///(app-pages-browser)/./src/components/ui/button.tsx:44:11)\n    at DialogClose (webpack-",
+      "console: Failed to fetch RSC payload for http://localhost:3366/?page=Personal%20Notebook%2FQuick%20Notes%2Fsn366-b-900-mvpnq1v0.html. Falling back to browser navigation. TypeError: Failed to fetch\n    at fetchServerResponse (webpack-internal:///(app-pages-browser)/../../smart-notes/node_modules/next/dist/cli",
+      "console: Warning: Function components cannot be given refs. Attempts to access this ref will fail. Did you mean to use React.forwardRef()?%s%s \n\nCheck the render method of `DialogClose`. \n    at Button (webpack-internal:///(app-pages-browser)/./src/components/ui/button.tsx:44:11)\n    at DialogClose (webpack-"
+    ]
+  }
+]

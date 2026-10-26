@@ -152,6 +152,8 @@ Ribbon controls are icon-only (lucide) with tooltips and `aria-label`s, separate
 
 Table header Sort/Filter tools (SN-355) appear inside the hovered header cell as a `--popover` / `--border` / `--radius-sm` / `--shadow-popover` pill of two `--table-ribbon-button-size` lucide icon buttons (`--muted-foreground`, hover `--secondary`, active sort/filter `--accent`, `--ring` focus, 44px on coarse pointers). The filter menu reuses the same surface with 12px text and `--secondary` for the checked value. No new design values.
 
+Filter-active state (SN-396) needs no hover: each filtered header cell gets a 2px inset `--accent` underline and a 12px funnel glyph (`--accent`, CSS mask) inside the cell's existing right padding, so the header never reflows. The table ribbon names the state on the Data tab (`aria-label` "Data (N filters active)") and shows a `.table-ribbon__pill` beside it — lucide `ListFilter` plus the count, pressed styling (`--accent` border over a 12% `--accent` tint) — that clears every filter in one click. Data adds **Filter** (radio submenu of the caret column's values, the same list as the header menu) and **Clear all filters**. New metric: the 12px header glyph. No new color or type token.
+
 Table resize controls (SN-357) are hidden until the pointer reaches a divider or corner, and then show only that affordance: column and row dividers as a 2px `--accent` line (row hit strip 7px, revealed within 4px of a row border); corner handles as an 8px square with a 1px `--accent` border on `--background` and 2px radius, centred in a transparent 20px hit box, revealed within 10px of the corner. No popover surface or shadow. New dimensions: the 2px divider line, 7px row hit strip, and the 20px corner hit box with its 8px visible square.
 
 ## Job Inbox App mobile-first ribbon (SN-309)
@@ -290,6 +292,12 @@ covers at least the notes width and targets 55% of the viewport, matching #9;
 the reader inset continues to depend only on the saved splitter width. No new
 color, spacing, or typography token was added.
 
+**SN-366:** the bar now leads with **Back to paper** (lucide `ArrowLeft` at 14px plus
+label, same `.paper-reading-topbar` button style as Back to topic), because the
+reader's own close arrow stays hidden in the shell. The Promote to paper / Save as
+paper dialog opens over the reader on the new `--z-reader-dialog` layer (see the
+z-index table). No new color, spacing, or typography value.
+
 This folder is the tracked UI reference set for Smart Notes.
 
 **System:** Clarity v1.0 — cool neutral grays, teal accent, all-sans Hanken Grotesk typography.
@@ -372,8 +380,9 @@ Immersive surfaces use the shared z-index scale in `src/styles/tokens.css`. Keep
 | `--z-companion-rail` | `350` | Companion rail or full-screen sheet displayed over the reader |
 | `--z-companion-overlay` | `400` | Companion-owned portaled dialogs, dropdowns, selects, and popovers displayed over the reader |
 | `--z-jupyter-inline-ai` | `425` | Portaled inline-AI actions, working state, and answers displayed over embedded JupyterLab chrome |
+| `--z-reader-dialog` | `450` | Modal dialogs launched from the reader or paper shell (Promote to paper / Save as paper, SN-366) — overlay and popup both |
 
-The required ordering is reader < paper notes dock < companion rail/sheet < companion floating controls < Jupyter inline AI. Shared dialogs and menus retain their normal layer; only companion-owned portals opt into the elevated overlay token while the immersive reader is active.
+The required ordering is reader < paper notes dock < companion rail/sheet < companion floating controls < Jupyter inline AI < reader-launched modal dialogs. Shared dialogs and menus retain their normal layer; only companion-owned portals opt into the elevated overlay token while the immersive reader is active.
 
 ## Notebook tree key-note gem (SN-229)
 

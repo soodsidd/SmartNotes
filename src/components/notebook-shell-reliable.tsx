@@ -1431,6 +1431,33 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     setMobileDrillNotebookPath(null);
   }, []);
 
+  // SN-365: one Bibliography for both nav panes. The page pane's paper count filters it; the rail
+  // shows it, so a collapsed rail (or the mobile sheet's page view) is brought back first.
+  const [bibliographyOpen, setBibliographyOpen] = React.useState(false);
+  const [bibliographyFilterPage, setBibliographyFilterPage] = React.useState<{ path: string; title: string } | null>(null);
+  const [bibliographyRevealNonce, setBibliographyRevealNonce] = React.useState(0);
+  const bibliographyRevealPendingRef = React.useRef(false);
+  const bibliographyController = React.useMemo<SidebarBibliographyController>(() => ({
+    open: bibliographyOpen,
+    filterPage: bibliographyFilterPage,
+    setOpen: setBibliographyOpen,
+    setFilterPage: setBibliographyFilterPage,
+    showPagePapers: (page) => {
+      setBibliographyFilterPage({ path: page.path, title: page.title });
+      setBibliographyOpen(true);
+      setNotebookRailCollapsedAndStore(false);
+      backToMobileRail();
+      bibliographyRevealPendingRef.current = true;
+      setBibliographyRevealNonce((nonce) => nonce + 1);
+    },
+    revealNonce: bibliographyRevealNonce,
+    takeReveal: () => {
+      const pending = bibliographyRevealPendingRef.current;
+      bibliographyRevealPendingRef.current = false;
+      return pending;
+    },
+  }), [backToMobileRail, bibliographyFilterPage, bibliographyOpen, bibliographyRevealNonce, setNotebookRailCollapsedAndStore]);
+
   React.useEffect(() => {
     if (typeof window === "undefined" || !notebookRailWidthHydratedRef.current) return;
     writeNotebookRailWidth(notebookRailWidth);
@@ -5114,6 +5141,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
   const createAndAttachPaper = React.useCallback(async (input: CreatePaperInput) => {
     if (!(await flushInlinePapers()) || !(await flushSaveRef.current())) throw new Error("Save the current notes before creating a paper.");
     const referenceFromPath = activePagePathRef.current ?? undefined;
+    let promoted: { created: boolean } | null = null;
     const { pdfError } = await createPaperAndAttach(
       { ...input, referenceFromPath: input.pagePdfHref ? referenceFromPath : input.referenceFromPath },
       {
@@ -5135,7 +5163,9 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       },
       promotePagePdf: async (promoteInput) => {
         if (!promoteInput.referenceFromPath) throw new Error("Promoting a page PDF requires the current page path.");
-        return promoteVaultPdfViaApi(promoteInput, vaultWriteFetch);
+        const result = await promoteVaultPdfViaApi(promoteInput, vaultWriteFetch);
+        promoted = result;
+        return result;
       },
       refresh: async () => {
         if (input.pagePdfHref) await reloadActivePageAfterPromote();
@@ -5144,6 +5174,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       insertReference: attachPaperToCurrentPage,
     });
     if (pdfError) toast.error("Paper attached, but its PDF could not be saved. Add the PDF from the paper page.");
+    // SN-366: Choose from this page gives the same feedback as the other promote entry points.
+    else if (promoted) toast.success((promoted as { created: boolean }).created ? "Paper created from PDF." : "Attached existing paper for this PDF.");
   }, [attachPaperToCurrentPage, currentDraftSnapshot, loadTree, reloadActivePageAfterPromote]);
 
   const handleSidebarNestPage = React.useCallback(
@@ -7377,6 +7409,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
               <div className="min-h-0 flex-1">
                 <Sidebar
                   sidebarLayout="rail"
+                  bibliography={bibliographyController}
                   onCollapseRail={() => setNotebookRailCollapsedAndStore(true)}
                   variant="desktop"
                   tree={treeWithOverrides}
@@ -7505,6 +7538,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                 <div className="min-h-0 flex-1">
                   <Sidebar
                     sidebarLayout="page-tree"
+                    bibliography={bibliographyController}
                     variant="desktop"
                     tree={treeWithOverrides}
                     companionIndicators={companionSidebarIndicators}
@@ -7964,6 +7998,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
               </SheetHeader>
               <Sidebar
                 sidebarLayout="rail"
+                bibliography={bibliographyController}
                 tree={treeWithOverrides}
                 companionIndicators={companionSidebarIndicators}
                 isTreeLoading={isLoadingTree}
@@ -8063,6 +8098,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
               <div className="min-h-0 flex-1 bg-surface">
                 <Sidebar
                   sidebarLayout="page-tree"
+                  bibliography={bibliographyController}
                   tree={treeWithOverrides}
                   companionIndicators={companionSidebarIndicators}
                   pageScope={mobileDrillNotebookPath ? { notebookPath: mobileDrillNotebookPath, sectionPath: mobileDrillSectionPath } : null}
@@ -8187,6 +8223,21 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
 
       {paperShellPath && pdfReaderOpen ? (
         <div className="paper-reading-topbar" data-testid="paper-reading-topbar">
+          {/* SN-366: the reader's own close is hidden in the shell, so this is the return to the paper notes. */}
+          <button type="button" data-testid="paper-reading-back-to-paper" onClick={() => void (async () => {
+            const paperPath = paperShellPath;
+            if (!(await closePdfReader())) return;
+            if (draft?.path === paperPath) return;
+            // PDF opened from a referring page's chip: land on the paper, keeping that page as its topic.
+            const referring = activePagePathRef.current;
+            if (referring && !isBibliographyPath(referring)) {
+              setPaperReturnPath(referring);
+              rememberPaperReturnScroll(referring);
+            }
+            void openPage(paperPath);
+          })()}>
+            <ArrowLeft className="size-3.5" aria-hidden="true" /> Back to paper
+          </button>
           <button type="button" data-testid="paper-reading-back" onClick={() => void (async () => {
             if (!(await closePdfReader())) return;
             if (draft?.path !== paperShellPath) return;
@@ -8981,6 +9032,21 @@ export function InlineSectionName({ path, name, onCommit, kind = "section" }: { 
 /** SN-324: page-pane scope — a section, or the notebook root (sectionPath null). */
 export type SidebarPageScope = { notebookPath: string; sectionPath: string | null };
 
+/**
+ * SN-365: Bibliography state owned by the shell so the page pane's paper count (page-tree
+ * layout) can open the Bibliography mounted in the notebook rail (dual-pane nav).
+ */
+export type SidebarBibliographyController = {
+  open: boolean;
+  filterPage: { path: string; title: string } | null;
+  setOpen: (open: boolean) => void;
+  setFilterPage: (page: { path: string; title: string } | null) => void;
+  showPagePapers: (page: VaultPage) => void;
+  /** Bumped by showPagePapers; the rail scrolls the Bibliography into view once per bump. */
+  revealNonce: number;
+  takeReveal: () => boolean;
+};
+
 const SECTION_TAB_TOKENS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"] as const;
 
 /** SN-324: OneNote-style section tab colour, derived deterministically from design-system chart tokens. */
@@ -9003,6 +9069,7 @@ export const Sidebar = React.memo(function Sidebar({
   sidebarLayout = "unified",
   onCollapseRail,
   pageScope,
+  bibliography,
   onSelectRootPages,
   variant = "mobile",
   tree,
@@ -9084,6 +9151,8 @@ export const Sidebar = React.memo(function Sidebar({
   onCollapseRail?: () => void;
   /** Page-tree layout only; defaults to the active notebook/section. */
   pageScope?: SidebarPageScope | null;
+  /** SN-365: shared Bibliography state (dual-pane); falls back to local state when absent. */
+  bibliography?: SidebarBibliographyController;
   onSelectRootPages?: (notebookPath: string) => void;
   variant?: "desktop" | "mobile";
   tree: VaultNotebook[];
@@ -9309,8 +9378,12 @@ export const Sidebar = React.memo(function Sidebar({
   const notebookRootPageIndentBase = compactDesktop ? 4 : 8;
   const sectionPageIndentBase = compactDesktop ? 14 : 20;
   const ghostIndentOffset = compactDesktop ? 14 : 16;
-  const [bibliographyOpen, setBibliographyOpen] = React.useState(false);
-  const [bibliographyFilterPage, setBibliographyFilterPage] = React.useState<{ path: string; title: string } | null>(null);
+  const [localBibliographyOpen, setLocalBibliographyOpen] = React.useState(false);
+  const [localBibliographyFilterPage, setLocalBibliographyFilterPage] = React.useState<{ path: string; title: string } | null>(null);
+  const bibliographyOpen = bibliography ? bibliography.open : localBibliographyOpen;
+  const setBibliographyOpen = bibliography ? bibliography.setOpen : setLocalBibliographyOpen;
+  const bibliographyFilterPage = bibliography ? bibliography.filterPage : localBibliographyFilterPage;
+  const setBibliographyFilterPage = bibliography ? bibliography.setFilterPage : setLocalBibliographyFilterPage;
   const bibliographyRef = React.useRef<HTMLDivElement>(null);
   const paperCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -9320,10 +9393,22 @@ export const Sidebar = React.memo(function Sidebar({
     return counts;
   }, [tree]);
   const showPagePapers = (page: VaultPage) => {
+    if (bibliography) {
+      bibliography.showPagePapers(page);
+      return;
+    }
     setBibliographyFilterPage({ path: page.path, title: page.title });
     setBibliographyOpen(true);
     requestAnimationFrame(() => bibliographyRef.current?.scrollIntoView({ block: "nearest" }));
   };
+  // SN-365: the rail (which may have just expanded/mounted) reveals the Bibliography a page pane asked for.
+  const bibliographyRevealNonce = bibliography?.revealNonce ?? 0;
+  const takeBibliographyReveal = bibliography?.takeReveal;
+  React.useEffect(() => {
+    if (sidebarLayout === "page-tree" || !takeBibliographyReveal?.()) return;
+    const frame = requestAnimationFrame(() => bibliographyRef.current?.scrollIntoView({ block: "nearest" }));
+    return () => cancelAnimationFrame(frame);
+  }, [bibliographyRevealNonce, sidebarLayout, takeBibliographyReveal]);
   const resolvePageIndent = (base: number, depth: number) =>
     compactDesktop ? `calc(${base}px + ${depth} * var(--desktop-tree-indent-step))` : base + depth * 12;
   const resolveGhostIndent = (base: number, depth: number) =>
@@ -9640,7 +9725,8 @@ export const Sidebar = React.memo(function Sidebar({
         </Button>
       ) : null}
 
-      {!isRailLayout && !isPageTreeLayout ? (
+      {/* SN-365: the rail hosts the central Bibliography in dual-pane nav; the page pane only filters it. */}
+      {!isPageTreeLayout ? (
         <div ref={bibliographyRef}>
           <Bibliography tree={tree} loading={isTreeLoading} compact={compactDesktop} activePagePath={activePagePath} onOpen={onOpenPage} open={bibliographyOpen} filterPage={bibliographyFilterPage} onClearFilter={() => setBibliographyFilterPage(null)} onToggle={() => {
             if (bibliographyFilterPage) { setBibliographyFilterPage(null); setBibliographyOpen(true); }
@@ -11460,7 +11546,8 @@ function EditorPanel({
 
   const handlePdfAttachmentOpenCapture = React.useCallback(
     (event: React.MouseEvent<HTMLDivElement> | React.PointerEvent<HTMLDivElement>) => {
-      if (readOnly || isDrawMode) return;
+      // SN-366: only a primary press opens the reader; right-click must reach the chip context menu.
+      if (readOnly || isDrawMode || event.button !== 0) return;
       const target = resolvePdfAttachmentTarget(
         event.target instanceof Element ? event.target : null
       );
@@ -11477,7 +11564,7 @@ function EditorPanel({
     if (!panel || readOnly) return;
 
     const openPdfAttachment = (event: MouseEvent | PointerEvent) => {
-      if (isDrawMode) return;
+      if (isDrawMode || event.button !== 0) return;
       if (!(event.target instanceof Node) || !panel.contains(event.target)) return;
       const target = resolvePdfAttachmentTarget(
         event.target instanceof Element ? event.target : null

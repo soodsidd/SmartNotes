@@ -764,7 +764,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       lastPressPointerTypeRef.current = e.pointerType;
       pressStartedInFloatingBoxRef.current =
         e.target instanceof Element && Boolean(e.target.closest('[data-type="floating-text-box"]'));
-      if (readOnly || isDrawMode) return;
+      // SN-366: only a primary press opens the reader; right-click keeps the chip context menu (Promote to paper).
+      if (readOnly || isDrawMode || e.button !== 0) return;
       const target = resolvePdfAttachmentTarget(e.target instanceof Element ? e.target : null);
       if (!target) return;
       e.preventDefault();
@@ -1617,7 +1618,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       if (!editor?.view?.dom || readOnly) return;
 
       const openPdfAttachment = (event: MouseEvent | PointerEvent) => {
-        if (isDrawMode) return;
+        if (isDrawMode || event.button !== 0) return;
         const target = resolvePdfAttachmentTarget(
           event.target instanceof Element ? event.target : null
         );
