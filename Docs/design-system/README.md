@@ -475,3 +475,12 @@ rendering; every other type becomes the existing `.file-attachment-chip` pill (`
 the open link (inherits text color), an `EXT · size` meta label in `--muted-foreground` at 0.75rem,
 and a `Download` link in the documented `--link` editor-link token. PDF chips are unchanged. No new
 color, type, or spacing tokens were added.
+
+## Mobile image selection chrome (SN-391)
+
+Image resize handles keep their existing 10px `--accent` square with a `--background` border, but now
+render only on the selected image. On coarse pointers each handle gets an invisible 44px hit area (the
+established phone touch target); the visual size is unchanged. The image toolbar reuses `.bubble-toolbar`
+(`--surface`, `--border`, 44px touch buttons, horizontal scroll). On touch it is capped to the selected
+picture's width and sits 8px inside the picture's top edge when it covers at most half the picture;
+desktop keeps the stock 8px gap above. No new color, type, or spacing tokens were added.

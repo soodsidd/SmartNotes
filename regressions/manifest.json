@@ -380,6 +380,33 @@
       ]
     },
     {
+      "id": "e2e-sn-391-mobile-image-taps",
+      "name": "SN-391 mobile image tap, type, and resize matrix",
+      "description": "Playwright mobile (touch): seeds a page with a wide image and a two-image row, then probes tap image / tap away / tap above, beside, below and between images / empty paragraph / double-tap / scroll then tap / neighbour image select / toolbar on screen / touch handle resize commit / type after resize / Backspace delete.",
+      "intent": "Keeps taps around images placing a text caret, with resize handles and the image toolbar only stealing touches on the intentionally selected image, and touch resizes ending cleanly.",
+      "whenToRun": "Pre-merge when changing the image resize NodeView, image selection CSS, the image BubbleMenu, or editor-surface tap handling.",
+      "failureMeaning": "On a phone, tapping near or after a picture may select it or press its toolbar instead of placing a caret, the next keystroke may replace the picture, or a touch resize may keep following later swipes.",
+      "appType": "browser",
+      "command": "node node_modules/@playwright/test/cli.js test e2e/sn-391-mobile-image-taps.spec.ts --project=mobile --workers=1 --retries=0",
+      "timeoutMs": 900000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "editor", "image", "mobile", "touch", "targeted"],
+      "feature": "editor",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-391",
+      "addedAt": "2026-10-26",
+      "sourceFiles": [
+        { "path": "e2e/sn-391-mobile-image-taps.spec.ts" },
+        { "path": "src/lib/image-layout-extension.ts" },
+        { "path": "src/components/rich-text-editor.tsx" },
+        { "path": "src/app/globals.css" }
+      ]
+    },
+    {
       "id": "e2e-sn-361-table-resize-flow",
       "name": "SN-361 table shrink and editor width coupling",
       "description": "Playwright desktop real-pointer drags: repeated corner shrink, row-divider shrink, and table stretch with measured wrapper and main-flow widths.",
