@@ -119,6 +119,13 @@ describe("jupyter same-origin proxy", () => {
     expect(isBlockedReadOnlyRequest(readOnly, "PATCH", "/api/jupyter/proxy/s1/api/contents/foo.ipynb")).toBe(true);
     expect(isBlockedReadOnlyRequest(readOnly, "DELETE", "/api/jupyter/proxy/s1/api/contents/foo.ipynb")).toBe(true);
     expect(isBlockedReadOnlyRequest(readOnly, "POST", "/api/jupyter/proxy/s1/api/terminals")).toBe(true);
+    expect(isBlockedReadOnlyRequest(readOnly, "POST", "/api/jupyter/proxy/s1/git/status/repo")).toBe(false);
+    expect(isBlockedReadOnlyRequest(readOnly, "POST", "/api/jupyter/proxy/s1/git/diffnotebook")).toBe(false);
+    expect(isBlockedReadOnlyRequest(readOnly, "POST", "/api/jupyter/proxy/s1/git/branch/repo")).toBe(false);
+    for (const endpoint of ["init", "add", "commit", "checkout", "push", "config", "remote/fetch", "strip_notebooks"]) {
+      expect(isBlockedReadOnlyRequest(readOnly, "POST", `/api/jupyter/proxy/s1/git/${endpoint}/repo`)).toBe(true);
+    }
+    expect(isBlockedReadOnlyRequest(readOnly, "DELETE", "/api/jupyter/proxy/s1/git/stash/repo")).toBe(true);
 
     // Reads are never blocked, even read-only.
     expect(isBlockedReadOnlyRequest(readOnly, "GET", "/api/jupyter/proxy/s1/api/contents/foo.ipynb")).toBe(false);
@@ -128,6 +135,8 @@ describe("jupyter same-origin proxy", () => {
     // Editable and note-owned sessions are never blocked.
     expect(isBlockedReadOnlyRequest(editable, "PUT", "/api/jupyter/proxy/s1/api/contents/foo.ipynb")).toBe(false);
     expect(isBlockedReadOnlyRequest(noteOwned, "PUT", "/api/jupyter/proxy/s1/api/contents/foo.ipynb")).toBe(false);
+    expect(isBlockedReadOnlyRequest(editable, "POST", "/api/jupyter/proxy/s1/git/commit/repo")).toBe(false);
+    expect(isBlockedReadOnlyRequest(noteOwned, "POST", "/api/jupyter/proxy/s1/git/init/repo")).toBe(false);
   });
 
   it("SN-256: blocks a terminal websocket upgrade on a read-only project workspace", () => {

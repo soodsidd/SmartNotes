@@ -63,6 +63,12 @@ export interface JupyterProfileStatus {
   lspInstalled: boolean;
   pylspReachable: boolean;
   pylspVersion: string | null;
+  /** SN-388: Lab git panel (jupyterlab-git) server extension enabled. */
+  gitExtensionInstalled?: boolean;
+  /** SN-388: nbdime server extension enabled. */
+  nbdimeInstalled?: boolean;
+  /** SN-388: nbstripout reachable; Lab commits strip notebook outputs. */
+  nbstripoutAvailable?: boolean;
 }
 
 export interface JupyterFastLaneResult {

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { VaultError } from "@/server/vault/errors";
+import { prepareGitProfile, resolveUserGlobalGitFiles } from "@/server/jupyter/git-profile";
 import {
   __resetForTesting,
   __testInternals,
@@ -114,6 +115,65 @@ describe("jupyter runtime — pure helpers (SN-101)", () => {
       "jupyter_lsp enabled",
       "other_extension disabled",
     ].join("\n"))).toBe(true);
+  });
+
+  it("recognizes only enabled Git and nbdime server extension rows", () => {
+    const output = "jupyterlab_git disabled\nnbdime-jupyterlab enabled\nnbdime enabled\nother enabled";
+    expect(__testInternals.isServerExtensionEnabled(output, "jupyterlab_git")).toBe(false);
+    expect(__testInternals.isServerExtensionEnabled(output, "nbdime")).toBe(true);
+    expect(__testInternals.isServerExtensionEnabled("nbdime-jupyterlab enabled", "nbdime")).toBe(false);
+  });
+
+  it("scopes output stripping and ignore rules to a Lab session without creating a repo", async () => {
+    const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "smart-notes-git-profile-"));
+    const ownerIgnore = path.join(artifactDir, "owner-ignore");
+    const ownerAttributes = path.join(artifactDir, "owner-attributes");
+    await fs.writeFile(ownerIgnore, "*.owner\n", "utf8");
+    await fs.writeFile(ownerAttributes, "*.owner binary\n", "utf8");
+
+    try {
+      const result = await prepareGitProfile({
+        artifactDir,
+        nbstripoutExecutable: "C:\\Program Files\\Python\\Scripts\\nbstripout.exe",
+        baseEnv: { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.name", GIT_CONFIG_VALUE_0: "Owner" },
+        userGlobalFiles: { excludesFile: ownerIgnore, attributesFile: ownerAttributes },
+      });
+      expect(result.stripOutputs).toBe(true);
+      expect(result.env).toMatchObject({
+        GIT_CONFIG_COUNT: "7",
+        GIT_CONFIG_KEY_1: "core.excludesFile",
+        GIT_CONFIG_KEY_2: "core.attributesFile",
+        GIT_CONFIG_KEY_3: "filter.nbstripout.clean",
+        GIT_CONFIG_KEY_4: "filter.nbstripout.smudge",
+        GIT_CONFIG_KEY_5: "filter.nbstripout.required",
+        GIT_CONFIG_KEY_6: "diff.ipynb.textconv",
+      });
+      expect(result.env.GIT_CONFIG_VALUE_3).toBe('"C:/Program Files/Python/Scripts/nbstripout.exe"');
+      expect(result.env.GIT_CONFIG_VALUE_5).toBe("true");
+      expect(await fs.readFile(result.ignoreFile, "utf8")).toContain(".ipynb_checkpoints/");
+      expect(await fs.readFile(result.ignoreFile, "utf8")).toContain("*.owner");
+      expect(await fs.readFile(result.attributesFile!, "utf8")).toContain("*.ipynb filter=nbstripout diff=ipynb");
+      expect(await fs.readFile(result.attributesFile!, "utf8")).toContain("*.owner binary");
+      expect(await fs.readdir(artifactDir)).not.toContain(".git");
+    } finally {
+      await fs.rm(artifactDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Lab usable without nbstripout and resolves the owner's Git files", async () => {
+    const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "smart-notes-git-fallback-"));
+    try {
+      const result = await prepareGitProfile({ artifactDir, nbstripoutExecutable: null, baseEnv: {} });
+      expect(result.stripOutputs).toBe(false);
+      expect(result.attributesFile).toBeNull();
+      expect(result.env).toMatchObject({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.excludesFile" });
+      expect(resolveUserGlobalGitFiles(() => null, { HOME: artifactDir })).toEqual({
+        excludesFile: path.join(artifactDir, ".config", "git", "ignore"),
+        attributesFile: path.join(artifactDir, ".config", "git", "attributes"),
+      });
+    } finally {
+      await fs.rm(artifactDir, { recursive: true, force: true });
+    }
   });
 
   it("prepends the selected profile Scripts directory for Jupyter subcommands", () => {

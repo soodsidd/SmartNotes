@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { getAppStateDir } from "@/server/app-state";
+import { prepareGitProfile, resolveUserGlobalGitFiles } from "@/server/jupyter/git-profile";
 import { VaultError } from "@/server/vault/errors";
 import { JUPYTER_NOTEBOOK_FILE_NAME } from "@/server/vault/page-format";
 import { resolveVaultPath } from "@/server/vault/paths";
@@ -120,6 +121,12 @@ export interface JupyterProfileStatus {
   lspInstalled: boolean;
   pylspReachable: boolean;
   pylspVersion: string | null;
+  /** SN-388: jupyterlab-git server extension enabled (Lab git panel). */
+  gitExtensionInstalled: boolean;
+  /** SN-388: nbdime server extension enabled (readable notebook diffs). */
+  nbdimeInstalled: boolean;
+  /** SN-388: nbstripout reachable, so Lab commits strip notebook outputs. */
+  nbstripoutAvailable: boolean;
 }
 
 function registry(): Map<string, JupyterSession> {
@@ -317,14 +324,63 @@ async function resolveJupyterSelection(): Promise<JupyterExecutableSelection> {
   return { executable, profileInstalled: false, source: executable ? "path" : "missing" };
 }
 
+function isServerExtensionEnabled(output: string, extension: string): boolean {
+  return new RegExp(`^\\s*${extension}\\s+enabled\\b`, "im").test(output);
+}
+
 function isJupyterLspEnabled(output: string): boolean {
-  return /^\s*jupyter_lsp\b[^\r\n]*\benabled\b/im.test(output);
+  return isServerExtensionEnabled(output, "jupyter_lsp");
+}
+
+/** nbstripout from the same environment as Jupyter first, then PATH (SN-388). */
+async function resolveNbstripoutExecutable(jupyterExecutable: string | null): Promise<string | null> {
+  if (!jupyterExecutable) return null;
+  const sibling = path.dirname(jupyterExecutable) !== "."
+    ? siblingProfileExecutable(jupyterExecutable, "nbstripout")
+    : null;
+  if (sibling && fsSync.existsSync(sibling)) return sibling;
+  return locateExecutable("nbstripout", executableEnv(jupyterExecutable));
+}
+
+async function readGlobalGitConfig(key: string): Promise<string | null> {
+  const result = await runCommand("git", ["config", "--global", "--get", key], { timeoutMs: 5_000 });
+  if (result.status !== 0) return null;
+  return result.stdout.trim().split(/\r?\n/)[0]?.trim() || null;
+}
+
+/**
+ * Session-scoped git env for the Lab server (SN-388). Never blocks a launch:
+ * any failure returns no extra env and Lab starts exactly as before.
+ */
+async function prepareSessionGitEnv(
+  artifactDir: string,
+  jupyterExecutable: string,
+  nbstripoutAvailable: boolean
+): Promise<Record<string, string>> {
+  try {
+    const nbstripoutExecutable = nbstripoutAvailable
+      ? await resolveNbstripoutExecutable(jupyterExecutable)
+      : null;
+    const [excludesFile, attributesFile] = await Promise.all([
+      readGlobalGitConfig("core.excludesFile"),
+      readGlobalGitConfig("core.attributesFile"),
+    ]);
+    const userGlobalFiles = resolveUserGlobalGitFiles(
+      (key) => (key === "core.excludesFile" ? excludesFile : attributesFile)
+    );
+    const { env } = await prepareGitProfile({ artifactDir, nbstripoutExecutable, userGlobalFiles });
+    return env;
+  } catch {
+    return {};
+  }
 }
 
 async function probeJupyterProfile(): Promise<JupyterProfileStatus> {
   const selection = await resolveJupyterSelection();
   const { executable: jupyterExecutable } = selection;
   let lspInstalled = false;
+  let gitExtensionInstalled = false;
+  let nbdimeInstalled = false;
   let jupyterLabVersion: string | null = null;
   if (jupyterExecutable) {
     const [labVersion, extensionList] = await Promise.all([
@@ -337,9 +393,14 @@ async function probeJupyterProfile(): Promise<JupyterProfileStatus> {
     jupyterLabVersion = labVersion;
     const output = `${extensionList.stdout}\n${extensionList.stderr}`;
     lspInstalled = extensionList.status === 0 && isJupyterLspEnabled(output);
+    gitExtensionInstalled = extensionList.status === 0 && isServerExtensionEnabled(output, "jupyterlab_git");
+    nbdimeInstalled = extensionList.status === 0 && isServerExtensionEnabled(output, "nbdime");
   }
 
-  const pylspExecutable = await resolvePylspExecutable(jupyterExecutable);
+  const [pylspExecutable, nbstripoutExecutable] = await Promise.all([
+    resolvePylspExecutable(jupyterExecutable),
+    resolveNbstripoutExecutable(jupyterExecutable),
+  ]);
   const pylspVersion = pylspExecutable ? await runVersion(pylspExecutable, ["--version"]) : null;
   return {
     profileInstalled: selection.profileInstalled,
@@ -349,6 +410,9 @@ async function probeJupyterProfile(): Promise<JupyterProfileStatus> {
     lspInstalled,
     pylspReachable: Boolean(pylspVersion),
     pylspVersion,
+    gitExtensionInstalled,
+    nbdimeInstalled,
+    nbstripoutAvailable: Boolean(nbstripoutExecutable),
   };
 }
 
@@ -948,6 +1012,7 @@ async function spawnServer(
     }, resolved.hideGlobs, kernelConfigPath),
     "utf8"
   );
+  const gitEnv = await prepareSessionGitEnv(artifactDir, executable, capabilities.nbstripoutAvailable);
 
   const session: JupyterSession = {
     key: resolved.key,
@@ -974,7 +1039,7 @@ async function spawnServer(
   try {
     proc = spawn(executable, ["lab", "--config", configPath, "--no-browser"], {
       cwd: resolved.folder,
-      env: executableEnv(executable),
+      env: { ...executableEnv(executable), ...gitEnv },
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -1385,6 +1450,9 @@ export const __testInternals = {
   siblingProfileExecutable,
   uniqueOrigins,
   isJupyterLspEnabled,
+  isServerExtensionEnabled,
+  prepareSessionGitEnv,
+  resolveNbstripoutExecutable,
   jupyterLabStatePaths,
   runCommand,
   writeLabUserSettings,

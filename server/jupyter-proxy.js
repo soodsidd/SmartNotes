@@ -113,6 +113,14 @@ const WRITE_METHODS = new Set(['PUT', 'POST', 'PATCH', 'DELETE']);
 const CONTENTS_API_PATTERN = /\/api\/contents(\/|\?|$)/;
 const TERMINALS_API_PATTERN = /\/api\/terminals(\/|\?|$)/;
 const TERMINALS_WEBSOCKET_PATTERN = /\/terminals\/websocket\//;
+const GIT_API_PATTERN = /\/git\/([^/?]+)/;
+// jupyterlab-git uses POST for several read operations. Keep its read-only
+// panel useful in a locked project root, but deny every mutation endpoint.
+const READ_ONLY_GIT_POST_ENDPOINTS = new Set([
+  'status', 'show_top_level', 'show_prefix', 'log', 'detailed_log',
+  'diff', 'diffnotebook', 'branch', 'changed_files', 'content',
+  'upstream', 'tags',
+]);
 
 function isBlockedReadOnlyRequest(session, method, pathname) {
   if (session.accessMode !== 'read-only') {
@@ -121,7 +129,12 @@ function isBlockedReadOnlyRequest(session, method, pathname) {
   if (!WRITE_METHODS.has(method)) {
     return false;
   }
-  return CONTENTS_API_PATTERN.test(pathname) || TERMINALS_API_PATTERN.test(pathname);
+  if (CONTENTS_API_PATTERN.test(pathname) || TERMINALS_API_PATTERN.test(pathname)) {
+    return true;
+  }
+  const gitEndpoint = GIT_API_PATTERN.exec(pathname)?.[1];
+  if (!gitEndpoint) return false;
+  return method !== 'POST' || !READ_ONLY_GIT_POST_ENDPOINTS.has(gitEndpoint);
 }
 
 function isBlockedReadOnlyUpgrade(session, pathname) {
@@ -249,7 +262,7 @@ function handleJupyterProxyRequest(req, res) {
   }
 
   if (isBlockedReadOnlyRequest(session, req.method, parsed.pathname)) {
-    sendProxyError(res, 403, 'This Ascent Vector workspace is read-only. File and terminal writes are disabled.');
+    sendProxyError(res, 403, 'This Ascent Vector workspace is read-only. File, terminal, and Git writes are disabled.');
     return true;
   }
 

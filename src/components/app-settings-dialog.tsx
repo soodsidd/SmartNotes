@@ -372,8 +372,22 @@ export function AppSettingsDialog({
                         {jupyterProfile.source === "override" ? " (configured override)" : jupyterProfile.source === "profile" ? " (Smart Notes profile)" : jupyterProfile.source === "path" ? " (PATH fallback)" : ""}
                         {" · "}LSP {jupyterProfile.lspInstalled ? "installed" : "missing"}
                         {" · "}pylsp {jupyterProfile.pylspReachable ? "reachable" : "unreachable"}
+                        {" · "}Git panel {jupyterProfile.gitExtensionInstalled ? "installed" : "missing"}
+                        {" · "}nbdime {jupyterProfile.nbdimeInstalled ? "installed" : "missing"}
+                        {" · "}Strip outputs on commit {jupyterProfile.nbstripoutAvailable ? "on" : "off"}
                       </p>
-                    ) : jupyterProfileError ? (
+                    ) : null}
+                    {jupyterProfile && jupyterProfile.jupyterLabVersion && !(
+                      jupyterProfile.gitExtensionInstalled
+                      && jupyterProfile.nbdimeInstalled
+                      && jupyterProfile.nbstripoutAvailable
+                    ) ? (
+                      <p className="mt-1 text-muted-foreground" data-testid="settings-jupyter-git-hint">
+                        Lab still opens normally. To get the git panel, readable notebook diffs, and output
+                        stripping, reinstall the profile: pip install -r profiles/jupyter/requirements.txt
+                      </p>
+                    ) : null}
+                    {jupyterProfile ? null : jupyterProfileError ? (
                       <p className="mt-1 text-muted-foreground">Profile status unavailable.</p>
                     ) : (
                       <p className="mt-1 text-muted-foreground">Checking profile…</p>
