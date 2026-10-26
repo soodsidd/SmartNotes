@@ -448,3 +448,13 @@ SN-363 brings JupyterLab into the same popover: the Lab inline-AI chip row (exis
 ## PDF passage actions (SN-334)
 
 The PDF selection menu is one compact row: Highlight, Record, Ask Companion. A tapped highlight's comment dish shows a row with Record and Ask Companion. Each action reuses `.inline-ai-menu-action`, keeping its lucide icon in `--accent` (Highlighter, NotebookPen, Sparkles) and the 44px touch target on coarse pointers and widths below 768px. The floating row and the "Highlighted · Undo" status use the inline AI popover tokens: `--popover`, `--foreground`, `--border`, `--secondary` (hover), `--ring` (focus), `--radius-md`, `--shadow-popover`, `--font-sans`, and `.8125rem` text with `.25rem`/`.5rem`/`.75rem` spacing. The row sizes to `max-content`, wraps only when wider than the viewport minus 16px, opens 8px below the passage (or above it when the reader suggests top), and stays at least 8px inside the viewport edge. No new design values were introduced.
+
+## Tree expand/collapse toggles (SN-392)
+
+Notebook-rail section chevrons, nested page chevrons, and legacy section-header chevrons share one
+`TreeToggleButton`. The glyph stays the existing compact Lucide chevron (`size-3` desktop, `size-3.5`
+phone) in `--muted-foreground`, turning `--foreground` on hover with a `--background` hover fill and the
+standard `--ring` focus ring. The hit box is 20px wide by the documented `--desktop-tree-affordance-size`
+(26px) tall on compact desktop, and the established 44px touch target (`size-11`) on phones and coarse
+pointers. Leaf rows reserve the same width so titles align. The 20px desktop width is the existing
+Tailwind `w-5` spacing step; no new color, type, or spacing tokens were added.
