@@ -6138,6 +6138,33 @@
         { "path": "src/lib/table-ribbon.ts" },
         { "path": "src/components/table-ribbon.tsx" }
       ]
+    },
+    {
+      "id": "unit-sn-399-codex-companion-mcp",
+      "name": "Codex Computer-OFF companion MCP boundary",
+      "description": "Jest: Computer-OFF Codex launch policy, stdio bridge response, Deep Work tool list, and exact capability enforcement.",
+      "intent": "Keeps Codex able to read managed Deep Work responses without restoring shell or exposing vault tools in a capability-bound turn.",
+      "whenToRun": "Pre-merge when changing Codex Companion sandbox, MCP bridge, or Deep Work tool routing.",
+      "failureMeaning": "Computer-OFF Codex may lose its read path or gain tools outside the turn's authority.",
+      "appType": "node",
+      "command": "npm test -- tests/companion-computer-access.test.ts tests/companion-mcp.test.ts tests/companion-log-form-bridge.test.ts tests/deep-work-companion-binding.test.ts",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": ["unit", "node", "companion", "codex", "deep-work", "targeted"],
+      "feature": "companion",
+      "testType": "integration",
+      "suite": "targeted",
+      "risk": "high",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-399",
+      "addedAt": "2026-10-27",
+      "sourceFiles": [
+        { "path": "tests/companion-computer-access.test.ts" },
+        { "path": "tests/companion-mcp.test.ts" },
+        { "path": "tests/companion-log-form-bridge.test.ts" },
+        { "path": "tests/deep-work-companion-binding.test.ts" }
+      ]
     }
   ]
 }
