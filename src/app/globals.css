@@ -413,11 +413,11 @@ select {
 
 .editor-content.ProseMirror { position: relative; min-width: 100%; }
 @media (min-width: 768px) {
-  /* A resized table can widen the page canvas while the table keeps its own exact width. */
+  /* Non-text content can widen the page canvas without a table-local scroll limit. */
   .editor-content.ProseMirror { min-width: max(100%, var(--editor-main-flow-width, 672px)); }
   .editor-content.ProseMirror > .tableWrapper[data-fixed-widths="true"] {
     width: max-content;
-    max-width: var(--editor-main-flow-width, 672px);
+    max-width: none;
   }
 }
 
@@ -1096,15 +1096,18 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 .editor-content .tableWrapper[data-data-mode="true"] table { font-variant-numeric: tabular-nums; }
 .editor-content .tableWrapper[data-data-mode="true"] .numericCell:not([data-align]) { text-align: right; }
 .editor-content.ProseMirror > .tableWrapper[data-expanded="true"] {
-  /* SN-318: never narrower than a widened main flow. */
-  max-width: max(var(--editor-table-expanded-max-width), var(--editor-main-flow-width, 672px));
+  max-width: none;
 }
 .editor-content .floating-text-box .tableWrapper[data-expanded="true"] {
   position: relative;
   z-index: 1;
   width: max-content;
-  max-width: var(--editor-table-expanded-max-width);
+  max-width: none;
   background: var(--surface);
+}
+@media (min-width: 768px) {
+  .editor-content .tableWrapper { max-width: none; overflow-x: visible; }
+  .editor-content .floating-text-box .tableWrapper[data-fixed-widths="true"] { width: max-content; }
 }
 
 /* SN-278: table ribbon + selection stats (fork photo #16) */
@@ -1409,6 +1412,11 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 [data-resize-container][data-node="image"] [data-resize-wrapper] {
   display: inline-block;
   max-width: 100%;
+}
+@media (min-width: 768px) {
+  .editor-content .editor-image,
+  .editor-content [data-resize-container][data-node="image"],
+  .editor-content [data-resize-container][data-node="image"] [data-resize-wrapper] { max-width: none; }
 }
 
 [data-resize-container][data-node="image"] [data-resize-handle] {

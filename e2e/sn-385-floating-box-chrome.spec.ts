@@ -130,9 +130,10 @@ test("SN-314 floating box fits its content; width drag reflows text; a wider ima
     await uploaded;
     const picture = imageBox.locator("[data-resize-wrapper] > img");
     await expect.poll(async () => picture.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(480);
-    // A pasted image is capped to the box; it must not ratchet the box wider.
-    await page.waitForTimeout(500);
+    // SN-398: the displayed box grows for the natural image width while its
+    // saved manual width remains the contraction floor.
     await expect(imageBox).toHaveAttribute("data-width", "200");
+    await expect.poll(async () => (await measure(imageBox)).width).toBeGreaterThan(300);
     const pasted = await measure(imageBox);
     expect(pasted.height).toBeGreaterThan(before.height);
     expect(Math.abs(pasted.height - pasted.fit)).toBeLessThanOrEqual(1);

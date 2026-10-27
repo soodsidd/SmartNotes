@@ -1,8 +1,8 @@
 {
   "before": {
     "table": 721,
-    "wrapper": 720,
-    "scroll": 1,
+    "wrapper": 721,
+    "scroll": 0,
     "frame": 768
   },
   "firstShrink": {
@@ -18,5 +18,5 @@
     "frame": 720
   },
   "rowBefore": 100,
-  "rowAfter": 51
+  "rowAfter": 50
 }

@@ -135,8 +135,8 @@ Expand table are outlined pills. When pressed they take an `--accent` border
 over a 12% `--accent` tint, the same tint used for selected cells. New tokens:
 `--table-ribbon-font-size` (retired in SN-308; controls are icon-only),
 `--table-ribbon-stats-font-size: 0.6875rem` (the
-`Count | Numbers | Sum | Average | Min | Max` line, tabular figures), and
-`--editor-table-expanded-max-width: 1200px` (Expand table). Mobile tabs and
+`Count | Numbers | Sum | Average | Min | Max` line, tabular figures). The former
+`--editor-table-expanded-max-width: 1200px` cap was retired in SN-398. Mobile tabs and
 pills use the 44px touch target. In Data mode, number cells are right-aligned
 with tabular figures.
 
@@ -223,8 +223,10 @@ right-edge, width-only affordance. A full-height 12px hit strip carries the same
 long pages. Hover and drag draw a 1px `--ring` line along the edge. Keyboard
 focus shows the `--ring` outline on the grip. The outline now frames the prose
 with equal frame padding on both sides. Its width is the column width plus twice
-that inset. The column clamps to 360–1200px; 1200px matches
-`--editor-table-expanded-max-width`. The default stays 672px. The handle is
+that inset. The saved manual column width clamps to 360–1200px, with 672px as
+the default. SN-398 lets non-text content grow the displayed desktop width
+without a cap and contract back to the manual reading width as content shrinks.
+Desktop tables do not scroll horizontally within their wrappers. The handle is
 hidden below 768px, read-only and draw mode, and print. SN-321 hides the main
 outline and grip until the main editor column receives focus; both remain
 visible while the grip has keyboard focus or is being dragged. The printed
