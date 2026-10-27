@@ -1,5 +1,17 @@
 # Smart Notes Design System
 
+## Deep Work Follow and Companion commands (SN-400, SN-401)
+
+The toolbar Follow and Commands buttons reuse the existing ghost/secondary
+`Button` variants, the 44px mobile / 28px desktop toolbar height, and a
+`--accent` 6px pulse dot (as the SN-378 wake row) while a command runs; the
+pressed state is the `secondary` variant. The follow notice reuses the SN-381
+sync notice strip (`--border`, `--muted` at 60%, 12px text) with an `--accent`
+text action. The commands panel uses `--surface`, `--border`, `--muted` for
+output blocks, `--muted-foreground`, `--destructive` for failures, monospace
+12px command/output text, and `--secondary` hover. No new color, spacing, or
+typography token was added.
+
 ## Companion cell wake row (SN-378)
 
 The waiting row in the Companion transcript uses existing `--border`,

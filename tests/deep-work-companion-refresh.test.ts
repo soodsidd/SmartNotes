@@ -10,6 +10,7 @@ import {
 } from "@/lib/deep-work-refresh";
 import { createJupyterCommandMessage } from "@/lib/jupyter-focus";
 import { createWorkspaceSource, writeWorkspaceSource } from "@/server/jupyter/workspace-files";
+import { mutateWorkspaceNotebook } from "@/server/jupyter/workspace-notebook";
 import { resolveProjectWorkspace } from "@/server/jupyter/workspace-root";
 
 const { JUPYTER_FOCUS_BRIDGE_SOURCE } = require("../server/jupyter-focus-bridge");
@@ -192,6 +193,28 @@ describe("SN-270 Deep Work root survives a Companion notebook edit", () => {
       expect(Object.keys(emitted[0]!.data as object).sort()).toEqual(["path", "revision", "rootPath"]);
     });
 
+    it("SN-400: names the touched cell on a Companion cell operation", async () => {
+      const notebook = path.join("notebooks", "follow.ipynb");
+      const created = await createWorkspaceSource(
+        request(),
+        notebook,
+        JSON.stringify({ cells: [], metadata: {}, nbformat: 4, nbformat_minor: 5 })
+      );
+      emitted.length = 0;
+      const first = await mutateWorkspaceNotebook(request(), notebook, created.revision, "cell_create", { source: "x = 1" });
+      const second = await mutateWorkspaceNotebook(request(), notebook, first.revision, "cell_create", { source: "y = 2", index: 0 });
+      const updates = emitted.filter((entry) => entry.event === "workspace_source_updated").map((entry) => entry.data as Record<string, unknown>);
+      expect(updates).toHaveLength(2);
+      expect(updates[1]).toMatchObject({ path: "notebooks/follow.ipynb", revision: second.revision, cellIndex: 0 });
+      expect(typeof updates[1].cellId).toBe("string");
+      expect(updates[1].cellId).toBe(second.mutation.cellId);
+      const third = await mutateWorkspaceNotebook(request(), notebook, second.revision, "cell_delete", { index: 1 });
+      const deleted = emitted.filter((entry) => entry.event === "workspace_source_updated").pop()!.data as Record<string, unknown>;
+      expect(deleted).toMatchObject({ revision: third.revision, cellIndex: 1 });
+      expect(deleted.cellId).toBeUndefined();
+      expect(JSON.stringify(updates)).not.toContain("dwc_");
+    });
+
     it("stays silent when the write is rejected", async () => {
       await expect(
         writeWorkspaceSource(request(), "notebooks/missing.ipynb", `sha256:${"0".repeat(64)}`, [
@@ -242,7 +265,9 @@ describe("SN-270 Deep Work root survives a Companion notebook edit", () => {
       expect(shell).toContain('socket.on("workspace_source_updated", handleWorkspaceSourceUpdated)');
       expect(shell).toContain('socket.off("workspace_source_updated", handleWorkspaceSourceUpdated)');
       expect(shell).toContain("deepWorkSourceRefreshDecision({");
-      expect(shell).toContain('if (decision.kind !== "reload-document") return;');
+      // SN-400: a non-reload decision may still follow Companion to another file, never reload it.
+      expect(shell).toContain('if (decision.kind !== "reload-document") {');
+      expect(shell).toContain("deepWorkFollowFromSourceEvent(");
     });
 
     it("never bumps the remount nonce for a Deep Work surface", () => {
@@ -275,7 +300,12 @@ describe("SN-270 Deep Work root survives a Companion notebook edit", () => {
       expect(shell).toContain('socket.on("workspace_cell_run_updated", handleWorkspaceCellRunUpdated)');
       expect(shell).toContain('socket.off("workspace_cell_run_updated", handleWorkspaceCellRunUpdated)');
       expect(shell).toContain("sameDeepWorkRootPath(event?.rootPath, workspaceSessionRef.current?.rootPath)");
-      expect(shell).toContain("file !== activeJupyterFocusRef.current?.workspacePath");
+      // Only the focused document is painted; another file's latest run waits for focus (SN-400 follow).
+      expect(shell).toContain("if (file === activeJupyterFocusRef.current?.workspacePath) {");
+      expect(shell).toContain("pendingWorkspaceRunsRef.current.set(file, event.run);");
+      expect(shell).toContain("externalFollow={visible && activeProjectWorkspace ? workspaceFollow : null}");
+      expect(shell).not.toContain("workspaceFollow}`}");
+      expect(JUPYTER_FOCUS_BRIDGE_SOURCE).toContain("enqueueHostWork(() => followCompanion(app, message))");
       expect(shell).toContain("externalRun={visible && activeProjectWorkspace ? workspaceCellRun : null}");
       expect(shell).not.toContain("workspaceCellRun}`}");
       expect(view).toContain('kind: "cell-run-update"');

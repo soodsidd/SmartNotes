@@ -35,6 +35,9 @@ import {
   type JupyterFocusState,
 } from "@/lib/jupyter-focus";
 import type { JupyterCellRunPayload } from "@/server/jupyter/cell-run";
+import type { DeepWorkFollowRequest, DeepWorkFollowTarget } from "@/lib/deep-work-follow";
+import { countRunningCompanionCommands, type CompanionCommandEntry } from "@/lib/companion-command-activity";
+import { CompanionCommandPanel } from "@/components/companion-command-panel";
 import {
   JupyterDeepWorkToolbar,
   type JupyterDeepWorkIdentity,
@@ -134,6 +137,13 @@ export interface JupyterNotebookViewProps {
   externalReload?: { path: string; nonce: number } | null;
   externalRun?: { path: string; nonce: number; run: JupyterCellRunPayload } | null;
   externalConflict?: string | null;
+  /** SN-400: Follow Companion — open this file/cell in the running Lab frame (bump nonce). */
+  externalFollow?: DeepWorkFollowRequest | null;
+  followCompanion?: boolean;
+  onFollowCompanionChange?: (enabled: boolean) => void;
+  /** SN-401: live shell commands Companion ran this session (read-only panel). */
+  companionCommands?: readonly CompanionCommandEntry[];
+  onClearCompanionCommands?: () => void;
 }
 
 type ViewState =
@@ -250,6 +260,11 @@ export function JupyterNotebookView({
   externalReload,
   externalRun,
   externalConflict,
+  externalFollow,
+  followCompanion,
+  onFollowCompanionChange,
+  companionCommands,
+  onClearCompanionCommands,
 }: JupyterNotebookViewProps) {
   const [state, setState] = React.useState<ViewState>({ phase: "launching" });
   const workspaceAccessMode = workspace
@@ -270,6 +285,9 @@ export function JupyterNotebookView({
     failed: null,
   });
   const [runNotice, setRunNotice] = React.useState<string | null>(null);
+  // SN-400: a follow the frame declined (or could not do). `target` set = offer "Open".
+  const [followNotice, setFollowNotice] = React.useState<{ message: string; target: DeepWorkFollowTarget | null } | null>(null);
+  const [commandsOpen, setCommandsOpen] = React.useState(false);
   const [inlineSurface, setInlineSurface] = React.useState<InlineSurfaceState | null>(null);
   const [annotationsOpen, setAnnotationsOpen] = React.useState(false);
   const [annotations, setAnnotations] = React.useState<LoadedWorkspaceAnnotation[]>([]);
@@ -412,6 +430,32 @@ export function JupyterNotebookView({
     // Conflict and reconciliation notices come back from the frame, which is
     // the only place that knows whether the owner has unsaved cells.
   }, [externalRun, frameLoaded, state.phase, workspace]);
+
+  // SN-400: Follow Companion. Declared after the reload/run effects so, in one
+  // commit, the frame receives the reload, then the run, then the follow; the
+  // frame applies all three through one ordered queue.
+  const postFollow = React.useCallback((target: DeepWorkFollowTarget, force = false) => {
+    if (!workspace || state.phase !== "ready" || !frameLoaded) return;
+    iframeRef.current?.contentWindow?.postMessage({
+      source: JUPYTER_HOST_MESSAGE_SOURCE,
+      version: JUPYTER_FOCUS_MESSAGE_VERSION,
+      kind: "follow-companion",
+      path: target.path,
+      cellId: target.cellId,
+      cellIndex: target.cellIndex,
+      force,
+    }, window.location.origin);
+  }, [frameLoaded, state.phase, workspace]);
+  const handledExternalFollowRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!externalFollow || handledExternalFollowRef.current === externalFollow.nonce) return;
+    if (!workspace || state.phase !== "ready" || !frameLoaded) return;
+    handledExternalFollowRef.current = externalFollow.nonce;
+    postFollow(externalFollow, externalFollow.force === true);
+  }, [externalFollow, frameLoaded, postFollow, state.phase, workspace]);
+  React.useEffect(() => {
+    if (!isActive || followCompanion === false) setFollowNotice(null);
+  }, [followCompanion, isActive]);
 
   const dismissInlineSurface = React.useCallback(() => {
     inlineRequestRef.current?.abort();
@@ -735,6 +779,7 @@ export function JupyterNotebookView({
         ) {
           setRunNotice(null);
         }
+        setFollowNotice((current) => (current?.target && current.target.path === focus.workspacePath ? null : current));
         latestFocusRef.current = focus;
         setActiveFocus(focus);
         onFocusChangeRef.current?.(focus);
@@ -818,6 +863,27 @@ export function JupyterNotebookView({
             ? null
             : { ...current, phase: "error", error: answerResult.reason ?? "Jupyter rejected the cell update." };
         });
+        return;
+      }
+      if (event.data?.source === "smart-notes-jupyter-focus" && event.data?.kind === "follow-result") {
+        // SN-400: the frame followed Companion, or explained why not.
+        if (!isActiveRef.current) return;
+        const reason = typeof event.data.reason === "string" && event.data.reason ? event.data.reason.slice(0, 600) : null;
+        const path = typeof event.data.path === "string" ? event.data.path : null;
+        setFollowNotice(
+          !reason
+            ? null
+            : {
+                message: reason,
+                target: event.data.blocked === true && path
+                  ? {
+                      path,
+                      cellId: typeof event.data.cellId === "string" ? event.data.cellId : null,
+                      cellIndex: Number.isInteger(event.data.cellIndex) ? event.data.cellIndex : null,
+                    }
+                  : null,
+              }
+        );
         return;
       }
       if (event.data?.source === "smart-notes-jupyter-focus" && event.data?.kind === "cell-run-update-result") {
@@ -1141,7 +1207,20 @@ export function JupyterNotebookView({
         onAnnotations={annotationsDisabledReason ? undefined : () => setAnnotationsOpen((value) => !value)}
         annotationCount={annotations.length}
         annotationsDisabledReason={annotationsDisabledReason}
+        followCompanion={followCompanion !== false}
+        onFollowCompanionChange={workspace ? onFollowCompanionChange : undefined}
+        onCompanionCommands={workspace && companionCommands ? () => setCommandsOpen((value) => !value) : undefined}
+        companionCommandsOpen={commandsOpen}
+        companionCommandCount={companionCommands?.length ?? 0}
+        companionCommandsRunning={companionCommands ? countRunningCompanionCommands(companionCommands) : 0}
       />
+      {commandsOpen && workspace && companionCommands ? (
+        <CompanionCommandPanel
+          commands={companionCommands}
+          onClose={() => setCommandsOpen(false)}
+          onClear={onClearCompanionCommands}
+        />
+      ) : null}
       {annotationsOpen && workspace ? (
         <section
           aria-label="Source annotations"
@@ -1226,6 +1305,28 @@ export function JupyterNotebookView({
           className="border-b border-border bg-muted/60 px-3 py-1 text-xs text-muted-foreground"
         >
           Inline AI and source annotations are unavailable for this protected path. {protectedWorkspacePathReason}
+        </div>
+      ) : null}
+      {followNotice ? (
+        <div role="status" data-testid="jupyter-follow-notice" className="flex items-center gap-2 border-b border-border bg-muted/60 px-3 py-1 text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1">{followNotice.message}</span>
+          {followNotice.target ? (
+            <button
+              type="button"
+              data-testid="jupyter-follow-open"
+              className="shrink-0 rounded-sm px-1.5 py-0.5 font-medium text-accent hover:bg-secondary"
+              onClick={() => {
+                const target = followNotice.target!;
+                setFollowNotice(null);
+                postFollow(target, true);
+              }}
+            >
+              Open {followNotice.target.path.split("/").at(-1)}
+            </button>
+          ) : null}
+          <button type="button" aria-label="Dismiss" className="shrink-0 rounded-sm p-0.5 hover:bg-secondary" onClick={() => setFollowNotice(null)}>
+            <X className="size-3" />
+          </button>
         </div>
       ) : null}
       {runNotice || externalConflict ? (

@@ -361,10 +361,18 @@ async function createMissingDirectories(directories: string[]): Promise<void> {
  */
 export function announceWorkspaceSourceWrite(
   rootPath: string,
-  result: Pick<WorkspaceSourceRead, "path" | "revision">
+  result: Pick<WorkspaceSourceRead, "path" | "revision">,
+  // SN-400: the cell a Companion notebook operation touched, so Follow Companion can reveal it.
+  cell?: { cellId?: string | null; cellIndex?: number | null }
 ): void {
   emitVaultSideEffects({
-    workspaceSourceUpdated: { rootPath, path: result.path, revision: result.revision },
+    workspaceSourceUpdated: {
+      rootPath,
+      path: result.path,
+      revision: result.revision,
+      ...(cell?.cellId ? { cellId: cell.cellId } : {}),
+      ...(Number.isInteger(cell?.cellIndex) && (cell!.cellIndex as number) >= 0 ? { cellIndex: cell!.cellIndex as number } : {}),
+    },
   });
 }
 

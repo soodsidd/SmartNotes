@@ -639,6 +639,70 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
     return result;
   };
 
+  // SN-400: Follow Companion. Bring the file and cell Companion just touched
+  // into view. Queued with reloads and run updates so it lands after them.
+  // Switching away from a document with unsaved cell edits is refused unless
+  // the owner asked for it (force): Lab keeps that document dirty in its own
+  // tab either way, but the view must not yank the owner out mid-edit.
+  const revealCell = async (content, message) => {
+    const widgets = Array.isArray(content && content.widgets) ? content.widgets : [];
+    if (!widgets.length) return;
+    let index = -1;
+    if (typeof message.cellId === 'string' && message.cellId) {
+      index = widgets.findIndex((widget) => widget && widget.model && widget.model.id === message.cellId);
+    }
+    if (index < 0 && Number.isInteger(message.cellIndex)) index = Math.min(message.cellIndex, widgets.length - 1);
+    if (index < 0) return;
+    try {
+      content.activeCellIndex = index;
+      if (typeof content.scrollToItem === 'function') await content.scrollToItem(index, 'center');
+      else if (typeof content.scrollToCell === 'function') await content.scrollToCell(widgets[index]);
+    } catch {
+      // Scrolling is best effort; the active cell is already set.
+    }
+  };
+
+  const followCompanion = async (app, message) => {
+    const path = normalizeWorkspacePath(message && message.path);
+    if (!path) return;
+    let parts = currentParts(app);
+    let reason = null;
+    let blocked = false;
+    if (parts.workspacePath !== path) {
+      const model = parts.widget && parts.widget.context && parts.widget.context.model;
+      if (!message.force && model && model.dirty && hasUnsavedCellEdits(parts)) {
+        blocked = true;
+        reason = 'Companion is working in ' + path + '. This document has unsaved edits, so the view stayed here.';
+      } else if (!app.commands || typeof app.commands.execute !== 'function') {
+        reason = 'JupyterLab commands are unavailable, so the view could not follow Companion.';
+      } else {
+        try {
+          const widget = await app.commands.execute('docmanager:open', { path });
+          if (widget && widget.context && widget.context.ready) await widget.context.ready;
+          if (widget && widget.revealed) await widget.revealed;
+        } catch {
+          reason = 'JupyterLab could not open ' + path + ' to follow Companion.';
+        }
+      }
+    }
+    if (!reason) {
+      parts = currentParts(app);
+      if (parts.workspacePath === path && parts.isNotebook) await revealCell(parts.content, message);
+    }
+    post({
+      source: SOURCE,
+      version: VERSION,
+      kind: 'follow-result',
+      path,
+      cellId: typeof message.cellId === 'string' ? message.cellId : null,
+      cellIndex: Number.isInteger(message.cellIndex) ? message.cellIndex : null,
+      blocked,
+      reason,
+      focus: focusSnapshot(app)
+    });
+    scheduleReport(app);
+  };
+
   const cellJson = (model) => {
     try {
       return model && typeof model.toJSON === 'function' ? model.toJSON() : null;
@@ -937,6 +1001,7 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
       else if (message.kind === 'command' && message.command === 'reload-document') void enqueueHostWork(() => dispatchCommand(app, message));
       else if (message.kind === 'command') void dispatchCommand(app, message);
       else if (message.kind === 'cell-run-update') void enqueueHostWork(() => applyCellRunUpdate(app, message));
+      else if (message.kind === 'follow-companion') void enqueueHostWork(() => followCompanion(app, message));
     };
     document.addEventListener('contextmenu', onContextMenu, true);
     document.addEventListener('scroll', onScroll, true);
