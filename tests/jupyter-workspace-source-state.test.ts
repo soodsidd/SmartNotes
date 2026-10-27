@@ -189,7 +189,9 @@ describe("SN-258 bounded workspace source and app-state collaboration", () => {
       }
     ));
     expect(createResponse.status).toBe(201);
-    await expect(fs.readFile(path.join(root, "walkthrough.ipynb"), "utf8")).resolves.toBe(notebookSource);
+    // Cells are written as sent; a notebook without a language gets Python language_info so Lab highlights it.
+    const written = JSON.parse(await fs.readFile(path.join(root, "walkthrough.ipynb"), "utf8"));
+    expect(written).toMatchObject({ cells: [], nbformat: 4, nbformat_minor: 5, metadata: { language_info: { name: "python" } } });
     await expect(fs.stat(path.join(vaultPage, "walkthrough.ipynb"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
