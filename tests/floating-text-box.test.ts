@@ -1,9 +1,9 @@
 /** @jest-environment jsdom */
 import { Editor } from "@tiptap/core";
 import { createEditorExtensions, insertUploadedEditorAsset, setEditorHtmlSilent } from "@/lib/rich-text-editor-config";
+import { mainFlowNonTextWidth, nonTextContentWidth } from "@/lib/non-text-content-width";
 import {
   EDITOR_MAIN_FLOW_WIDTH,
-  fitFloatingBoxWidthToContent,
   deleteFloatingTextBox,
   floatingTextBoxMenuActions,
   floatingTextBoxPosAtElement,
@@ -211,13 +211,22 @@ describe("floating text boxes", () => {
     instance.destroy();
   });
 
-  test("SN-316: width-only resize keeps x/y and clamps width; content fit only grows", () => {
+  test("SN-316: manual width-only resize keeps x/y and clamps width", () => {
     const start = { x: 40, y: 80, width: 360 };
     expect(resizeFloatingBoxWidth(start, 140)).toEqual({ ...start, width: 500 });
     expect(resizeFloatingBoxWidth(start, -1000)).toEqual({ ...start, width: 160 });
-    expect(fitFloatingBoxWidthToContent(start, 452.2, 340)).toEqual({ ...start, width: 473 });
-    expect(fitFloatingBoxWidthToContent(start, 300, 340)).toBe(start);
-    expect(fitFloatingBoxWidthToContent(start, Number.NaN, 340)).toBe(start);
+  });
+
+  test("SN-398: non-text width ignores floating boxes and percentage-sized media", () => {
+    const root = document.createElement("div");
+    root.innerHTML = '<p><img style="width:480px;margin-right:6px"></p>' +
+      '<div class="tableWrapper" data-fixed-widths="true"><table style="width:1450px"></table></div>' +
+      '<div data-type="floating-text-box"><p><img style="width:2000px"></p></div>';
+    expect(nonTextContentWidth(root.firstElementChild as HTMLElement)).toBe(486);
+    expect(mainFlowNonTextWidth(root)).toBe(1450);
+    const percentage = document.createElement("p");
+    percentage.innerHTML = '<img style="width:100%">';
+    expect(nonTextContentWidth(percentage)).toBe(0);
   });
 
   test("SN-316/SN-314: right-edge handle changes only width, live on every pointer move, so text reflows", () => {
@@ -257,7 +266,7 @@ describe("floating text boxes", () => {
     instance.destroy();
   });
 
-  test("SN-316: an embedded image resized wider than the box grows the box to contain it", () => {
+  test("SN-398: an embedded image grows the displayed box, then contracts to its manual width", () => {
     const callbacks: Array<() => void> = [];
     const original = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
     (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
@@ -268,6 +277,7 @@ describe("floating text boxes", () => {
     try {
       const instance = editor('<div data-type="floating-text-box" data-x="20" data-y="30" data-width="360" data-height="48"><div data-floating-box-content><p>Caption</p><img src="/vault/notes/a.png" width="300"></div></div>');
       const content = instance.view.dom.querySelector<HTMLElement>(".floating-text-box__content")!;
+      const box = content.parentElement as HTMLElement;
       const image = content.querySelector<HTMLImageElement>("img")!;
       const rect = (left: number, width: number) => ({ left, right: left + width, width, top: 0, bottom: 0, height: 0, x: left, y: 0, toJSON() {} }) as DOMRect;
       Object.defineProperty(content, "clientWidth", { configurable: true, value: 340 });
@@ -275,11 +285,12 @@ describe("floating text boxes", () => {
       // Image dragged from 300px to 420px: 80px past the content edge.
       image.getBoundingClientRect = () => rect(10, 420);
       callbacks.forEach((callback) => callback());
-      expect(instance.getHTML()).toContain('data-width="440"');
-      // Image fits again: the box never shrinks on its own.
+      expect(box.style.width).toBe("440px");
+      expect(instance.getHTML()).toContain('data-width="360"');
+      // The manual width is the floor when the image shrinks.
       image.getBoundingClientRect = () => rect(10, 200);
       callbacks.forEach((callback) => callback());
-      expect(instance.getHTML()).toContain('data-width="440"');
+      expect(box.style.width).toBe("360px");
       instance.destroy();
     } finally {
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = original;
@@ -315,7 +326,7 @@ describe("floating text boxes", () => {
       // stays auto so the box grows with the taller image instead of clipping it.
       image.getBoundingClientRect = () => rect(10, 600);
       callbacks.forEach((callback) => callback());
-      expect(instance.getHTML()).toContain('data-width="620"');
+      expect(instance.getHTML()).toContain('data-width="360"');
       expect(box.style.width).toBe("620px");
       expect(box.style.minHeight).toBe("");
       expect(box.style.height).toBe("");
@@ -325,6 +336,7 @@ describe("floating text boxes", () => {
       Object.defineProperty(content, "scrollHeight", { configurable: true, value: 20 });
       callbacks.forEach((callback) => callback());
       expect(instance.getHTML()).toBe(before);
+      expect(box.style.width).toBe("360px");
       expect(box.style.minHeight).toBe("");
       instance.destroy();
     } finally {
@@ -354,7 +366,8 @@ describe("floating text boxes", () => {
       container.style.marginRight = "6px";
       callbacks.forEach((callback) => callback());
       // 400px image + 6px margin needs 406px of content: 66px past the 340px column.
-      expect(instance.getHTML()).toContain('data-width="426"');
+      expect(content.parentElement?.style.width).toBe("426px");
+      expect(instance.getHTML()).toContain('data-width="360"');
       instance.destroy();
     } finally {
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = original;

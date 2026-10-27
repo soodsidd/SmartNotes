@@ -5570,7 +5570,7 @@
     {
       "id": "unit-sn-296-floating-text-box",
       "name": "Floating text box persistence and geometry",
-      "description": "Jest checks box move and resize limits, the SN-316 width-only handle (live reflow, keyboard), image-driven box growth, and HTML reload with rich text, an image, and a table.",
+      "description": "Jest checks box move and resize limits, the SN-316 width-only handle (live reflow, keyboard), content-driven image growth and contraction to the manual width, and HTML reload with rich text, an image, and a table.",
       "intent": "Protects text box content and placement from loss during page save and reload.",
       "whenToRun": "Pre-merge when changing the text page canvas, rich text schema, or floating text boxes.",
       "failureMeaning": "A text box may move unexpectedly or lose content, geometry, images, or tables after reload.",
@@ -6027,6 +6027,28 @@
       "addedBy": "SN-395",
       "addedAt": "2026-10-26",
       "sourceFiles": [{ "path": "e2e/sn-395-floating-box-menu.spec.ts" }]
+    },
+    {
+      "id": "e2e-sn-398-content-width",
+      "name": "SN-398 content-driven editor width",
+      "description": "Desktop pointer resize grows a table beyond 1200px without local scrolling, shrinks the frame to reading width, and verifies image and floating-box growth and contraction; mobile keeps table scroll and focus chrome.",
+      "intent": "Keeps the desktop editor canvas wide enough for non-text content while allowing it to contract when content shrinks.",
+      "whenToRun": "Pre-merge when changing table, image, main-flow, or floating-box width behavior.",
+      "failureMeaning": "The desktop editor may crop or scroll a table, stop at the old cap, fail to fit an image, or remain unnecessarily wide after content shrinks.",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-398-content-width.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
+      "timeoutMs": 420000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "editor", "table", "floating-text-box", "targeted"],
+      "feature": "editor",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "addedBy": "SN-398",
+      "addedAt": "2026-10-26",
+      "sourceFiles": [{ "path": "e2e/sn-398-content-width.spec.ts" }]
     },
     {
       "id": "unit-sn-382-notebook-open",

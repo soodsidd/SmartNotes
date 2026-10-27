@@ -13,7 +13,7 @@ export const MAIN_FLOW_WIDTH_METADATA_KEY = "main_flow_width";
 
 export const MAIN_FLOW_DEFAULT_WIDTH = EDITOR_MAIN_FLOW_WIDTH;
 export const MAIN_FLOW_MIN_WIDTH = 360;
-/** Matches --editor-table-expanded-max-width so expanded tables never sit narrower than the column. */
+/** Manual width limit; content-driven display growth is uncapped (SN-398). */
 export const MAIN_FLOW_MAX_WIDTH = 1200;
 
 /** Keyboard steps for the resize handle (Shift = coarse). */

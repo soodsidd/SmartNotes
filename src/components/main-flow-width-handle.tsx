@@ -24,12 +24,15 @@ export const MAIN_FLOW_KEY_COMMIT_DELAY_MS = 400;
  */
 export function MainFlowWidthHandle({
   width,
+  displayWidth = width,
   inset = 0,
   height,
   onLiveChange,
   onCommit,
 }: {
   width: number;
+  /** Content may make the visible frame wider than the saved manual setting. */
+  displayWidth?: number;
   /** Frame padding around the column; the handle sits on the outline's right edge. */
   inset?: number;
   height: number;
@@ -112,7 +115,7 @@ export function MainFlowWidthHandle({
       title="Drag to change column width; arrow keys to adjust, Home to reset"
       className="editor-main-flow-resize"
       data-testid="editor-main-flow-resize"
-      style={{ left: width + inset, height }}
+      style={{ left: displayWidth + inset, height }}
       onPointerDown={handlePointerDown}
       onKeyDown={handleKeyDown}
       onBlur={flushKeyCommit}

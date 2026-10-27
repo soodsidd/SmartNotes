@@ -1,7 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ensureNotebookTreeVisible } from "./helpers";
 
 const SECTION_PATH = "Personal Notebook/Quick Notes";
 const EVIDENCE_DIR = path.resolve(__dirname, "../evidence/SN-178");
@@ -59,20 +58,16 @@ async function seedPage(request: APIRequestContext, title: string) {
   return { path: created.page.path, content };
 }
 
-async function openSeededPage(page: Page, title: string) {
-  await page.goto("/");
+async function openSeededPage(page: Page, title: string, pagePath: string) {
+  await page.goto(`/?page=${encodeURIComponent(pagePath)}`);
   await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 20_000 });
-  const tree = await ensureNotebookTreeVisible(page);
-  await tree.getByText(title, { exact: true }).first().click();
-  await expect(
-    page.locator('header[data-print-chrome="true"]').getByText(title, { exact: true })
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("textbox", { name: "Page title" }).first()).toHaveValue(title, { timeout: 20_000 });
   await expect(page.getByRole("region", { name: "Table scroll area" }).first()).toBeVisible({
     timeout: 20_000,
   });
 }
 
-test("SN-178: an eight-column table scrolls locally under a collapsible heading", async ({
+test("SN-178/SN-398: wide table uses the canvas on desktop and local scroll on mobile", async ({
   page,
   request,
 }, testInfo) => {
@@ -82,7 +77,7 @@ test("SN-178: an eight-column table scrolls locally under a collapsible heading"
   const seeded = await seedPage(request, title);
 
   try {
-    await openSeededPage(page, title);
+    await openSeededPage(page, title, seeded.path);
 
     const tables = page.locator('[data-table-scroll="true"]');
     await expect(tables).toHaveCount(2);
@@ -99,28 +94,32 @@ test("SN-178: an eight-column table scrolls locally under a collapsible heading"
       scrollWidth: element.scrollWidth,
       scrollLeft: element.scrollLeft,
     }));
-    expect(initial.scrollWidth).toBeGreaterThan(initial.clientWidth);
+    if (testInfo.project.name === "desktop") {
+      expect(initial.scrollWidth - initial.clientWidth).toBeLessThanOrEqual(2);
+    } else {
+      expect(initial.scrollWidth).toBeGreaterThan(initial.clientWidth);
+    }
     expect(initial.scrollLeft).toBe(0);
 
     const initialRects = await Promise.all([wideTable.boundingBox(), finalColumn.boundingBox()]);
     expect(initialRects[0]).not.toBeNull();
     expect(initialRects[1]).not.toBeNull();
-    expect(initialRects[1]!.x + initialRects[1]!.width).toBeGreaterThan(
-      initialRects[0]!.x + initialRects[0]!.width
-    );
-
-    await wideTable.hover();
-    await page.mouse.wheel(initial.scrollWidth, 0);
-    await expect
-      .poll(() => wideTable.evaluate((element) => element.scrollLeft))
-      .toBeGreaterThan(0);
+    if (testInfo.project.name === "mobile") {
+      expect(initialRects[1]!.x + initialRects[1]!.width).toBeGreaterThan(
+        initialRects[0]!.x + initialRects[0]!.width
+      );
+      await wideTable.evaluate((element) => { element.scrollLeft = element.scrollWidth; });
+      await expect.poll(() => wideTable.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    }
 
     const scrolledRects = await Promise.all([wideTable.boundingBox(), finalColumn.boundingBox()]);
     expect(scrolledRects[0]).not.toBeNull();
     expect(scrolledRects[1]).not.toBeNull();
-    expect(scrolledRects[1]!.x + scrolledRects[1]!.width).toBeLessThanOrEqual(
-      scrolledRects[0]!.x + scrolledRects[0]!.width + 1
-    );
+    if (testInfo.project.name === "mobile") {
+      expect(scrolledRects[1]!.x + scrolledRects[1]!.width).toBeLessThanOrEqual(
+        scrolledRects[0]!.x + scrolledRects[0]!.width + 1
+      );
+    }
     expect(await editorScrollArea.evaluate((element) => element.scrollTop)).toBe(pageScrollTopBefore);
 
     const narrowMetrics = await narrowTable.evaluate((element) => ({
@@ -148,7 +147,7 @@ test("SN-178: an eight-column table scrolls locally under a collapsible heading"
     await wideTable.evaluate((element) => {
       element.scrollLeft = element.scrollWidth;
     });
-    await expect(finalColumn).toBeInViewport();
+    if (testInfo.project.name === "mobile") await expect(finalColumn).toBeInViewport();
 
     const stored = await request.get(`/api/page?path=${encodeURIComponent(seeded.path)}`);
     expect(stored.ok()).toBeTruthy();
