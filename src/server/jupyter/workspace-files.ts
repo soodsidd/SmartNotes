@@ -376,13 +376,85 @@ export function announceWorkspaceSourceWrite(
   });
 }
 
+/** Python language info JupyterLab needs to pick a Python editor mode (syntax highlighting). */
+const DEFAULT_PYTHON_LANGUAGE_INFO = {
+  codemirror_mode: { name: "ipython", version: 3 },
+  file_extension: ".py",
+  mimetype: "text/x-python",
+  name: "python",
+  nbconvert_exporter: "python",
+  pygments_lexer: "ipython3",
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * A notebook created without kernelspec/language_info opens in JupyterLab as
+ * plain text: no syntax highlighting, and spellcheck underlines every code
+ * token. Borrow both from the newest sibling notebook that declares a kernel
+ * (same folder first, then the workspace root), else default the language to
+ * Python and leave the kernel for Lab to choose. Explicit metadata wins.
+ */
+async function notebookMetadataDefaults(
+  absolutePath: string,
+  realRoot: string
+): Promise<{ kernelspec?: Record<string, unknown>; language_info: Record<string, unknown> }> {
+  const folders = [...new Set([path.dirname(absolutePath), realRoot])];
+  for (const folder of folders) {
+    const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => []);
+    const candidates: Array<{ file: string; mtime: number }> = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || entry.name.startsWith(".") || path.extname(entry.name).toLowerCase() !== ".ipynb") continue;
+      const file = path.join(folder, entry.name);
+      if (file === absolutePath) continue;
+      const stat = await fs.stat(file).catch(() => null);
+      if (stat && stat.size <= WORKSPACE_FILE_MAX_BYTES) candidates.push({ file, mtime: stat.mtimeMs });
+    }
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    for (const { file } of candidates.slice(0, 20)) {
+      try {
+        const metadata = (JSON.parse(await fs.readFile(file, "utf8")) as { metadata?: unknown }).metadata;
+        if (!isRecord(metadata) || !isRecord(metadata.kernelspec) || typeof metadata.kernelspec.name !== "string") continue;
+        return {
+          kernelspec: metadata.kernelspec,
+          language_info: isRecord(metadata.language_info) ? metadata.language_info : DEFAULT_PYTHON_LANGUAGE_INFO,
+        };
+      } catch {
+        // Unreadable or invalid sibling: try the next one.
+      }
+    }
+  }
+  return { language_info: DEFAULT_PYTHON_LANGUAGE_INFO };
+}
+
+async function withNotebookLanguageDefaults(bytes: Buffer, absolutePath: string, realRoot: string): Promise<Buffer> {
+  const notebook = JSON.parse(bytes.toString("utf8")) as { metadata?: unknown };
+  const metadata = isRecord(notebook.metadata) ? notebook.metadata : {};
+  if (isRecord(metadata.kernelspec) && isRecord(metadata.language_info)) return bytes;
+  const defaults = await notebookMetadataDefaults(absolutePath, realRoot);
+  notebook.metadata = {
+    ...metadata,
+    ...(isRecord(metadata.kernelspec) || !defaults.kernelspec ? {} : { kernelspec: defaults.kernelspec }),
+    ...(isRecord(metadata.language_info) ? {} : { language_info: defaults.language_info }),
+  };
+  validateWorkspaceNotebookDocument(notebook);
+  const next = Buffer.from(`${JSON.stringify(notebook, null, 1)}\n`, "utf8");
+  if (next.length > WORKSPACE_CREATE_MAX_BYTES) return bytes;
+  return next;
+}
+
 export async function createWorkspaceSource(
   request: ProjectWorkspaceRequest,
   relativePath: unknown,
   source: unknown
 ): Promise<WorkspaceSourceRead> {
   const resolved = await resolveCreateTarget(request, relativePath);
-  const bytes = validateCreateSource(resolved.relativePath, source);
+  let bytes = validateCreateSource(resolved.relativePath, source);
+  if (path.posix.extname(resolved.relativePath).toLowerCase() === ".ipynb") {
+    bytes = await withNotebookLanguageDefaults(bytes, resolved.absolutePath, resolved.workspace.realRoot);
+  }
   await createMissingDirectories(resolved.missingDirectories);
 
   const created = await withFileMutation(resolved.absolutePath, async () => {
@@ -422,7 +494,7 @@ export async function createWorkspaceSource(
 
     return {
       path: resolved.relativePath,
-      source: source as string,
+      source: bytes.toString("utf8"),
       revision: revision(bytes),
       size: bytes.length,
       truncated: false,
