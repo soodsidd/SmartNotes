@@ -200,8 +200,22 @@ function codexExecArgs(sandboxCfg, options = {}) {
   }
   if (sandboxCfg.codex?.computerAccessDisabled) {
     // read-only still permits shell commands and built-in computer tools.
+    // User config can also register computer-capable MCP servers. Keep this
+    // turn's tool surface to the explicitly injected companion server.
+    args.push('--ignore-user-config');
     for (const feature of ['shell_tool', 'unified_exec', 'computer_use', 'browser_use']) {
       args.push('--disable', feature);
+    }
+    if (options.companionMcp?.root) {
+      const server = 'mcp_servers.smart_notes_companion';
+      const tomlString = value => `'${String(value).replaceAll('\\', '/').replaceAll("'", "''")}'`;
+      const serverArgs = [options.companionMcp.script, options.companionMcp.root];
+      if (options.companionMcp.capability) serverArgs.push(options.companionMcp.capability);
+      args.push('-c', `${server}.command=node`);
+      args.push('-c', `${server}.args=[${serverArgs.map(tomlString).join(',')}]`);
+      args.push('-c', `${server}.required=true`);
+      args.push('-c', `${server}.tool_timeout_sec=90`);
+      args.push('-c', `${server}.default_tools_approval_mode=approve`);
     }
   }
   return args;

@@ -83,6 +83,20 @@ describe("SN-356 computer access sandbox overlay", () => {
     expect(editor.claude.disallowedTools).toEqual(["Bash", "Computer"]);
   });
 
+  it("adds a turn-scoped MCP server only to Computer-OFF Codex exec args", () => {
+    const scoped = { script: "C:\\app\\companion-mcp.js", root: "C:\\app\\bridge", capability: `dwc_${"a".repeat(43)}` };
+    const off = codexExecArgs(applyComputerAccess(editor, false), { companionMcp: scoped });
+    expect(off).toEqual(expect.arrayContaining(["--sandbox", "read-only", "--ignore-user-config", "--disable", "shell_tool", "unified_exec", "computer_use", "browser_use"]));
+    expect(off).toContain("mcp_servers.smart_notes_companion.command=node");
+    expect(off).toContain("mcp_servers.smart_notes_companion.default_tools_approval_mode=approve");
+    expect(off).toContain(`mcp_servers.smart_notes_companion.args=['C:/app/companion-mcp.js','C:/app/bridge','${scoped.capability}']`);
+    const resumed = codexExecArgs(applyComputerAccess(editor, false), { companionMcp: scoped, resume: true });
+    expect(resumed).toContain("mcp_servers.smart_notes_companion.command=node");
+    expect(resumed).not.toContain("--sandbox");
+    const on = codexExecArgs(applyComputerAccess(editor, true), { companionMcp: scoped });
+    expect(on.join(" ")).not.toContain("mcp_servers.smart_notes_companion");
+  });
+
   it("unlocks shell tools for an armed turn without mutating the shared profile", () => {
     const armed = applyComputerAccess(editor, true);
     const args = claudeSandboxArgs(armed);
@@ -297,5 +311,22 @@ describe("SN-356 mid-session toggle through /api/chat/send", () => {
     expect(off.args).toContain("--deny-tool=shell");
     expect(off.args).not.toContain("--resume");
     expect(off.record.request.computer_access).toBe(false);
+  });
+
+  it("wires only a Computer-OFF Codex Deep Work turn to its capability bridge", async () => {
+    const capability = `dwc_${"b".repeat(43)}`;
+    const thread = {
+      provider: "codex", thread_key: `${capability}::whole`,
+      app_context: `Smart Notes Deep Work operating context:\n- workspaceCapability: ${capability}`,
+    };
+    const off = await send({ ...thread, message: "create a notebook" });
+    expect(off.args).toContain("mcp_servers.smart_notes_companion.command=node");
+    expect(off.args.join(" ")).toContain(capability);
+    expect(off.stdin).toContain("call the smart_notes_companion MCP workspace_* tools");
+    expect(off.stdin).not.toContain("Exact capability-bound bridge paths");
+    const on = await send({ ...thread, message: "continue", computer_access: true });
+    expect(on.args.join(" ")).not.toContain("mcp_servers.smart_notes_companion");
+    const offAgain = await send({ ...thread, message: "continue" });
+    expect(offAgain.args).toContain("mcp_servers.smart_notes_companion.command=node");
   });
 });

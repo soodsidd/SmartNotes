@@ -192,6 +192,7 @@ function rewriteCompanionAppContext(appContext, target) {
   const markerOrigin = context.match(/^- (?:browserOrigin|apiBaseUrl)[^:]*:\s*(https?:\/\/\S+)\s*$/mi)?.[1] || '';
   const browserOrigin = target.browserOrigin || normalizeBrowserOrigin(markerOrigin);
   const companionBridgeRoot = String(target.companionBridgeRoot || '').trim();
+  const codexMcp = target.codexMcp === true;
 
   // A stale PWA can still submit the former apiBaseUrl line. Remove connection
   // metadata owned by the browser, rewrite any embedded remote URLs, and append
@@ -224,7 +225,9 @@ function rewriteCompanionAppContext(appContext, target) {
       ? `- apiBaseUrl (host-local Smart Notes server): ${target.apiBaseUrl}`
       : '- apiBaseUrl: unavailable because the server bound port could not be resolved',
     companionBridgeRoot
-      ? `- Exact capability-bound bridge paths (use these literal absolute paths; do not search, inspect a README, or resolve them against cwd, the vault root, or the disk workspace): Write { tool, args } to ${path.join(companionBridgeRoot, 'requests', '<unique-id>.json')}, then Read ${path.join(companionBridgeRoot, 'responses', '<unique-id>.json')}. If the response is not present yet, retry only that same response path briefly. This bridge accepts only workspace_source_list, workspace_source_read, workspace_source_create, workspace_source_edit, workspace_annotations_get, workspace_annotations_put, workspace_notebook_context, workspace_cell_create/edit/reorder/delete, and jupyter_cell_run; every request must carry workspace ${JSON.stringify(deepWorkCapability)}. jupyter_cell_run also needs turnId from companionTurnId below and a repository-relative .ipynb path. Author .ipynb cells with the workspace_cell_* tools, not hand-written nbformat JSON.`
+      ? codexMcp
+        ? `- Codex Computer-OFF: call the smart_notes_companion MCP workspace_* tools directly and read their returned JSON. Do not Write/Read bridge files. Every call must carry workspace ${JSON.stringify(deepWorkCapability)}. Create an empty .ipynb skeleton with workspace_source_create, then add cells with workspace_cell_create using each returned revision. jupyter_cell_run also needs turnId from companionTurnId below.`
+        : `- Exact capability-bound bridge paths (use these literal absolute paths; do not search, inspect a README, or resolve them against cwd, the vault root, or the disk workspace): Write { tool, args } to ${path.join(companionBridgeRoot, 'requests', '<unique-id>.json')}, then Read ${path.join(companionBridgeRoot, 'responses', '<unique-id>.json')}. If the response is not present yet, retry only that same response path briefly. This bridge accepts only workspace_source_list, workspace_source_read, workspace_source_create, workspace_source_edit, workspace_annotations_get, workspace_annotations_put, workspace_notebook_context, workspace_cell_create/edit/reorder/delete, and jupyter_cell_run; every request must carry workspace ${JSON.stringify(deepWorkCapability)}. jupyter_cell_run also needs turnId from companionTurnId below and a repository-relative .ipynb path. Author .ipynb cells with the workspace_cell_* tools, not hand-written nbformat JSON.`
       : '- Capability-bound shell-less bridge is unavailable for this turn.',
     '- This turn is isolated to the active disk workspace. Vault page/tree/Jupyter-note tools are outside its authority and must not be used for discovery, reads, creation, or edits, even when prior conversation mentions a similarly named vault page.',
     '- Never switch provider cwd to the disk workspace, use direct filesystem access, probe processes, assume port 3002, or call browserOrigin. Use only the capability-authenticated workspace API/bridge operations above.',
@@ -240,9 +243,13 @@ function rewriteCompanionAppContext(appContext, target) {
       ? `- Vault tool shell: use inherited PORT=${target.port} / SMART_NOTES_PORT=${target.port} with node scripts/vault-tool.mjs.`
       : '- Vault tool shell: requires the server-inherited PORT/SMART_NOTES_PORT.',
     companionBridgeRoot
-      ? `- Exact shell-less companion bridge paths (use these literal absolute paths; do not search, inspect a README, or resolve them against cwd, the vault root, or resolvedDiskPath): Write { tool, args } to ${path.join(companionBridgeRoot, 'requests', '<unique-id>.json')}, then Read ${path.join(companionBridgeRoot, 'responses', '<unique-id>.json')}. If the response is not present yet, retry only that same response path briefly. The bridge accepts the existing vault tools, including the four spreadsheet tools, plus workspace_source_list, workspace_source_read, workspace_source_create, workspace_source_edit, workspace_annotations_get, workspace_annotations_put, workspace_notebook_context, and workspace_cell_create/edit/reorder/delete; workspace tools require the server-issued capability from app_context and route only to /api/workspace/*.`
+      ? codexMcp
+        ? '- Codex Computer-OFF: call smart_notes_companion MCP vault tools directly and read their returned JSON. Do not Write/Read bridge files. Managed vault edits still work through those tools.'
+        : `- Exact shell-less companion bridge paths (use these literal absolute paths; do not search, inspect a README, or resolve them against cwd, the vault root, or resolvedDiskPath): Write { tool, args } to ${path.join(companionBridgeRoot, 'requests', '<unique-id>.json')}, then Read ${path.join(companionBridgeRoot, 'responses', '<unique-id>.json')}. If the response is not present yet, retry only that same response path briefly. The bridge accepts the existing vault tools, including the four spreadsheet tools, plus workspace_source_list, workspace_source_read, workspace_source_create, workspace_source_edit, workspace_annotations_get, workspace_annotations_put, workspace_notebook_context, and workspace_cell_create/edit/reorder/delete; workspace tools require the server-issued capability from app_context and route only to /api/workspace/*.`
       : '- Shell-less vault bridge: use .smart-notes-companion-log-form-bridge in the Smart Notes app workspace.',
-    '- Use apiBaseUrl for page_get/page_write when POST or the vault-tool shell is available; otherwise use the shell-less vault bridge. For Deep Work, never switch provider cwd to the project root: use only capability-authenticated workspace_* bridge/API operations. Do not probe processes, assume port 3002, call browserOrigin, or fall back to direct filesystem edits.',
+    codexMcp
+      ? '- Use only the smart_notes_companion MCP tools for vault operations on this Computer-OFF turn. Do not probe processes, assume port 3002, call browserOrigin, or fall back to direct filesystem edits.'
+      : '- Use apiBaseUrl for page_get/page_write when POST or the vault-tool shell is available; otherwise use the shell-less vault bridge. For Deep Work, never switch provider cwd to the project root: use only capability-authenticated workspace_* bridge/API operations. Do not probe processes, assume port 3002, call browserOrigin, or fall back to direct filesystem edits.',
   ];
   return [context, connectionLines.join('\n')].filter(Boolean).join('\n\n');
 }
@@ -1961,6 +1968,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
         ...codexExecArgs(turnSandboxCfg, {
           webSearchSupported: codexSupportsWebSearchConfig(spec),
           resume: !!existingSession,
+          companionMcp: runOptions.companionMcp,
         }),
       ];
       const m = model || resolveProviderModel(settings, 'codex', getProviderModelSuggestions('codex', settings, { codexSpec: spec }));
@@ -2528,9 +2536,10 @@ function createChatModule(httpServer, io, userConfig = {}) {
       }),
       companionBridgeRoot,
     };
-    let appContext = rewriteCompanionAppContext(data.app_context, companionApiTarget);
-
     const provider = data.provider || getProviders().default || 'ghcopilot';
+    const computerAccess = data.computer_access === true;
+    const codexMcp = provider === 'codex' && !computerAccess;
+    let appContext = rewriteCompanionAppContext(data.app_context, { ...companionApiTarget, codexMcp });
     const auth = checkAuth(provider);
     if (!auth.ok && auth.code !== 'unknown_provider') {
       return reply(400, {
@@ -2568,7 +2577,6 @@ function createChatModule(httpServer, io, userConfig = {}) {
     // Companion checkbox. Absent/false = off. It applies to Deep Work turns
     // too: the owner's checkbox is the only authority, and silently forcing
     // Deep Work turns off made a checked box arm nothing (rework cycle 2).
-    const computerAccess = data.computer_access === true;
     const sessionScopeKey = computerAccessSessionKey(getSessionScopeKey(activeScope.scopeKey, threadKey), computerAccess);
     const chatId = requestedTurnId || crypto.randomUUID();
     if (deepWorkCapability) appContext += `\n- companionTurnId: ${chatId}`;
@@ -2602,6 +2610,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       ? cfg.systemPrompt()
       : cfg.systemPrompt;
     let sysText = agentInfo?.instructions || resolvedSystemPrompt;
+    if (codexMcp) sysText += '\n\nFor this Computer-OFF Codex turn, call smart_notes_companion MCP tools and use their returned JSON. Do not use Write/Read bridge files; any generic bridge-file guidance is for other providers.';
     if (activeScope.project) {
       sysText += `\n\nSelected project: ${activeScope.project.name}\nProject repo root: ${activeScope.project.repoRoot}`;
       if (activeScope.project.instructions) sysText += `\n${activeScope.project.instructions}`;
@@ -2721,6 +2730,11 @@ function createChatModule(httpServer, io, userConfig = {}) {
       projectId: activeScope.project?.id || '',
       boundPort: companionApiTarget.port,
       computerAccess,
+      companionMcp: codexMcp ? {
+        root: companionBridgeRoot,
+        capability: deepWorkCapability || '',
+        script: path.join(__dirname, 'companion-mcp.js'),
+      } : null,
     }));
     return reply(200, { status: 'ok', chat_id: chatId, turn_id: chatId });
   }
