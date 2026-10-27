@@ -8,6 +8,7 @@ import {
   Ellipsis,
   FileCode2,
   GitBranch,
+  LocateFixed,
   LockKeyhole,
   MessageSquareText,
   PanelBottom,
@@ -65,6 +66,14 @@ export interface JupyterDeepWorkToolbarProps {
   onAnnotations?: () => void;
   annotationCount?: number;
   annotationsDisabledReason?: string;
+  /** SN-400: Follow Companion toggle (shown when the handler is provided). */
+  followCompanion?: boolean;
+  onFollowCompanionChange?: (enabled: boolean) => void;
+  /** SN-401: Companion commands panel. */
+  onCompanionCommands?: () => void;
+  companionCommandsOpen?: boolean;
+  companionCommandCount?: number;
+  companionCommandsRunning?: number;
 }
 
 function ToolbarButton({
@@ -116,6 +125,12 @@ export function JupyterDeepWorkToolbar({
   onAnnotations,
   annotationCount = 0,
   annotationsDisabledReason,
+  followCompanion = true,
+  onFollowCompanionChange,
+  onCompanionCommands,
+  companionCommandsOpen = false,
+  companionCommandCount = 0,
+  companionCommandsRunning = 0,
 }: JupyterDeepWorkToolbarProps) {
   const readOnly = identity?.accessMode === "read-only";
   const hasSelection = Boolean(
@@ -219,6 +234,45 @@ export function JupyterDeepWorkToolbar({
             <MessageSquareText className="size-4" />
             <span className="hidden lg:inline">Annotations{annotationCount ? ` (${annotationCount})` : ""}</span>
             <span className="sr-only lg:hidden">Source annotations</span>
+          </Button>
+        ) : null}
+
+        {identity && onFollowCompanionChange ? (
+          <Button
+            type="button"
+            variant={followCompanion ? "secondary" : "ghost"}
+            size="sm"
+            className="h-11 px-2 md:h-7"
+            aria-pressed={followCompanion}
+            title={followCompanion
+              ? "Following Companion: the view opens the file and cell Companion is working on. Click to stop following."
+              : "Not following Companion. Click to open the file and cell Companion is working on as it works."}
+            onClick={() => onFollowCompanionChange(!followCompanion)}
+            data-testid="jupyter-toolbar-follow-companion"
+          >
+            <LocateFixed className="size-4" />
+            <span className="hidden lg:inline">Follow</span>
+            <span className="sr-only lg:hidden">Follow Companion</span>
+          </Button>
+        ) : null}
+
+        {identity && onCompanionCommands ? (
+          <Button
+            type="button"
+            variant={companionCommandsOpen ? "secondary" : "ghost"}
+            size="sm"
+            className="relative h-11 px-2 md:h-7"
+            aria-pressed={companionCommandsOpen}
+            title="Shell commands Companion runs, with their output"
+            onClick={onCompanionCommands}
+            data-testid="jupyter-toolbar-companion-commands"
+          >
+            <SquareTerminal className="size-4" />
+            <span className="hidden lg:inline">Commands{companionCommandCount ? ` (${companionCommandCount})` : ""}</span>
+            <span className="sr-only lg:hidden">Companion commands</span>
+            {companionCommandsRunning ? (
+              <span aria-label="Companion command running" className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-accent" />
+            ) : null}
           </Button>
         ) : null}
 

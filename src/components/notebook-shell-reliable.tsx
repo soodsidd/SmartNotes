@@ -156,6 +156,18 @@ import {
   stickyRootRevalidationDisposition,
   type DeepWorkSourceUpdatedEvent,
 } from "@/lib/deep-work-refresh";
+import {
+  deepWorkFollowFromRunEvent,
+  deepWorkFollowFromSourceEvent,
+  readDeepWorkFollowPreference,
+  writeDeepWorkFollowPreference,
+  type DeepWorkFollowRequest,
+} from "@/lib/deep-work-follow";
+import {
+  parseCompanionCommandEvent,
+  upsertCompanionCommand,
+  type CompanionCommandEntry,
+} from "@/lib/companion-command-activity";
 import { normalizeJupyterWorkspacePath } from "@/lib/jupyter-focus";
 import { safeRandomUUID } from "@/lib/safe-random-uuid";
 import type { TLDefaultColorStyle } from "tldraw";
@@ -1209,6 +1221,22 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     nonce: number;
     run: import("@/server/jupyter/cell-run").JupyterCellRunPayload;
   } | null>(null);
+  // SN-400: Follow Companion (default on, remembered per browser).
+  const [followCompanion, setFollowCompanionState] = React.useState(() =>
+    typeof window === "undefined" ? true : readDeepWorkFollowPreference(window.localStorage)
+  );
+  const followCompanionRef = React.useRef(followCompanion);
+  followCompanionRef.current = followCompanion;
+  const setFollowCompanion = React.useCallback((enabled: boolean) => {
+    setFollowCompanionState(enabled);
+    if (typeof window !== "undefined") writeDeepWorkFollowPreference(window.localStorage, enabled);
+  }, []);
+  const [workspaceFollow, setWorkspaceFollow] = React.useState<DeepWorkFollowRequest | null>(null);
+  const followedRunIdsRef = React.useRef<Set<string>>(new Set());
+  // Latest run snapshot for a file that was not focused yet (replayed once it is).
+  const pendingWorkspaceRunsRef = React.useRef<Map<string, import("@/server/jupyter/cell-run").JupyterCellRunPayload>>(new Map());
+  // SN-401: shell commands Companion ran in turns this tab started or watches.
+  const [companionCommands, setCompanionCommands] = React.useState<CompanionCommandEntry[]>([]);
   const [activeJupyterFocus, setActiveJupyterFocus] = React.useState<JupyterFocusState | null>(null);
   const activeJupyterFocusRef = React.useRef<JupyterFocusState | null>(null);
   const workspaceSessionRef = React.useRef<JupyterSessionView | null>(null);
@@ -1490,6 +1518,15 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
   React.useEffect(() => {
     const previous = activeJupyterFocusRef.current;
     activeJupyterFocusRef.current = activeJupyterFocus;
+    // SN-400: a followed run updated before its file was focused; show its latest state now.
+    const focusedPath = activeJupyterFocus?.workspacePath;
+    if (focusedPath && focusedPath !== previous?.workspacePath) {
+      const pendingRun = pendingWorkspaceRunsRef.current.get(focusedPath);
+      if (pendingRun) {
+        pendingWorkspaceRunsRef.current.delete(focusedPath);
+        setWorkspaceCellRun((current) => ({ path: focusedPath, nonce: (current?.nonce ?? 0) + 1, run: pendingRun }));
+      }
+    }
     // SN-381: the "unsaved edits blocked a Companion reload" notice is about one
     // document state; it clears once the owner saves/reloads or switches file.
     if (
@@ -2606,6 +2643,19 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         );
       }
 
+      // SN-401: Companion shell commands for the Deep Work commands panel. Like the
+      // SN-211 watcher this runs before the transcript guard, so a closed panel or
+      // another displayed thread does not drop commands from a turn this tab runs.
+      if (
+        event.type === "command" &&
+        event.turn_id &&
+        (event.turn_id === activeTurnIdRef.current || event.turn_id === watchedTurnIdRef.current)
+      ) {
+        const entry = parseCompanionCommandEvent(event.turn_id, event.payload);
+        if (entry) setCompanionCommands((current) => upsertCompanionCommand(current, entry));
+        return;
+      }
+
       // SN-362: the Ask Companion popup mirrors this shared sidebar turn. Like the
       // SN-211 watcher it runs BEFORE the transcript-binding guard, with its own
       // seq cursor, so a detach (panel close, thread change) never strands the
@@ -2871,18 +2921,38 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
           activeJupyterFocusRef.current?.hasUnsavedCellEdits ?? activeJupyterFocusRef.current?.isDirty ?? null,
         event,
       });
+      const followTarget = deepWorkFollowFromSourceEvent(
+        {
+          followEnabled: followCompanionRef.current,
+          deepWorkActive:
+            Boolean(activeDeepWorkWorkspace(projectWorkspaceRef.current, current?.path ?? null)) ||
+            Boolean(activeBoundWorkspaceRef.current),
+          sessionRootPath: workspaceSessionRef.current?.rootPath ?? null,
+          activeWorkspacePath: activeJupyterFocusRef.current?.workspacePath ?? null,
+          refreshDecision: decision,
+        },
+        event
+      );
+      // SN-400: set after the reload below in the same commit, so the frame reloads before it reveals the cell.
+      const requestFollow = () => {
+        if (followTarget) setWorkspaceFollow((previous) => ({ ...followTarget, nonce: (previous?.nonce ?? 0) + 1 }));
+      };
       if (decision.kind === "blocked-dirty") {
         setWorkspaceDocumentConflict(
           "Companion changed this file on disk, but it has unsaved edits here, so it was not reloaded. Your edits are kept: save to keep them (JupyterLab will warn that the file changed on disk), or reload from disk to take Companion's version."
         );
         return;
       }
-      if (decision.kind !== "reload-document") return;
+      if (decision.kind !== "reload-document") {
+        requestFollow();
+        return;
+      }
       setWorkspaceDocumentConflict(null);
       setWorkspaceDocumentReload((current) => ({
         path: decision.path,
         nonce: (current?.nonce ?? 0) + 1,
       }));
+      requestFollow();
     };
 
     const handleWorkspaceCellRunUpdated = (event: {
@@ -2894,8 +2964,28 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       if (!activeDeepWorkWorkspace(projectWorkspaceRef.current, current?.path ?? null) && !activeBoundWorkspaceRef.current) return;
       if (!sameDeepWorkRootPath(event?.rootPath, workspaceSessionRef.current?.rootPath)) return;
       const file = normalizeJupyterWorkspacePath(event.path);
-      if (!file || file !== activeJupyterFocusRef.current?.workspacePath || !event.run?.runId) return;
-      setWorkspaceCellRun((previous) => ({ path: file, nonce: (previous?.nonce ?? 0) + 1, run: event.run! }));
+      if (!file || !event.run?.runId) return;
+      const followTarget = deepWorkFollowFromRunEvent(
+        {
+          followEnabled: followCompanionRef.current,
+          deepWorkActive: true,
+          sessionRootPath: workspaceSessionRef.current?.rootPath ?? null,
+          activeWorkspacePath: activeJupyterFocusRef.current?.workspacePath ?? null,
+          followedRunIds: followedRunIdsRef.current,
+        },
+        event
+      );
+      if (file === activeJupyterFocusRef.current?.workspacePath) {
+        pendingWorkspaceRunsRef.current.delete(file);
+        setWorkspaceCellRun((previous) => ({ path: file, nonce: (previous?.nonce ?? 0) + 1, run: event.run! }));
+      } else if (followCompanionRef.current) {
+        // SN-400: following into this file; replay the newest snapshot once it is focused.
+        pendingWorkspaceRunsRef.current.set(file, event.run);
+        if (pendingWorkspaceRunsRef.current.size > 20) {
+          pendingWorkspaceRunsRef.current.delete(pendingWorkspaceRunsRef.current.keys().next().value as string);
+        }
+      }
+      if (followTarget) setWorkspaceFollow((previous) => ({ ...followTarget, nonce: (previous?.nonce ?? 0) + 1 }));
     };
 
     socket.on("connect", handleSocketConnect);
@@ -3640,6 +3730,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         setActiveJupyterFocus(null);
         setWorkspaceDocumentReload(null);
         setWorkspaceCellRun(null);
+        setWorkspaceFollow(null);
+        pendingWorkspaceRunsRef.current.clear();
       }
       if (shouldLeaveDeepWorkForVaultSelection(projectWorkspaceRef.current, nextPath)) {
         // SN-266: selecting a vault note has the same live-session boundary as
@@ -3651,6 +3743,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         setActiveJupyterFocus(null);
         setWorkspaceDocumentReload(null);
         setWorkspaceCellRun(null);
+        setWorkspaceFollow(null);
+        pendingWorkspaceRunsRef.current.clear();
         workspaceReturnStateRef.current = null;
         // SN-347/SN-348: drop the orphan Deep Work frame immediately so a
         // launching/dead sticky frame cannot stay visible during the handoff
@@ -6987,6 +7081,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
           setActiveJupyterFocus(null);
           setWorkspaceDocumentReload(null);
           setWorkspaceCellRun(null);
+          setWorkspaceFollow(null);
+          pendingWorkspaceRunsRef.current.clear();
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not bind the Deep Work folder to this page.");
@@ -7016,6 +7112,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     setActiveJupyterFocus(null);
     setWorkspaceDocumentReload(null);
     setWorkspaceCellRun(null);
+    setWorkspaceFollow(null);
+    pendingWorkspaceRunsRef.current.clear();
     setActiveNotebookPath(null);
     setActiveSectionPath(null);
     setActivePagePath(workspaceDraft.path);
@@ -7098,6 +7196,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     setActiveJupyterFocus(null);
     setWorkspaceDocumentReload(null);
     setWorkspaceCellRun(null);
+    setWorkspaceFollow(null);
+    pendingWorkspaceRunsRef.current.clear();
     setJupyterFrameCache((current) => dropDeepWorkPendingJupyterFrames(current));
     setActiveNotebookPath(previous?.activeNotebookPath ?? null);
     setActiveSectionPath(previous?.activeSectionPath ?? null);
@@ -7916,6 +8016,11 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                         externalReload={visible && activeProjectWorkspace ? workspaceDocumentReload : null}
                         externalConflict={visible && activeProjectWorkspace ? workspaceDocumentConflict : null}
                         externalRun={visible && activeProjectWorkspace ? workspaceCellRun : null}
+                        externalFollow={visible && activeProjectWorkspace ? workspaceFollow : null}
+                        followCompanion={followCompanion}
+                        onFollowCompanionChange={visible && activeProjectWorkspace ? setFollowCompanion : undefined}
+                        companionCommands={visible && activeProjectWorkspace ? companionCommands : undefined}
+                        onClearCompanionCommands={() => setCompanionCommands([])}
                         onAskInCompanion={visible ? handleJupyterAskInCompanion : undefined}
                       />
                     </div>

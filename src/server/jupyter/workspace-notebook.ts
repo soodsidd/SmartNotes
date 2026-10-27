@@ -482,6 +482,15 @@ function applyCellOperation(
   }
 }
 
+/** SN-400: where Follow Companion should look after a cell operation. */
+function mutationFocusCell(mutation: Record<string, unknown>): { cellId: string | null; cellIndex: number | null } {
+  const cellId = typeof mutation.cellId === "string" && mutation.cellId ? mutation.cellId : null;
+  const index = mutation.action === "reorder" ? mutation.toIndex : mutation.index;
+  const cellIndex = typeof index === "number" && Number.isInteger(index) && index >= 0 ? index : null;
+  // A deleted cell is gone; reveal the cell now at its position (no id).
+  return mutation.action === "delete" ? { cellId: null, cellIndex } : { cellId, cellIndex };
+}
+
 export async function mutateWorkspaceNotebook(
   request: ProjectWorkspaceRequest,
   relativePath: unknown,
@@ -551,6 +560,6 @@ export async function mutateWorkspaceNotebook(
         + "No kernel was started, stopped, or executed; an open JupyterLab view may prompt to reload.",
     };
   });
-  announceWorkspaceSourceWrite(resolved.workspace.realRoot, result);
+  announceWorkspaceSourceWrite(resolved.workspace.realRoot, result, mutationFocusCell(result.mutation));
   return result;
 }

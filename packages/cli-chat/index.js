@@ -35,6 +35,7 @@ const {
   buildComputerAccessGuidance,
 } = require('./sandbox');
 const { createTraceLogger } = require('./trace-log');
+const { createCommandTracker } = require('./command-activity');
 const { createProviderCatalog } = require('./provider-catalog');
 
 function normalizePinnedCompanionModels(value) {
@@ -1477,6 +1478,17 @@ function createChatModule(httpServer, io, userConfig = {}) {
     emitTurnEvent(chatId, 'tool_result', { name: name || 'tool', content: String(content || ''), ...extra });
   }
 
+  // SN-401: shell commands are always reported (not verbose-gated) so the Deep
+  // Work view can show what Companion ran. Observation only.
+  function emitCommandEvents(chatId, provider, event) {
+    const job = ensureJob(chatId);
+    if (!job.commandTracker || job.commandTrackerProvider !== provider) {
+      job.commandTracker = createCommandTracker(provider);
+      job.commandTrackerProvider = provider;
+    }
+    for (const command of job.commandTracker.observe(event)) emitTurnEvent(chatId, 'command', command);
+  }
+
   function formatCodexCommandExecutionResult(item) {
     const output = typeof item?.aggregated_output === 'string'
       ? item.aggregated_output.trimEnd()
@@ -1537,6 +1549,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
     if (typeof job.clearIdleTimers === 'function') job.clearIdleTimers();
     job.doneEmitted = true;
     job.status = status || job.status || 'completed';
+    if (job.commandTracker) for (const command of job.commandTracker.drain()) emitTurnEvent(chatId, 'command', command);
     emitTurnEvent(chatId, 'done', { status: status || 'completed', ...extra });
   }
 
@@ -2241,6 +2254,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       try {
         const event = JSON.parse(line);
         const etype = event.type || '';
+        emitCommandEvents(chatId, provider, event);
         if (etype === 'assistant') {
           for (const block of (event.message?.content || [])) {
             if (block.type === 'text') { setStreamed(true); emitToken(chatId, block.text); }
@@ -2305,6 +2319,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
     } else if (provider === 'codex') {
       try {
         const event = JSON.parse(line);
+        emitCommandEvents(chatId, provider, event);
         if (event.type === 'thread.started' && event.thread_id) {
           const job = ensureJob(chatId);
           setProviderSession('codex', event.thread_id, job.sessionScopeKey || job.scopeKey || buildScopeKey(appId, job.projectId || ''));
@@ -2371,6 +2386,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       try {
         const event = JSON.parse(line);
         if (!event || typeof event.type !== 'string') return;
+        emitCommandEvents(chatId, provider, event);
         const etype = event.type;
         const subtype = typeof event.subtype === 'string' ? event.subtype : '';
 

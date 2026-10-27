@@ -9,7 +9,8 @@ export function emitVaultSideEffects(input: {
    * server-resolved real root so only the shell whose live session owns that
    * exact root reacts, and never the capability that authorized the write.
    */
-  workspaceSourceUpdated?: { rootPath: string; path: string; revision: string; cellRunId?: string };
+  /** SN-400: cellId/cellIndex name the cell a Companion notebook write touched (Follow Companion). */
+  workspaceSourceUpdated?: { rootPath: string; path: string; revision: string; cellRunId?: string; cellId?: string; cellIndex?: number };
   /**
    * SN-381: bounded live progress / persistence state of a Companion cell run
    * in a Deep Work notebook. Never carries the workspace capability.
