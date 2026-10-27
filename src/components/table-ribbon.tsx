@@ -17,6 +17,7 @@ import {
   Grid3x3,
   Hash,
   LayoutPanelTop,
+  ListFilter,
   type LucideIcon,
   MoveHorizontal,
   Rows3,
@@ -28,13 +29,22 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   COLUMN_WIDTH_STEP,
+  activeColumnFilterTarget,
+  activeColumnFilters,
   alignCellsCommand,
+  clearAllColumnFiltersCommand,
   clearCellContentsCommand,
+  filterHeaderColumnCommand,
   formatSelectionStats,
   getTableContext,
   moveColumnCommand,
@@ -44,6 +54,7 @@ import {
   selectCellsCommand,
   selectionMatrix,
   selectionStatsForState,
+  setRowHighlightCommand,
   setTableModeCommand,
   sortTableCommand,
   toTsv,
@@ -59,6 +70,8 @@ interface RibbonCommand {
   can: (editor: Editor) => boolean;
   run: (editor: Editor) => void;
   separatorBefore?: boolean;
+  /** Radio submenu (SN-396 Filter); `run` is unused when present. */
+  submenu?: (editor: Editor) => { label: string; value: string; options: { value: string; label: string; run: () => void }[] } | null;
 }
 
 function stateCommand(id: string, label: string, command: StateCommand, separatorBefore = false): RibbonCommand {
@@ -121,6 +134,10 @@ export const TABLE_RIBBON_TABS: { id: string; label: string; icon: LucideIcon; c
       chainCommand("row-insert-below", "Insert row below", "addRowAfter"),
       stateCommand("row-move-up", "Move row up", moveRowCommand(-1), true),
       stateCommand("row-move-down", "Move row down", moveRowCommand(1)),
+      stateCommand("row-highlight-shade", "Light shade", setRowHighlightCommand("shade"), true),
+      stateCommand("row-highlight-accent", "Accent scheme", setRowHighlightCommand("accent")),
+      stateCommand("row-highlight-inverse", "Inverse scheme", setRowHighlightCommand("inverse")),
+      stateCommand("row-highlight-clear", "Clear row highlight", setRowHighlightCommand(null)),
       chainCommand("row-delete", "Delete row", "deleteRow", true),
     ],
   },
@@ -194,6 +211,30 @@ export const TABLE_RIBBON_TABS: { id: string; label: string; icon: LucideIcon; c
       stateCommand("data-sort-asc", "Sort A → Z", sortTableCommand("asc")),
       stateCommand("data-sort-desc", "Sort Z → A", sortTableCommand("desc")),
       {
+        // SN-396: same values as the SN-355 header filter, for the caret column.
+        id: "data-filter",
+        label: "Filter",
+        separatorBefore: true,
+        can: (editor) => activeColumnFilterTarget(editor.state) !== null,
+        run: () => undefined,
+        submenu: (editor) => {
+          const target = activeColumnFilterTarget(editor.state);
+          if (!target) return null;
+          const apply = (value: string | null) => () => {
+            if (filterHeaderColumnCommand(target.tablePos, target.column, value)(editor.state, editor.view.dispatch)) editor.view.focus();
+          };
+          return {
+            label: `Filter ${target.label}`,
+            value: target.current === undefined ? "all" : `value:${target.current}`,
+            options: [
+              { value: "all", label: "All rows", run: apply(null) },
+              ...target.values.map((value) => ({ value: `value:${value}`, label: value || "(Blank)", run: apply(value) })),
+            ],
+          };
+        },
+      },
+      stateCommand("data-clear-filters", "Clear all filters", clearAllColumnFiltersCommand),
+      {
         id: "data-copy",
         label: "Copy as tab-separated",
         separatorBefore: true,
@@ -242,21 +283,26 @@ function RibbonTab({
   tab,
   testPrefix,
   mobile,
+  badge,
 }: {
   editor: Editor;
   tab: (typeof TABLE_RIBBON_TABS)[number];
   testPrefix: string;
   mobile: boolean;
+  /** SN-396: extra state named in the tab label (e.g. active filters on Data). */
+  badge?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const Icon = tab.icon;
+  const label = badge ? `${tab.label} (${badge})` : tab.label;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         className="table-ribbon__tab"
         data-testid={`${testPrefix}-tab-${tab.id}`}
-        aria-label={tab.label}
-        title={tab.label}
+        data-badge={badge ? "true" : undefined}
+        aria-label={label}
+        title={label}
       >
         <Icon aria-hidden="true" />
         {mobile ? null : <ChevronDown className="table-ribbon__caret" aria-hidden="true" />}
@@ -265,18 +311,48 @@ function RibbonTab({
         {open ? tab.commands.map((command) => (
           <React.Fragment key={command.id}>
             {command.separatorBefore ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem
+            {command.submenu ? <RibbonSubmenu editor={editor} command={command} testPrefix={testPrefix} /> : <DropdownMenuItem
               data-testid={`${testPrefix}-cmd-${command.id}`}
               disabled={!command.can(editor)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => command.run(editor)}
             >
               {command.label}
-            </DropdownMenuItem>
+            </DropdownMenuItem>}
           </React.Fragment>
         )) : null}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function RibbonSubmenu({ editor, command, testPrefix }: { editor: Editor; command: RibbonCommand; testPrefix: string }) {
+  const menu = command.submenu?.(editor) ?? null;
+  if (!menu) {
+    return <DropdownMenuItem data-testid={`${testPrefix}-cmd-${command.id}`} disabled>{command.label}</DropdownMenuItem>;
+  }
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger data-testid={`${testPrefix}-cmd-${command.id}`} onMouseDown={(event) => event.preventDefault()}>
+        <span className="min-w-0 truncate">{menu.label}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="max-h-72 overflow-y-auto" data-testid={`${testPrefix}-submenu-${command.id}`} finalFocus={false}>
+        <DropdownMenuRadioGroup value={menu.value}>
+          {menu.options.map((option, index) => (
+            <DropdownMenuRadioItem
+              key={option.value}
+              value={option.value}
+              closeOnClick
+              data-testid={`${testPrefix}-${command.id}-option-${index === 0 ? "all" : index - 1}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={option.run}
+            >
+              {option.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   );
 }
 
@@ -334,6 +410,7 @@ export function TableRibbon({ editor, mobile = false }: { editor: Editor | null;
         gridMode: Boolean(context.table.attrs.gridMode),
         dataMode: Boolean(context.table.attrs.dataMode),
         expanded: Boolean(context.table.attrs.expanded),
+        filterCount: activeColumnFilters(context.table).length,
         cellSelection: current.state.selection instanceof CellSelection,
       };
     },
@@ -388,7 +465,31 @@ export function TableRibbon({ editor, mobile = false }: { editor: Editor | null;
           }
           if ("tab" in entry) {
             const tab = TABLE_RIBBON_TABS.find((candidate) => candidate.id === entry.tab)!;
-            return <RibbonTab key={tab.id} editor={editor} tab={tab} testPrefix={testPrefix} mobile={mobile} />;
+            const filtered = tab.id === "data" && shown.filterCount > 0;
+            const tabNode = <RibbonTab key={tab.id} editor={editor} tab={tab} testPrefix={testPrefix} mobile={mobile}
+              badge={filtered ? filterCountLabel(shown.filterCount) : undefined} />;
+            if (!filtered) return tabNode;
+            // SN-396: persistent filter state beside Data; one click clears every filter.
+            return (
+              <React.Fragment key={tab.id}>
+                {tabNode}
+                <button
+                  type="button"
+                  className="table-ribbon__pill table-ribbon__filter-status"
+                  aria-pressed="true"
+                  aria-label={`${filterCountLabel(shown.filterCount)}. Clear all filters`}
+                  title={`${filterCountLabel(shown.filterCount)} — click to clear all filters`}
+                  data-testid={`${testPrefix}-filter-status`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    if (clearAllColumnFiltersCommand(editor.state, editor.view.dispatch)) editor.view.focus();
+                  }}
+                >
+                  <ListFilter aria-hidden="true" />
+                  <span>{shown.filterCount}</span>
+                </button>
+              </React.Fragment>
+            );
           }
           const modeOn = shown[entry.mode];
           const Icon = entry.icon;
@@ -430,6 +531,10 @@ export function TableRibbon({ editor, mobile = false }: { editor: Editor | null;
       ) : null}
     </div>
   );
+}
+
+function filterCountLabel(count: number): string {
+  return count === 1 ? "1 filter active" : `${count} filters active`;
 }
 
 /** Compact chip text for the mobile Σ toggle: the selection's Sum, else its Count. */

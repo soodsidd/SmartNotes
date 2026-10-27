@@ -26,7 +26,10 @@ describe("Chat markdown render path", () => {
   });
 
   it("assistant text entries render via ReactMarkdown with remarkGfm and remarkMath", () => {
-    expect(SIDEBAR_SRC).toContain("remarkPlugins={[remarkGfm, remarkMath]}");
+    // SN-369: currency-safe math — remark-math sees only explicit $$ math after normalizeChatMath.
+    expect(SIDEBAR_SRC).toContain("[remarkGfm, [remarkMath, CHAT_REMARK_MATH_OPTIONS]]");
+    expect(SIDEBAR_SRC).toContain("remarkPlugins={CHAT_REMARK_PLUGINS}");
+    expect(SIDEBAR_SRC).toContain("normalizeChatMath(");
     expect(SIDEBAR_SRC).toContain("rehypeKatex");
     expect(SIDEBAR_SRC).toContain("<ReactMarkdown");
   });

@@ -70,8 +70,10 @@ describe("normalizeMathInHtml", () => {
   });
 
   test("trims whitespace from extracted latex", () => {
-    const result = normalizeMathInHtml("<p>$  x + y  $</p>");
-    expect(result).toContain('data-latex="x + y"');
+    // SN-274/SN-369: padded delimiters only count as math when the body is clearly TeX.
+    const result = normalizeMathInHtml("<p>$  x^2 + y  $</p>");
+    expect(result).toContain('data-latex="x^2 + y"');
+    expect(normalizeMathInHtml("<p>$  x + y  $</p>")).toBe("<p>$  x + y  $</p>");
   });
 
   test("escapes double-quotes in latex attribute", () => {

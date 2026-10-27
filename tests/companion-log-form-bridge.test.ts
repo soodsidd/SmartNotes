@@ -91,6 +91,23 @@ describe("companion vault bridge", () => {
     expect(response).toMatchObject({ ok: true, tool: "app_send" });
   });
 
+  it("forwards the SN-370 companion_image_put tool so a sandboxed companion can show images", async () => {
+    const requestsDir = path.join(root, "requests");
+    const responsesDir = path.join(root, "responses");
+    fs.mkdirSync(requestsDir, { recursive: true });
+    const requestPath = path.join(requestsDir, "image-put.json");
+    fs.writeFileSync(requestPath, JSON.stringify({
+      tool: "companion_image_put",
+      args: { url: "https://example.com/cat.png", alt: "A cat" },
+    }));
+    const invokeTool = jest.fn().mockResolvedValue({ ok: true, result: { data: { url: "/vault/.companion-images/x.png" } } });
+
+    const response = await processBridgeRequest({ requestPath, requestsDir, responsesDir, invokeTool });
+
+    expect(invokeTool).toHaveBeenCalledWith("companion_image_put", { url: "https://example.com/cat.png", alt: "A cat" });
+    expect(response).toMatchObject({ ok: true, tool: "companion_image_put" });
+  });
+
   it("forwards every advertised App authoring and query tool through the default bridge allowlist", async () => {
     const requestsDir = path.join(root, "requests");
     const responsesDir = path.join(root, "responses");

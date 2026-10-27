@@ -72,7 +72,6 @@
   --editor-table-cell-min-width: 4em;
   /* Tight empty-cell floor so rows can shrink close around text (SN-361 follow-up). */
   --editor-table-cell-min-height: 1.25em;
-  --editor-table-expanded-max-width: 1200px;
   --table-ribbon-stats-font-size: 0.6875rem;
   --table-ribbon-button-size: 28px;
   --table-ribbon-icon-size: 16px;
@@ -82,6 +81,8 @@
   --z-companion-rail: 350;
   --z-companion-overlay: 400;
   --z-jupyter-inline-ai: 425;
+  /* SN-366: modal dialogs launched from the PDF reader / paper shell (e.g. Save as paper). */
+  --z-reader-dialog: 450;
   /* SN-297 page rule / grid line background (behind content, never layout) */
   --page-line-light-blue: oklch(0.86 0.045 230);
   --page-line-blue: oklch(0.78 0.08 250);

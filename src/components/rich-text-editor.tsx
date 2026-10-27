@@ -95,6 +95,7 @@ import {
   stripLegacyPageTocIfPresent,
 } from "@/lib/page-toc";
 import { floatingTextBoxMenuActions, floatingTextBoxPosAtElement, pruneEmptyFloatingTextBoxes, selectionInFloatingTextBox } from "@/lib/floating-text-box";
+import { mainFlowNonTextWidth } from "@/lib/non-text-content-width";
 import { cn } from "@/lib/utils";
 import { MAX_INSERT_TABLE_DIMENSION, tableCellCount, tableDimension } from "@/lib/table-insert";
 import { TableRibbon } from "@/components/table-ribbon";
@@ -137,7 +138,7 @@ import { PageLinesPopover } from "@/components/page-lines-popover";
 import { EditorCalculator } from "@/components/editor-calculator";
 import { numericCalculatorSeed } from "@/lib/scientific-calculator";
 import { DEFAULT_PAGE_LINES, pageLinesBackgroundStyle, type PageLinesSetting } from "@/lib/page-lines";
-import { MAIN_FLOW_DEFAULT_WIDTH, MAIN_FLOW_MAX_WIDTH, normalizeMainFlowWidth } from "@/lib/main-flow-width";
+import { MAIN_FLOW_DEFAULT_WIDTH, normalizeMainFlowWidth } from "@/lib/main-flow-width";
 import { MainFlowWidthHandle } from "@/components/main-flow-width-handle";
 import { shouldOpenEditorContextMenu } from "@/lib/editor-context-menu";
 import { useSpellcheckEnabled } from "@/components/spellcheck-provider";
@@ -288,12 +289,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-/** TipTap gives fully sized tables a pixel width; the widest main-flow table widens the editor frame. */
-function mainFlowTableWidth(proseMirror: HTMLElement): number {
-  return Math.max(0, ...Array.from(proseMirror.querySelectorAll<HTMLTableElement>(":scope > .tableWrapper[data-fixed-widths] > table"),
-    (table) => parseFloat(table.style.width) || 0));
-}
-
 function resolveSectionContext(editor: Editor): EditorSectionContext | null {
   const selectionFrom = editor.state.selection.from;
   let sectionIndex = -1;
@@ -417,8 +412,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     // SN-318: live column width — follows the stored value, updated on every drag step.
     const storedMainFlowWidth = normalizeMainFlowWidth(mainFlowWidthProp);
     const [mainFlowWidth, setMainFlowWidth] = React.useState(storedMainFlowWidth);
-    const [tableFlowWidth, setTableFlowWidth] = React.useState(0);
-    const effectiveMainFlowWidth = Math.max(mainFlowWidth, Math.min(tableFlowWidth, MAIN_FLOW_MAX_WIDTH));
+    const [contentFlowWidth, setContentFlowWidth] = React.useState(0);
+    const effectiveMainFlowWidth = Math.max(mainFlowWidth, contentFlowWidth);
     // SN-321: the main-flow outline + width handle only show while the caret is in the main column.
     const [mainFlowFocused, setMainFlowFocused] = React.useState(false);
     // Frame padding left of the prose; the outline insets the column by this on both sides.
@@ -764,7 +759,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       lastPressPointerTypeRef.current = e.pointerType;
       pressStartedInFloatingBoxRef.current =
         e.target instanceof Element && Boolean(e.target.closest('[data-type="floating-text-box"]'));
-      if (readOnly || isDrawMode) return;
+      // SN-366: only a primary press opens the reader; right-click keeps the chip context menu (Promote to paper).
+      if (readOnly || isDrawMode || e.button !== 0) return;
       const target = resolvePdfAttachmentTarget(e.target instanceof Element ? e.target : null);
       if (!target) return;
       e.preventDefault();
@@ -1617,7 +1613,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       if (!editor?.view?.dom || readOnly) return;
 
       const openPdfAttachment = (event: MouseEvent | PointerEvent) => {
-        if (isDrawMode) return;
+        if (isDrawMode || event.button !== 0) return;
         const target = resolvePdfAttachmentTarget(
           event.target instanceof Element ? event.target : null
         );
@@ -1842,7 +1838,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
     // SN-394: table resize gestures preview on the DOM without transactions; follow them per frame.
     const syncLiveTableFlowWidth = React.useCallback(() => {
-      if (editor) setTableFlowWidth(mainFlowTableWidth(editor.view.dom as HTMLElement));
+      if (editor) setContentFlowWidth(mainFlowNonTextWidth(editor.view.dom as HTMLElement));
     }, [editor]);
 
     React.useEffect(() => {
@@ -1852,8 +1848,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       const syncTextHeight = () => {
         setTextHeight(Math.max(proseMirror.scrollHeight, proseMirror.offsetHeight));
         setMainFlowInset(proseMirror.offsetParent === contentSizerRef.current ? proseMirror.offsetLeft : 0);
-        // Tables beyond the frame limit retain local scrolling.
-        setTableFlowWidth(mainFlowTableWidth(proseMirror));
+        // Content-driven width is display-only; the saved manual width remains the floor.
+        setContentFlowWidth(mainFlowNonTextWidth(proseMirror));
         const flowChildren = Array.from(proseMirror.children).filter(
           (child) => !(child as HTMLElement).matches('[data-type="floating-text-box"]')
         ) as HTMLElement[];
@@ -1872,9 +1868,14 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       syncTextHeight();
       const observer = new ResizeObserver(syncTextHeight);
       observer.observe(proseMirror);
+      const mutationObserver = new MutationObserver(syncTextHeight);
+      mutationObserver.observe(proseMirror, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "width", "colwidth", "data-fixed-widths"] });
+      proseMirror.addEventListener("load", syncTextHeight, true);
       editor.on("update", syncTextHeight);
       return () => {
         observer.disconnect();
+        mutationObserver.disconnect();
+        proseMirror.removeEventListener("load", syncTextHeight, true);
         editor.off("update", syncTextHeight);
       };
     }, [editor, content]);
@@ -2897,7 +2898,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
               <PageTitleBar pagePath={pagePath} title={pageTitle} createdAt={pageCreatedAt} readOnly={readOnly} focusOnCreate={focusPageTitle} onCommit={onPageTitleCommit} />
               {!readOnly && !isDrawMode && !inkCaptureMode && onMainFlowWidthChange ? (
                 <MainFlowWidthHandle
-                  width={effectiveMainFlowWidth}
+                  width={mainFlowWidth}
+                  displayWidth={effectiveMainFlowWidth}
                   inset={mainFlowInset * 2}
                   height={Math.max(mainFlowHeight, textHeight, 240)}
                   onLiveChange={setMainFlowWidth}

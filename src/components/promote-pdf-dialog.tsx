@@ -42,18 +42,25 @@ export function PromotePdfDialog({
   const [error, setError] = React.useState("");
   const selectedHome = home || defaultHomeNotebookPath || notebooks[0]?.path || "";
 
+  // Reset only when the dialog opens for a PDF. SN-366: `tree` is not a dependency — every vault
+  // refresh (including the one the submit itself triggers) used to wipe the typed title and pending state.
   React.useEffect(() => {
     if (!open) return;
     setTitle(defaultPaperTitleFromPdfName(fileName));
-    setHome(defaultHomeNotebookPath || availablePaperHomes(tree)[0]?.path || "");
+    setHome(defaultHomeNotebookPath);
     setReplaceChip(false);
     setError("");
     setPending(false);
-  }, [open, fileName, defaultHomeNotebookPath, tree]);
+  }, [open, fileName, defaultHomeNotebookPath]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-md gap-3 p-4 sm:p-6" data-testid="promote-pdf-dialog">
+      {/* SN-366: Save as paper opens over the PDF reader (--z-pdf-reader), so the dialog needs its own layer. */}
+      <DialogContent
+        className="z-[var(--z-reader-dialog)] w-[calc(100vw-2rem)] max-w-md gap-3 p-4 sm:p-6"
+        overlayClassName="z-[var(--z-reader-dialog)]"
+        data-testid="promote-pdf-dialog"
+      >
         <DialogHeader>
           <DialogTitle>Promote to paper</DialogTitle>
           <DialogDescription>

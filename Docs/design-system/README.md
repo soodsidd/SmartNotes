@@ -119,6 +119,14 @@ Bullet, numbered, and checklist markers live in `.editor-content` CSS (`src/app/
 
 ## Table ribbon and selection stats (SN-278)
 
+Row highlighting (SN-397) uses the existing Rows menu spacing, typography,
+focus ring, and 44px mobile targets. Saved `data-row-highlight` values select
+three documented token pairs on every cell in the row: Light shade uses
+`--muted` / `--foreground`; Accent scheme uses an 18% `--accent` mix over
+`--surface` / `--foreground`; Inverse scheme uses `--foreground` /
+`--background`. The same token pairs style standalone page exports. No new
+colors, spacing, or typography values were added.
+
 Fork photo #16 shows a bordered ribbon card under the format bar. It reuses
 `--surface`, `--border`, `--radius-md` (card), `--radius-sm` (tabs and pills),
 `--secondary` (hover), `--secondary-foreground` (labels and the stats line),
@@ -127,8 +135,8 @@ Expand table are outlined pills. When pressed they take an `--accent` border
 over a 12% `--accent` tint, the same tint used for selected cells. New tokens:
 `--table-ribbon-font-size` (retired in SN-308; controls are icon-only),
 `--table-ribbon-stats-font-size: 0.6875rem` (the
-`Count | Numbers | Sum | Average | Min | Max` line, tabular figures), and
-`--editor-table-expanded-max-width: 1200px` (Expand table). Mobile tabs and
+`Count | Numbers | Sum | Average | Min | Max` line, tabular figures). The former
+`--editor-table-expanded-max-width: 1200px` cap was retired in SN-398. Mobile tabs and
 pills use the 44px touch target. In Data mode, number cells are right-aligned
 with tabular figures.
 
@@ -151,6 +159,8 @@ No new tokens.
 Ribbon controls are icon-only (lucide) with tooltips and `aria-label`s, separated by 1px `--border` dividers. New tokens: `--table-ribbon-button-size: 28px` (desktop icon button) and `--table-ribbon-icon-size: 16px`. Mobile buttons keep the 44px touch target; the mobile stats chip is a pill using `--surface`, `--border`, and `--accent` when expanded. The table context menu reuses the editor context-menu styles; Delete table uses `--destructive` text with a 10% `--destructive` hover tint, matching the comment popover's destructive button.
 
 Table header Sort/Filter tools (SN-355) appear inside the hovered header cell as a `--popover` / `--border` / `--radius-sm` / `--shadow-popover` pill of two `--table-ribbon-button-size` lucide icon buttons (`--muted-foreground`, hover `--secondary`, active sort/filter `--accent`, `--ring` focus, 44px on coarse pointers). The filter menu reuses the same surface with 12px text and `--secondary` for the checked value. No new design values.
+
+Filter-active state (SN-396) needs no hover: each filtered header cell gets a 2px inset `--accent` underline and a 12px funnel glyph (`--accent`, CSS mask) inside the cell's existing right padding, so the header never reflows. The table ribbon names the state on the Data tab (`aria-label` "Data (N filters active)") and shows a `.table-ribbon__pill` beside it — lucide `ListFilter` plus the count, pressed styling (`--accent` border over a 12% `--accent` tint) — that clears every filter in one click. Data adds **Filter** (radio submenu of the caret column's values, the same list as the header menu) and **Clear all filters**. New metric: the 12px header glyph. No new color or type token.
 
 Table resize controls (SN-357) are hidden until the pointer reaches a divider or corner, and then show only that affordance: column and row dividers as a 2px `--accent` line (row hit strip 7px, revealed within 4px of a row border); corner handles as an 8px square with a 1px `--accent` border on `--background` and 2px radius, centred in a transparent 20px hit box, revealed within 10px of the corner. No popover surface or shadow. New dimensions: the 2px divider line, 7px row hit strip, and the 20px corner hit box with its 8px visible square.
 
@@ -213,8 +223,10 @@ right-edge, width-only affordance. A full-height 12px hit strip carries the same
 long pages. Hover and drag draw a 1px `--ring` line along the edge. Keyboard
 focus shows the `--ring` outline on the grip. The outline now frames the prose
 with equal frame padding on both sides. Its width is the column width plus twice
-that inset. The column clamps to 360–1200px; 1200px matches
-`--editor-table-expanded-max-width`. The default stays 672px. The handle is
+that inset. The saved manual column width clamps to 360–1200px, with 672px as
+the default. SN-398 lets non-text content grow the displayed desktop width
+without a cap and contract back to the manual reading width as content shrinks.
+Desktop tables do not scroll horizontally within their wrappers. The handle is
 hidden below 768px, read-only and draw mode, and print. SN-321 hides the main
 outline and grip until the main editor column receives focus; both remain
 visible while the grip has keyboard focus or is being dragged. The printed
@@ -289,6 +301,12 @@ scope chip and `--accent` dot. On a wide paper split the fixed Companion rail
 covers at least the notes width and targets 55% of the viewport, matching #9;
 the reader inset continues to depend only on the saved splitter width. No new
 color, spacing, or typography token was added.
+
+**SN-366:** the bar now leads with **Back to paper** (lucide `ArrowLeft` at 14px plus
+label, same `.paper-reading-topbar` button style as Back to topic), because the
+reader's own close arrow stays hidden in the shell. The Promote to paper / Save as
+paper dialog opens over the reader on the new `--z-reader-dialog` layer (see the
+z-index table). No new color, spacing, or typography value.
 
 This folder is the tracked UI reference set for Smart Notes.
 
@@ -372,8 +390,9 @@ Immersive surfaces use the shared z-index scale in `src/styles/tokens.css`. Keep
 | `--z-companion-rail` | `350` | Companion rail or full-screen sheet displayed over the reader |
 | `--z-companion-overlay` | `400` | Companion-owned portaled dialogs, dropdowns, selects, and popovers displayed over the reader |
 | `--z-jupyter-inline-ai` | `425` | Portaled inline-AI actions, working state, and answers displayed over embedded JupyterLab chrome |
+| `--z-reader-dialog` | `450` | Modal dialogs launched from the reader or paper shell (Promote to paper / Save as paper, SN-366) — overlay and popup both |
 
-The required ordering is reader < paper notes dock < companion rail/sheet < companion floating controls < Jupyter inline AI. Shared dialogs and menus retain their normal layer; only companion-owned portals opt into the elevated overlay token while the immersive reader is active.
+The required ordering is reader < paper notes dock < companion rail/sheet < companion floating controls < Jupyter inline AI < reader-launched modal dialogs. Shared dialogs and menus retain their normal layer; only companion-owned portals opt into the elevated overlay token while the immersive reader is active.
 
 ## Notebook tree key-note gem (SN-229)
 
@@ -493,3 +512,13 @@ established phone touch target); the visual size is unchanged. The image toolbar
 (`--surface`, `--border`, 44px touch buttons, horizontal scroll). On touch it is capped to the selected
 picture's width and sits 8px inside the picture's top edge when it covers at most half the picture;
 desktop keeps the stock 8px gap above. No new color, type, or spacing tokens were added.
+
+## Companion chat equations and images (SN-369, SN-370)
+
+Typeset equations in Companion replies use KaTeX's own type at the current `.chat-prose` size; wide display
+equations scroll horizontally inside `.katex-display` instead of widening the rail. Agent-displayed images
+reuse the existing `.chat-prose img` frame (`--border`, `--radius-md`, full column width) and add one value:
+a `max-height: min(60vh, 420px)` cap with `object-fit: contain` on a 3% `--foreground` tint, so a tall image
+cannot push the transcript off-screen. A failed image becomes a dashed `--border` chip with
+`--muted-foreground` text at 0.88em, `--radius-md`, and the Lucide `AlertCircle` icon at 14px. No new color,
+type, or spacing tokens were added.

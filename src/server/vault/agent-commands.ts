@@ -39,6 +39,7 @@ import { normalizeMathInHtml } from "./math-normalize";
 import { searchVault } from "./search";
 import { renderLogFormToPng, renderPageToPng, renderUiToPng, resolveUiViewportWidth } from "./page-render";
 import { uploadPageAsset } from "./assets";
+import { putCompanionImage } from "./companion-images";
 import { queryLogPage, queryNamedLogView } from "./log-query";
 import {
   createNotebookCell,
@@ -72,7 +73,7 @@ import {
   type SheetSelector,
 } from "@/lib/spreadsheet-cells";
 
-export type VaultCommandGroup = "page" | "notebook" | "section" | "comment" | "version" | "vault" | "pdf" | "jupyter" | "log" | "design" | "app" | "job_inbox" | "spreadsheet" | "paper" | "recipe";
+export type VaultCommandGroup = "page" | "notebook" | "section" | "comment" | "version" | "vault" | "pdf" | "jupyter" | "log" | "design" | "app" | "job_inbox" | "spreadsheet" | "paper" | "recipe" | "companion";
 
 export interface VaultCommandRequest {
   group: VaultCommandGroup;
@@ -1937,6 +1938,19 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
       throw new VaultError("UNKNOWN_COMMAND", `Unknown Job Inbox command: ${action}`, 400);
     case "paper":
       return runPaperCommand(action, args);
+    case "companion":
+      if (action === "image_put") {
+        // SN-370: durable image for inline display in the Companion sidebar.
+        const image = await putCompanionImage({
+          url: optionalString(args.url) || undefined,
+          dataBase64: optionalString(args.dataBase64) || undefined,
+          fileName: optionalString(args.fileName) || undefined,
+          alt: optionalString(args.alt) || undefined,
+          path: optionalString(args.path) || undefined,
+        });
+        return { ok: true, group, action, data: image };
+      }
+      throw new VaultError("UNKNOWN_COMMAND", `Unknown companion command: ${action}`, 400);
     default:
       throw new VaultError("INVALID_INPUT", `Unknown command group: ${group}`, 400);
   }
@@ -1985,5 +1999,6 @@ export function listVaultCommands() {
     design: ["render"],
     paper: ["list", "create", "reference_add", "remove", "attach_pdf", "create_from_pdf"],
     app: ["template_list", "template_get", "inventory_list", "inventory_get", "query", "create", "update"],
+    companion: ["image_put"],
   };
 }

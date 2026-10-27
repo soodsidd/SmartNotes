@@ -170,6 +170,20 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
     },
   },
   {
+    name: "companion_image_put",
+    description:
+      "Display an image inline in the Companion sidebar (SN-370). Pass a web image URL to download it server-side, or base64 bytes of an image you generated. The bytes are validated (PNG/JPEG/GIF/WebP/SVG, ≤15 MB) and stored durably in the vault (the page's .assets folder when path is given, otherwise the hidden .companion-images folder), so the image survives reload. Returns { url, alt, markdown }: paste the returned markdown line (![alt](</vault/...>)) into your chat reply to show it. On failure the error explains why — tell the user instead of pasting a broken image.",
+    group: "companion",
+    action: "image_put",
+    parameters: {
+      url: { type: "string", description: "http(s) image URL to download. Provide exactly one of url or dataBase64." },
+      dataBase64: { type: "string", description: "Raw base64 image bytes for a generated image (a data: URL prefix is accepted)." },
+      alt: { type: "string", description: "Alt text describing the image; shown to screen readers and in the failure fallback." },
+      fileName: { type: "string", description: "Optional file name hint (extension is corrected from the real image format)." },
+      path: { type: "string", description: "Optional vault page path; stores the image in that page's .assets folder instead of .companion-images." },
+    },
+  },
+  {
     name: "page_create",
     description:
       "Create a page in a section, optionally with initial HTML body. Pass noteType=\"design\" to create a raw HTML/CSS design page (SN-167) whose body is rendered verbatim (bypasses Tiptap normalization) — use this for self-contained UI artifacts.",
@@ -1081,7 +1095,9 @@ Workflows:
 - Page delete: page_delete with vault-relative path (never filesystem delete; clears assets and triggers tree reload warning)
 - Tree mutations: page/notebook/section create, rename, move, delete via vault tools (not direct file operations)
 - Recipes (SN-305): "run <name> here" → recipe_list with the active path → recipe_run { path, name } creates a child artifact (copying a linked template subtree); then fill it with page_write following the returned instructions. recipe_mark / notebook_instructions_set toggle page roles.
-- Math / LaTeX (text pages only): use $...$ for inline and $$...$$ for block equations — server normalizes to Tiptap math nodes on page_write/page_create/page_append/page_prepend/page_edit/page_replace_section. Design pages (note_type=design) are raw HTML/CSS and are never math-normalized; use page_write/page_edit only (page_append/prepend/replace_section/page_render are rejected)
+- Math / LaTeX (text pages only): use $...$ for inline and $$...$$ for block equations (currency-safe rule, SN-274: Write money as plain $ ("$5 every 150 days", "$564.08") — a $ followed by a space or a closing $ followed by a digit is never math; no space inside the delimiters ($x^2$, not $ x^2 $); escape a literal $ that would otherwise pair as \\$) — server normalizes to Tiptap math nodes on page_write/page_create/page_append/page_prepend/page_edit/page_replace_section. Design pages (note_type=design) are raw HTML/CSS and are never math-normalized; use page_write/page_edit only (page_append/prepend/replace_section/page_render are rejected)
+- Chat math (SN-369): in replies use $x^2$ or \\(x^2\\) inline and $$...$$ (own lines) or \\[...\\] for display; same currency-safe rule; never leave a $$ unclosed or emit bare LaTeX like \\frac{a}{b} without delimiters (it shows as plain text)
+- Show an image in the sidebar (SN-370): companion_image_put with url (download) or dataBase64 (generated) + alt, then paste the returned markdown line into your reply; never paste remote hotlinks, blob:, or file:// URLs; on error tell the user what failed
 - Log form authoring: log_form_get → log_form_put; never edit .form.json or .log.json sidecars directly. log_form_get returns the validated form and rowCount, never an unbounded row dump; log_form_put validates the full script, projects fields, and preserves rows by stable field id.
 - Log surfaces: History is the human-readable reading surface; Table is the correction surface for editing/deleting rows. Named declarative views live in form.views and power stable live, JSON, and CSV links.
 - History suggestions: form.historySuggestion requires non-empty matchFields and copyFields arrays of exact top-level schema property ids. Suggestions never auto-fill the draft; values are copied only after explicit human action. Attachments, ids, timestamps, and date fields are opt-in and copied only when explicitly named in copyFields.

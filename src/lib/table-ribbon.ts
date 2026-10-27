@@ -109,6 +109,8 @@ export function compareCellText(a: string, b: string): number {
 // ── Table context ───────────────────────────────────────────────────────────
 
 export type TableModeAttr = "gridMode" | "dataMode" | "expanded";
+export type RowHighlight = "shade" | "accent" | "inverse";
+export const ROW_HIGHLIGHTS: RowHighlight[] = ["shade", "accent", "inverse"];
 export const TABLE_MODE_ATTRS: Record<TableModeAttr, string> = {
   gridMode: "data-grid-mode",
   dataMode: "data-data-mode",
@@ -304,6 +306,23 @@ export function moveRowCommand(delta: -1 | 1) {
   };
 }
 
+/** Apply one scheme to every row touched by the current cell selection. */
+export function setRowHighlightCommand(highlight: RowHighlight | null) {
+  return (state: EditorState, dispatch: Dispatch): boolean => {
+    const context = getTableContext(state);
+    if (!context) return false;
+    const tr = state.tr;
+    let changed = false;
+    context.table.forEach((row, offset, index) => {
+      if (index < context.rect.top || index >= context.rect.bottom || row.attrs.rowHighlight === highlight) return;
+      tr.setNodeMarkup(context.tableStart + offset, undefined, { ...row.attrs, rowHighlight: highlight });
+      changed = true;
+    });
+    if (changed && dispatch) dispatch(tr);
+    return changed;
+  };
+}
+
 export function moveColumnCommand(delta: -1 | 1) {
   return (state: EditorState, dispatch: Dispatch): boolean => {
     const context = getTableContext(state);
@@ -458,6 +477,43 @@ export function filterHeaderColumnCommand(tablePos: number, column: number, valu
     if (dispatch) dispatch(state.tr.setNodeMarkup(tablePos, undefined, { ...table.attrs, columnFilters: filters }));
     return true;
   };
+}
+
+/** SN-396: filters on columns that still exist (a column delete can leave stale keys). */
+export function activeColumnFilters(table: ProseMirrorNode): Array<[number, string]> {
+  const width = table.firstChild?.childCount ?? 0;
+  return Object.entries(table.attrs.columnFilters as Record<string, string> ?? {})
+    .map(([column, value]) => [Number(column), value] as [number, string])
+    .filter(([column]) => Number.isInteger(column) && column >= 0 && column < width);
+}
+
+/** SN-396: the caret column's filter state, for the ribbon Data tab Filter submenu. */
+export function activeColumnFilterTarget(state: EditorState): {
+  tablePos: number;
+  column: number;
+  label: string;
+  values: string[];
+  current: string | undefined;
+} | null {
+  const context = getTableContext(state);
+  if (!context || context.hasMergedCells || headerRowCount(context.table) === 0) return null;
+  const column = context.rect.left;
+  const header = context.table.child(0).maybeChild(column);
+  return {
+    tablePos: context.tablePos,
+    column,
+    label: header?.textContent.trim() || `Column ${column + 1}`,
+    values: tableColumnValues(context.table, column),
+    current: (context.table.attrs.columnFilters as Record<string, string> ?? {})[column],
+  };
+}
+
+/** SN-396: Clear all filters on the caret's table (stored `data-column-filters` goes too). */
+export function clearAllColumnFiltersCommand(state: EditorState, dispatch: Dispatch): boolean {
+  const context = getTableContext(state);
+  if (!context || Object.keys(context.table.attrs.columnFilters as object ?? {}).length === 0) return false;
+  if (dispatch) dispatch(state.tr.setNodeMarkup(context.tablePos, undefined, { ...context.table.attrs, columnFilters: {} }));
+  return true;
 }
 
 /** Grow the table at the caret and move into the new cell. */
@@ -651,6 +707,16 @@ export const TableRibbonSupport = Extension.create({
             renderHTML: (attributes: Record<string, unknown>) => attributes.rowHeight
               ? { "data-row-height": String(attributes.rowHeight), style: `height: ${attributes.rowHeight}px` } : {},
           },
+          rowHighlight: {
+            default: null,
+            parseHTML: (element: HTMLElement) => {
+              const value = element.getAttribute("data-row-highlight");
+              return ROW_HIGHLIGHTS.find((highlight) => highlight === value) ?? null;
+            },
+            renderHTML: (attributes: Record<string, unknown>) =>
+              ROW_HIGHLIGHTS.includes(attributes.rowHighlight as RowHighlight)
+                ? { "data-row-highlight": attributes.rowHighlight } : {},
+          },
         },
       },
       {
@@ -698,18 +764,33 @@ export const TableRibbonSupport = Extension.create({
       const decorations: Decoration[] = [];
       doc.descendants((node, pos) => {
         if (node.type.name !== "table") return true;
-        const width = node.firstChild?.childCount ?? 0;
         // Ignore filters for columns that no longer exist (e.g. after a column delete).
-        const filters = Object.entries(node.attrs.columnFilters as Record<string, string> ?? {})
-          .filter(([column]) => Number.isInteger(Number(column)) && Number(column) < width);
+        const filters = activeColumnFilters(node);
         if (filters.length) {
+          const headers = headerRowCount(node);
           let rowPos = pos + 1;
           for (let row = 0; row < node.childCount; row++) {
             const rowNode = node.child(row);
-            if (row >= headerRowCount(node) && filters.some(([column, value]) => rowNode.maybeChild(Number(column))?.textContent !== value)) {
+            if (row >= headers && filters.some(([column, value]) => rowNode.maybeChild(column)?.textContent !== value)) {
               decorations.push(Decoration.node(rowPos, rowPos + rowNode.nodeSize, { style: "display: none" }));
             }
             rowPos += rowNode.nodeSize;
+          }
+          // SN-396: persistent filter-active glyph on each filtered header, visible without hover.
+          if (headers > 0) {
+            const headerRow = node.child(0);
+            let cellPos = pos + 2;
+            headerRow.forEach((cell, _offset, index) => {
+              const filter = filters.find(([column]) => column === index);
+              if (filter) {
+                decorations.push(Decoration.node(cellPos, cellPos + cell.nodeSize, {
+                  class: "table-filter-active",
+                  "data-filter-active": "true",
+                  title: `Filtered: ${filter[1] || "(Blank)"}`,
+                }));
+              }
+              cellPos += cell.nodeSize;
+            });
           }
         }
         if (!node.attrs.dataMode) return false;

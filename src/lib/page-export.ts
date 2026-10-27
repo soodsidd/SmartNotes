@@ -30,7 +30,10 @@ const VAULT_ASSET_PATTERN = /(?:src|href)=["'](\/vault\/[^"']+)["']/gi;
 const EXPORT_CONTENT_CSS = `
 :root {
   color-scheme: light;
+  --background: #f6f6f4;
   --foreground: #0d0d0d;
+  --surface: #fbfbf9;
+  --muted: #f2f2f4;
   --muted-foreground: #8e8ea0;
   --border: #e6e6eb;
   --accent: #3d8f9b;
@@ -269,6 +272,19 @@ body {
 .editor-content th {
   background: rgba(13, 13, 13, 0.05);
   font-weight: 600;
+}
+
+.editor-content tr[data-row-highlight="shade"] > :is(th, td) {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.editor-content tr[data-row-highlight="accent"] > :is(th, td) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  color: var(--foreground);
+}
+.editor-content tr[data-row-highlight="inverse"] > :is(th, td) {
+  background: var(--foreground);
+  color: var(--background);
 }
 
 .editor-image,

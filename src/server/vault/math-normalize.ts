@@ -8,7 +8,11 @@
  *   block  → <div  data-type="block-math"  data-latex="..."></div>
  *
  * Content inside <code> and <pre> elements is never processed.
+ * Inline `$` uses the shared currency-safe rule in `@/lib/math-delimiters`
+ * (SN-274 / SN-369) so money amounts stay literal.
  */
+
+import { replaceInlineDollarMath } from "@/lib/math-delimiters";
 
 function escapeAttr(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -22,21 +26,27 @@ function replaceMath(fragment: string): string {
   let out = fragment;
 
   // Block math: full <p>$$...$$</p> → block-math div (avoids invalid <div> inside <p>)
-  out = out.replace(/<p([^>]*)>\s*\$\$([\s\S]*?)\$\$\s*<\/p>/g, (_, _attrs, latex) =>
+  out = out.replace(/<p([^>]*)>\s*\$\$([^<]*?)\$\$\s*<\/p>/g, (_, _attrs, latex) =>
     `<div data-type="block-math" data-latex="${escapeAttr(latex.trim())}"></div>`
   );
 
-  // Block math: remaining $$...$$ (e.g. standalone or inside other block elements)
-  out = out.replace(/\$\$([\s\S]*?)\$\$/g, (_, latex) =>
+  // Block math: remaining $$...$$ (never spans an HTML tag)
+  out = out.replace(/\$\$([^<$]+?)\$\$/g, (_, latex) =>
     `<div data-type="block-math" data-latex="${escapeAttr(latex.trim())}"></div>`
   );
 
-  // Inline math: $...$ (single-line; nested $ not allowed)
-  out = out.replace(/\$(?!\$)([^$\n]+?)\$(?!\$)/g, (_, latex) =>
-    `<span data-type="inline-math" data-latex="${escapeAttr(latex.trim())}"></span>`
-  );
-
-  return out;
+  // Inline math (SN-274): shared currency-safe rule, applied per text run so a
+  // span never crosses an HTML tag ("<strong>$5</strong> … <strong>$175" stays text).
+  return out
+    .split(/(<[^>]*>)/)
+    .map((part) =>
+      part.startsWith("<")
+        ? part
+        : replaceInlineDollarMath(part, (latex) =>
+            `<span data-type="inline-math" data-latex="${escapeAttr(latex)}"></span>`
+          )
+    )
+    .join("");
 }
 
 /**

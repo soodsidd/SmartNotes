@@ -3,7 +3,10 @@ import { Editor } from "@tiptap/core";
 import { CellSelection } from "@tiptap/pm/tables";
 import { createEditorExtensions, setEditorHtmlSilent } from "@/lib/rich-text-editor-config";
 import {
+  activeColumnFilterTarget,
+  activeColumnFilters,
   alignCellsCommand,
+  clearAllColumnFiltersCommand,
   clearCellContentsCommand,
   compareCellText,
   computeSelectionStats,
@@ -18,6 +21,7 @@ import {
   selectCellsCommand,
   selectionMatrix,
   selectionStatsForState,
+  setRowHighlightCommand,
   setTableModeCommand,
   sortTableCommand,
   sortHeaderColumnCommand,
@@ -119,6 +123,40 @@ describe("selection stats", () => {
 });
 
 describe("ribbon commands", () => {
+  test("row highlights apply to touched rows, survive HTML reload and sorting, and clear without changing cell formatting", () => {
+    const editor = makeEditor();
+    selectRange(editor, [1, 0], [2, 1]);
+    expect(exec(editor, alignCellsCommand("right"))).toBe(true);
+    expect(exec(editor, setRowHighlightCommand("shade"))).toBe(true);
+    expect(editor.getHTML().match(/data-row-highlight="shade"/g)).toHaveLength(2);
+    expect(setRowHighlightCommand("shade")(editor.state, undefined)).toBe(false);
+    roundTrip(editor);
+    expect(exec(editor, setRowHighlightCommand("accent"))).toBe(true);
+    expect(editor.getHTML().match(/data-row-highlight="accent"/g)).toHaveLength(2);
+    roundTrip(editor);
+    caretIn(editor, 1, 0);
+    expect(exec(editor, sortTableCommand("asc"))).toBe(true);
+    const rows = editor.state.doc.nodeAt(0)!;
+    expect([...Array(rows.childCount)].map((_, i) => [rows.child(i).firstChild?.textContent, rows.child(i).attrs.rowHighlight])).toEqual([
+      ["Name", null], ["apple", "accent"], ["fig", null], ["pear", "accent"],
+    ]);
+    expect(editor.getHTML().match(/data-align="right"/g)).toHaveLength(4);
+    caretIn(editor, 1, 0);
+    expect(exec(editor, filterHeaderColumnCommand(0, 0, "apple"))).toBe(true);
+    expect([...editor.view.dom.querySelectorAll("tr")].filter((row) => (row as HTMLElement).style.display === "none")).toHaveLength(2);
+    expect(exec(editor, filterHeaderColumnCommand(0, 0, null))).toBe(true);
+    expect(exec(editor, resizeColumnsCommand(40))).toBe(true);
+    expect(editor.getHTML()).toContain('data-row-highlight="accent"');
+    expect(exec(editor, setRowHighlightCommand("inverse"))).toBe(true);
+    expect(editor.getHTML()).toContain('data-row-highlight="inverse"');
+    selectRange(editor, [1, 0], [3, 1]);
+    expect(exec(editor, setRowHighlightCommand(null))).toBe(true);
+    expect(editor.getHTML()).not.toContain("data-row-highlight");
+    expect(setRowHighlightCommand(null)(editor.state, undefined)).toBe(false);
+    roundTrip(editor);
+    editor.destroy();
+  });
+
   test("header controls sort body rows and filter exact column values across HTML reload", () => {
     const editor = makeEditor();
     const table = editor.state.doc.nodeAt(0)!;
@@ -139,6 +177,28 @@ describe("ribbon commands", () => {
     expect(exec(editor, filterHeaderColumnCommand(0, 1, "10"))).toBe(true);
     editor.view.dispatch(editor.state.tr.setNodeMarkup(0, undefined, { ...editor.state.doc.nodeAt(0)!.attrs, columnFilters: { 9: "x" } }));
     expect([...editor.view.dom.querySelectorAll("table tr")].filter((row) => (row as HTMLElement).style.display === "none")).toHaveLength(0);
+    editor.destroy();
+  });
+  test("SN-396: filtered headers stay marked, the caret column drives Filter, and Clear all restores rows", () => {
+    const editor = makeEditor();
+    const hidden = () => [...editor.view.dom.querySelectorAll("table tr")].filter((row) => (row as HTMLElement).style.display === "none").length;
+    const marked = () => [...editor.view.dom.querySelectorAll("th")].map((th) => th.getAttribute("data-filter-active") === "true");
+    caretIn(editor, 1, 1);
+    expect(activeColumnFilterTarget(editor.state)).toMatchObject({ tablePos: 0, column: 1, label: "Qty", values: ["2.5", "10", ""], current: undefined });
+    expect(exec(editor, clearAllColumnFiltersCommand)).toBe(false);
+    expect(marked()).toEqual([false, false]);
+    expect(exec(editor, filterHeaderColumnCommand(0, 1, "10"))).toBe(true);
+    expect(exec(editor, filterHeaderColumnCommand(0, 0, "pear"))).toBe(true);
+    expect(activeColumnFilters(editor.state.doc.nodeAt(0)!)).toEqual([[0, "pear"], [1, "10"]]);
+    expect(marked()).toEqual([true, true]);
+    expect(editor.view.dom.querySelectorAll("th")[1].getAttribute("title")).toBe("Filtered: 10");
+    expect(hidden()).toBe(2);
+    expect(activeColumnFilterTarget(editor.state)?.current).toBe("10");
+    roundTrip(editor);
+    expect(exec(editor, clearAllColumnFiltersCommand)).toBe(true);
+    expect(hidden()).toBe(0);
+    expect(marked()).toEqual([false, false]);
+    expect(editor.getHTML()).not.toContain("data-column-filters");
     editor.destroy();
   });
   test("Delete removes selected full columns or rows without changing retained cells", () => {

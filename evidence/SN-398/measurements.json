@@ -1,0 +1,26 @@
+{
+  "before": {
+    "table": 721,
+    "frame": 768,
+    "overflow": 0,
+    "overflowStyle": "visible"
+  },
+  "grown": {
+    "table": 1459,
+    "frame": 1506,
+    "overflow": 0,
+    "overflowStyle": "visible"
+  },
+  "shrunk": {
+    "table": 460,
+    "frame": 720,
+    "overflow": 0,
+    "overflowStyle": "visible"
+  },
+  "fluid": {
+    "table": 1084,
+    "frame": 1132,
+    "overflow": 0,
+    "overflowStyle": "visible"
+  }
+}

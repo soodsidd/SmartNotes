@@ -3,12 +3,12 @@ import type { NodeView } from "@tiptap/pm/view";
 import {
   FLOATING_BOX_DEFAULT_WIDTH,
   deleteFloatingTextBox,
-  fitFloatingBoxWidthToContent,
   moveFloatingBox,
   normalizeFloatingBoxGeometry,
   resizeFloatingBoxWidth,
   type FloatingBoxGeometry,
 } from "./floating-text-box";
+import { nonTextContentWidth } from "./non-text-content-width";
 
 const attrs = (element: HTMLElement) => normalizeFloatingBoxGeometry({
   x: Number(element.dataset.x),
@@ -101,7 +101,7 @@ export const FloatingTextBox = Node.create({
         const next = geometry();
         dom.style.left = `${next.x}px`;
         dom.style.top = `${next.y}px`;
-        dom.style.width = `${next.width}px`;
+        dom.style.width = `${Math.max(next.width, fittedContentWidth)}px`;
         Object.entries(next).forEach(([key, value]) => { dom.dataset[key] = String(value); });
       }
       function commit(next: FloatingBoxGeometry) {
@@ -111,32 +111,23 @@ export const FloatingTextBox = Node.create({
         if (prev.x === next.x && prev.y === next.y && prev.width === next.width) return;
         editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, next));
       }
-      // Width is explicit, so grow it when an embedded image is resized wider
-      // than the box. Expanded tables are left to overflow on purpose (SN-278).
-      // Height needs no work: the box is height:auto with no min-height, so it
-      // always wraps its text and images exactly (SN-314).
+      // Keep content-fit width on the DOM only. The persisted width is the manual
+      // reading width, so the box contracts when the widest table/image shrinks.
+      let fittedContentWidth = 0;
       function fitToContent() {
-        if (!editor.isEditable || contentDOM.clientWidth === 0) return;
-        const area = contentDOM.getBoundingClientRect();
-        const scale = area.width / contentDOM.clientWidth || 1;
-        let right = area.right;
-        contentDOM.querySelectorAll("img").forEach((image) => {
-          right = Math.max(right, image.getBoundingClientRect().right);
-          // Include the resize container's right margin: if only the bitmap fits,
-          // ProseMirror's trailing separator/break wraps onto an empty line under it.
-          const container = image.closest<HTMLElement>("[data-resize-container]");
-          if (container) {
-            const margin = parseFloat(getComputedStyle(container).marginRight) || 0;
-            right = Math.max(right, container.getBoundingClientRect().right + margin * scale);
-          }
-        });
-        const needed = contentDOM.clientWidth + (right - area.right) / scale;
-        commit(fitFloatingBoxWidthToContent(geometry(), needed, contentDOM.clientWidth));
+        const chrome = dom.offsetWidth ? dom.offsetWidth - contentDOM.clientWidth : 20;
+        const needed = nonTextContentWidth(contentDOM) + chrome;
+        if (needed === fittedContentWidth) return;
+        fittedContentWidth = needed;
+        paint();
       }
       const resizeObserver = typeof ResizeObserver === "function"
         ? new ResizeObserver(() => fitToContent())
         : null;
       resizeObserver?.observe(contentDOM);
+      const mutationObserver = new MutationObserver(fitToContent);
+      mutationObserver.observe(contentDOM, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "width", "colwidth", "data-fixed-widths"] });
+      contentDOM.addEventListener("load", fitToContent, true);
       function drag(handle: HTMLElement, transform: (start: FloatingBoxGeometry, dx: number, dy: number) => FloatingBoxGeometry) {
         handle.addEventListener("pointerdown", (event) => {
           if (event.button !== 0) return;
@@ -205,6 +196,8 @@ export const FloatingTextBox = Node.create({
         },
         destroy() {
           resizeObserver?.disconnect();
+          mutationObserver.disconnect();
+          contentDOM.removeEventListener("load", fitToContent, true);
           editor.off("selectionUpdate", syncEditingChrome);
           editor.off("focus", syncEditingChrome);
           editor.off("blur", syncAfterBlur);

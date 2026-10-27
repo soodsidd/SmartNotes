@@ -413,11 +413,11 @@ select {
 
 .editor-content.ProseMirror { position: relative; min-width: 100%; }
 @media (min-width: 768px) {
-  /* A resized table can widen the page canvas while the table keeps its own exact width. */
+  /* Non-text content can widen the page canvas without a table-local scroll limit. */
   .editor-content.ProseMirror { min-width: max(100%, var(--editor-main-flow-width, 672px)); }
   .editor-content.ProseMirror > .tableWrapper[data-fixed-widths="true"] {
     width: max-content;
-    max-width: var(--editor-main-flow-width, 672px);
+    max-width: none;
   }
 }
 
@@ -939,6 +939,19 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
   font-size: inherit;
   letter-spacing: 0.03em;
 }
+/* SN-397: row schemes live on <tr> so sorting moves the color with the row. */
+.editor-content tr[data-row-highlight="shade"] > :is(th, td) {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.editor-content tr[data-row-highlight="accent"] > :is(th, td) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  color: var(--foreground);
+}
+.editor-content tr[data-row-highlight="inverse"] > :is(th, td) {
+  background: var(--foreground);
+  color: var(--background);
+}
 .editor-content .tableWrapper .activeCell {
   position: relative;
   box-shadow: inset 0 0 0 2px var(--accent);
@@ -1058,6 +1071,23 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 @media (pointer: coarse) {
   .table-header-tools__buttons button { width: 44px; height: 44px; }
 }
+/* SN-396: a filtered header stays marked without hover — 2px --accent underline plus a 12px
+   funnel glyph inside the cell's right padding (no padding change, so the header never reflows).
+   ::before, because ::after is the selected-cell tint. */
+.editor-content th.table-filter-active { box-shadow: inset 0 -2px 0 var(--accent); }
+.editor-content th.table-filter-active::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  transform: translateY(-50%);
+  background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M3 6h18M7 12h10M10 18h4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M3 6h18M7 12h10M10 18h4'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
 
 /* SN-278: per-table ribbon modes and cell alignment */
 .editor-content td[data-align="left"], .editor-content th[data-align="left"] { text-align: left; }
@@ -1066,15 +1096,18 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 .editor-content .tableWrapper[data-data-mode="true"] table { font-variant-numeric: tabular-nums; }
 .editor-content .tableWrapper[data-data-mode="true"] .numericCell:not([data-align]) { text-align: right; }
 .editor-content.ProseMirror > .tableWrapper[data-expanded="true"] {
-  /* SN-318: never narrower than a widened main flow. */
-  max-width: max(var(--editor-table-expanded-max-width), var(--editor-main-flow-width, 672px));
+  max-width: none;
 }
 .editor-content .floating-text-box .tableWrapper[data-expanded="true"] {
   position: relative;
   z-index: 1;
   width: max-content;
-  max-width: var(--editor-table-expanded-max-width);
+  max-width: none;
   background: var(--surface);
+}
+@media (min-width: 768px) {
+  .editor-content .tableWrapper { max-width: none; overflow-x: visible; }
+  .editor-content .floating-text-box .tableWrapper[data-fixed-widths="true"] { width: max-content; }
 }
 
 /* SN-278: table ribbon + selection stats (fork photo #16) */
@@ -1379,6 +1412,11 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
 [data-resize-container][data-node="image"] [data-resize-wrapper] {
   display: inline-block;
   max-width: 100%;
+}
+@media (min-width: 768px) {
+  .editor-content .editor-image,
+  .editor-content [data-resize-container][data-node="image"],
+  .editor-content [data-resize-container][data-node="image"] [data-resize-wrapper] { max-width: none; }
 }
 
 [data-resize-container][data-node="image"] [data-resize-handle] {
@@ -3006,6 +3044,38 @@ mark {
   margin: 0.65em 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+}
+/* SN-370: agent-displayed images stay inside the sidebar column. */
+.chat-prose .companion-chat-image {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  text-decoration: none;
+}
+.chat-prose .companion-chat-image img {
+  max-height: min(60vh, 420px);
+  object-fit: contain;
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+}
+.chat-prose .companion-chat-image-fallback {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  max-width: 100%;
+  margin: 0.35em 0;
+  padding: 0.35em 0.6em;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  font-size: 0.88em;
+  overflow-wrap: anywhere;
+}
+/* SN-369: wide display equations scroll instead of widening the sidebar. */
+.chat-prose .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.15em 0;
 }
 .chat-prose a {
   color: oklch(0.55 0.10 235);
