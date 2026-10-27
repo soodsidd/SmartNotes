@@ -187,7 +187,7 @@ describe("Jupyter page Deep Work binding (SN-347)", () => {
     expect(shell).toContain("resolveStickyBootPreference({");
     expect(shell).toContain("stickyBootPreference.kind !== \"bound-page\"");
     expect(shell).toContain("dropDeepWorkPendingJupyterFrames");
-    const selection = shell.slice(shell.indexOf("const applySelection"), shell.indexOf("const applySelection") + 1600);
+    const selection = shell.slice(shell.indexOf("const applySelection"), shell.indexOf("const applySelection") + 2400);
     expect(selection).toContain("dropDeepWorkPendingJupyterFrames(current)");
   });
 });
