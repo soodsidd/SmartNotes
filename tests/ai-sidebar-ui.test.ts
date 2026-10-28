@@ -49,8 +49,10 @@ describe("Chat markdown render path", () => {
 // ─── Settings modal ───────────────────────────────────────────────────────────
 
 describe("Chat settings modal", () => {
-  it("replaces MoreHorizontal with the Settings gear icon", () => {
-    expect(SIDEBAR_SRC).not.toContain("MoreHorizontal");
+  it("uses the Settings gear on desktop; mobile tucks settings into one overflow menu", () => {
+    // SN-406: mobile header is a single row; advanced toggles live behind "More".
+    expect(SIDEBAR_SRC).toContain('aria-label="More Companion options"');
+    expect(SIDEBAR_SRC).toContain('aria-label="AI settings"');
     expect(SIDEBAR_SRC).toContain("Settings");
     expect(SIDEBAR_SRC).toContain('<Settings className="size-3.5"');
   });
@@ -396,9 +398,8 @@ describe("Companion Keep conversation toggle (SN-80)", () => {
     expect(SIDEBAR_SRC).toContain(
       "<CompanionKeepToggle checked={keepConversation} onChange={onKeepConversationChange} />"
     );
-    expect(SIDEBAR_SRC).toContain(
-      "<CompanionKeepToggle checked={keepConversation} onChange={onKeepConversationChange} mobile />"
-    );
+    // SN-406: on mobile Keep is a checkbox item in the header overflow menu.
+    expect(SIDEBAR_SRC).toContain('data-testid="companion-keep-toggle-mobile"');
   });
 
   it("uses the documented accent token for the checkbox, not a raw colour", () => {

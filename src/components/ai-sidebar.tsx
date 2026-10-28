@@ -9,7 +9,7 @@ import rehypeKatexImport from "rehype-katex";
 // rehype-katex bundles an older vfile; cast away the type mismatch (works at runtime)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rehypeKatex = rehypeKatexImport as any;
-import { AlertCircle, AlignJustify, ArrowDown, Check, ChevronDown, Code2, Copy, FileText, Monitor, Paperclip, Send, Settings, Sparkles, Square, X } from "lucide-react";
+import { AlertCircle, AlignJustify, ArrowDown, Check, ChevronDown, Code2, Copy, FileText, Monitor, MoreHorizontal, Paperclip, Send, Settings, Sparkles, Square, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -1984,79 +1984,202 @@ function AiConversation({
       )}
       data-testid={mobile ? "mobile-ai-sheet" : "ai-sidebar"}
     >
-      <div className={cn("flex shrink-0 items-center gap-2 border-b border-border px-2 py-2.5", mobile && "px-3 py-2")}>
-        <Sparkles className="size-4 text-[color:var(--accent)]" />
-        <div className="min-w-0 flex-1">
-          <p className={cn("text-[13px] font-medium text-foreground", mobile && "text-[14px]")}>
-            {mobile ? "Ask about this note" : "Smart Notes AI"}
-          </p>
-          <p className="truncate text-[11px] text-muted-foreground">
-            {mobile ? `${pageTitle} · ${tokenLabel}` : `Discussing · ${pageTitle}`}
-          </p>
-        </div>
-        {mobile ? (
-          <>
-            <CompanionDensityMenu density={density} onDensityChange={updateDensity} mobile positionerClassName={floatingLayerZ} />
-            <button
-              type="button"
-              aria-label="Companion settings"
-              data-testid="ai-settings-mobile"
-              onClick={() => setSettingsOpen(true)}
+      {mobile ? (
+        <div
+          className="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1"
+          data-testid="ai-mobile-header"
+        >
+          <AiScopeControl
+            scopeLabel={scopeLabel}
+            tokenLabel={tokenLabel}
+            scopeOptions={scopeOptions}
+            activeScope={activeScope}
+            onScopeChange={onScopeChange}
+            mobile
+            positionerClassName={floatingLayerZ}
+          />
+          {computerAccess ? (
+            <span
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)]/16 text-[color:var(--accent)]"
+              title="Computer access is on for this conversation"
+              aria-label="Computer access is on"
+              data-testid="ai-mobile-computer-armed"
+            >
+              <Monitor className="size-3.5" />
+            </span>
+          ) : null}
+          {isTurnActive || isAttaching ? (
+            <span className={cn("shrink-0 px-1 text-[10px]", isTurnActive ? "text-[color:var(--accent)]" : "text-muted-foreground")}>
+              {isTurnActive ? "Working…" : "Attaching…"}
+            </span>
+          ) : null}
+          {providers && providers.length > 0 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={Boolean(disabled || isTurnActive)}
+                aria-label={`Change AI provider and model. Current: ${activeProviderLabel} · ${activeModelLabel || "default"}`}
+                title={`${activeProviderLabel} · ${activeModelLabel || "default"}`}
+                data-testid="ai-header-provider-switcher"
+                className={cn(SIDEBAR_CHIP_CLASS, "min-h-11 min-w-0 max-w-[7.5rem] shrink px-2.5 disabled:opacity-60")}
+              >
+                <span className="sr-only">{activeProviderLabel} · </span>
+                <span className="truncate">{activeModelLabel || "default"}</span>
+                <ChevronDown className="size-2.5 shrink-0 opacity-60" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-h-[min(70vh,28rem)] w-[220px] overflow-y-auto" positionerClassName={floatingLayerZ}>
+                {pinnedCompanionModels.length > 0 && onPinnedCompanionModelSelect ? (
+                  <>
+                    <div className="px-2 pt-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Pinned</div>
+                    {pinnedCompanionModels.map((pin) => {
+                      const selected = activeProviderId === pin.providerId && activeModelLabel === pin.model && (activeEffort ?? "") === pin.effort;
+                      const label = pin.model === "auto" || !pin.effort ? pin.model : `${pin.model} · ${pin.effort}`;
+                      return (
+                        <DropdownMenuItem
+                          key={`${pin.providerId}\u0000${pin.model}\u0000${pin.effort}`}
+                          className="text-xs"
+                          data-testid="ai-pinned-model"
+                          aria-label={`Use pinned ${pin.providerId} ${pin.model}${pin.effort ? ` ${pin.effort}` : ""}`}
+                          onClick={() => onPinnedCompanionModelSelect(pin)}
+                        >
+                          <Check className={cn("size-3", selected ? "opacity-100" : "opacity-0")} />
+                          {label}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                    <DropdownMenuSeparator />
+                  </>
+                ) : null}
+                <ProviderSettingsMenu
+                  providers={providers}
+                  activeProviderId={activeProviderId}
+                  activeProviderLabel={activeProviderLabel}
+                  activeModelLabel={activeModelLabel}
+                  activeEffort={activeEffort}
+                  verboseEnabled={verboseEnabled}
+                  onProviderChange={onProviderChange}
+                  onModelChange={onModelChange}
+                  onEffortChange={onEffortChange}
+                  onVerboseChange={onVerboseChange}
+                  pinnedCompanionModels={pinnedCompanionModels}
+                  onTogglePinnedCompanionModel={onTogglePinnedCompanionModel}
+                />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="More Companion options"
+              data-testid="ai-mobile-more"
               className="inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <Settings className="size-4" />
-            </button>
+              <MoreHorizontal className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[220px]" positionerClassName={floatingLayerZ}>
+              <div className="truncate px-2 pb-1 pt-1 text-[11px] font-medium text-foreground" title={pageTitle}>
+                {pageTitle}
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={keepConversation}
+                onSelect={(event) => event.preventDefault()}
+                onCheckedChange={(checked) => onKeepConversationChange(checked === true)}
+                className="text-xs"
+                data-testid="companion-keep-toggle-mobile"
+                aria-label="Keep conversation"
+              >
+                Keep conversation
+              </DropdownMenuCheckboxItem>
+              {onComputerAccessChange ? (
+                <DropdownMenuCheckboxItem
+                  checked={computerAccess}
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={(checked) => onComputerAccessChange(checked === true)}
+                  className="text-xs"
+                  data-testid="companion-computer-toggle-mobile"
+                  aria-label="Computer access"
+                >
+                  <Monitor className="size-3 shrink-0" aria-hidden="true" />
+                  Computer access
+                </DropdownMenuCheckboxItem>
+              ) : null}
+              <DropdownMenuSeparator />
+              <div className="px-2 pt-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Reading density</div>
+              <DropdownMenuRadioGroup
+                value={density}
+                onValueChange={(value) => updateDensity(normalizeCompanionDensity(value))}
+              >
+                {COMPANION_DENSITY_OPTIONS.map((option) => (
+                  <DropdownMenuRadioItem key={option.value} value={option.value} className="text-xs" data-testid="companion-density-option-mobile">
+                    {option.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-xs"
+                data-testid="ai-settings-mobile"
+                onClick={() => setSettingsOpen(true)}
+              >
+                <Settings className="size-3.5" />
+                Companion settings…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-11 shrink-0 rounded-md"
+            onClick={onClose}
+            aria-label="Close Companion"
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      ) : (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-2.5">
+          <Sparkles className="size-4 text-[color:var(--accent)]" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium text-foreground">Smart Notes AI</p>
+            <p className="truncate text-[11px] text-muted-foreground">{`Discussing · ${pageTitle}`}</p>
+          </div>
+          {contextPdfName ? <span
+            className={cn(SIDEBAR_SCOPE_CHIP_CLASS, "max-w-[min(100%,11rem)] truncate")}
+            title={`PDF: ${contextPdfName}`}
+            data-testid="paper-companion-pdf-context"
+          ><span className="size-1.5 shrink-0 rounded-full bg-[color:var(--accent)]" /><span className="truncate">PDF: {contextPdfName}</span></span> : <AiScopeControl
+            scopeLabel={scopeLabel}
+            tokenLabel={tokenLabel}
+            scopeOptions={scopeOptions}
+            activeScope={activeScope}
+            onScopeChange={onScopeChange}
+            positionerClassName={floatingLayerZ}
+          />}
+          <CompanionKeepToggle checked={keepConversation} onChange={onKeepConversationChange} />
+          <CompanionDensityMenu density={density} onDensityChange={updateDensity} positionerClassName={floatingLayerZ} />
+          <button
+            type="button"
+            aria-label="AI settings"
+            onClick={() => setSettingsOpen(true)}
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Settings className="size-3.5" />
+          </button>
+          {onClose ? (
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className="size-11 shrink-0 rounded-md"
+              size="icon-sm"
+              className="shrink-0 rounded-md"
               onClick={onClose}
-              aria-label="Close Companion"
+              aria-label="Close Smart Notes AI"
+              data-testid="pdf-reader-ai-close"
             >
-              <X className="size-4" />
+              <X className="size-3.5" />
             </Button>
-          </>
-        ) : (
-          <>
-            {contextPdfName ? <span
-              className={cn(SIDEBAR_SCOPE_CHIP_CLASS, "max-w-[min(100%,11rem)] truncate")}
-              title={`PDF: ${contextPdfName}`}
-              data-testid="paper-companion-pdf-context"
-            ><span className="size-1.5 shrink-0 rounded-full bg-[color:var(--accent)]" /><span className="truncate">PDF: {contextPdfName}</span></span> : <AiScopeControl
-              scopeLabel={scopeLabel}
-              tokenLabel={tokenLabel}
-              scopeOptions={scopeOptions}
-              activeScope={activeScope}
-              onScopeChange={onScopeChange}
-              positionerClassName={floatingLayerZ}
-            />}
-            <CompanionKeepToggle checked={keepConversation} onChange={onKeepConversationChange} />
-            <CompanionDensityMenu density={density} onDensityChange={updateDensity} positionerClassName={floatingLayerZ} />
-            <button
-              type="button"
-              aria-label="AI settings"
-              onClick={() => setSettingsOpen(true)}
-              className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <Settings className="size-3.5" />
-            </button>
-            {onClose ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 rounded-md"
-                onClick={onClose}
-                aria-label="Close Smart Notes AI"
-                data-testid="pdf-reader-ai-close"
-              >
-                <X className="size-3.5" />
-              </Button>
-            ) : null}
-          </>
-        )}
-      </div>
+          ) : null}
+        </div>
+      )}
 
       <AiSettingsDialog
         open={settingsOpen}
@@ -2084,79 +2207,13 @@ function AiConversation({
         floatingLayerZ={floatingLayerZ}
       />
 
-      {mobile ? (
-        <div className="flex shrink-0 items-center gap-1.5 px-3 pb-2">
-          <AiScopeControl
-            scopeLabel={scopeLabel}
-            tokenLabel={tokenLabel}
-            scopeOptions={scopeOptions}
-            activeScope={activeScope}
-            onScopeChange={onScopeChange}
-            mobile
-            positionerClassName={floatingLayerZ}
-          />
-          <CompanionKeepToggle checked={keepConversation} onChange={onKeepConversationChange} mobile />
-          {onComputerAccessChange ? (
-            <CompanionComputerToggle checked={computerAccess} onChange={onComputerAccessChange} mobile />
-          ) : null}
-          {activeProviderId && providerSupportsEffort(activeProviderId) && onEffortChange ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger className={SIDEBAR_CHIP_CLASS}>
-                <span>{getEffortLabel(activeEffort)}</span>
-                <ChevronDown className="size-2.5 shrink-0 opacity-60" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[140px]" positionerClassName={floatingLayerZ}>
-                <DropdownMenuRadioGroup
-                  value={activeEffort || "medium"}
-                  onValueChange={(value) => onEffortChange(value)}
-                >
-                  {EFFORT_OPTIONS.map((option) => (
-                    <DropdownMenuRadioItem key={option.value} value={option.value} className="text-xs">
-                      {option.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-          {providers && providers.length > 0 ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                disabled={Boolean(disabled || isTurnActive)}
-                aria-label={`Change AI provider and model. Current: ${activeProviderLabel} · ${activeModelLabel || "default"}`}
-                data-testid="ai-header-provider-switcher"
-                className={cn(SIDEBAR_CHIP_CLASS, "max-w-[132px] truncate disabled:opacity-60")}
-              >
-                <span className="truncate">{activeProviderLabel} · {activeModelLabel || "default"}</span>
-                <ChevronDown className="size-2.5 shrink-0 opacity-60" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="max-h-[min(70vh,28rem)] w-[220px] overflow-y-auto" positionerClassName={floatingLayerZ}>
-                <ProviderSettingsMenu
-                  providers={providers}
-                  activeProviderId={activeProviderId}
-                  activeProviderLabel={activeProviderLabel}
-                  activeModelLabel={activeModelLabel}
-                  activeEffort={activeEffort}
-                  verboseEnabled={verboseEnabled}
-                  onProviderChange={onProviderChange}
-                  onModelChange={onModelChange}
-                  onEffortChange={onEffortChange}
-                  onVerboseChange={onVerboseChange}
-                  pinnedCompanionModels={pinnedCompanionModels}
-                  onTogglePinnedCompanionModel={onTogglePinnedCompanionModel}
-                />
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </div>
-      ) : null}
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           ref={scrollRef}
           className={cn(
             "minimal-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-3.5 py-4",
-            mobile && "px-4 pb-3"
+            mobile && "px-3 pb-3"
           )}
           style={{ gap: "var(--chat-message-gap)" }}
           onScroll={handleTranscriptScroll}
@@ -2232,7 +2289,7 @@ function AiConversation({
         ) : null}
       </div>
 
-      <div className={cn("shrink-0 px-3 pb-3", mobile && "border-t border-border px-3 pb-3 pt-1.5")}>
+      <div className={cn("shrink-0 px-3 pb-3", mobile && "border-t border-border px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5")}>
         <input
           ref={fileInputRef}
           type="file"
@@ -2249,12 +2306,12 @@ function AiConversation({
           className={cn(
             "border bg-[color:var(--surface)]",
             isTurnActive ? "border-[color:var(--accent)]/45" : "border-border",
-            mobile ? "rounded px-3 py-2" : "rounded px-3 py-2.5"
+            mobile ? "rounded-lg px-1.5 py-1" : "rounded px-3 py-2.5"
           )}
           data-testid="ai-composer"
           data-turn-active={isTurnActive ? "true" : "false"}
         >
-          {pinnedCompanionModels.length > 0 ? (
+          {!mobile && pinnedCompanionModels.length > 0 ? (
             <div className="mb-1.5 flex min-w-0 gap-1 overflow-x-auto pb-0.5" aria-label="Pinned Companion models" data-testid="ai-pinned-models">
               {pinnedCompanionModels.map((pin) => {
                 const selected = activeProviderId === pin.providerId && activeModelLabel === pin.model && (activeEffort ?? "") === pin.effort;
@@ -2361,12 +2418,12 @@ function AiConversation({
               ))}
             </div>
           ) : null}
-          <div className={cn("flex items-end gap-2", !mobile && "mt-2")}>
+          <div className={cn("flex items-end", mobile ? "gap-1" : "mt-2 gap-2")}>
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="shrink-0 rounded-md"
+              className={cn("shrink-0 rounded-md", mobile && "size-11")}
               aria-label="Attach file"
               disabled={composerLocked}
               onClick={() => fileInputRef.current?.click()}
@@ -2419,11 +2476,12 @@ function AiConversation({
                   disabled={composerLocked || isTurnActive || Boolean(composerDraft.trim())}
                   aria-label="Quick prompts"
                   title={composerDraft.trim() ? "Clear the composer to use a quick prompt" : undefined}
-                  className={cn("flex min-w-0 max-w-[132px] items-center gap-1 rounded border border-border bg-secondary px-2 text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60", mobile ? "min-h-11 shrink" : "min-h-6 shrink-0")}
+                  className={cn("flex min-w-0 max-w-[132px] items-center gap-1 rounded border border-border bg-secondary px-2 text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60", mobile ? "size-11 shrink-0 justify-center border-transparent bg-transparent px-0 text-muted-foreground" : "min-h-6 shrink-0")}
                   data-testid="ai-quick-prompts"
                 >
-                  <span className="truncate text-[11px]">{quickPrompts.find(item => item.enabled && item.label.trim() && item.prompt.trim())?.label}</span>
-                  <ChevronDown className="size-2.5 shrink-0 opacity-60" />
+                  {mobile ? <Zap className="size-4 shrink-0" aria-hidden="true" /> : null}
+                  <span className={mobile ? "sr-only" : "truncate text-[11px]"}>{quickPrompts.find(item => item.enabled && item.label.trim() && item.prompt.trim())?.label}</span>
+                  {mobile ? null : <ChevronDown className="size-2.5 shrink-0 opacity-60" />}
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" side="top" className="max-w-[240px]" positionerClassName={floatingLayerZ}>
                   {quickPrompts.filter(item => item.enabled && item.label.trim() && item.prompt.trim()).map(item => (
@@ -2462,13 +2520,6 @@ function AiConversation({
               </Button>
             )}
           </div>
-          {mobile && (isTurnActive || isAttaching) ? (
-            <div className="mt-1.5 flex min-w-0 items-center gap-2">
-              <span className={cn("shrink-0 text-[10px]", isTurnActive ? "text-[color:var(--accent)]" : "text-muted-foreground")}>
-                {isTurnActive ? "Working…" : "Attaching…"}
-              </span>
-            </div>
-          ) : null}
           {attachmentError ? (
             <p className="mt-1.5 text-[11px] text-destructive">{attachmentError}</p>
           ) : null}

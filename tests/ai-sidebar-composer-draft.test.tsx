@@ -188,6 +188,30 @@ describe("Companion composer local draft", () => {
     expect(chip.textContent).toContain("Codex · gpt-5.4");
   });
 
+  // SN-406: mobile keeps one header row; pins and toggles live in its menus.
+  it("moves mobile pinned models and Keep into header menus, leaving the composer clear", async () => {
+    const onPinnedCompanionModelSelect = jest.fn();
+    const onKeepConversationChange = jest.fn();
+    const pin = { providerId: "codex", model: "gpt-6-sol", effort: "high" };
+    renderCompanion({
+      mobile: true,
+      providers: [{ id: "codex", name: "Codex", models: ["gpt-6-sol", "gpt-6-luna"] }],
+      activeProviderId: "codex",
+      activeModelLabel: "gpt-6-luna",
+      pinnedCompanionModels: [pin],
+      onPinnedCompanionModelSelect,
+      onKeepConversationChange,
+    });
+    expect(screen.queryByTestId("ai-pinned-model")).toBeNull();
+    expect(screen.queryByTestId("ai-composer-provider-switcher")).toBeNull();
+    fireEvent.click(screen.getByTestId("ai-header-provider-switcher"));
+    fireEvent.click(await screen.findByTestId("ai-pinned-model"));
+    expect(onPinnedCompanionModelSelect).toHaveBeenCalledWith(pin);
+    fireEvent.click(screen.getByTestId("ai-mobile-more"));
+    fireEvent.click(await screen.findByTestId("companion-keep-toggle-mobile"));
+    expect(onKeepConversationChange).toHaveBeenCalledWith(true);
+  });
+
   it("keeps typing local and submits the current prompt text", () => {
     const onSubmit = jest.fn();
     renderCompanion({ onSubmit });

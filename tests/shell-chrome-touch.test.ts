@@ -62,7 +62,7 @@ describe("shell chrome touch + a11y (SN-289)", () => {
 
   it("gives Companion mobile header controls 44px targets and accessible names", () => {
     expect(companionSrc).toContain('data-testid="ai-settings-mobile"');
-    expect(companionSrc).toContain('aria-label="Companion settings"');
+    expect(companionSrc).toContain('aria-label="More Companion options"');
     expect(companionSrc).toContain('aria-label="Close Companion"');
     expect(companionSrc).toContain("size-11 shrink-0");
     expect(companionSrc).toContain('mobile ? "min-h-11 min-w-0 gap-1 px-3"');
