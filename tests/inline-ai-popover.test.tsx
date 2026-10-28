@@ -3,7 +3,8 @@ import * as React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { InlineAiPopover } from "@/components/inline-ai-popover";
-import { invokeInlineAi, type InlineAiRelayObserver, type InlineAiRelayRequest } from "@/lib/inline-ai";
+import { EXPLAIN_STYLE_INSTRUCTION, invokeInlineAi, type InlineAiRelayObserver, type InlineAiRelayRequest } from "@/lib/inline-ai";
+const EXPLAIN_PROMPT = `${EXPLAIN_STYLE_INSTRUCTION} Apply this to the text below.`;
 import { streamJupyterFastLanePrompt } from "@/lib/api/jupyter";
 // SN-362: Ask must never open the parallel fast-lane session.
 jest.mock("@/lib/api/jupyter", () => ({ streamJupyterFastLanePrompt: jest.fn() }));
@@ -28,7 +29,7 @@ it("defaults to Fast, relays the selection with surrounding page text, and mirro
   fireEvent.click(screen.getByRole("button", { name: "Explain" }));
   expect(onAsk).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("status")).toHaveTextContent("Thinking");
-  expect(onAsk).toHaveBeenCalledWith({ question: "Explain this text.", context, speed: "fast", edit: false }, expect.any(Object));
+  expect(onAsk).toHaveBeenCalledWith({ question: EXPLAIN_PROMPT, context, speed: "fast", edit: false }, expect.any(Object));
   act(() => onAsk.mock.calls[0][1].onText("First"));
   expect(screen.getByText("First")).toBeVisible();
   act(() => onAsk.mock.calls[0][1].onText("First answer"));
@@ -89,7 +90,7 @@ it("applies Edit to an auto-started Explain turn and leaves custom text for manu
   act(() => invokeInlineAi({ context, x: 10, y: 10, applyEdit }));
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   fireEvent.click(screen.getByRole("button", { name: "Explain" }));
-  expect(onAsk.mock.calls[0][0]).toEqual({ question: "Explain this text.", context, speed: "fast", edit: true });
+  expect(onAsk.mock.calls[0][0]).toEqual({ question: EXPLAIN_PROMPT, context, speed: "fast", edit: true });
   act(() => onAsk.mock.calls[0][1].onDone("Edited"));
   expect(await screen.findByText("Inserted into the page.")).toBeVisible();
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "Custom question" } });
@@ -162,7 +163,7 @@ it("offers PDF Record answer with the original quote after a relayed answer", ()
   fireEvent.click(screen.getByRole("button", { name: "Explain" }));
   act(() => onAsk.mock.calls[0][1].onDone("An AI explanation"));
   fireEvent.click(screen.getByRole("button", { name: "Record answer" }));
-  expect(recorded).toEqual([expect.objectContaining({ source: pdfRecord.source, question: "Explain this text.", answer: "An AI explanation", quick: true })]);
+  expect(recorded).toEqual([expect.objectContaining({ source: pdfRecord.source, question: EXPLAIN_PROMPT, answer: "An AI explanation", quick: true })]);
   window.removeEventListener("smart-notes-pdf-record", listener);
 });
 

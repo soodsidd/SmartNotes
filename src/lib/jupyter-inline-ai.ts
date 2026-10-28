@@ -2,6 +2,7 @@ import type {
   JupyterFocusSelection,
   JupyterFocusState,
 } from "@/lib/jupyter-focus";
+import { EXPLAIN_STYLE_INSTRUCTION } from "@/lib/inline-ai";
 
 export type JupyterInlineAiActionId =
   | "explain"
@@ -270,7 +271,7 @@ export function buildJupyterInlineAiPrompt(
   const comment = findJupyterNaturalLanguageComment(focus);
   switch (action) {
     case "explain":
-      return "Explain the selected code concisely in plain text. Do not modify or rewrite it.";
+      return `${EXPLAIN_STYLE_INSTRUCTION} Apply this to the selected code; do not modify or rewrite it.`;
     case "ask":
       return `Answer this question about the current Jupyter context concisely in plain text: ${question.trim()}`;
     case "fix": {

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { Crop, FileImage, Highlighter, MessageSquarePlus, NotebookPen, Sparkles, X } from "lucide-react";
-import { parseInlineAiContext, type InlineAiInvocation, type InlineAiRelayObserver, type InlineAiRelayRequest, type InlineAiSpeed } from "@/lib/inline-ai";
+import { EXPLAIN_STYLE_INSTRUCTION, parseInlineAiContext, type InlineAiInvocation, type InlineAiRelayObserver, type InlineAiRelayRequest, type InlineAiSpeed } from "@/lib/inline-ai";
 import { invokePdfRecord } from "@/components/pdf-record-panel";
 
 export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
@@ -123,7 +123,7 @@ export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
         <span className="inline-ai-target">{invocation.context.target}</span>
         <p className="inline-ai-helper">Uses full page text and table context. Images, ink, and linked files are not read.</p>
         <blockquote>{invocation.context.text || "This target has no text yet."}</blockquote>
-        <div className="inline-ai-chips">{["Explain", "Summarize"].map(label => <button key={label} disabled={working} onClick={() => { const prompt = `${label} this text.`; setQuestion(prompt); ask(prompt); }}>{label}</button>)}{invocation.pdfRecord && <button onClick={() => invokePdfRecord({ ...invocation.pdfRecord!, quick: true })}>Record</button>}</div>
+        <div className="inline-ai-chips">{["Explain", "Summarize"].map(label => <button key={label} disabled={working} onClick={() => { const prompt = label === "Explain" ? `${EXPLAIN_STYLE_INSTRUCTION} Apply this to the text below.` : `${label} this text.`; setQuestion(prompt); ask(prompt); }}>{label}</button>)}{invocation.pdfRecord && <button onClick={() => invokePdfRecord({ ...invocation.pdfRecord!, quick: true })}>Record</button>}</div>
         <div className="inline-ai-chips" role="group" aria-label="Companion turn mode">
           {(["fast", "slow"] as const).map(value => <button key={value} type="button" aria-pressed={speed === value} disabled={working} onClick={() => setSpeed(value)}>{value === "fast" ? "Fast" : "Slow"}</button>)}
           {invocation.applyEdit && <button type="button" aria-pressed={edit} disabled={working} onClick={() => setEdit(value => !value)}>Edit</button>}

@@ -1,5 +1,18 @@
 /** Shared, text-only capture contract. Frames supply data, never host commands. */
 export const INLINE_AI_TEXT_LIMIT = 16000;
+
+/**
+ * Owner preference: every "Explain" entry point in the app answers in the
+ * same simple, first-principles, analogy-driven style ("the way Richard
+ * Feynman would explain it"). The Ask Companion popover chip (text, design,
+ * PDF, and app surfaces) and the Jupyter inline toolbar's Explain action both
+ * build their prompt from this exact instruction so Explain behaves
+ * identically everywhere, not just in one surface.
+ */
+export const EXPLAIN_STYLE_INSTRUCTION =
+  "Explain it the way Richard Feynman would: use plain, everyday language, avoid unexplained jargon, " +
+  "build the idea up from first principles, and ground it with a simple, concrete analogy or example. " +
+  "Keep the explanation clear and concise.";
 export type InlineAiSurface = "text" | "design" | "pdf" | "app" | "jupyter";
 export interface InlineAiContext {
   surface: InlineAiSurface;
