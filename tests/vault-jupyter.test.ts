@@ -69,9 +69,10 @@ describe("jupyter note vault handling (SN-101)", () => {
 
       const notebookPath = path.join(folder, JUPYTER_NOTEBOOK_FILE_NAME);
       const raw = await fs.readFile(notebookPath, "utf8");
-      const parsed = JSON.parse(raw) as { nbformat?: number; cells?: unknown[] };
+      const parsed = JSON.parse(raw) as { nbformat?: number; cells?: unknown[]; metadata?: { language_info?: { name?: string; mimetype?: string } } };
       expect(parsed.nbformat).toBe(4);
       expect(Array.isArray(parsed.cells)).toBe(true);
+      expect(parsed.metadata?.language_info).toMatchObject({ name: "python", mimetype: "text/x-python" });
     });
   });
 

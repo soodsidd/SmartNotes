@@ -25,6 +25,7 @@ const WORKSPACE_TOOLS = new Set([
   "workspace_source_read",
   "workspace_source_create",
   "workspace_source_edit",
+  "workspace_source_delete",
   "workspace_annotations_get",
   "workspace_annotations_put",
   // SN-359 capability-scoped notebook cell tools (/api/workspace/notebook).
@@ -131,6 +132,9 @@ function workspaceToolRequest(tool, args, baseUrl) {
       method: tool === "workspace_source_create" ? "POST" : "PUT",
       body: input,
     };
+  }
+  if (tool === "workspace_source_delete") {
+    return { endpoint: `${baseUrl}/api/workspace/source`, method: "DELETE", body: input };
   }
   if (tool === "workspace_notebook_context") {
     const query = new URLSearchParams({

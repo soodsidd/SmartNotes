@@ -18,6 +18,7 @@ import {
 import { applyKeyNoteFlag, isKeyNoteFlag } from "@/lib/key-note";
 import { applyPageLinesMetadata, normalizePageLines } from "@/lib/page-lines";
 import { applyMainFlowWidthMetadata, normalizeMainFlowWidth } from "@/lib/main-flow-width";
+import { withNotebookLanguageDefault } from "@/lib/notebook-language";
 import type { FrontmatterData, FrontmatterValue, NoteType, VaultNotebook, VaultPageDocument, VaultPageSummary } from "./types";
 import { deletePageVersions, movePageVersions } from "./versions";
 import { SPREADSHEET_SIDECAR_EXTENSION, writeSpreadsheetWorkbook } from "./spreadsheet";
@@ -166,7 +167,7 @@ function emptyNotebookJson(): string {
   return JSON.stringify(
     {
       cells: [],
-      metadata: {},
+      metadata: withNotebookLanguageDefault({}),
       nbformat: 4,
       nbformat_minor: 5,
     },

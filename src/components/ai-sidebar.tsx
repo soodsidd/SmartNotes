@@ -62,6 +62,7 @@ import {
 } from "@/lib/companion-scroll";
 import { cn } from "@/lib/utils";
 import { CHAT_REMARK_MATH_OPTIONS, normalizeChatMath } from "@/lib/math-delimiters";
+import { inlineAiVisiblePrompt } from "@/lib/inline-ai";
 
 export interface AiSidebarMessage {
   id: string;
@@ -2183,7 +2184,7 @@ function AiConversation({
                       <div className="mb-1.5 text-right text-[11px] text-muted-foreground">You</div>
                       <div className="max-w-[88%] rounded-[var(--radius-lg)] border border-border bg-[color:color-mix(in_oklab,var(--accent)_12%,var(--surface))] px-3.5 py-3 text-[length:var(--chat-prose-size)] leading-[var(--chat-prose-leading)] text-foreground">
                         <div className="whitespace-pre-wrap break-words">
-                          {message.content || (message.isStreaming ? "…" : "")}
+                          {inlineAiVisiblePrompt(message.content) || (message.isStreaming ? "…" : "")}
                         </div>
                       </div>
                     </>

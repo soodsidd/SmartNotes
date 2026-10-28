@@ -147,6 +147,24 @@ describe("live Jupyter focus context (SN-217)", () => {
     expect(context).toContain("still target this note's notebook.ipynb");
   });
 
+  it("includes the active cell's live output in an ordinary sidebar turn", () => {
+    const focus = parseJupyterFocusMessage(bridgeMessage({
+      workspacePath: "notebook.ipynb",
+      content: {
+        activeCellSource: "import pandas",
+        activeCellSourceTruncated: false,
+        activeCellOutputs: [{ kind: "error", text: "ModuleNotFoundError: pandas", truncated: false }],
+        cells: [],
+        windowTruncated: false,
+      },
+    }), PAGE_PATH)!;
+    const context = buildSmartNotesOperatingContext({ title: "Analysis", path: PAGE_PATH, noteType: "jupyter", activeJupyterFocus: focus });
+    expect(context).toContain("Active cell's recent live execution output");
+    expect(context).toContain("ModuleNotFoundError: pandas");
+    expect(context).toContain('"cellId":"cell-stable-3"');
+    expect(context).toContain("never rerun to answer");
+  });
+
   it("updates to a different focused workspace file without inventing a notebook cell", () => {
     const focus = parseJupyterFocusMessage(bridgeMessage({
       workspacePath: "helpers/model.py",

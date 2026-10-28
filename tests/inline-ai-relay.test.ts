@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/react";
-import { inlineAiRelayPrompt, inlineAiTurnProvider } from "@/lib/inline-ai";
+import { inlineAiRelayPrompt, inlineAiTurnProvider, inlineAiVisiblePrompt } from "@/lib/inline-ai";
 import { applyInlineAiEditorAnswer } from "@/lib/inline-ai-edit";
 import { applyInlineAiRelayEvent, createInlineAiRelayMirror } from "@/lib/inline-ai-relay";
 import { mergeRestoredCompanionMessages } from "@/lib/ai-sidebar";
@@ -34,6 +34,13 @@ describe("SN-362 relay prompt", () => {
   });
   it("asks for insertable text only in Edit mode", () => {
     expect(inlineAiRelayPrompt("Rewrite", context, { edit: true })).toContain("Reply with only that text");
+  });
+  it("shows only the owner's question in the transcript while retaining full model context", () => {
+    const prompt = inlineAiRelayPrompt("How do I install pandas in this kernel?", context);
+    expect(inlineAiVisiblePrompt(prompt)).toBe("Ask Companion (Selection): How do I install pandas in this kernel?");
+    expect(prompt).toContain('"pageText":"Before the clause after"');
+    expect(inlineAiVisiblePrompt("A normal message")).toBe("A normal message");
+    expect(inlineAiVisiblePrompt("Ask Companion (Selection): incomplete")).toBe("Ask Companion (Selection): incomplete");
   });
 });
 

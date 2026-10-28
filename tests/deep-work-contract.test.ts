@@ -130,6 +130,8 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
     expect(context).toContain("operation=list");
     expect(context).toContain("workspace_source_list");
     expect(context).toContain("workspace_source_create");
+    expect(context).toContain("workspace_source_delete");
+    expect(context).toContain("explicit confirmation");
     expect(context).toContain("registered disk root are authoritative for the entire turn");
     expect(context).toContain("Vault page/tree/Jupyter-note APIs are outside this Deep Work turn");
     expect(context).toContain("jupyter_cell_* and jupyter_notebook_context are unavailable");
@@ -173,6 +175,27 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
     expect(notebookContext).toContain('"tool": "jupyter_cell_run"');
     expect(notebookContext).toContain('"path": "analysis.ipynb"');
     expect(notebookContext).not.toContain('"tool": "jupyter_notebook_context"');
+    const withLiveOutput = buildSmartNotesOperatingContext({
+      title: descriptor.projectName,
+      path: pagePath,
+      noteType: "jupyter",
+      projectWorkspace: { ...descriptor, capability: "dwc_test_capability" },
+      activeJupyterFocus: {
+        ...focus,
+        workspacePath: "analysis.ipynb",
+        documentKind: "notebook",
+        activeCellIndex: 0,
+        activeCellId: "code-1",
+        content: {
+          ...focus.content!,
+          activeCellOutputs: [{ kind: "error", text: "ModuleNotFoundError: pandas", truncated: false }],
+        },
+      },
+    });
+    expect(withLiveOutput).toContain("Active cell's recent live execution output");
+    expect(withLiveOutput).toContain("ModuleNotFoundError: pandas");
+    expect(withLiveOutput).toContain('"cellId":"code-1"');
+    expect(context).not.toContain("<untrusted-live-output>");
     const withoutSession = buildSmartNotesOperatingContext({
       title: descriptor.projectName,
       path: pagePath,

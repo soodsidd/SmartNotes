@@ -109,6 +109,22 @@ export function inlineAiRelayPrompt(question: string, context: InlineAiContext, 
     `Captured context (JSON):\n${JSON.stringify(context)}`;
 }
 
+/** Keep the captured context in turn history while showing only the owner's question in chat. */
+export function inlineAiVisiblePrompt(prompt: string): string {
+  const contextMarker = "Captured context (JSON):\n";
+  const contextIndex = prompt.lastIndexOf(contextMarker);
+  if (!prompt.startsWith("Ask Companion (") || contextIndex < 0) return prompt;
+  const separator = "\n\nAnswer about the captured selection or snippet below, using its surrounding page and table text. ";
+  const separatorIndex = prompt.indexOf(separator);
+  if (separatorIndex < 0 || separatorIndex > contextIndex) return prompt;
+  try {
+    if (!parseInlineAiContext(JSON.parse(prompt.slice(contextIndex + contextMarker.length)))) return prompt;
+  } catch {
+    return prompt;
+  }
+  return prompt.slice(0, separatorIndex);
+}
+
 export function invokeInlineAi(invocation: InlineAiInvocation): void {
   window.dispatchEvent(new CustomEvent("smart-notes-ask-companion", { detail: invocation }));
 }

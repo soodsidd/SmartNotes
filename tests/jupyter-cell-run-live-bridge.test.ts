@@ -24,8 +24,8 @@ interface FakeCell {
   type?: "code" | "markdown";
 }
 
-function fakeNotebook(path: string, disk: FakeCell[]) {
-  const document = { dirty: false };
+function fakeNotebook(path: string, disk: FakeCell[], metadata: Record<string, unknown> = {}) {
+  const document = { dirty: false, getMetadata: (key: string) => metadata[key] };
   const build = (cells: FakeCell[]) =>
     cells.map((cell) => {
       const state = { ...cell, outputs: [...cell.outputs] };
@@ -51,6 +51,7 @@ function fakeNotebook(path: string, disk: FakeCell[]) {
       const model = {
         id: state.id,
         type: state.type ?? "code",
+        mimeType: "text/plain",
         executionState: "idle",
         sharedModel,
         toJSON: () => ({ id: state.id, cell_type: state.type ?? "code", source: state.source, metadata: {}, outputs: state.outputs, execution_count: state.execution_count }),
@@ -64,6 +65,7 @@ function fakeNotebook(path: string, disk: FakeCell[]) {
   const content = {
     node,
     outerNode: scroller,
+    model: { cells: { forEach: (visit: (cell: { mimeType: string }) => void) => cells.forEach(({ model }) => visit(model)) } },
     activeCellIndex: 1,
     get activeCell() {
       return this.widgets[this.activeCellIndex] ?? null;
@@ -75,6 +77,7 @@ function fakeNotebook(path: string, disk: FakeCell[]) {
   const context = {
     path,
     model: document,
+    ready: Promise.resolve(),
     revert: jest.fn(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       cells = build(disk);
@@ -162,6 +165,17 @@ describe("SN-381 Companion cell runs in the open JupyterLab notebook", () => {
     window.dispatchEvent(new Event("pagehide"));
     delete (window as unknown as Record<string, unknown>).jupyterapp;
     jest.restoreAllMocks();
+  });
+
+  it("highlights metadata-less code without changing notebook metadata or overriding another kernel", async () => {
+    expect(lab.model(0).mimeType).toBe("text/x-python");
+    expect(lab.document.getMetadata("language_info")).toBeUndefined();
+    window.dispatchEvent(new Event("pagehide"));
+    lab = fakeNotebook("julia.ipynb", CELLS, { kernelspec: { name: "julia", language: "julia" } });
+    (window as unknown as Record<string, unknown>).jupyterapp = lab.app;
+    new Function(JUPYTER_FOCUS_BRIDGE_SOURCE)();
+    await settle();
+    expect(lab.model(0).mimeType).toBe("text/plain");
   });
 
   it("shows live output in the matching cell, then reloads saved outputs in place", async () => {

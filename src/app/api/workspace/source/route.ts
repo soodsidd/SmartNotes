@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   createWorkspaceSource,
+  deleteWorkspaceSource,
   listWorkspaceSources,
   readWorkspaceSource,
   writeWorkspaceSource,
@@ -63,6 +64,24 @@ export async function PUT(request: Request) {
     const workspace = workspaceRequestFromValue(body.workspace);
     return NextResponse.json(
       await writeWorkspaceSource(workspace, body.path, body.expectedRevision, body.edits)
+    );
+  } catch (error) {
+    const response = toErrorResponse(error);
+    return NextResponse.json(response.body, { status: response.status });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = (await request.json().catch(() => ({}))) as {
+      workspace?: unknown;
+      path?: unknown;
+      expectedRevision?: unknown;
+      confirmPath?: unknown;
+    };
+    const workspace = workspaceRequestFromValue(body.workspace);
+    return NextResponse.json(
+      await deleteWorkspaceSource(workspace, body.path, body.expectedRevision, body.confirmPath)
     );
   } catch (error) {
     const response = toErrorResponse(error);

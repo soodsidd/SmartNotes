@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   GET as getWorkspaceSource,
   POST as postWorkspaceSource,
+  DELETE as deleteWorkspaceSourceRoute,
 } from "@/app/api/workspace/source/route";
 import {
   issueWorkspaceCapability,
@@ -12,6 +13,7 @@ import {
 } from "@/server/jupyter/workspace-capability";
 import {
   createWorkspaceSource,
+  deleteWorkspaceSource,
   listWorkspaceSources,
   readWorkspaceSource,
   writeWorkspaceSource,
@@ -154,6 +156,35 @@ describe("SN-258 bounded workspace source and app-state collaboration", () => {
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
     }
+  });
+
+  it("deletes only a confirmed, revision-matched regular file in the bound workspace", async () => {
+    const file = "src/index.ts";
+    const original = await readWorkspaceSource(request(), file);
+    await expect(deleteWorkspaceSource(request(), file, original.revision, "other.py"))
+      .rejects.toMatchObject({ code: "WORKSPACE_DELETE_NOT_CONFIRMED", status: 403 });
+    await expect(deleteWorkspaceSource(request("read-only"), file, original.revision, file))
+      .rejects.toMatchObject({ code: "WORKSPACE_READ_ONLY", status: 403 });
+    await fs.writeFile(path.join(root, file), "changed\n", "utf8");
+    await expect(deleteWorkspaceSource(request(), file, original.revision, file))
+      .rejects.toMatchObject({ code: "WORKSPACE_REVISION_CONFLICT", status: 409 });
+    await expect(fs.readFile(path.join(root, file), "utf8")).resolves.toBe("changed\n");
+    const current = await readWorkspaceSource(request(), file);
+    await expect(deleteWorkspaceSource(request(), "src", current.revision, "src"))
+      .rejects.toMatchObject({ code: "WORKSPACE_NOT_FILE" });
+    await expect(deleteWorkspaceSource(request(), "../outside", current.revision, "../outside"))
+      .rejects.toMatchObject({ code: "WORKSPACE_PATH_BLOCKED" });
+
+    const resolved = await resolveProjectWorkspace(request());
+    const capability = issueWorkspaceCapability({ ...request(), projectName: "LeRobot" }, resolved).capability;
+    const response = await deleteWorkspaceSourceRoute(new Request("http://smart-notes.test/api/workspace/source", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspace: capability, path: file, expectedRevision: current.revision, confirmPath: file }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ path: file, deleted: true });
+    await expect(fs.stat(path.join(root, file))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("binds API listing/read/create to the issued disk root, never a similarly named vault page", async () => {

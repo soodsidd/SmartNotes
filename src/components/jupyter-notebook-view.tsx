@@ -143,6 +143,7 @@ export interface JupyterNotebookViewProps {
   onFollowCompanionChange?: (enabled: boolean) => void;
   /** SN-401: live shell commands Companion ran this session (read-only panel). */
   companionCommands?: readonly CompanionCommandEntry[];
+  companionEditing?: boolean;
   onClearCompanionCommands?: () => void;
 }
 
@@ -264,6 +265,7 @@ export function JupyterNotebookView({
   followCompanion,
   onFollowCompanionChange,
   companionCommands,
+  companionEditing,
   onClearCompanionCommands,
 }: JupyterNotebookViewProps) {
   const [state, setState] = React.useState<ViewState>({ phase: "launching" });
@@ -1391,6 +1393,18 @@ export function JupyterNotebookView({
               })
             }
           />
+        ) : null}
+        {state.phase === "ready" && isActive && companionEditing ? (
+          <div
+            data-testid="jupyter-companion-editing-frame"
+            role="status"
+            aria-label="Companion editing Jupyter workspace"
+            className="pointer-events-none absolute inset-0 z-10 rounded-sm ring-4 ring-inset ring-[color:var(--accent)]"
+          >
+            <span className="absolute right-3 top-3 rounded-md bg-[color:var(--accent)] px-2.5 py-1 text-xs font-medium text-white shadow-md">
+              Companion editing
+            </span>
+          </div>
         ) : null}
       </div>
       {isActive && inlineSurface && typeof document !== "undefined" ? createPortal(

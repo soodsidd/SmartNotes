@@ -6,6 +6,7 @@ import {
   normalizeDeepWorkRelativePath,
   workspacePathBlockReason,
 } from "@/lib/deep-work";
+import { withNotebookLanguageDefault } from "@/lib/notebook-language";
 import {
   atomicReplaceFile,
   isUtf16Boundary,
@@ -376,72 +377,21 @@ export function announceWorkspaceSourceWrite(
   });
 }
 
-/** Python language info JupyterLab needs to pick a Python editor mode (syntax highlighting). */
-const DEFAULT_PYTHON_LANGUAGE_INFO = {
-  codemirror_mode: { name: "ipython", version: 3 },
-  file_extension: ".py",
-  mimetype: "text/x-python",
-  name: "python",
-  nbconvert_exporter: "python",
-  pygments_lexer: "ipython3",
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-/**
- * A notebook created without kernelspec/language_info opens in JupyterLab as
- * plain text: no syntax highlighting, and spellcheck underlines every code
- * token. Borrow both from the newest sibling notebook that declares a kernel
- * (same folder first, then the workspace root), else default the language to
- * Python and leave the kernel for Lab to choose. Explicit metadata wins.
- */
-async function notebookMetadataDefaults(
-  absolutePath: string,
-  realRoot: string
-): Promise<{ kernelspec?: Record<string, unknown>; language_info: Record<string, unknown> }> {
-  const folders = [...new Set([path.dirname(absolutePath), realRoot])];
-  for (const folder of folders) {
-    const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => []);
-    const candidates: Array<{ file: string; mtime: number }> = [];
-    for (const entry of entries) {
-      if (!entry.isFile() || entry.name.startsWith(".") || path.extname(entry.name).toLowerCase() !== ".ipynb") continue;
-      const file = path.join(folder, entry.name);
-      if (file === absolutePath) continue;
-      const stat = await fs.stat(file).catch(() => null);
-      if (stat && stat.size <= WORKSPACE_FILE_MAX_BYTES) candidates.push({ file, mtime: stat.mtimeMs });
-    }
-    candidates.sort((a, b) => b.mtime - a.mtime);
-    for (const { file } of candidates.slice(0, 20)) {
-      try {
-        const metadata = (JSON.parse(await fs.readFile(file, "utf8")) as { metadata?: unknown }).metadata;
-        if (!isRecord(metadata) || !isRecord(metadata.kernelspec) || typeof metadata.kernelspec.name !== "string") continue;
-        return {
-          kernelspec: metadata.kernelspec,
-          language_info: isRecord(metadata.language_info) ? metadata.language_info : DEFAULT_PYTHON_LANGUAGE_INFO,
-        };
-      } catch {
-        // Unreadable or invalid sibling: try the next one.
-      }
-    }
-  }
-  return { language_info: DEFAULT_PYTHON_LANGUAGE_INFO };
-}
-
-async function withNotebookLanguageDefaults(bytes: Buffer, absolutePath: string, realRoot: string): Promise<Buffer> {
+function withNotebookLanguageDefaults(bytes: Buffer): Buffer {
   const notebook = JSON.parse(bytes.toString("utf8")) as { metadata?: unknown };
   const metadata = isRecord(notebook.metadata) ? notebook.metadata : {};
-  if (isRecord(metadata.kernelspec) && isRecord(metadata.language_info)) return bytes;
-  const defaults = await notebookMetadataDefaults(absolutePath, realRoot);
-  notebook.metadata = {
-    ...metadata,
-    ...(isRecord(metadata.kernelspec) || !defaults.kernelspec ? {} : { kernelspec: defaults.kernelspec }),
-    ...(isRecord(metadata.language_info) ? {} : { language_info: defaults.language_info }),
-  };
+  const nextMetadata = withNotebookLanguageDefault(metadata);
+  if (nextMetadata === metadata) return bytes;
+  notebook.metadata = nextMetadata;
   validateWorkspaceNotebookDocument(notebook);
   const next = Buffer.from(`${JSON.stringify(notebook, null, 1)}\n`, "utf8");
-  if (next.length > WORKSPACE_CREATE_MAX_BYTES) return bytes;
+  if (next.length > WORKSPACE_CREATE_MAX_BYTES) {
+    throw new VaultError("WORKSPACE_CREATE_TOO_LARGE", `New workspace source may not exceed ${WORKSPACE_CREATE_MAX_BYTES} bytes.`, 413);
+  }
   return next;
 }
 
@@ -453,7 +403,7 @@ export async function createWorkspaceSource(
   const resolved = await resolveCreateTarget(request, relativePath);
   let bytes = validateCreateSource(resolved.relativePath, source);
   if (path.posix.extname(resolved.relativePath).toLowerCase() === ".ipynb") {
-    bytes = await withNotebookLanguageDefaults(bytes, resolved.absolutePath, resolved.workspace.realRoot);
+    bytes = withNotebookLanguageDefaults(bytes);
   }
   await createMissingDirectories(resolved.missingDirectories);
 
@@ -604,4 +554,39 @@ export async function writeWorkspaceSource(
   });
   announceWorkspaceSourceWrite(resolved.workspace.realRoot, written);
   return written;
+}
+
+/** Remove one confirmed, revision-matched regular file inside an editable workspace. */
+export async function deleteWorkspaceSource(
+  request: ProjectWorkspaceRequest,
+  relativePath: unknown,
+  expectedRevision: unknown,
+  confirmPath: unknown
+): Promise<{ path: string; deleted: true }> {
+  if (typeof expectedRevision !== "string" || !/^sha256:[a-f0-9]{64}$/.test(expectedRevision)) {
+    throw new VaultError("INVALID_WORKSPACE_REVISION", "A strong expectedRevision is required.");
+  }
+  const resolved = await resolveFile(request, relativePath);
+  if (resolved.workspace.accessMode !== "editable") {
+    throw new VaultError("WORKSPACE_READ_ONLY", "This workspace is read-only.", 403);
+  }
+  if (confirmPath !== resolved.relativePath) {
+    throw new VaultError("WORKSPACE_DELETE_NOT_CONFIRMED", "Confirm the exact workspace-relative file path before deleting it.", 403);
+  }
+  return withFileMutation(resolved.absolutePath, async () => {
+    // Revalidate after acquiring the mutation lock; a directory, link, or
+    // changed file must never be removed through a stale earlier read.
+    await resolveFile(request, resolved.relativePath);
+    const bytes = await fs.readFile(resolved.absolutePath);
+    decodeText(bytes);
+    if (revision(bytes) !== expectedRevision) {
+      throw new VaultError("WORKSPACE_REVISION_CONFLICT", "Workspace file changed after it was read.", 409);
+    }
+    const stat = await fs.lstat(resolved.absolutePath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink > 1) {
+      throw new VaultError("WORKSPACE_NOT_FILE", "Only a single regular workspace file can be deleted.", 403);
+    }
+    await fs.unlink(resolved.absolutePath);
+    return { path: resolved.relativePath, deleted: true as const };
+  });
 }

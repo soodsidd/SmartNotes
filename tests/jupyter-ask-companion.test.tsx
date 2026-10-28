@@ -147,6 +147,16 @@ describe("SN-363 Lab Ask Companion relay", () => {
     expect(sendJupyterFastLanePrompt).not.toHaveBeenCalled();
   });
 
+  it("highlights the Jupyter frame only while a Companion edit is active", async () => {
+    const view = render(<JupyterNotebookView pagePath={PAGE_PATH} title="Analysis" companionEditing={false} />);
+    await view.findByTestId("jupyter-frame");
+    expect(view.queryByTestId("jupyter-companion-editing-frame")).toBeNull();
+    view.rerender(<JupyterNotebookView pagePath={PAGE_PATH} title="Analysis" companionEditing />);
+    expect(view.getByTestId("jupyter-companion-editing-frame")).toHaveAttribute("aria-label", "Companion editing Jupyter workspace");
+    view.rerender(<JupyterNotebookView pagePath={PAGE_PATH} title="Analysis" companionEditing={false} />);
+    expect(view.queryByTestId("jupyter-companion-editing-frame")).toBeNull();
+  });
+
   it("opens the shared popover from the Lab chip and relays Fast, then Slow, with cell context", async () => {
     const { view, frame, onAsk } = await renderLab();
     postFromFrame(frame, focusEnvelope(focus()));

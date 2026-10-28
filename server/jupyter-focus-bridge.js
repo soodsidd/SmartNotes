@@ -868,9 +868,33 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
     scheduleReport(app);
   };
 
+  // Older metadata-less notebooks need a code editor mode before a kernel is
+  // connected. This is a view-only fallback; the notebook file is unchanged.
+  const applyLanguageFallback = (widget) => {
+    const notebook = widget && widget.content;
+    const context = widget && widget.context;
+    if (!notebook || !context) return;
+    Promise.resolve(context.ready).then(() => {
+      const metadata = context.model;
+      const read = (key) => metadata && typeof metadata.getMetadata === 'function'
+        ? metadata.getMetadata(key) : metadata && metadata.metadata && typeof metadata.metadata.get === 'function'
+          ? metadata.metadata.get(key) : null;
+      const info = read('language_info');
+      if (info && typeof info === 'object' && (info.name || info.mimetype || info.codemirror_mode)) return;
+      const kernel = read('kernelspec');
+      if (kernel && typeof kernel === 'object' && kernel.language !== 'python') return;
+      const cells = notebook.model && notebook.model.cells;
+      if (!cells || typeof cells.forEach !== 'function') return;
+      cells.forEach((cell) => {
+        if (cell.type === 'code' && cell.mimeType === 'text/plain') cell.mimeType = 'text/x-python';
+      });
+    }).catch(() => {});
+  };
+
   const bindCurrentWidget = (app) => {
     disposeCurrent();
     const parts = currentParts(app);
+    if (parts.isNotebook) applyLanguageFallback(parts.widget);
     const content = parts.content;
     const context = parts.widget && parts.widget.context;
     connect(context && context.pathChanged, () => scheduleReport(app));

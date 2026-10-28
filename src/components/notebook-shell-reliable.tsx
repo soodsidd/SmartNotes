@@ -1237,6 +1237,12 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
   const pendingWorkspaceRunsRef = React.useRef<Map<string, import("@/server/jupyter/cell-run").JupyterCellRunPayload>>(new Map());
   // SN-401: shell commands Companion ran in turns this tab started or watches.
   const [companionCommands, setCompanionCommands] = React.useState<CompanionCommandEntry[]>([]);
+  const companionFrameActionsRef = React.useRef<Set<string>>(new Set());
+  const [companionEditingFrame, setCompanionEditingFrame] = React.useState(false);
+  React.useEffect(() => {
+    companionFrameActionsRef.current.clear();
+    setCompanionEditingFrame(false);
+  }, [workspaceSession?.rootPath]);
   const [activeJupyterFocus, setActiveJupyterFocus] = React.useState<JupyterFocusState | null>(null);
   const activeJupyterFocusRef = React.useRef<JupyterFocusState | null>(null);
   const workspaceSessionRef = React.useRef<JupyterSessionView | null>(null);
@@ -2573,7 +2579,11 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         socket.emit("chat_resume", { turn_id: turnId, last_seq: activeTurnLastSeqRef.current });
       }
     };
-    const handleSocketDisconnect = () => setSyncConnectionState("disconnected");
+    const handleSocketDisconnect = () => {
+      setSyncConnectionState("disconnected");
+      companionFrameActionsRef.current.clear();
+      setCompanionEditingFrame(false);
+    };
     const handleSocketConnectError = () => setSyncConnectionState("disconnected");
 
     // SN-132: finalize the observed turn on a terminal event — clear local
@@ -2988,6 +2998,20 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       if (followTarget) setWorkspaceFollow((previous) => ({ ...followTarget, nonce: (previous?.nonce ?? 0) + 1 }));
     };
 
+    const handleWorkspaceCompanionAction = (event: {
+      id?: unknown;
+      rootPath?: unknown;
+      phase?: unknown;
+    }) => {
+      const current = draftRef.current;
+      if (!activeDeepWorkWorkspace(projectWorkspaceRef.current, current?.path ?? null) && !activeBoundWorkspaceRef.current) return;
+      if (!sameDeepWorkRootPath(event?.rootPath, workspaceSessionRef.current?.rootPath)) return;
+      if (typeof event.id !== "string" || (event.phase !== "start" && event.phase !== "finish")) return;
+      if (event.phase === "start") companionFrameActionsRef.current.add(event.id);
+      else companionFrameActionsRef.current.delete(event.id);
+      setCompanionEditingFrame(companionFrameActionsRef.current.size > 0);
+    };
+
     socket.on("connect", handleSocketConnect);
     socket.on("disconnect", handleSocketDisconnect);
     socket.on("connect_error", handleSocketConnectError);
@@ -2995,6 +3019,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     socket.on("jupyter_notebook_updated", handleJupyterNotebookUpdated);
     socket.on("workspace_source_updated", handleWorkspaceSourceUpdated);
     socket.on("workspace_cell_run_updated", handleWorkspaceCellRunUpdated);
+    socket.on("workspace_companion_action", handleWorkspaceCompanionAction);
     // SN-377: Jupyter cell wakes. Reconnect resyncs so a missed event never leaves a stale "Waiting for cell...".
     const handleCellWake = (wake: CompanionCellWake) => cellWakeEventRef.current?.(wake);
     const handleCellWakeResync = () => cellWakeSyncRef.current?.();
@@ -3010,6 +3035,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       socket.off("jupyter_notebook_updated", handleJupyterNotebookUpdated);
       socket.off("workspace_source_updated", handleWorkspaceSourceUpdated);
       socket.off("workspace_cell_run_updated", handleWorkspaceCellRunUpdated);
+      socket.off("workspace_companion_action", handleWorkspaceCompanionAction);
       socket.off("companion_cell_wake", handleCellWake);
       socket.off("connect", handleCellWakeResync);
       socket.disconnect();
@@ -8024,6 +8050,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                         followCompanion={followCompanion}
                         onFollowCompanionChange={visible && activeProjectWorkspace ? setFollowCompanion : undefined}
                         companionCommands={visible && activeProjectWorkspace ? companionCommands : undefined}
+                        companionEditing={visible && Boolean(activeProjectWorkspace) && companionEditingFrame}
                         onClearCompanionCommands={() => setCompanionCommands([])}
                         onAskInCompanion={visible ? handleJupyterAskInCompanion : undefined}
                       />

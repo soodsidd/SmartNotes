@@ -349,13 +349,27 @@ app.prepare().then(async () => {
       method: 'POST',
       body: { tool, args },
     };
-    const response = await fetch(endpoint, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const payload = await response.json();
-    return { ok: response.ok, status: response.status, ...payload };
+    const record = workspaceRequest && typeof args?.workspace === 'string'
+      ? global.__smartNotesDeepWorkCapabilities__?.get(args.workspace)
+      : null;
+    const isMutation = tool === 'workspace_source_create' || tool === 'workspace_source_edit'
+      || tool === 'workspace_source_delete' || tool.startsWith('workspace_cell_')
+      || tool === 'jupyter_cell_run';
+    const actionId = record?.accessMode === 'editable' && record.expiresAt > Date.now() && isMutation
+      ? crypto.randomUUID() : null;
+    const action = actionId ? { id: actionId, rootPath: record.realRoot, path: args.path, tool } : null;
+    if (action) io.emit('workspace_companion_action', { ...action, phase: 'start' });
+    try {
+      const response = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const payload = await response.json();
+      return { ok: response.ok, status: response.status, ...payload };
+    } finally {
+      if (action) io.emit('workspace_companion_action', { ...action, phase: 'finish' });
+    }
   }
 
   async function resolveDeepWorkTurn(capability) {
