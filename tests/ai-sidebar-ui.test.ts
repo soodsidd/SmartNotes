@@ -103,7 +103,7 @@ describe("Chat chip font size", () => {
     expect(SIDEBAR_SRC).toContain('"ai-scope-control"');
     expect(SIDEBAR_SRC).toContain('"ai-scope-control-mobile"');
     expect(SIDEBAR_SRC).toContain("onScopeChange");
-    expect(SIDEBAR_SRC).toContain("{scopeLabel} · {tokenLabel}");
+    expect(SIDEBAR_SRC).toContain("{mobile ? scopeLabel : `${scopeLabel} · ${tokenLabel}`}");
     expect(SIDEBAR_SRC).toContain("function AiScopeControl");
   });
 });
@@ -315,7 +315,7 @@ describe("Companion composer polish (SN-69)", () => {
 
   it("uses 44px minimum mobile touch targets for composer input and send/stop controls", () => {
     expect(SIDEBAR_SRC).toContain("min-h-11");
-    expect(SIDEBAR_SRC).toContain('mobile && "size-11 shrink-0"');
+    expect(SIDEBAR_SRC).toContain('mobile && "col-start-4 row-start-2 size-11 shrink-0"');
     expect(SIDEBAR_SRC).toContain('data-testid="ai-send-btn"');
     expect(SIDEBAR_SRC).toContain('data-testid="ai-stop-btn"');
   });
@@ -377,10 +377,10 @@ describe("Companion mobile settings and composer (SN-75)", () => {
     expect(SIDEBAR_SRC).toContain("onSystemPromptSave={onSystemPromptSave}");
   });
 
-  it("keeps the mobile composer textarea on the full input row", () => {
+  it("gives the mobile composer a multiline input row above its actions", () => {
     expect(SIDEBAR_SRC).toContain('{!mobile ? <div className="flex-1" /> : null}');
     expect(SIDEBAR_SRC).toContain('className="shrink-0 rounded-md"');
-    expect(SIDEBAR_SRC).toContain("min-h-11 flex-1");
+    expect(SIDEBAR_SRC).toContain("col-span-4 row-start-1 min-h-[4.75rem]");
   });
 });
 

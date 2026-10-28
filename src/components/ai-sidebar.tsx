@@ -345,7 +345,7 @@ function ComposerTextarea({
       data-testid={dataTestId}
       className={cn(
         "companion-composer-input w-full resize-none border-0 bg-transparent p-0 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60",
-        mobile ? "min-h-11 flex-1 text-[14px] leading-[1.45]" : "min-h-10 text-[13px] leading-[1.45]"
+        mobile ? "col-span-4 row-start-1 min-h-[4.75rem] px-1 py-1 text-[15px] leading-[1.5]" : "min-h-10 text-[13px] leading-[1.45]"
       )}
       style={{ maxHeight }}
     />
@@ -550,13 +550,13 @@ function AiScopeControl({
       <span
         className={cn(
           SIDEBAR_SCOPE_CHIP_CLASS,
-          mobile ? "min-h-11 min-w-0 flex-1 px-3" : "max-w-[min(100%,11rem)] truncate"
+          mobile ? "min-h-11 min-w-0 flex-1 rounded-lg px-2.5" : "max-w-[min(100%,11rem)] truncate"
         )}
         data-testid={mobile ? "ai-scope-control-mobile" : "ai-scope-control"}
         title={chipTitle}
       >
         <span className="size-1.5 shrink-0 rounded-full bg-[color:var(--accent)]" />
-        <span className="truncate">{scopeLabel} · {tokenLabel}</span>
+        <span className="truncate">{mobile ? scopeLabel : `${scopeLabel} · ${tokenLabel}`}</span>
         {sharedTag}
       </span>
     );
@@ -567,7 +567,7 @@ function AiScopeControl({
       <DropdownMenuTrigger
         className={cn(
           SIDEBAR_SCOPE_CHIP_CLASS,
-          mobile ? "min-h-11 min-w-0 flex-1 px-3" : "max-w-[min(100%,11rem)] truncate"
+          mobile ? "min-h-11 min-w-0 flex-1 rounded-lg px-2.5" : "max-w-[min(100%,11rem)] truncate"
         )}
         data-testid={mobile ? "ai-scope-control-mobile" : "ai-scope-control"}
         title={chipTitle}
@@ -578,7 +578,7 @@ function AiScopeControl({
         }
       >
         <span className="size-1.5 shrink-0 rounded-full bg-[color:var(--accent)]" />
-        <span className="truncate">{scopeLabel} · {tokenLabel}</span>
+        <span className="truncate">{mobile ? scopeLabel : `${scopeLabel} · ${tokenLabel}`}</span>
         {sharedTag}
         <ChevronDown className="size-2.5 shrink-0 opacity-60" />
       </DropdownMenuTrigger>
@@ -1985,19 +1985,20 @@ function AiConversation({
       data-testid={mobile ? "mobile-ai-sheet" : "ai-sidebar"}
     >
       {mobile ? (
-        <div
-          className="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1"
-          data-testid="ai-mobile-header"
-        >
-          <AiScopeControl
-            scopeLabel={scopeLabel}
-            tokenLabel={tokenLabel}
-            scopeOptions={scopeOptions}
-            activeScope={activeScope}
-            onScopeChange={onScopeChange}
-            mobile
-            positionerClassName={floatingLayerZ}
-          />
+        <div className="shrink-0 border-b border-border bg-[color:var(--surface)]">
+          <div
+            className="flex items-center gap-1 px-2 py-1.5"
+            data-testid="ai-mobile-header"
+          >
+            <AiScopeControl
+              scopeLabel={scopeLabel}
+              tokenLabel={tokenLabel}
+              scopeOptions={scopeOptions}
+              activeScope={activeScope}
+              onScopeChange={onScopeChange}
+              mobile
+              positionerClassName={floatingLayerZ}
+            />
           {computerAccess ? (
             <span
               className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)]/16 text-[color:var(--accent)]"
@@ -2020,35 +2021,13 @@ function AiConversation({
                 aria-label={`Change AI provider and model. Current: ${activeProviderLabel} · ${activeModelLabel || "default"}`}
                 title={`${activeProviderLabel} · ${activeModelLabel || "default"}`}
                 data-testid="ai-header-provider-switcher"
-                className={cn(SIDEBAR_CHIP_CLASS, "min-h-11 min-w-0 max-w-[7.5rem] shrink px-2.5 disabled:opacity-60")}
+                className={cn(SIDEBAR_CHIP_CLASS, "min-h-11 min-w-0 max-w-[7rem] shrink rounded-lg px-2.5 disabled:opacity-60")}
               >
                 <span className="sr-only">{activeProviderLabel} · </span>
                 <span className="truncate">{activeModelLabel || "default"}</span>
                 <ChevronDown className="size-2.5 shrink-0 opacity-60" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="max-h-[min(70vh,28rem)] w-[220px] overflow-y-auto" positionerClassName={floatingLayerZ}>
-                {pinnedCompanionModels.length > 0 && onPinnedCompanionModelSelect ? (
-                  <>
-                    <div className="px-2 pt-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Pinned</div>
-                    {pinnedCompanionModels.map((pin) => {
-                      const selected = activeProviderId === pin.providerId && activeModelLabel === pin.model && (activeEffort ?? "") === pin.effort;
-                      const label = pin.model === "auto" || !pin.effort ? pin.model : `${pin.model} · ${pin.effort}`;
-                      return (
-                        <DropdownMenuItem
-                          key={`${pin.providerId}\u0000${pin.model}\u0000${pin.effort}`}
-                          className="text-xs"
-                          data-testid="ai-pinned-model"
-                          aria-label={`Use pinned ${pin.providerId} ${pin.model}${pin.effort ? ` ${pin.effort}` : ""}`}
-                          onClick={() => onPinnedCompanionModelSelect(pin)}
-                        >
-                          <Check className={cn("size-3", selected ? "opacity-100" : "opacity-0")} />
-                          {label}
-                        </DropdownMenuItem>
-                      );
-                    })}
-                    <DropdownMenuSeparator />
-                  </>
-                ) : null}
                 <ProviderSettingsMenu
                   providers={providers}
                   activeProviderId={activeProviderId}
@@ -2135,6 +2114,38 @@ function AiConversation({
           >
             <X className="size-4" />
           </Button>
+          </div>
+          {pinnedCompanionModels.length > 0 && onPinnedCompanionModelSelect ? (
+            <div
+              className="flex gap-1.5 px-2 pb-2"
+              aria-label="Pinned Companion models"
+              data-testid="ai-pinned-models"
+            >
+              {pinnedCompanionModels.map((pin) => {
+                const selected = activeProviderId === pin.providerId && activeModelLabel === pin.model && (activeEffort ?? "") === pin.effort;
+                return (
+                  <button
+                    key={`${pin.providerId}\u0000${pin.model}\u0000${pin.effort}`}
+                    type="button"
+                    data-testid="ai-pinned-model"
+                    aria-label={`Use pinned ${pin.providerId} ${pin.model}${pin.effort ? ` ${pin.effort}` : ""}`}
+                    aria-pressed={selected}
+                    disabled={Boolean(disabled || isTurnActive)}
+                    onClick={() => onPinnedCompanionModelSelect(pin)}
+                    className={cn(
+                      "flex min-h-11 min-w-0 flex-1 flex-col items-start justify-center rounded-lg border px-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60",
+                      selected
+                        ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 text-foreground"
+                        : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <span className="max-w-full truncate text-[9px] font-medium uppercase tracking-wide opacity-70">{pin.providerId}</span>
+                    <span className="max-w-full truncate text-[11px] font-semibold">{pin.model}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-2.5">
@@ -2306,7 +2317,7 @@ function AiConversation({
           className={cn(
             "border bg-[color:var(--surface)]",
             isTurnActive ? "border-[color:var(--accent)]/45" : "border-border",
-            mobile ? "rounded-lg px-1.5 py-1" : "rounded px-3 py-2.5"
+            mobile ? "rounded-xl px-2 pb-1.5 pt-2" : "rounded px-3 py-2.5"
           )}
           data-testid="ai-composer"
           data-turn-active={isTurnActive ? "true" : "false"}
@@ -2418,12 +2429,12 @@ function AiConversation({
               ))}
             </div>
           ) : null}
-          <div className={cn("flex items-end", mobile ? "gap-1" : "mt-2 gap-2")}>
+          <div className={cn(mobile ? "grid grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_2.75rem] items-center gap-x-1 gap-y-0.5" : "mt-2 flex items-end gap-2")}>
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              className={cn("shrink-0 rounded-md", mobile && "size-11")}
+              className={cn("shrink-0 rounded-md", mobile && "col-start-1 row-start-2 size-11")}
               aria-label="Attach file"
               disabled={composerLocked}
               onClick={() => fileInputRef.current?.click()}
@@ -2476,7 +2487,7 @@ function AiConversation({
                   disabled={composerLocked || isTurnActive || Boolean(composerDraft.trim())}
                   aria-label="Quick prompts"
                   title={composerDraft.trim() ? "Clear the composer to use a quick prompt" : undefined}
-                  className={cn("flex min-w-0 max-w-[132px] items-center gap-1 rounded border border-border bg-secondary px-2 text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60", mobile ? "size-11 shrink-0 justify-center border-transparent bg-transparent px-0 text-muted-foreground" : "min-h-6 shrink-0")}
+                  className={cn("flex min-w-0 max-w-[132px] items-center gap-1 rounded border border-border bg-secondary px-2 text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60", mobile ? "col-start-2 row-start-2 size-11 shrink-0 justify-center border-transparent bg-transparent px-0 text-muted-foreground" : "min-h-6 shrink-0")}
                   data-testid="ai-quick-prompts"
                 >
                   {mobile ? <Zap className="size-4 shrink-0" aria-hidden="true" /> : null}
@@ -2498,7 +2509,7 @@ function AiConversation({
                 variant="secondary"
                 size={mobile ? "icon" : "icon-sm"}
                 onClick={() => onCancel?.()}
-                className={cn("rounded-md", mobile && "size-11 shrink-0")}
+                className={cn("rounded-md", mobile && "col-start-4 row-start-2 size-11 shrink-0")}
                 aria-label="Stop AI response"
                 data-testid="ai-stop-btn"
               >
@@ -2512,7 +2523,7 @@ function AiConversation({
                 disabled={disabled || isAttaching || (!composerDraft.trim() && attachments.length === 0)}
                 className={cn(
                   "rounded bg-[color:var(--accent)] text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent)]/90",
-                  mobile && "size-11 shrink-0"
+                  mobile && "col-start-4 row-start-2 size-11 shrink-0"
                 )}
                 data-testid="ai-send-btn"
               >

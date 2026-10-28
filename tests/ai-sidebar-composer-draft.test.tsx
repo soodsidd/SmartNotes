@@ -188,8 +188,7 @@ describe("Companion composer local draft", () => {
     expect(chip.textContent).toContain("Codex · gpt-5.4");
   });
 
-  // SN-406: mobile keeps one header row; pins and toggles live in its menus.
-  it("moves mobile pinned models and Keep into header menus, leaving the composer clear", async () => {
+  it("keeps pinned models directly available on mobile while Keep stays in More", async () => {
     const onPinnedCompanionModelSelect = jest.fn();
     const onKeepConversationChange = jest.fn();
     const pin = { providerId: "codex", model: "gpt-6-sol", effort: "high" };
@@ -202,14 +201,24 @@ describe("Companion composer local draft", () => {
       onPinnedCompanionModelSelect,
       onKeepConversationChange,
     });
-    expect(screen.queryByTestId("ai-pinned-model")).toBeNull();
+    const pinned = screen.getByTestId("ai-pinned-model") as HTMLButtonElement;
+    expect(pinned.textContent).toContain("gpt-6-sol");
+    expect(pinned.getAttribute("aria-pressed")).toBe("false");
     expect(screen.queryByTestId("ai-composer-provider-switcher")).toBeNull();
-    fireEvent.click(screen.getByTestId("ai-header-provider-switcher"));
-    fireEvent.click(await screen.findByTestId("ai-pinned-model"));
+    fireEvent.click(pinned);
     expect(onPinnedCompanionModelSelect).toHaveBeenCalledWith(pin);
     fireEvent.click(screen.getByTestId("ai-mobile-more"));
     fireEvent.click(await screen.findByTestId("companion-keep-toggle-mobile"));
     expect(onKeepConversationChange).toHaveBeenCalledWith(true);
+  });
+
+  it("gives the mobile message field its own multiline row", () => {
+    renderCompanion({ mobile: true });
+    const input = screen.getByTestId("ai-input") as HTMLTextAreaElement;
+    expect(input.className).toContain("row-start-1");
+    expect(input.className).toContain("min-h-[4.75rem]");
+    expect(screen.getByLabelText("Attach file").className).toContain("row-start-2");
+    expect(screen.getByTestId("ai-send-btn").className).toContain("row-start-2");
   });
 
   it("keeps typing local and submits the current prompt text", () => {
