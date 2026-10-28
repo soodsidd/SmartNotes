@@ -145,7 +145,7 @@ export function CompanionChatImage({ alt, src, title }: { alt?: string; src?: st
 }
 
 const COMPOSER_MAX_HEIGHT_DESKTOP = 160;
-const COMPOSER_MAX_HEIGHT_MOBILE = 128;
+const COMPOSER_MAX_LINES_MOBILE = 4;
 const COMPANION_ATTACHMENT_ACCEPT = "image/*,.txt,.md,.markdown,.html,.htm,.pdf,text/plain,text/markdown,text/html,application/pdf";
 const QUICK_PROMPTS_STORAGE_KEY = "smart-notes-companion-quick-prompts";
 type QuickPrompt = { id: string; label: string; prompt: string; enabled: boolean };
@@ -242,7 +242,7 @@ async function uploadChatAttachment(file: File) {
   };
 }
 
-function useAutoResizeTextarea(value: string, maxHeight: number) {
+function useAutoResizeTextarea(value: string, maxHeight: number, maxLines?: number) {
   const ref = React.useRef<HTMLTextAreaElement | null>(null);
 
   React.useLayoutEffect(() => {
@@ -251,11 +251,18 @@ function useAutoResizeTextarea(value: string, maxHeight: number) {
       return;
     }
 
+    const styles = window.getComputedStyle(node);
+    const lineHeight = styles.lineHeight.endsWith("px")
+      ? Number.parseFloat(styles.lineHeight)
+      : (Number.parseFloat(styles.fontSize) || 15) * (Number.parseFloat(styles.lineHeight) || 1.5);
+    const verticalPadding = (Number.parseFloat(styles.paddingTop) || 0) + (Number.parseFloat(styles.paddingBottom) || 0);
+    const heightLimit = maxLines ? Math.ceil(lineHeight * maxLines + verticalPadding) : maxHeight;
+    node.style.maxHeight = `${heightLimit}px`;
     node.style.height = "0px";
-    const nextHeight = Math.min(node.scrollHeight, maxHeight);
+    const nextHeight = Math.min(node.scrollHeight, heightLimit);
     node.style.height = `${nextHeight}px`;
-    node.style.overflowY = node.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, [maxHeight, value]);
+    node.style.overflowY = node.scrollHeight > heightLimit ? "auto" : "hidden";
+  }, [maxHeight, maxLines, value]);
 
   return ref;
 }
@@ -324,8 +331,7 @@ function ComposerTextarea({
   mobile?: boolean;
   "data-testid"?: string;
 }) {
-  const maxHeight = mobile ? COMPOSER_MAX_HEIGHT_MOBILE : COMPOSER_MAX_HEIGHT_DESKTOP;
-  const textareaRef = useAutoResizeTextarea(value, maxHeight);
+  const textareaRef = useAutoResizeTextarea(value, COMPOSER_MAX_HEIGHT_DESKTOP, mobile ? COMPOSER_MAX_LINES_MOBILE : undefined);
 
   return (
     <textarea
@@ -345,9 +351,8 @@ function ComposerTextarea({
       data-testid={dataTestId}
       className={cn(
         "companion-composer-input w-full resize-none border-0 bg-transparent p-0 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60",
-        mobile ? "col-span-4 row-start-1 min-h-[4.75rem] px-1 py-1 text-[15px] leading-[1.5]" : "min-h-10 text-[13px] leading-[1.45]"
+        mobile ? "col-span-4 row-start-1 min-h-0 px-1 py-1 text-[15px] leading-[1.5]" : "min-h-10 text-[13px] leading-[1.45]"
       )}
-      style={{ maxHeight }}
     />
   );
 }
@@ -2117,7 +2122,7 @@ function AiConversation({
           </div>
           {pinnedCompanionModels.length > 0 && onPinnedCompanionModelSelect ? (
             <div
-              className="flex gap-1.5 px-2 pb-2"
+              className="companion-mobile-pins flex gap-1.5 px-2 pb-2"
               aria-label="Pinned Companion models"
               data-testid="ai-pinned-models"
             >
@@ -2429,7 +2434,7 @@ function AiConversation({
               ))}
             </div>
           ) : null}
-          <div className={cn(mobile ? "grid grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_2.75rem] items-center gap-x-1 gap-y-0.5" : "mt-2 flex items-end gap-2")}>
+          <div className={cn(mobile ? "companion-mobile-composer-grid grid grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_2.75rem] items-center gap-x-1 gap-y-0.5" : "mt-2 flex items-end gap-2")}>
             <Button
               type="button"
               variant="ghost"

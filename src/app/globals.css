@@ -2924,6 +2924,20 @@ mark {
   --chat-message-gap: 1.125rem;
 }
 
+@media (orientation: landscape) and (max-height: 600px) and (max-width: 1279px) {
+  .companion-mobile-pins { display: none; }
+  .companion-mobile-composer-grid > .companion-composer-input {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .companion-mobile-composer-grid > [aria-label="Attach file"],
+  .companion-mobile-composer-grid > [data-testid="ai-quick-prompts"],
+  .companion-mobile-composer-grid > [data-testid="ai-send-btn"],
+  .companion-mobile-composer-grid > [data-testid="ai-stop-btn"] {
+    grid-row: 1;
+  }
+}
+
 .companion-density-compact {
   --chat-prose-size: 15.75px;
   --chat-prose-leading: 1.8;

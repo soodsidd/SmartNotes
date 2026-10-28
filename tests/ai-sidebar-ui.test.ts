@@ -308,7 +308,7 @@ describe("Companion composer polish (SN-69)", () => {
     expect(SIDEBAR_SRC).toContain("function ComposerTextarea");
     expect(SIDEBAR_SRC).toContain("useAutoResizeTextarea");
     expect(SIDEBAR_SRC).toContain("COMPOSER_MAX_HEIGHT_DESKTOP");
-    expect(SIDEBAR_SRC).toContain("COMPOSER_MAX_HEIGHT_MOBILE");
+    expect(SIDEBAR_SRC).toContain("COMPOSER_MAX_LINES_MOBILE = 4");
     expect(SIDEBAR_SRC).toContain('rows={1}');
     expect(SIDEBAR_SRC).not.toContain('<input\n                value={inputValue}');
   });
@@ -380,7 +380,7 @@ describe("Companion mobile settings and composer (SN-75)", () => {
   it("gives the mobile composer a multiline input row above its actions", () => {
     expect(SIDEBAR_SRC).toContain('{!mobile ? <div className="flex-1" /> : null}');
     expect(SIDEBAR_SRC).toContain('className="shrink-0 rounded-md"');
-    expect(SIDEBAR_SRC).toContain("col-span-4 row-start-1 min-h-[4.75rem]");
+    expect(SIDEBAR_SRC).toContain("col-span-4 row-start-1 min-h-0");
   });
 });
 

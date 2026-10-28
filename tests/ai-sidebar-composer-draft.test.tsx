@@ -212,13 +212,49 @@ describe("Companion composer local draft", () => {
     expect(onKeepConversationChange).toHaveBeenCalledWith(true);
   });
 
-  it("gives the mobile message field its own multiline row", () => {
-    renderCompanion({ mobile: true });
-    const input = screen.getByTestId("ai-input") as HTMLTextAreaElement;
-    expect(input.className).toContain("row-start-1");
-    expect(input.className).toContain("min-h-[4.75rem]");
-    expect(screen.getByLabelText("Attach file").className).toContain("row-start-2");
-    expect(screen.getByTestId("ai-send-btn").className).toContain("row-start-2");
+  it("starts the mobile message field at one line and scrolls after four", () => {
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "scrollHeight");
+    const getComputedStyle = window.getComputedStyle.bind(window);
+    const styleSpy = jest.spyOn(window, "getComputedStyle").mockImplementation((node) => {
+      const styles = getComputedStyle(node);
+      return node instanceof HTMLTextAreaElement
+        ? { ...styles, fontSize: "15px", lineHeight: "22.5px", paddingTop: "4px", paddingBottom: "4px" } as CSSStyleDeclaration
+        : styles;
+    });
+    Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() { return this.value.split("\n").length * 22.5 + 8; },
+    });
+
+    try {
+      renderCompanion({ mobile: true });
+      const input = screen.getByTestId("ai-input") as HTMLTextAreaElement;
+      expect(input.className).toContain("row-start-1");
+      expect(input.className).toContain("min-h-0");
+      expect(input.style.height).toBe("30.5px");
+      expect(input.style.overflowY).toBe("hidden");
+      expect(screen.getByLabelText("Attach file").className).toContain("row-start-2");
+      expect(screen.getByTestId("ai-send-btn").className).toContain("row-start-2");
+
+      fireEvent.change(input, { target: { value: "One\nTwo\nThree\nFour" } });
+      expect(input.style.height).toBe("98px");
+      expect(input.style.overflowY).toBe("hidden");
+
+      fireEvent.change(input, { target: { value: "One\nTwo\nThree\nFour\nFive" } });
+      expect(input.style.height).toBe("98px");
+      expect(input.style.overflowY).toBe("auto");
+
+      fireEvent.change(input, { target: { value: "Short again" } });
+      expect(input.style.height).toBe("30.5px");
+      expect(input.style.overflowY).toBe("hidden");
+    } finally {
+      styleSpy.mockRestore();
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", originalScrollHeight);
+      } else {
+        delete (HTMLTextAreaElement.prototype as { scrollHeight?: number }).scrollHeight;
+      }
+    }
   });
 
   it("keeps typing local and submits the current prompt text", () => {
