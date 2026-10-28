@@ -117,7 +117,7 @@ describe("immersive PDF companion shell", () => {
       "z-[var(--z-companion-rail)]"
     );
 
-    fireEvent.click(screen.getByTestId("ai-composer-provider-switcher"));
+    fireEvent.click(screen.getByTestId("ai-header-provider-switcher"));
     const providerMenu = document.querySelector(
       '[data-slot="dropdown-menu-content"]'
     );

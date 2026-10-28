@@ -131,7 +131,10 @@ describe("Companion composer local draft", () => {
     expect(onModelChange).toHaveBeenCalledWith("ghcopilot", "auto");
   });
 
-  it.each([false, true])("switches provider and model from the %s composer footer", async (mobile) => {
+  // SN-406: mobile has exactly one provider switcher (the header chip) —
+  // the composer footer's duplicate was removed so the picker row no longer
+  // costs the composer its own line of vertical space.
+  it.each([false, true])("switches provider and model from the %s provider switcher", async (mobile) => {
     const onProviderChange = jest.fn();
     const onModelChange = jest.fn();
     const onSubmit = jest.fn();
@@ -148,7 +151,7 @@ describe("Companion composer local draft", () => {
       onSubmit,
     });
 
-    const chip = screen.getByTestId("ai-composer-provider-switcher");
+    const chip = screen.getByTestId(mobile ? "ai-header-provider-switcher" : "ai-composer-provider-switcher");
     expect(chip.textContent).toContain("Codex · gpt-5.4");
     fireEvent.click(chip);
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "gpt-5.6-sol" }));
@@ -164,7 +167,7 @@ describe("Companion composer local draft", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])("keeps the %s footer label visible while the composer is locked", (mobile) => {
+  it.each([false, true])("keeps the %s provider switcher label visible and locked while the composer is locked", (mobile) => {
     const onSubmit = jest.fn();
     const { rerender, props } = renderCompanion({
       mobile,
@@ -173,7 +176,7 @@ describe("Companion composer local draft", () => {
       onSubmit,
       isTurnActive: true,
     });
-    const chip = screen.getByTestId("ai-composer-provider-switcher") as HTMLButtonElement;
+    const chip = screen.getByTestId(mobile ? "ai-header-provider-switcher" : "ai-composer-provider-switcher") as HTMLButtonElement;
     expect(chip.textContent).toContain("Codex · gpt-5.4");
     expect(chip.disabled).toBe(true);
     expect(screen.getByText("Working…")).toBeTruthy();

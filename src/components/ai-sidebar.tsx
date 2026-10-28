@@ -1984,7 +1984,7 @@ function AiConversation({
       )}
       data-testid={mobile ? "mobile-ai-sheet" : "ai-sidebar"}
     >
-      <div className={cn("flex shrink-0 items-center gap-2 border-b border-border px-2 py-2.5", mobile && "px-3 py-2.5")}>
+      <div className={cn("flex shrink-0 items-center gap-2 border-b border-border px-2 py-2.5", mobile && "px-3 py-2")}>
         <Sparkles className="size-4 text-[color:var(--accent)]" />
         <div className="min-w-0 flex-1">
           <p className={cn("text-[13px] font-medium text-foreground", mobile && "text-[14px]")}>
@@ -2085,7 +2085,7 @@ function AiConversation({
       />
 
       {mobile ? (
-        <div className="flex shrink-0 items-center gap-1.5 px-4 pb-3">
+        <div className="flex shrink-0 items-center gap-1.5 px-3 pb-2">
           <AiScopeControl
             scopeLabel={scopeLabel}
             tokenLabel={tokenLabel}
@@ -2121,7 +2121,12 @@ function AiConversation({
           ) : null}
           {providers && providers.length > 0 ? (
             <DropdownMenu>
-              <DropdownMenuTrigger className={cn(SIDEBAR_CHIP_CLASS, "max-w-[132px] truncate")}>
+              <DropdownMenuTrigger
+                disabled={Boolean(disabled || isTurnActive)}
+                aria-label={`Change AI provider and model. Current: ${activeProviderLabel} · ${activeModelLabel || "default"}`}
+                data-testid="ai-header-provider-switcher"
+                className={cn(SIDEBAR_CHIP_CLASS, "max-w-[132px] truncate disabled:opacity-60")}
+              >
                 <span className="truncate">{activeProviderLabel} · {activeModelLabel || "default"}</span>
                 <ChevronDown className="size-2.5 shrink-0 opacity-60" />
               </DropdownMenuTrigger>
@@ -2137,6 +2142,8 @@ function AiConversation({
                   onModelChange={onModelChange}
                   onEffortChange={onEffortChange}
                   onVerboseChange={onVerboseChange}
+                  pinnedCompanionModels={pinnedCompanionModels}
+                  onTogglePinnedCompanionModel={onTogglePinnedCompanionModel}
                 />
               </DropdownMenuContent>
             </DropdownMenu>
@@ -2225,7 +2232,7 @@ function AiConversation({
         ) : null}
       </div>
 
-      <div className={cn("shrink-0 px-3 pb-3", mobile && "border-t border-border px-3 pb-4 pt-2")}>
+      <div className={cn("shrink-0 px-3 pb-3", mobile && "border-t border-border px-3 pb-3 pt-1.5")}>
         <input
           ref={fileInputRef}
           type="file"
@@ -2455,28 +2462,11 @@ function AiConversation({
               </Button>
             )}
           </div>
-          {mobile ? (
+          {mobile && (isTurnActive || isAttaching) ? (
             <div className="mt-1.5 flex min-w-0 items-center gap-2">
-              <ComposerProviderSwitcher
-                providers={providers ?? []}
-                activeProviderId={activeProviderId}
-                activeProviderLabel={activeProviderLabel}
-                activeModelLabel={activeModelLabel}
-                activeEffort={activeEffort}
-                onProviderChange={onProviderChange}
-                onModelChange={onModelChange}
-                onEffortChange={onEffortChange}
-                pinnedCompanionModels={pinnedCompanionModels}
-                onTogglePinnedCompanionModel={onTogglePinnedCompanionModel}
-                disabled={Boolean(disabled || isTurnActive)}
-                mobile
-                floatingLayerZ={floatingLayerZ}
-              />
-              {isTurnActive || isAttaching ? (
-                <span className={cn("shrink-0 text-[10px]", isTurnActive ? "text-[color:var(--accent)]" : "text-muted-foreground")}>
-                  {isTurnActive ? "Working…" : "Attaching…"}
-                </span>
-              ) : null}
+              <span className={cn("shrink-0 text-[10px]", isTurnActive ? "text-[color:var(--accent)]" : "text-muted-foreground")}>
+                {isTurnActive ? "Working…" : "Attaching…"}
+              </span>
             </div>
           ) : null}
           {attachmentError ? (
