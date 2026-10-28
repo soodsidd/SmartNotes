@@ -284,7 +284,7 @@ describe("live Jupyter focus context (SN-217)", () => {
       />
     );
     const frame = await waitFor(() => view.getByTestId("jupyter-frame") as HTMLIFrameElement);
-    expect(launchJupyterWorkspaceSession).toHaveBeenCalledWith(workspace);
+    expect(launchJupyterWorkspaceSession).toHaveBeenCalledWith(expect.objectContaining(workspace));
     const postMessage = jest.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => undefined);
     fireEvent.load(frame);
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({

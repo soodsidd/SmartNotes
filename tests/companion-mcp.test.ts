@@ -55,19 +55,22 @@ describe('SN-399 Codex stdio MCP bridge', () => {
     });
   }
 
-  it('lists only Deep Work tools, returns bridge JSON, and refuses vault or mismatched capability calls', async () => {
+  it('lists scoped host-page tools, returns bridge JSON, and refuses unbound or mismatched capability calls', async () => {
     expect((await request('initialize')).result.serverInfo.name).toBe('smart_notes_companion');
     const tools = (await request('tools/list')).result.tools;
     const listed = tools.map((tool: any) => tool.name);
     expect(listed).toContain('workspace_source_list');
     expect(listed).toContain('workspace_cell_create');
-    expect(listed).not.toContain('page_get');
+    expect(listed).toContain('page_children');
+    expect(listed).not.toContain('page_list');
     expect(tools.find((tool: any) => tool.name === 'workspace_source_create').inputSchema.required).toContain('source');
     expect(tools.find((tool: any) => tool.name === 'workspace_cell_create').inputSchema.required).toContain('expectedRevision');
     expect(ALLOWED_TOOLS.has('page_get')).toBe(true);
 
-    const deniedVault = await request('tools/call', { name: 'page_get', arguments: { path: 'x' } });
+    const deniedVault = await request('tools/call', { name: 'page_children', arguments: { workspace: capability, path: 'x' } });
     expect(JSON.parse(deniedVault.result.content[0].text).code).toBe('TOOL_NOT_ALLOWED');
+    const deniedHostCapability = await request('tools/call', { name: 'page_children', arguments: { workspace: `dwc_${'b'.repeat(43)}`, path: 'x' } });
+    expect(JSON.parse(deniedHostCapability.result.content[0].text).code).toBe('WORKSPACE_CAPABILITY_MISMATCH');
     const deniedCapability = await request('tools/call', { name: 'workspace_source_list', arguments: { workspace: `dwc_${'b'.repeat(43)}` } });
     expect(JSON.parse(deniedCapability.result.content[0].text).code).toBe('WORKSPACE_CAPABILITY_MISMATCH');
     expect(invoked).toHaveLength(0);

@@ -41,6 +41,7 @@ const WORKSPACE_TOOLS = new Set([
 // its server-verified host page and the pages nested under it.
 const DEEP_WORK_HOST_PAGE_TOOLS = new Set([
   "page_get",
+  "page_children",
   "page_create",
   "page_write",
   "page_edit",
@@ -57,7 +58,7 @@ function canonicalPagePath(value) {
 /**
  * SN-404: build the authorizer + tool invoker for one Deep Work capability.
  * workspace_* tools must carry the capability. When the capability has a
- * verified host page, page_get/page_write/page_edit may target that page or a
+ * verified host page, page_get/page_children/page_write/page_edit may target that page or a
  * descendant (walked via page_parent), and page_create must name such a page
  * as parentPath. The capability arg is stripped before vault forwarding.
  */
@@ -161,6 +162,7 @@ function workspaceToolRequest(tool, args, baseUrl) {
 const ALLOWED_TOOLS = new Set([
   "recipe_list", "recipe_run", "recipe_mark", "notebook_instructions_set",
   "page_get",
+  "page_children",
   "page_write",
   // Targeted multi-patch for large App/design HTML (and text pages). Same
   // POST /api/agent/vault path as page_write; without this, shell-less

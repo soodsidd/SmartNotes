@@ -5,6 +5,7 @@ import path from "node:path";
 import { buildSmartNotesOperatingContext } from "@/lib/ai-sidebar";
 import { verifiedWorkspaceHostPage } from "@/server/jupyter/workspace-host-page";
 import { executeVaultCommand } from "@/server/vault/agent-commands";
+import { executeVaultTool } from "@/server/vault/agent-tools";
 import { invalidateVaultTreeCacheForTesting, readPage } from "@/server/vault/pages";
 
 const { createDeepWorkBridgeScope } = require("../server/companion-log-form-bridge");
@@ -83,6 +84,48 @@ describe("SN-404 page_create parentPath", () => {
   });
 });
 
+describe("SN-405 page_children discovery", () => {
+  it("lists direct children without page bodies and supports pagination", async () => {
+    await withVault(async () => {
+      const first = await executeVaultCommand({
+        group: "page", action: "create",
+        args: { parentPath: "Robots/Arm/master-repo.html", title: "Assessment", content: "<p>private body</p>" },
+      });
+      const firstPath = (first.data as { page: { path: string } }).page.path;
+      await executeVaultCommand({
+        group: "page", action: "create",
+        args: { parentPath: "Robots/Arm/master-repo.html", title: "Camera guide" },
+      });
+      await executeVaultCommand({
+        group: "page", action: "create",
+        args: { parentPath: firstPath, title: "Nested" },
+      });
+      const direct = await executeVaultCommand({
+        group: "page", action: "children",
+        args: { path: "Robots/Arm/master-repo.html", limit: 1 },
+      });
+      const data = direct.data as { children: Array<{ path: string; title: string }>; total: number; nextOffset: number | null };
+      expect(data.total).toBe(2);
+      expect(data.children).toHaveLength(1);
+      expect(data.nextOffset).toBe(1);
+      expect(JSON.stringify(data)).not.toContain("private body");
+      const viaTool = await executeVaultTool("page_children", { path: "Robots/Arm/master-repo.html" });
+      expect(viaTool.ok).toBe(true);
+      expect((viaTool as { result: { data: { total: number } } }).result.data.total).toBe(2);
+      const second = await executeVaultCommand({
+        group: "page", action: "children",
+        args: { path: "Robots/Arm/master-repo.html", offset: data.nextOffset, limit: 1 },
+      });
+      expect((second.data as { children: unknown[]; nextOffset: number | null }).children).toHaveLength(1);
+      expect((second.data as { nextOffset: number | null }).nextOffset).toBeNull();
+      const nested = await executeVaultCommand({ group: "page", action: "children", args: { path: firstPath } });
+      expect((nested.data as { children: Array<{ title: string }> }).children.map((child) => child.title)).toEqual(["Nested"]);
+      await expect(executeVaultCommand({ group: "page", action: "children", args: { path: firstPath, limit: 201 } }))
+        .rejects.toThrow(/limit/);
+    });
+  });
+});
+
 describe("SN-404 verified workspace host page", () => {
   it("accepts only a Jupyter page bound to the same root", async () => {
     await withVault(async (_vault, workspaceRoot) => {
@@ -117,16 +160,23 @@ describe("SN-404 Deep Work bridge host-page scope", () => {
   it("allows page tools only for the host page subtree", async () => {
     const { scope } = scopeFor("Robots/Arm/master-repo.html");
     expect(scope.allowedTools.has("page_create")).toBe(true);
+    expect(scope.allowedTools.has("page_children")).toBe(true);
     const ok = (tool: string, args: Record<string, unknown>) =>
       scope.authorizeTool(tool, { workspace: CAPABILITY, ...args });
     await expect(ok("page_create", { parentPath: "Robots/Arm/master-repo.html" })).resolves.toBe(true);
     await expect(ok("page_create", { parentPath: "Robots/Arm/child" })).resolves.toBe(true);
     await expect(ok("page_get", { path: "Robots/Arm/grandchild.html" })).resolves.toBe(true);
+    await expect(ok("page_children", { path: "Robots/Arm/master-repo.html" })).resolves.toBe(true);
+    await expect(ok("page_children", { path: "Robots/Arm/child.html" })).resolves.toBe(true);
+    await expect(ok("page_children", { path: "Robots/Arm/other.html" })).resolves.toBe(false);
+    await expect(ok("page_list", { sectionPath: "Robots/Arm" })).resolves.toBe(false);
     await expect(ok("page_write", { path: "Robots/Arm/other.html" })).resolves.toBe(false);
     await expect(ok("page_create", { sectionPath: "Robots/Arm" })).resolves.toBe(false);
     await expect(ok("page_create", { parentPath: "Robots/Arm/master-repo.html", noteType: "design" })).resolves.toBe(false);
     await expect(ok("page_edit", { path: "Robots/Arm/../Arm/master-repo.html" })).resolves.toBe(false);
     await expect(scope.authorizeTool("page_get", { workspace: "dwc_other", path: "Robots/Arm/master-repo.html" }))
+      .resolves.toBe(false);
+    await expect(scope.authorizeTool("page_children", { workspace: "dwc_other", path: "Robots/Arm/master-repo.html" }))
       .resolves.toBe(false);
     await expect(ok("workspace_source_list", {})).resolves.toBe(true);
   });
@@ -134,6 +184,7 @@ describe("SN-404 Deep Work bridge host-page scope", () => {
   it("keeps unbound folders workspace-only", async () => {
     const { scope } = scopeFor(undefined);
     expect(scope.allowedTools.has("page_get")).toBe(false);
+    expect(scope.allowedTools.has("page_children")).toBe(false);
     await expect(scope.authorizeTool("page_get", { workspace: CAPABILITY, path: "Robots/Arm/master-repo.html" }))
       .resolves.toBe(false);
   });
@@ -166,6 +217,7 @@ describe("SN-404 Deep Work operating context", () => {
     });
     expect(context).toContain(`Host Smart Notes page: ${base.path}`);
     expect(context).toContain(`"parentPath": "${base.path}"`);
+    expect(context).toContain("page_children");
     expect(context).toContain("do not ask the owner to open the page first");
   });
 

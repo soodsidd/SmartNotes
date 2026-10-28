@@ -789,6 +789,39 @@ async function runPageCommand(action: string, args: Record<string, unknown>): Pr
       };
     }
 
+    case "children": {
+      const parentPath = requireString(args.path, "path");
+      const parent = await readPage(parentPath);
+      const canonicalParent = resolveVaultPath(parent.path, "page").relativePath.toLowerCase();
+      const offset = args.offset === undefined ? 0 : args.offset;
+      const limit = args.limit === undefined ? 100 : args.limit;
+      if (!Number.isInteger(offset) || (offset as number) < 0 ||
+          !Number.isInteger(limit) || (limit as number) < 1 || (limit as number) > 200) {
+        throw new VaultError("INVALID_INPUT", "offset must be non-negative and limit must be 1–200.");
+      }
+
+      const tree = await readVaultTree();
+      const children = tree.tree.flatMap((notebook) => [
+        ...notebook.pages,
+        ...notebook.sections.flatMap((section) => section.pages),
+      ])
+        .filter((page) => page.parentId && canonicalizePagePath(page.parentId).toLowerCase() === canonicalParent)
+        .map((page) => ({ path: page.path, title: page.title, noteType: page.noteType }))
+        .sort((left, right) => left.path.localeCompare(right.path));
+      const end = (offset as number) + (limit as number);
+      return {
+        ok: true,
+        group: "page",
+        action,
+        data: {
+          parentPath: parent.path,
+          children: children.slice(offset as number, end),
+          total: children.length,
+          nextOffset: end < children.length ? end : null,
+        },
+      };
+    }
+
     case "parent": {
       // AC5 (SN-84): return the parent page (via parent_id frontmatter) or section+notebook info.
       // Handles cross-machine absolute parent_id values by canonicalizing through the vault path

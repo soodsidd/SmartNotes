@@ -821,6 +821,17 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
       path: { type: "string", required: true, description: "Vault-relative page path." },
     },
   },
+  {
+    name: "page_children",
+    description: "List direct child pages of an existing page by parent_id. Returns paths, titles, and note types without page bodies; use page_get for a selected child.",
+    group: "page",
+    action: "children",
+    parameters: {
+      path: { type: "string", required: true, description: "Vault-relative parent page path." },
+      offset: { type: "number", description: "Zero-based result offset (default 0)." },
+      limit: { type: "number", description: "Result count (default 100, maximum 200)." },
+    },
+  },
 
   // ---- SN-114: Jupyter notebook context and safe cell mutation ----
 
