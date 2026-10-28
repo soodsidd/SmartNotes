@@ -35,6 +35,8 @@ export interface JupyterSessionView {
   projectName?: string;
   returnUrl?: string;
   executionContext?: string;
+  /** SN-404: server-verified host page for a page-bound Deep Work folder. */
+  hostPagePath?: string;
   expiresAt?: number;
 }
 
@@ -54,6 +56,8 @@ export interface JupyterWorkspaceSessionRequest {
   /** Accepted only in this POST body, never from URL/history. */
   executionApproved?: boolean;
   executionContext?: string;
+  /** SN-404: vault page that hosts a page-bound folder; the server verifies the binding. */
+  hostPagePath?: string;
 }
 
 export interface JupyterProfileStatus {

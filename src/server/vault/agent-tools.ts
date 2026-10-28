@@ -186,11 +186,12 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
   {
     name: "page_create",
     description:
-      "Create a page in a section, optionally with initial HTML body. Pass noteType=\"design\" to create a raw HTML/CSS design page (SN-167) whose body is rendered verbatim (bypasses Tiptap normalization) — use this for self-contained UI artifacts.",
+      "Create a page in a section, or as a child of parentPath, optionally with initial HTML body. Pass noteType=\"design\" to create a raw HTML/CSS design page (SN-167) whose body is rendered verbatim (bypasses Tiptap normalization) — use this for self-contained UI artifacts.",
     group: "page",
     action: "create",
     parameters: {
-      sectionPath: { type: "string", required: true, description: "Vault-relative section path (Notebook/Section)." },
+      sectionPath: { type: "string", description: "Vault-relative section path (Notebook/Section). Required unless parentPath is given." },
+      parentPath: { type: "string", description: "Vault-relative path of an existing page; the new page is created as its child (SN-404)." },
       title: { type: "string", description: "Page title." },
       content: { type: "string", description: "Initial HTML body (raw, unnormalized, for design pages)." },
       noteType: { type: "string", description: 'Page type: "text" (default) or "design" (raw HTML/CSS UI artifact).' },

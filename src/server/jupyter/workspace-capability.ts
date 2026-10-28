@@ -30,6 +30,8 @@ export interface WorkspaceCapabilityRecord {
   defaultBranchEditConfirmed?: boolean;
   returnUrl?: string;
   executionContext?: string;
+  /** SN-404: server-verified vault Jupyter page whose frontmatter binds this root. */
+  hostPagePath?: string;
   issuedAt: number;
   expiresAt: number;
 }
@@ -45,6 +47,7 @@ export interface WorkspaceCapabilityView {
   projectName: string;
   returnUrl?: string;
   executionContext?: string;
+  hostPagePath?: string;
   expiresAt: number;
 }
 
@@ -126,7 +129,8 @@ export function issueWorkspaceCapability(
     executionApproved?: unknown;
     executionContext?: unknown;
   },
-  resolved: ResolvedProjectWorkspace
+  resolved: ResolvedProjectWorkspace,
+  options: { hostPagePath?: string | null } = {}
 ): WorkspaceCapabilityView {
   const projectId = boundedOptionalMetadata(request.projectId, "projectId");
   const repoId = boundedOptionalMetadata(request.repoId, "repoId");
@@ -161,6 +165,7 @@ export function issueWorkspaceCapability(
     defaultBranchEditConfirmed: request.defaultBranchEditConfirmed === true || undefined,
     returnUrl,
     executionContext,
+    hostPagePath: options.hostPagePath || undefined,
     issuedAt: now,
     expiresAt: now + CAPABILITY_TTL_MS,
   };
@@ -180,6 +185,7 @@ function capabilityView(record: WorkspaceCapabilityRecord): WorkspaceCapabilityV
     projectName: record.projectName,
     returnUrl: record.returnUrl,
     executionContext: record.executionContext,
+    hostPagePath: record.hostPagePath,
     expiresAt: record.expiresAt,
   };
 }

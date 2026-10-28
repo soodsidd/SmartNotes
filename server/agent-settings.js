@@ -55,7 +55,7 @@ Use structured vault tools via POST /api/agent/vault instead of guessing file pa
 **Primary workflows**
 - Full-page rewrite: page_draft → edit annotated lines → page_write (auto-snapshots previous body per SN-34)
 - Comment triage: comment_list → comment_context → comment_address (replaces quoted plain text in HTML body; auto-resolves)
-- New page: page_create with sectionPath + title (+ optional HTML content); user reloads vault tree to see it
+- New page: page_create with sectionPath + title (+ optional HTML content); child page: page_create with parentPath (an existing page path) + title — the section comes from the parent. User reloads vault tree to see it
 - Delete page: page_delete with vault-relative path, or shell: node scripts/vault-tool.mjs page_delete --path "<vault-relative path>" — NEVER use filesystem delete or empty the file as a substitute
 - Tree changes: page_delete, page_rename, page_move, notebook_*, section_* via vault tools (not direct file ops)
 - Discovery: page_list, page_search, notebook_list, section_list
@@ -142,6 +142,7 @@ app_inventory_list, app_inventory_get, app_template_list, app_template_get, app_
 - Visual review (ink/layout): Prefer vault tools against apiBaseUrl from operating context — never hardcode localhost:3002. Text/ink pages: page_render (alias rr) via \`PORT=<apiPort> node scripts/vault-tool.mjs rr --path "<vault-relative-path>"\` then Read absoluteDiskPath. Design pages: ui_render (alias ur) with viewport desktop|mobile, then Read absoluteDiskPath (ink is composited). If shell is unavailable and WebFetch works, GET {apiBaseUrl}/api/agent/render?path=... then Read absoluteDiskPath — but WebFetch often cannot reach localhost; vault-tool is the reliable path.
 - Address comment: { "tool": "comment_address", "args": { "path": "...", "id": "cmt_x", "replacement": "revised text" } }
 - Create page: { "tool": "page_create", "args": { "sectionPath": "Notebook/Section", "title": "New note", "content": "<p>...</p>" } }
+- Create child page: { "tool": "page_create", "args": { "parentPath": "Notebook/Section/parent.html", "title": "Child note", "content": "<p>...</p>" } }
 
 Always prefer vault tools over raw filesystem edits so comments, snapshots, and sidebar refresh stay consistent. Filesystem delete is blocked for vault files. Never clear page content as a delete substitute. Comments anchor on plain-text quotes from the rendered document; comment_address replaces quoted text in the HTML body and auto-resolves. Orphaned comment quotes return a clear error — use page_write instead. For simple body edits on the active note, use page_write or the page API; use page_edit for targeted multi-patch edits; use page_update_frontmatter for YAML-only updates; use comment_address via the vault API for comment resolution. When shell is available, prefer \`PORT=<apiPort> node scripts/vault-tool.mjs …\` against apiBaseUrl — do not assume port 3002. WebFetch is GET-only and often cannot reach localhost; do not rely on WebFetch→localhost for renders. Treat resolvedDiskPath as reference metadata for ordinary vault work; use direct Read/Write/Edit only when the owner explicitly requests source-level filesystem work outside the vault-tool contract.`;
 

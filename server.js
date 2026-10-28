@@ -34,7 +34,7 @@ const {
 } = require('./server/jupyter-proxy');
 const {
   startCompanionLogFormBridge,
-  WORKSPACE_TOOLS,
+  createDeepWorkBridgeScope,
   workspaceToolRequest,
 } = require('./server/companion-log-form-bridge');
 const { createCompanionAppChannel } = require('./server/companion-app-channel');
@@ -370,11 +370,17 @@ app.prepare().then(async () => {
     let registered = deepWorkBridges.get(capability);
     if (!registered) {
       const capabilityHash = crypto.createHash('sha256').update(capability).digest('hex');
+      // SN-404: page-bound folders also reach their host page subtree.
+      const scope = createDeepWorkBridgeScope({
+        capability,
+        hostPagePath: record.hostPagePath,
+        invokeTool: invokeCompanionTool,
+      });
       const bridge = startCompanionLogFormBridge({
         rootDir: path.join(__dirname, '.smart-notes-companion-log-form-bridge', 'deep-work', capabilityHash),
-        invokeTool: invokeCompanionTool,
-        allowedTools: WORKSPACE_TOOLS,
-        authorizeTool: (_tool, args) => args.workspace === capability,
+        invokeTool: scope.invokeTool,
+        allowedTools: scope.allowedTools,
+        authorizeTool: scope.authorizeTool,
       });
       registered = { bridge, expiresAt: record.expiresAt };
       deepWorkBridges.set(capability, registered);

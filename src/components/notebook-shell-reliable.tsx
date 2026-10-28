@@ -6322,6 +6322,10 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         notebookSessionReady: workspaceSession?.status === "ready",
         returnUrl: workspaceSession?.returnUrl,
         executionContext: workspaceSession?.executionContext,
+        // SN-404: only a server-verified page binding for the open page.
+        hostPage: workspaceSession?.hostPagePath && workspaceSession.hostPagePath === draft.path
+          ? { path: draft.path, title: draft.title }
+          : null,
       } : null,
     });
     const history = submitMessages

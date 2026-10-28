@@ -256,7 +256,13 @@ function listOrphanedComments(body: string, comments: StoredComment[]) {
 async function runPageCommand(action: string, args: Record<string, unknown>): Promise<VaultCommandResult> {
   switch (action) {
     case "create": {
-      const sectionPath = requireString(args.sectionPath, "sectionPath");
+      // SN-404: parentPath nests the new page under an existing page; its
+      // section is derived from the parent, so sectionPath becomes optional.
+      const parentPath = optionalString(args.parentPath) || optionalString(args.parentId);
+      const parentPage = parentPath ? await readPage(parentPath) : null;
+      const sectionPath = parentPage
+        ? (optionalString(args.sectionPath) || path.posix.dirname(parentPage.path))
+        : requireString(args.sectionPath, "sectionPath");
       const title = optionalString(args.title) || "Untitled page";
       // Design pages render their body as raw HTML (SN-167) — do NOT run the
       // Tiptap math normalizer over it, which would rewrite the artifact markup.
@@ -272,7 +278,7 @@ async function runPageCommand(action: string, args: Record<string, unknown>): Pr
       const rawContent = optionalString(args.content);
       const content =
         rawContent && noteType !== "design" ? normalizeMathInHtml(rawContent) : rawContent;
-      const created = await createPage({ sectionPath, title, noteType });
+      const created = await createPage({ sectionPath, title, noteType, parentId: parentPage?.path ?? null });
       const page = content
         ? await savePage({ path: created.path, title: created.title, body: content })
         : created;

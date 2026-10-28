@@ -997,7 +997,7 @@ export function JupyterNotebookView({
     }
 
     const launch = workspace
-      ? launchJupyterWorkspaceSession(workspace)
+      ? launchJupyterWorkspaceSession({ ...workspace, hostPagePath: pagePath })
       : launchJupyterSession(pagePath);
     launch
       .then((view: JupyterSessionView) => {

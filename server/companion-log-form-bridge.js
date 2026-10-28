@@ -37,6 +37,66 @@ const WORKSPACE_TOOLS = new Set([
   "jupyter_cell_run",
 ]);
 
+// SN-404: page tools a page-bound Deep Work bridge also accepts, but only for
+// its server-verified host page and the pages nested under it.
+const DEEP_WORK_HOST_PAGE_TOOLS = new Set([
+  "page_get",
+  "page_create",
+  "page_write",
+  "page_edit",
+]);
+const HOST_PAGE_MAX_DEPTH = 16;
+
+function canonicalPagePath(value) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!trimmed || trimmed.split("/").some((segment) => segment === ".." || segment === ".")) return "";
+  return /\.[A-Za-z0-9]+$/.test(trimmed) ? trimmed : `${trimmed}.html`;
+}
+
+/**
+ * SN-404: build the authorizer + tool invoker for one Deep Work capability.
+ * workspace_* tools must carry the capability. When the capability has a
+ * verified host page, page_get/page_write/page_edit may target that page or a
+ * descendant (walked via page_parent), and page_create must name such a page
+ * as parentPath. The capability arg is stripped before vault forwarding.
+ */
+function createDeepWorkBridgeScope({ capability, hostPagePath, invokeTool }) {
+  const host = canonicalPagePath(hostPagePath || "");
+  const allowedTools = new Set(WORKSPACE_TOOLS);
+  if (host) for (const tool of DEEP_WORK_HOST_PAGE_TOOLS) allowedTools.add(tool);
+
+  async function withinHost(pagePath) {
+    let current = canonicalPagePath(pagePath);
+    for (let depth = 0; current && depth <= HOST_PAGE_MAX_DEPTH; depth += 1) {
+      if (current.toLowerCase() === host.toLowerCase()) return true;
+      const parent = await invokeTool("page_parent", { path: current }).catch(() => null);
+      const data = parent?.result?.data || parent?.data || {};
+      current = canonicalPagePath(data.parentPage?.path || data.parentId || "");
+    }
+    return false;
+  }
+
+  async function authorizeTool(tool, args) {
+    if (args.workspace !== capability) return false;
+    if (WORKSPACE_TOOLS.has(tool)) return true;
+    if (!host || !DEEP_WORK_HOST_PAGE_TOOLS.has(tool)) return false;
+    if (tool === "page_create") {
+      if (args.noteType !== undefined && args.noteType !== "text") return false;
+      return withinHost(args.parentPath || args.parentId || "");
+    }
+    return withinHost(args.path || "");
+  }
+
+  async function invokeScopedTool(tool, args) {
+    if (!DEEP_WORK_HOST_PAGE_TOOLS.has(tool)) return invokeTool(tool, args);
+    const { workspace: _workspace, sectionPath: _sectionPath, ...rest } = args;
+    return invokeTool(tool, rest);
+  }
+
+  return { allowedTools, authorizeTool, invokeTool: invokeScopedTool };
+}
+
 const WORKSPACE_CELL_OPERATIONS = new Map([
   ["workspace_cell_create", "cell_create"],
   ["workspace_cell_edit", "cell_edit"],
@@ -213,11 +273,11 @@ async function processBridgeRequest({
       await writeJsonAtomically(responsePath, response);
       return response;
     }
-    if (authorizeTool && !authorizeTool(tool, args)) {
+    if (authorizeTool && !(await authorizeTool(tool, args))) {
       const response = errorResponse(
         requestPath,
         "WORKSPACE_CAPABILITY_MISMATCH",
-        "This Deep Work bridge accepts only its bound workspace capability."
+        "This Deep Work bridge accepts only its bound workspace capability and, for a page-bound folder, its host page and that page's children."
       );
       await writeJsonAtomically(responsePath, response);
       return response;
@@ -323,6 +383,8 @@ function startCompanionLogFormBridge({
 module.exports = {
   ALLOWED_TOOLS,
   WORKSPACE_TOOLS,
+  DEEP_WORK_HOST_PAGE_TOOLS,
+  createDeepWorkBridgeScope,
   workspaceToolRequest,
   MAX_REQUEST_BYTES,
   responsePathFor,

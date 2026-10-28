@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const readline = require('readline');
-const { ALLOWED_TOOLS, WORKSPACE_TOOLS } = require('../../server/companion-log-form-bridge');
+const { ALLOWED_TOOLS, WORKSPACE_TOOLS, DEEP_WORK_HOST_PAGE_TOOLS } = require('../../server/companion-log-form-bridge');
 
 const root = process.argv[2];
 const capability = process.argv[3] || '';
@@ -15,7 +15,9 @@ if (!root || !path.isAbsolute(root) || (capability && !/^dwc_[A-Za-z0-9_-]{43}$/
   process.stderr.write('Invalid companion bridge scope.\n');
   process.exit(1);
 }
-const allowedTools = capability ? WORKSPACE_TOOLS : ALLOWED_TOOLS;
+// SN-404: host-page tools are listed for Deep Work; the bridge watcher still
+// rejects them unless the capability has a verified host page subtree.
+const allowedTools = capability ? new Set([...WORKSPACE_TOOLS, ...DEEP_WORK_HOST_PAGE_TOOLS]) : ALLOWED_TOOLS;
 const requestsDir = path.join(root, 'requests');
 const responsesDir = path.join(root, 'responses');
 const schemas = {

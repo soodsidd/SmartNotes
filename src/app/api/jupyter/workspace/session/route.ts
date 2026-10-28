@@ -12,6 +12,7 @@ import {
   type WorkspaceAccessMode,
 } from "@/server/jupyter/workspace-root";
 import { issueWorkspaceCapability } from "@/server/jupyter/workspace-capability";
+import { verifiedWorkspaceHostPage } from "@/server/jupyter/workspace-host-page";
 
 // ---------------------------------------------------------------------------
 // Project-backed JupyterLab workspace session route (SN-256)
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
       returnUrl?: unknown;
       executionApproved?: unknown;
       executionContext?: unknown;
+      hostPagePath?: unknown;
     };
     if (!body.rootPath) {
       throw new VaultError("INVALID_PATH", 'Body field "rootPath" is required.');
@@ -87,12 +89,14 @@ export async function POST(request: Request) {
     const view = await ensureProjectWorkspaceSession(body as ProjectWorkspaceRequest, {
       frameOrigin: frameOriginFromRequest(request),
     });
+    const realRoot = view.rootPath ?? resolved.realRoot;
+    const hostPagePath = await verifiedWorkspaceHostPage(body.hostPagePath, realRoot);
     const capability = issueWorkspaceCapability(body as ProjectWorkspaceRequest & typeof body, {
       ...resolved,
-      realRoot: view.rootPath ?? resolved.realRoot,
+      realRoot,
       accessMode: view.accessMode ?? resolved.accessMode,
       branch: view.branch ?? resolved.branch,
-    });
+    }, { hostPagePath });
     return NextResponse.json({ ...view, ...capability });
   } catch (error) {
     const response = toErrorResponse(error);
