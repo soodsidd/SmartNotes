@@ -32,8 +32,9 @@ export interface InlineAiInvocation {
   /**
    * Host-only edit action. Frames and PDF selections never supply one. Jupyter
    * Lab (SN-363) resolves asynchronously once the bridge confirms the cell write.
+   * A string result is a failure reason the owner should see.
    */
-  applyEdit?: (answer: string) => boolean | Promise<boolean>;
+  applyEdit?: (answer: string) => InlineAiEditResult | Promise<InlineAiEditResult>;
   /**
    * SN-310: host-supplied menu items shown after "Ask Companion..." in menu
    * mode (e.g. design Preview "Add comment"). Host-only — never from a frame.
@@ -137,6 +138,9 @@ export function inlineAiVisiblePrompt(prompt: string): string {
   }
   return prompt.slice(0, separatorIndex);
 }
+
+/** `true` = inserted; `false` or a reason string = not inserted. */
+export type InlineAiEditResult = boolean | string;
 
 export function invokeInlineAi(invocation: InlineAiInvocation): void {
   window.dispatchEvent(new CustomEvent("smart-notes-ask-companion", { detail: invocation }));

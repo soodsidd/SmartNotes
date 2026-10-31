@@ -58,7 +58,7 @@ import {
   stripJupyterCodeFence,
   type JupyterInlineAiActionId,
 } from "@/lib/jupyter-inline-ai";
-import { invokeInlineAi } from "@/lib/inline-ai";
+import { invokeInlineAi, type InlineAiEditResult } from "@/lib/inline-ai";
 import { jupyterAskCompanionContext, jupyterAskCompanionEditTarget } from "@/lib/jupyter-ask-companion";
 import { workspacePathBlockReason } from "@/lib/deep-work";
 import { unsupportedBrowserReason } from "@/lib/jupyter-browser-support";
@@ -304,7 +304,7 @@ export function JupyterNotebookView({
   const inlineSurfaceRef = React.useRef<InlineSurfaceState | null>(null);
   const inlineRequestRef = React.useRef<AbortController | null>(null);
   /** SN-363: Ask Companion Edit writes awaiting the bridge's apply-answer-result. */
-  const pendingAskEditsRef = React.useRef(new Map<string, (applied: boolean) => void>());
+  const pendingAskEditsRef = React.useRef(new Map<string, (applied: boolean, reason?: string | null) => void>());
   inlineSurfaceRef.current = inlineSurface;
   const runInlineActionRef = React.useRef<
     ((
@@ -573,18 +573,19 @@ export function JupyterNotebookView({
   const openAskCompanion = React.useCallback((focus: JupyterFocusState, x: number, y: number) => {
     if (inlineSurfaceRef.current?.trigger === "contextmenu") dismissEmbeddedLabMenus();
     dismissInlineSurface();
-    const applyEdit = workspaceAccessMode === "read-only" ? undefined : (answer: string) => {
-      const target = jupyterAskCompanionEditTarget(focus, latestFocusRef.current);
+    const applyEdit = workspaceAccessMode === "read-only" ? undefined : (answer: string): InlineAiEditResult | Promise<InlineAiEditResult> => {
       const text = stripJupyterCodeFence(answer);
-      if (!target || !text) return false;
+      if (!text) return "Companion returned no text to insert.";
+      const target = jupyterAskCompanionEditTarget(focus, latestFocusRef.current);
+      if (!target) return "Click into the notebook cell where the answer should go, then try again.";
       const requestId = applyAnswer(text, target.focus, undefined, target.selection);
-      if (!requestId) return false;
-      return new Promise<boolean>((resolve) => {
-        const timer = window.setTimeout(() => settle(false), 10_000);
-        const settle = (applied: boolean) => {
+      if (!requestId) return "This notebook is no longer the active page.";
+      return new Promise<InlineAiEditResult>((resolve) => {
+        const timer = window.setTimeout(() => settle(false, "JupyterLab did not confirm the edit."), 10_000);
+        const settle = (applied: boolean, reason?: string | null) => {
           window.clearTimeout(timer);
           pendingAskEditsRef.current.delete(requestId);
-          resolve(applied);
+          resolve(applied ? true : reason || false);
         };
         pendingAskEditsRef.current.set(requestId, settle);
       });
@@ -858,7 +859,7 @@ export function JupyterNotebookView({
           onFocusChangeRef.current?.(answerResult.focus);
         }
         onAnswerAppliedRef.current?.(answerResult);
-        pendingAskEditsRef.current.get(answerResult.requestId)?.(answerResult.ok);
+        pendingAskEditsRef.current.get(answerResult.requestId)?.(answerResult.ok, answerResult.reason);
         setInlineSurface((current) => {
           if (!current?.requestId || current.requestId !== answerResult.requestId) return current;
           return answerResult.ok

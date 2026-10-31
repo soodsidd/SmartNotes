@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { Crop, FileImage, Highlighter, MessageSquarePlus, NotebookPen, Sparkles, X } from "lucide-react";
-import { EXPLAIN_STYLE_INSTRUCTION, parseInlineAiContext, type InlineAiInvocation, type InlineAiRelayObserver, type InlineAiRelayRequest, type InlineAiSpeed } from "@/lib/inline-ai";
+import { EXPLAIN_STYLE_INSTRUCTION, parseInlineAiContext, type InlineAiEditResult, type InlineAiInvocation, type InlineAiRelayObserver, type InlineAiRelayRequest, type InlineAiSpeed } from "@/lib/inline-ai";
 import { invokePdfRecord } from "@/components/pdf-record-panel";
 
 export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
@@ -24,8 +25,12 @@ export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
   const panel = React.useRef<HTMLDivElement>(null);
   const invocationRef = React.useRef<InlineAiInvocation | null>(null);
   const previousFocus = React.useRef<HTMLElement | null>(null);
+  // An Edit turn keeps running in the shared Companion thread after the popover
+  // closes (Escape, X, "Open in Companion"); detaching only drops the popover UI,
+  // so the finished answer is still written and its outcome reported by toast.
+  const detach = React.useCallback(() => { abort.current?.abort(); abort.current = null; }, []);
   const close = React.useCallback(() => {
-    abort.current?.abort(); abort.current = null;
+    detach();
     invocationRef.current?.onClose?.();
     invocationRef.current = null;
     setInvocation(null); setWorking(false);
@@ -35,14 +40,14 @@ export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
     const open = (event: Event) => {
       const detail = (event as CustomEvent<InlineAiInvocation>).detail;
       if (!detail || !parseInlineAiContext(detail.context) || !Number.isFinite(detail.x) || !Number.isFinite(detail.y)) return;
-      abort.current?.abort(); abort.current = null;
+      detach();
       invocationRef.current = detail;
       previousFocus.current = document.activeElement as HTMLElement;
       setQuestion(""); setAnswer(""); setAnsweredQuestion(""); setError(""); setWorking(false); setSpeed("fast"); setEdit(false); setInserted(false); setInvocation(detail);
     };
     window.addEventListener("smart-notes-ask-companion", open);
-    return () => { window.removeEventListener("smart-notes-ask-companion", open); abort.current?.abort(); };
-  }, []);
+    return () => { window.removeEventListener("smart-notes-ask-companion", open); detach(); };
+  }, [detach]);
   React.useEffect(() => {
     const dismiss = (event: Event) => {
       if (invocationRef.current?.sourceId === (event as CustomEvent<string>).detail) close();
@@ -78,24 +83,33 @@ export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
     const controller = new AbortController(); abort.current = controller;
     setWorking(true); setAnswer(""); setError(""); setInserted(false);
     const askedQuestion = prompt;
-    const editTurn = edit && Boolean(invocation.applyEdit);
+    const applyEdit = edit ? invocation.applyEdit : undefined;
+    const editTurn = Boolean(applyEdit);
+    const attached = () => !controller.signal.aborted;
     try {
       onAsk({ question: askedQuestion, context: invocation.context, speed, edit: editTurn }, {
-        onText: (text) => { if (!controller.signal.aborted) setAnswer(text); },
+        onText: (text) => { if (attached()) setAnswer(text); },
         onDone: (text) => {
-          if (controller.signal.aborted) return;
-          setAnswer(text); setAnsweredQuestion(askedQuestion); setWorking(false);
-          if (!editTurn) return;
-          void Promise.resolve(invocation.applyEdit?.(text)).catch(() => false).then((applied) => {
-            if (controller.signal.aborted) return;
-            if (applied) setInserted(true);
-            else setError("The answer could not be inserted into this editor.");
+          if (attached()) { setAnswer(text); setAnsweredQuestion(askedQuestion); setWorking(false); }
+          if (!applyEdit) return;
+          void Promise.resolve(applyEdit(text)).catch((): InlineAiEditResult => false).then((result) => {
+            const reason = editFailureReason(result);
+            if (attached()) {
+              if (reason) setError(reason); else setInserted(true);
+            } else if (reason) {
+              toast.error(reason);
+            } else {
+              toast.success("Companion edit inserted.");
+            }
           });
         },
-        onError: (message) => { if (!controller.signal.aborted) { setError(message); setWorking(false); } },
+        onError: (message) => {
+          if (attached()) { setError(message); setWorking(false); }
+          else if (editTurn) toast.error(`Companion edit was not inserted: ${message}`);
+        },
       });
     } catch (err) {
-      if (!controller.signal.aborted) { setError(err instanceof Error ? err.message : "Could not get an answer. Try again."); setWorking(false); }
+      if (attached()) { setError(err instanceof Error ? err.message : "Could not get an answer. Try again."); setWorking(false); }
     }
   }
   if (!invocation) return null;
@@ -143,4 +157,11 @@ export function InlineAiPopover({ pagePath, onAsk, onOpenCompanion }: {
       </>}
     </div>, document.body
   );
+}
+
+function editFailureReason(result: InlineAiEditResult): string | null {
+  if (result === true) return null;
+  return typeof result === "string" && result.trim()
+    ? `The answer could not be inserted: ${result.trim()}`
+    : "The answer could not be inserted into this editor.";
 }

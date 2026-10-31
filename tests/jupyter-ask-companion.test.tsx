@@ -227,7 +227,7 @@ describe("SN-363 Lab Ask Companion relay", () => {
       source: JUPYTER_FOCUS_MESSAGE_SOURCE, version: JUPYTER_FOCUS_MESSAGE_VERSION,
       kind: "apply-answer-result", result: { requestId: message.requestId, ok: false, reason: "The live Jupyter source changed." },
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent("could not be inserted");
+    expect(await screen.findByRole("alert")).toHaveTextContent("could not be inserted: The live Jupyter source changed.");
   });
 
   it("offers Ask but no Edit in a read-only Deep Work workspace", async () => {

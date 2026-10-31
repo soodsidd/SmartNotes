@@ -8,6 +8,8 @@ const EXPLAIN_PROMPT = `${EXPLAIN_STYLE_INSTRUCTION} Apply this to the text belo
 import { streamJupyterFastLanePrompt } from "@/lib/api/jupyter";
 // SN-362: Ask must never open the parallel fast-lane session.
 jest.mock("@/lib/api/jupyter", () => ({ streamJupyterFastLanePrompt: jest.fn() }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+import { toast } from "sonner";
 const fetchSpy = jest.fn();
 beforeEach(() => { fetchSpy.mockReset(); global.fetch = fetchSpy as unknown as typeof fetch; jest.mocked(streamJupyterFastLanePrompt).mockReset(); });
 afterEach(() => {
@@ -113,6 +115,31 @@ it("waits for an async Edit confirmation before reporting the insert", async () 
   expect(screen.queryByText("Inserted into the page.")).not.toBeInTheDocument();
   await act(async () => settle(false));
   expect(screen.getByRole("alert")).toHaveTextContent("could not be inserted");
+});
+
+// Closing the popover (Escape, X, "Open in Companion") must not cancel an Edit:
+// the turn keeps running in the sidebar, so its answer is still written.
+it("still applies an Edit after the popover is closed mid-turn and reports it by toast", async () => {
+  const applyEdit = jest.fn(() => Promise.resolve<boolean | string>(true));
+  const { onAsk } = renderPopover();
+  act(() => invokeInlineAi({ context: { ...context, surface: "jupyter", target: "Selection" }, x: 10, y: 10, applyEdit }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "Write the download cell" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: /Open in Companion/ }));
+  expect(screen.queryByTestId("ask-companion-popover")).toBeNull();
+  await act(async () => onAsk.mock.calls[0][1].onDone("print('videos')"));
+  expect(applyEdit).toHaveBeenCalledWith("print('videos')");
+  expect(toast.success).toHaveBeenCalledWith("Companion edit inserted.");
+
+  applyEdit.mockImplementation(() => Promise.resolve("The active Jupyter cell changed."));
+  act(() => invokeInlineAi({ context: { ...context, surface: "jupyter", target: "Selection" }, x: 10, y: 10, applyEdit }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "Again" } });
+  fireEvent.click(screen.getByRole("button", { name: "Ask", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Close Companion popover" }));
+  await act(async () => onAsk.mock.calls[1][1].onDone("x = 1"));
+  expect(toast.error).toHaveBeenCalledWith("The answer could not be inserted: The active Jupyter cell changed.");
 });
 
 it("shows empty targets and disables empty prompts", () => {
