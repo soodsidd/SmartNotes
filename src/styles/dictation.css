@@ -1,0 +1,86 @@
+/* SN-406: dictation mic (Companion composer + note editor). Tokens only:
+   --muted-foreground / --foreground / --muted idle, --destructive + --surface
+   recording, --accent + --accent-foreground FAB idle, --shadow-fab, --ring. */
+
+.dictation-btn {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  border: none; border-radius: var(--radius-sm); background: transparent;
+  color: var(--muted-foreground); cursor: pointer; position: relative;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.dictation-btn:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.dictation-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.dictation-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.dictation-btn--composer { width: 28px; height: 28px; }
+.dictation-btn--composer-mobile { width: 44px; height: 44px; border-radius: var(--radius-md); }
+
+.dictation-btn--fab {
+  position: fixed; z-index: 12;
+  right: calc(1rem + env(safe-area-inset-right, 0px));
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px) + var(--dictation-keyboard-inset, 0px));
+  width: 56px; height: 56px; border-radius: 9999px;
+  background: var(--accent); color: var(--accent-foreground); box-shadow: var(--shadow-fab);
+}
+.dictation-btn--fab:hover:not(:disabled) { background: var(--accent); color: var(--accent-foreground); }
+.dictation-btn--fab:disabled { opacity: .7; }
+@media (min-width: 768px) { .dictation-btn--fab { display: none; } }
+
+.dictation-btn.dictation-btn--recording,
+.dictation-btn.dictation-btn--recording:hover:not(:disabled) {
+  background: var(--destructive); color: var(--surface);
+}
+.dictation-btn--recording::after {
+  content: ""; position: absolute; inset: -4px; border-radius: inherit;
+  border: 2px solid var(--destructive); opacity: .6; pointer-events: none;
+  animation: dictation-pulse 1.4s ease-out infinite;
+}
+@keyframes dictation-pulse {
+  from { transform: scale(1); opacity: .6; }
+  to { transform: scale(1.18); opacity: 0; }
+}
+
+.dictation-status {
+  display: flex; align-items: center; gap: .5rem; min-width: 0;
+  font-family: var(--font-sans); font-size: .75rem; line-height: 1.4; color: var(--muted-foreground);
+}
+.dictation-status__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dictation-status__dot {
+  width: 8px; height: 8px; flex-shrink: 0; border-radius: 9999px; background: var(--destructive);
+  animation: dictation-blink 1s ease-in-out infinite alternate;
+}
+@keyframes dictation-blink { from { opacity: 1; } to { opacity: .35; } }
+.dictation-status--error {
+  color: var(--destructive); padding: .5rem .75rem; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: color-mix(in oklab, var(--destructive) 10%, transparent);
+}
+.dictation-status--error .dictation-status__text { white-space: normal; }
+.dictation-status__action {
+  flex-shrink: 0; padding: .25rem .5rem; border-radius: var(--radius-sm);
+  color: var(--foreground); font-weight: 500; background: transparent; border: none; cursor: pointer;
+}
+.dictation-status__action:hover { background: var(--secondary); }
+.dictation-status__action:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (pointer: coarse), (max-width: 767px) {
+  .dictation-status__action { min-height: 44px; min-width: 44px; }
+}
+
+/* Floating editor status above the FAB on phones. */
+.dictation-status--floating {
+  position: fixed; z-index: 12; left: 1rem;
+  right: calc(1rem + 56px + .75rem + env(safe-area-inset-right, 0px));
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px) + var(--dictation-keyboard-inset, 0px));
+  min-height: 44px; padding: .5rem .75rem; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: var(--popover); color: var(--foreground);
+  box-shadow: var(--shadow-popover);
+}
+.dictation-status--floating.dictation-status--error {
+  background: var(--popover); color: var(--destructive);
+}
+@media (min-width: 768px) {
+  .dictation-status--floating { left: auto; right: 1rem; max-width: 22rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dictation-btn--recording::after, .dictation-status__dot { animation: none; }
+}
