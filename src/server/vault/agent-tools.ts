@@ -184,6 +184,16 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
     },
   },
   {
+    name: "page_image_read",
+    description: "See an image embedded in a Smart Notes page. Use the page's vault path and a zero-based image index in document order (default 0); imageCount tells you how many images to inspect. Inspect the returned MCP image content or use an image-capable file Read on the validated resolvedDiskPath. Filenames and base64 text alone do not reveal visual condition. Only images in that page's assets can be read.",
+    group: "companion",
+    action: "page_image_read",
+    parameters: {
+      path: { type: "string", required: true, description: "Vault-relative page path." },
+      index: { type: "number", description: "Zero-based image index (default 0)." },
+    },
+  },
+  {
     name: "page_create",
     description:
       "Create a page in a section, or as a child of parentPath, optionally with initial HTML body. Pass noteType=\"design\" to create a raw HTML/CSS design page (SN-167) whose body is rendered verbatim (bypasses Tiptap normalization) — use this for self-contained UI artifacts.",
@@ -1091,6 +1101,7 @@ Workflows:
 - Discover vault structure: vault_tree (lists all notebooks/sections/pages with paths)
 - Find a page by title: page_find with partial title query → get exact path
 - Read a page with comments: page_get (returns body + parsed comments inline)
+- Inspect photos embedded in a page: page_image_read { path, index: 0 } returns the first image metadata and imageCount; repeat with indices 1 through imageCount-1 before judging visible progress. Inspect returned MCP image content or use an image-capable file Read on the validated resolvedDiskPath. Never infer photo condition from filenames or base64 text.
 - Read one PDF page: pdf_read_page with { href, page } returns only that page's bounded extractable text; missing, out-of-range, and image-only pages are explicit errors
 - Read surrounding PDF context: pdf_read_pages with { href, startPage, endPage } reads at most 3 inclusive pages with one combined maxPdfTextChars bound
 - Validate a PDF range: pdf_page_count with { href } returns metadata only and never extracts document text

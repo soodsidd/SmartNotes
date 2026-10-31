@@ -72,7 +72,20 @@ async function handle(message) {
       reply(message.id, { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, code: 'TOOL_NOT_ALLOWED' }) }] });
       return;
     }
-    const result = await callBridge(tool, message.params?.arguments || {});
+    const result = await callBridge(tool, tool === 'page_image_read'
+      ? { ...message.params?.arguments, includeImageData: true }
+      : message.params?.arguments || {});
+    if (tool === 'page_image_read' && result.ok === true) {
+      const image = result.result?.result?.data;
+      if (image?.dataBase64 && image?.mimeType) {
+        const { dataBase64, ...metadata } = image;
+        reply(message.id, { isError: false, content: [
+          { type: 'text', text: JSON.stringify({ ...result, result: { ...result.result, result: { ...result.result.result, data: metadata } } }) },
+          { type: 'image', data: dataBase64, mimeType: image.mimeType },
+        ] });
+        return;
+      }
+    }
     reply(message.id, { isError: result.ok !== true, content: [{ type: 'text', text: JSON.stringify(result) }] });
   } else {
     error(message.id, -32601, 'Method not found');

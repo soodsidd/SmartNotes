@@ -161,11 +161,14 @@ describe("SN-404 Deep Work bridge host-page scope", () => {
     const { scope } = scopeFor("Robots/Arm/master-repo.html");
     expect(scope.allowedTools.has("page_create")).toBe(true);
     expect(scope.allowedTools.has("page_children")).toBe(true);
+    expect(scope.allowedTools.has("page_image_read")).toBe(true);
     const ok = (tool: string, args: Record<string, unknown>) =>
       scope.authorizeTool(tool, { workspace: CAPABILITY, ...args });
     await expect(ok("page_create", { parentPath: "Robots/Arm/master-repo.html" })).resolves.toBe(true);
     await expect(ok("page_create", { parentPath: "Robots/Arm/child" })).resolves.toBe(true);
     await expect(ok("page_get", { path: "Robots/Arm/grandchild.html" })).resolves.toBe(true);
+    await expect(ok("page_image_read", { path: "Robots/Arm/grandchild.html", index: 0 })).resolves.toBe(true);
+    await expect(ok("page_image_read", { path: "Robots/Arm/other.html", index: 0 })).resolves.toBe(false);
     await expect(ok("page_children", { path: "Robots/Arm/master-repo.html" })).resolves.toBe(true);
     await expect(ok("page_children", { path: "Robots/Arm/child.html" })).resolves.toBe(true);
     await expect(ok("page_children", { path: "Robots/Arm/other.html" })).resolves.toBe(false);
@@ -184,6 +187,7 @@ describe("SN-404 Deep Work bridge host-page scope", () => {
   it("keeps unbound folders workspace-only", async () => {
     const { scope } = scopeFor(undefined);
     expect(scope.allowedTools.has("page_get")).toBe(false);
+    expect(scope.allowedTools.has("page_image_read")).toBe(false);
     expect(scope.allowedTools.has("page_children")).toBe(false);
     await expect(scope.authorizeTool("page_get", { workspace: CAPABILITY, path: "Robots/Arm/master-repo.html" }))
       .resolves.toBe(false);

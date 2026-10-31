@@ -82,3 +82,32 @@ describe('SN-399 Codex stdio MCP bridge', () => {
     expect(invoked).toEqual([{ tool: 'workspace_source_list', args: { workspace: capability } }]);
   });
 });
+
+it('returns page photos as MCP vision blocks without duplicating base64 in text', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sn-page-vision-'));
+  const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  const bridge = startCompanionLogFormBridge({
+    rootDir: root,
+    allowedTools: new Set(['page_image_read']),
+    invokeTool: async () => ({ ok: true, status: 200, tool: 'page_image_read', result: {
+      ok: true, data: { path: 'Notebook/Section/Page.html', imageCount: 3, index: 0, mimeType: 'image/png', dataBase64: base64 },
+    } }),
+  });
+  await bridge.ready;
+  const proc = spawn(process.execPath, [script, root], { stdio: ['pipe', 'pipe', 'pipe'] });
+  try {
+    const response = await new Promise<any>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('MCP image response timed out')), 5000);
+      proc.stdout.once('data', chunk => { clearTimeout(timer); resolve(JSON.parse(String(chunk).trim())); });
+      proc.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'page_image_read', arguments: { path: 'Notebook/Section/Page.html' } } })}\n`);
+    });
+    expect(response.result.isError).toBe(false);
+    expect(response.result.content[1]).toEqual({ type: 'image', mimeType: 'image/png', data: base64 });
+    expect(response.result.content[0].text).toContain('"imageCount":3');
+    expect(response.result.content[0].text).not.toContain(base64);
+  } finally {
+    proc.kill();
+    bridge.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
