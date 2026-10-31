@@ -110,6 +110,8 @@ import { generateCommentId, type PageComment } from "@/lib/comment-types";
 import type { ImageAlign } from "@/lib/image-layout-extension";
 import { supportsNativeCameraCapture } from "@/lib/camera-capture";
 import { CameraSessionOverlay } from "@/components/camera-session-overlay";
+import { DictationButton } from "@/components/dictation-button";
+import { EditorDictationOverlay, useEditorDictation } from "@/components/editor-dictation";
 import {
   adjustEditorZoomFromWheel,
   applyScrollPan,
@@ -1430,6 +1432,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
 
     React.useEffect(() => { editorForCalculatorRef.current = editor; }, [editor]);
 
+    // SN-406: dictation inserts at the caret via the local speech engine.
+    const dictation = useEditorDictation(editor);
+
     React.useEffect(() => {
       if (!editor || readOnly || isDrawMode || inkCaptureMode) return;
       const onShortcut = (event: KeyboardEvent) => {
@@ -2377,6 +2382,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           <ListStyleDropdown editor={editor} />
           <ToolbarSep />
           <ToolbarBtn onClick={openLinkDialog} active={editor?.isActive("link") ?? false} title="Insert link (Ctrl+K)" testId="toolbar-link"><LinkIcon className="size-4" /></ToolbarBtn>
+          <DictationButton controller={dictation} variant="toolbar" testId="toolbar-dictate" />
           <ToolbarSep />
           <InsertOverflowDropdown
             editor={editor}
@@ -2488,6 +2494,11 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
             e.target.value = "";
           }}
         />
+
+        {/* SN-406: phone dictation FAB + floating dictation status / offline notice. */}
+        {!readOnly && !hideFormatToolbar && annotationMode !== "draw" ? (
+          <EditorDictationOverlay controller={dictation} />
+        ) : null}
 
         {/* SN-340: in-app getUserMedia camera session (mobile/tablet only). */}
         {cameraCaptureSupported && cameraSessionOpen && (

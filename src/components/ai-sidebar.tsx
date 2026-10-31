@@ -11,6 +11,9 @@ import rehypeKatexImport from "rehype-katex";
 const rehypeKatex = rehypeKatexImport as any;
 import { AlertCircle, AlignJustify, ArrowDown, Check, ChevronDown, Code2, Copy, FileText, Monitor, MoreHorizontal, Paperclip, Send, Settings, Sparkles, Square, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DictationButton, DictationStatus } from "@/components/dictation-button";
+import { useDictation } from "@/hooks/use-dictation";
+import { appendTranscript } from "@/lib/speech/dictation-text";
 import {
   Dialog,
   DialogContent,
@@ -1728,6 +1731,15 @@ function AiConversation({
     setComposerDraft(nextDraft);
   }, []);
 
+  // SN-406: dictated text always appends to the live draft (read from the ref
+  // at insert time, so text typed while transcribing is kept).
+  const dictation = useDictation(
+    React.useCallback(
+      (transcript: string) => updateComposerDraft(appendTranscript(composerDraftRef.current, transcript)),
+      [updateComposerDraft]
+    )
+  );
+
   const removeAttachmentAt = React.useCallback((index: number) => {
     setAttachments((current) => {
       const removed = current[index];
@@ -2508,6 +2520,13 @@ function AiConversation({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
+            <DictationButton
+              controller={dictation}
+              variant={mobile ? "composer-mobile" : "composer"}
+              disabled={composerLocked}
+              className={mobile ? "col-start-3 row-start-2 justify-self-end" : undefined}
+              testId="ai-dictation-btn"
+            />
             {isTurnActive ? (
               <Button
                 type="button"
@@ -2536,6 +2555,7 @@ function AiConversation({
               </Button>
             )}
           </div>
+          <DictationStatus controller={dictation} className="mt-1.5" testId="ai-dictation-status" />
           {attachmentError ? (
             <p className="mt-1.5 text-[11px] text-destructive">{attachmentError}</p>
           ) : null}
