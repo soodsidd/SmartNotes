@@ -1,0 +1,24 @@
+{
+  "steps": [
+    {
+      "s": "engine up before record",
+      "up": false
+    },
+    {
+      "s": "offline notice",
+      "status": "Speech engine offline. Open OpenWhispr on the PC, then Retry. Your recording is kept.\nRetry\nDiscard",
+      "draft": "EXISTING-DRAFT"
+    },
+    {
+      "s": "engine relaunched",
+      "up": true,
+      "ms": 5060
+    },
+    {
+      "s": "after retry",
+      "draft": "EXISTING-DRAFT This is a long dictation test for smart notes. The first part talks about the weather.",
+      "retryGone": true
+    }
+  ],
+  "pageErrors": []
+}

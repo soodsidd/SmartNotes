@@ -1,0 +1,7 @@
+{
+  "status": 503,
+  "audioSeconds": 43.475,
+  "latencyMs": 268,
+  "error": "Speech engine offline.",
+  "code": "engine_offline"
+}

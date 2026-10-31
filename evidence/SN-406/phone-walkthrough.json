@@ -1,0 +1,70 @@
+{
+  "baseUrl": "http://127.0.0.1:56521",
+  "steps": [
+    {
+      "step": "scratch page",
+      "at": "2026-10-31T19:23:20.795Z",
+      "pagePath": "SN-406 dictation smoke/dictation-smoke.html"
+    },
+    {
+      "step": "editor fab",
+      "at": "2026-10-31T19:23:23.730Z",
+      "box": {
+        "x": 318,
+        "y": 592,
+        "width": 56,
+        "height": 56
+      },
+      "viewport": {
+        "width": 390,
+        "height": 664
+      }
+    },
+    {
+      "step": "editor recording",
+      "at": "2026-10-31T19:23:25.546Z",
+      "recordingClass": "dictation-btn dictation-btn--fab dictation-btn--recording",
+      "status": "Listening 0:01 · tap to stop"
+    },
+    {
+      "step": "editor transcript",
+      "at": "2026-10-31T19:24:20.283Z",
+      "waitedMs": 54737,
+      "existingKept": true,
+      "existingFirst": true,
+      "hasStart": true,
+      "hasEnd": true,
+      "text": "EXISTING-EDITOR-TEXT. This is a long dictation test for smart notes. The first part talks about the weather, which has been cool and cloudy all week with light rain in the mornings. The second part is about the research vault, where every page is stored as a file on disk and the editor saves changically. Next we discuss the companion panel. Which can answer questions about the current note and draft follow-up messages. After that we describe the mobile woe, where the phone records audio and the computer transcribes it using a local speech engine. Finally we list three fruits, apples, bananas, and oranges. The number at the end of this clip is 42. End of tests."
+    },
+    {
+      "step": "composer draft before tap",
+      "at": "2026-10-31T19:24:29.204Z",
+      "value": "EXISTING-DRAFT"
+    },
+    {
+      "step": "composer mic",
+      "at": "2026-10-31T19:24:29.216Z",
+      "box": {
+        "x": 281,
+        "y": 605,
+        "width": 44,
+        "height": 44
+      }
+    },
+    {
+      "step": "composer transcript",
+      "at": "2026-10-31T19:25:25.425Z",
+      "waitedMs": 54421,
+      "startsWithExisting": true,
+      "hasStart": true,
+      "hasEnd": true,
+      "text": "EXISTING-DRAFT This is a long dictation test for smart notes. The first part talks about the weather, which has been cool and cloudy all week with light rain in the mornings. The second part is about the research vault, where every page is stored as a file on disk and the editor saves changes automatically. Next we discuss the companion panel. Which can answer questions about the current note and draft follow-up messages. After that we describe the mobile workflow, where the phone records audio and the computer transcribes it using a local speech engine. Finally we list three fruits, apples, bananas, and oranges. The number at the end of this clip is 42. End of test."
+    },
+    {
+      "step": "cleanup",
+      "at": "2026-10-31T19:25:25.816Z",
+      "status": 200
+    }
+  ],
+  "consoleErrors": []
+}

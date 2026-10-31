@@ -1,0 +1,8 @@
+{
+  "status": 200,
+  "audioSeconds": 43.475,
+  "latencyMs": 10135,
+  "text": "This is a long dictation test for smart notes. The first part talks about the weather, which has been cool and cloudy all week with light rain in the mornings. The second part is about the research vault, where every page is stored as a file on disk and the editor saves changes automatically. Next we discuss the companion panel. Which can answer questions about the current note and draft follow-up messages. After that, we describe the mobile workflow, where the phone records audio and the computer transcribes it using a local speech engine. Finally, we list three fruits, apples, bananas, and oranges. The number at the end of this clip is 42. End of test",
+  "chunks": 2,
+  "durationSeconds": 43.475
+}

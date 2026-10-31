@@ -1867,6 +1867,42 @@
       "whenToRun": "Pre-merge when touching companion UI, persistence effects, provider selection, or composer behavior."
     },
     {
+      "id": "unit-sn-406-dictation",
+      "name": "Dictation (local speech engine)",
+      "description": "Jest: /api/speech/transcribe proxy framing + chunking + offline/timeout errors against a fake sherpa-onnx WebSocket server, 10 s silence auto-stop, and append-not-replace in the Companion composer and editor.",
+      "appType": "node",
+      "command": "npm test -- tests/speech-transcribe-proxy.test.ts tests/dictation-silence-append.test.ts tests/ai-sidebar-dictation.test.tsx",
+      "timeoutMs": 120000,
+      "enabled": true,
+      "tags": [
+        "unit",
+        "node",
+        "ai",
+        "speech",
+        "dictation",
+        "targeted"
+      ],
+      "feature": "companion",
+      "testType": "unit",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "fast",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [
+        {
+          "path": "tests/speech-transcribe-proxy.test.ts"
+        },
+        {
+          "path": "tests/dictation-silence-append.test.ts"
+        },
+        {
+          "path": "tests/ai-sidebar-dictation.test.tsx"
+        }
+      ],
+      "intent": "Guards that dictated audio reaches the local engine intact (framing, >30 s chunking with no dropped segments), that an offline engine surfaces a retryable error instead of losing the clip, and that transcripts never replace existing text.",
+      "whenToRun": "Pre-merge when touching src/lib/speech, src/server/speech, /api/speech, use-dictation, or the composer/editor mic wiring."
+    },
+    {
       "id": "unit-sn-322-parallel-companion-turns",
       "name": "SN-322 parallel companion turns",
       "description": "Jest: cross-thread keep-alive, same-thread supersede, legacy CLI-chat fallback, durable thread request identity, and displayed-thread busy state.",
