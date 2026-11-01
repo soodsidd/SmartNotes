@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 
 import { cellSourceRevision } from "@/lib/jupyter-cell-fingerprint";
 import { resolveLiveNotebookServer, resolveLiveProjectNotebookServer, type LiveNotebookServer } from "@/server/jupyter/runtime";
@@ -6,6 +8,8 @@ import { persistWorkspaceCellRun, readWorkspaceNotebookCellForRun } from "@/serv
 import type { ProjectWorkspaceRequest } from "@/server/jupyter/workspace-root";
 import { emitVaultSideEffects } from "@/server/vault/socket-events";
 import { VaultError } from "@/server/vault/errors";
+import { getVaultRoot } from "@/server/vault/config";
+import { sniffImageFormat } from "@/server/vault/companion-images";
 import { readNotebookCellForRun } from "@/server/vault/jupyter-notebook";
 
 // ---------------------------------------------------------------------------
@@ -95,7 +99,25 @@ interface CellRunRecord {
   announceTimer: NodeJS.Timeout | null;
   /** Resolves once a terminal run has finished (or skipped) persistence. */
   settled: Promise<void> | null;
+  /** Image outputs (plots) saved for Companion vision, in output order. */
+  images: CellRunImage[];
+  imagesOmitted: number;
 }
+
+/** A plot/image output the Companion can actually look at (not just "[image/png output omitted]"). */
+export interface CellRunImage {
+  index: number;
+  mimeType: string;
+  bytes: number;
+  resolvedDiskPath: string;
+}
+
+/** Hidden vault folder (dot folders never appear in the tree) for cell-run plot images. */
+export const CELL_OUTPUT_IMAGE_DIR = ".companion-images/cell-outputs";
+const MAX_RUN_IMAGES = 8;
+const MAX_RUN_IMAGE_BYTES = 8 * 1024 * 1024;
+const CELL_OUTPUT_IMAGE_TTL_MS = 3 * 24 * 60 * 60_000;
+const VISION_IMAGE_MIMES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 type NotebookOutput = Record<string, unknown>;
 
@@ -222,6 +244,60 @@ function pushOutput(record: CellRunRecord, output: NotebookOutput): void {
   record.outputs.push(output);
 }
 
+let lastImagePrune = 0;
+
+function pruneOldCellOutputImages(dir: string): void {
+  const now = Date.now();
+  if (now - lastImagePrune < 60 * 60_000) return;
+  lastImagePrune = now;
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      const file = path.join(dir, name);
+      try {
+        if (now - fs.statSync(file).mtimeMs > CELL_OUTPUT_IMAGE_TTL_MS) fs.unlinkSync(file);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  } catch {
+    // directory may not exist yet
+  }
+}
+
+/**
+ * Save a rich image output (e.g. a matplotlib PNG) to the vault's hidden
+ * cell-output folder so every Companion provider can see the plot: Codex via
+ * MCP image content, Claude/Cursor/Copilot via an image-capable Read of the
+ * returned resolvedDiskPath. Never fails the run; oversized/extra images are
+ * counted in imagesOmitted.
+ */
+function captureImageOutput(record: CellRunRecord, data: Record<string, unknown>): void {
+  const mime = VISION_IMAGE_MIMES.find((candidate) => typeof data[candidate] === "string" || Array.isArray(data[candidate]));
+  if (!mime) return;
+  if (record.images.length >= MAX_RUN_IMAGES) {
+    record.imagesOmitted += 1;
+    return;
+  }
+  try {
+    const raw = joinText(data[mime]).replace(/\s+/g, "");
+    const bytes = Buffer.from(raw, "base64");
+    const format = sniffImageFormat(bytes);
+    if (!format || format.mime === "image/svg+xml" || bytes.length === 0 || bytes.length > MAX_RUN_IMAGE_BYTES) {
+      record.imagesOmitted += 1;
+      return;
+    }
+    const dir = path.join(getVaultRoot(), ...CELL_OUTPUT_IMAGE_DIR.split("/"));
+    fs.mkdirSync(dir, { recursive: true });
+    pruneOldCellOutputImages(dir);
+    const index = record.images.length;
+    const file = path.join(dir, `${record.runId}-${index}${format.ext}`);
+    fs.writeFileSync(file, bytes);
+    record.images.push({ index, mimeType: format.mime, bytes: bytes.length, resolvedDiskPath: file });
+  } catch {
+    record.imagesOmitted += 1;
+  }
+}
+
 function appendStream(record: CellRunRecord, name: string, text: string): void {
   const streamName = name === "stderr" ? "stderr" : "stdout";
   const last = record.outputs[record.outputs.length - 1];
@@ -263,6 +339,8 @@ function toPayload(record: CellRunRecord, awaitMs?: number) {
     stdout: { text: stdout.text, truncated: stdout.truncated || record.stdoutChars > record.stdout.length, totalChars: record.stdoutChars },
     stderr: { text: stderr.text, truncated: stderr.truncated || record.stderrChars > record.stderr.length, totalChars: record.stderrChars },
     result: result ? { text: result.text, truncated: result.truncated } : null,
+    images: record.images.map((image) => ({ ...image })),
+    imagesOmitted: record.imagesOmitted,
     error: record.error && traceback
       ? { ename: record.error.ename, evalue: record.error.evalue, traceback: traceback.text, truncated: traceback.truncated }
       : null,
@@ -482,6 +560,7 @@ function handleMessage(record: CellRunRecord, raw: unknown): void {
               metadata: content.metadata ?? {},
             }
           : { output_type: "display_data", data: content.data, metadata: content.metadata ?? {} });
+        captureImageOutput(record, content.data as Record<string, unknown>);
       }
       const text = stripAnsi(textFromBundle(content.data));
       if (text) record.resultText = record.resultText ? `${record.resultText}\n${text}`.slice(-STREAM_BUFFER_CHARS) : text;
@@ -491,6 +570,7 @@ function handleMessage(record: CellRunRecord, raw: unknown): void {
     case "clear_output":
       record.outputs = [];
       record.outputBytes = 0;
+      record.images = [];
       record.stdout = "";
       record.stderr = "";
       record.resultText = "";
@@ -643,10 +723,17 @@ function executeRequest(msgId: string, clientSession: string, code: string): str
 // Public API
 // ---------------------------------------------------------------------------
 
+export function cellRunImagesHint(payload: Pick<JupyterCellRunPayload, "images" | "imagesOmitted">): string {
+  if (!payload.images.length) {
+    return payload.imagesOmitted ? ` ${payload.imagesOmitted} image output(s) could not be captured for viewing.` : "";
+  }
+  return ` The cell produced ${payload.images.length} image output(s) (plots/figures) in run.images. To judge a plot, look at it: use the attached image content if your tool result has it, otherwise do an image-capable file Read of each run.images[i].resolvedDiskPath (this read is allowed with Computer access off). Do not describe a plot you have not viewed.${payload.imagesOmitted ? ` ${payload.imagesOmitted} more image output(s) were not captured.` : ""}`;
+}
+
 function finishedHint(payload: JupyterCellRunPayload): string {
-  const outcome = payload.status === "error"
+  const outcome = (payload.status === "error"
     ? "The cell raised an exception on the live kernel; see run.error."
-    : "Cell finished on the live kernel.";
+    : "Cell finished on the live kernel.") + cellRunImagesHint(payload);
   if (payload.persistence?.status === "saved") {
     return `${outcome} Its outputs were saved into the notebook cell and appear in the owner's open JupyterLab notebook. The notebook revision is now run.persistence.revision; use it as expectedRevision for your next workspace_cell_* edit.`;
   }
@@ -737,6 +824,8 @@ export async function runJupyterCell(input: RunJupyterCellInput, deps: RunJupyte
     sourceRevision: cellSourceRevision(cell.source),
     announceTimer: null,
     settled: null,
+    images: [],
+    imagesOmitted: 0,
   };
   runs().set(record.runId, record);
   announceRun(record, true);

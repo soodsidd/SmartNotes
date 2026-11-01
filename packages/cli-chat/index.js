@@ -235,7 +235,7 @@ function rewriteCompanionAppContext(appContext, target) {
     hostPagePath
       ? `- This turn is isolated to the active disk workspace plus its host Smart Notes page ${hostPagePath} and that page's children. Use page_children with path = host page (or a returned child path) to discover existing children before asking the owner for a path. page_get, page_image_read, page_children, page_create (parentPath = host or child page), page_write, and page_edit are accepted only for that subtree and must carry the workspace capability; all other vault page/tree/Jupyter-note tools stay outside its authority.`
       : '- This turn is isolated to the active disk workspace. Vault page/tree/Jupyter-note tools are outside its authority and must not be used for discovery, reads, creation, or edits, even when prior conversation mentions a similarly named vault page.',
-    '- Never switch provider cwd to the disk workspace, probe processes, assume port 3002, or call browserOrigin. Use only the capability-authenticated workspace API/bridge operations above. The sole direct file-read exception is an image-capable Read on resolvedDiskPath returned by an authorized page_image_read; do not read other vault paths.',
+    '- Never switch provider cwd to the disk workspace, probe processes, assume port 3002, or call browserOrigin. Use only the capability-authenticated workspace API/bridge operations above. The sole direct file-read exceptions are an image-capable Read on a resolvedDiskPath returned by an authorized page_image_read or in jupyter_cell_run run.images (plot outputs); do not read other vault paths.',
   ] : [
     'Host-side companion connection (server-authoritative):',
     browserOrigin

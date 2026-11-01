@@ -218,6 +218,29 @@ describe("jupyter_cell_run (SN-376 short await)", () => {
     expect(getJupyterCellRun(data.run.runId)?.status).toBe("completed");
   });
 
+  it("saves plot image outputs so every Companion provider can view them", async () => {
+    // 1x1 PNG, the shape matplotlib emits as display_data image/png.
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    fake.script = (request, send) => {
+      send(reply(request, "iopub", "status", { execution_state: "busy" }));
+      send(reply(request, "iopub", "display_data", { data: { "image/png": png, "text/plain": "<Figure size 640x480 with 1 Axes>" }, metadata: {} }));
+      send(reply(request, "iopub", "display_data", { data: { "image/png": "bm90IGFuIGltYWdl", "text/plain": "<bad>" }, metadata: {} }));
+      send(reply(request, "shell", "execute_reply", { status: "ok", execution_count: 8 }));
+      send(reply(request, "iopub", "status", { execution_state: "idle" }));
+    };
+
+    const outcome = await run({ index: 0 });
+
+    const data = (outcome as any).result.data;
+    expect(data.run.images).toHaveLength(1);
+    expect(data.run.imagesOmitted).toBe(1);
+    const image = data.run.images[0];
+    expect(image).toMatchObject({ index: 0, mimeType: "image/png" });
+    expect(image.resolvedDiskPath.startsWith(path.join(vaultRoot, ".companion-images", "cell-outputs"))).toBe(true);
+    expect((await fs.readFile(image.resolvedDiskPath)).toString("base64")).toBe(png);
+    expect(data.hint).toContain("run.images");
+  });
+
   it("returns a still-running payload with runId + cellId + note at the threshold", async () => {
     let finishLater: (() => void) | null = null;
     fake.script = (request, send) => {
