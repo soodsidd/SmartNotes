@@ -96,6 +96,8 @@ export interface DictationRecorderOptions {
   onAutoStop: (reason: RecorderStopReason) => void;
   /** Elapsed seconds, throttled to whole-second changes. */
   onTick?: (seconds: number) => void;
+  /** SN-407: auto-stop after this many seconds of silence (user setting). */
+  silenceSeconds?: number;
 }
 
 export class DictationRecorder {
@@ -145,7 +147,7 @@ export class DictationRecorder {
       throw new DictationCaptureError("failed", "Could not start the microphone.");
     }
     await resumed;
-    this.detector = new SilenceDetector(context.sampleRate);
+    this.detector = new SilenceDetector(context.sampleRate, this.options.silenceSeconds);
     this.source = context.createMediaStreamSource(this.stream);
     // Keep the graph pulling without making the mic audible.
     this.sink = context.createGain();

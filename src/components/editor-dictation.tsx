@@ -10,7 +10,7 @@ import * as React from "react";
 import type { Editor } from "@tiptap/core";
 
 import { DictationButton, DictationStatus } from "@/components/dictation-button";
-import { useDictation, type DictationController } from "@/hooks/use-dictation";
+import { useDictation, useDictationShortcut, type DictationController } from "@/hooks/use-dictation";
 import { insertTranscriptIntoEditor } from "@/lib/speech/dictation-text";
 
 export function useEditorDictation(editor: Editor | null): DictationController {
@@ -30,12 +30,28 @@ export function useEditorDictation(editor: Editor | null): DictationController {
     };
   }, [editor]);
 
-  return useDictation(
+  const controller = useDictation(
     React.useCallback((transcript: string) => {
       const current = editorRef.current;
       if (current) insertTranscriptIntoEditor(current, transcript, caretPlacedRef.current);
     }, [])
   );
+
+  // SN-407: Ctrl/⌘+Shift+Space toggles dictation while the caret is in this editor.
+  useDictationShortcut(
+    controller,
+    React.useCallback((active: Element | null) => {
+      const current = editorRef.current;
+      if (!current || current.isDestroyed || !current.isEditable || !active) return false;
+      try {
+        return current.view.dom.contains(active);
+      } catch {
+        return false;
+      }
+    }, [])
+  );
+
+  return controller;
 }
 
 /** Height of the on-screen keyboard (visualViewport), so the FAB stays above it. */

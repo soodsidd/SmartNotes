@@ -12,7 +12,7 @@ const rehypeKatex = rehypeKatexImport as any;
 import { AlertCircle, AlignJustify, ArrowDown, Check, ChevronDown, Code2, Copy, FileText, Monitor, MoreHorizontal, Paperclip, Send, Settings, Sparkles, Square, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DictationButton, DictationStatus } from "@/components/dictation-button";
-import { useDictation } from "@/hooks/use-dictation";
+import { useDictation, useDictationShortcut } from "@/hooks/use-dictation";
 import { appendTranscript } from "@/lib/speech/dictation-text";
 import {
   Dialog,
@@ -1739,6 +1739,13 @@ function AiConversation({
       [updateComposerDraft]
     )
   );
+  // SN-407: Ctrl/⌘+Shift+Space toggles dictation while focus is in the composer.
+  const composerShellRef = React.useRef<HTMLDivElement | null>(null);
+  useDictationShortcut(
+    dictation,
+    React.useCallback((active: Element | null) => Boolean(active && composerShellRef.current?.contains(active)), []),
+    !composerLocked
+  );
 
   const removeAttachmentAt = React.useCallback((index: number) => {
     setAttachments((current) => {
@@ -2336,6 +2343,7 @@ function AiConversation({
             isTurnActive ? "border-[color:var(--accent)]/45" : "border-border",
             mobile ? "rounded-xl px-2 pb-1.5 pt-2" : "rounded px-3 py-2.5"
           )}
+          ref={composerShellRef}
           data-testid="ai-composer"
           data-turn-active={isTurnActive ? "true" : "false"}
         >

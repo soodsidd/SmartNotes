@@ -16,6 +16,8 @@ import {
   type RecordedClip,
   type RecorderStopReason,
 } from "@/lib/speech/recorder";
+import { readDictationSilenceSeconds } from "@/lib/speech/dictation-settings";
+import { dictationShortcutAction } from "@/lib/speech/dictation-shortcut";
 
 export type DictationPhase = "idle" | "starting" | "recording" | "stopping" | "transcribing";
 
@@ -159,6 +161,8 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
     setSeconds(0);
     updatePhase("starting");
     const recorder = new DictationRecorder({
+      // SN-407: read the setting per recording so changes apply immediately.
+      silenceSeconds: readDictationSilenceSeconds(),
       onAutoStop: (reason) => void stop(reason),
       onTick: (value) => {
         if (mountedRef.current) setSeconds(value);
@@ -210,4 +214,54 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
   }, []);
 
   return { phase, seconds, notice, hasPendingClip, toggle, retry, discard, dismissNotice };
+}
+
+/**
+ * SN-407: wire the dictation keyboard shortcut (Ctrl/⌘+Shift+Space) to a
+ * controller. `isInScope(activeElement)` says whether focus is inside this
+ * surface (note editor / Companion composer); `enabled` gates starting.
+ *
+ * Stop runs in the capture phase and start in the bubble phase; both skip
+ * events another surface already handled (`defaultPrevented`), so one press
+ * stops a recording elsewhere without also starting this surface.
+ */
+export function useDictationShortcut(
+  controller: DictationController,
+  isInScope: (active: Element | null) => boolean,
+  enabled = true
+): void {
+  const stateRef = React.useRef({ controller, isInScope, enabled });
+  stateRef.current = { controller, isInScope, enabled };
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const decide = (event: KeyboardEvent) => {
+      const { controller: current, isInScope: inScope, enabled: canStart } = stateRef.current;
+      return dictationShortcutAction(event, {
+        phase: current.phase,
+        hasPendingClip: current.hasPendingClip,
+        inScope: inScope(document.activeElement),
+        enabled: canStart,
+      });
+    };
+    const onCapture = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (decide(event) !== "stop") return;
+      event.preventDefault();
+      stateRef.current.controller.toggle();
+    };
+    const onBubble = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const action = decide(event);
+      if (action !== "start" && action !== "consume") return;
+      event.preventDefault();
+      if (action === "start") stateRef.current.controller.toggle();
+    };
+    window.addEventListener("keydown", onCapture, true);
+    window.addEventListener("keydown", onBubble);
+    return () => {
+      window.removeEventListener("keydown", onCapture, true);
+      window.removeEventListener("keydown", onBubble);
+    };
+  }, []);
 }

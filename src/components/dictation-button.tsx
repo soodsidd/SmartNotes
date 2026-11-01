@@ -18,6 +18,7 @@ import * as React from "react";
 import { Loader2, Mic, Square } from "lucide-react";
 
 import type { DictationController } from "@/hooks/use-dictation";
+import { DICTATION_ARIA_KEYSHORTCUTS, DICTATION_SHORTCUT } from "@/lib/speech/dictation-shortcut";
 import { cn } from "@/lib/utils";
 
 function formatElapsed(seconds: number): string {
@@ -81,7 +82,9 @@ export function DictationButton({
     <button
       type="button"
       aria-label={label}
-      title={label}
+      // SN-407: surface the keyboard shortcut on hover / to assistive tech.
+      title={`${label} (${DICTATION_SHORTCUT.keys})`}
+      aria-keyshortcuts={DICTATION_ARIA_KEYSHORTCUTS}
       aria-pressed={recording}
       data-testid={testId}
       data-dictation-phase={phase}

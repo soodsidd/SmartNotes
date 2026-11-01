@@ -32,6 +32,12 @@ import {
   type JupyterProfileStatus,
 } from "@/lib/api/jupyter";
 import { triggerForceReload } from "@/lib/sw-update";
+import {
+  DICTATION_SILENCE_DEFAULT_SECONDS,
+  DICTATION_SILENCE_OPTIONS,
+  readDictationSilenceSeconds,
+  writeDictationSilenceSeconds,
+} from "@/lib/speech/dictation-settings";
 
 type SettingsTab = "general" | "notebooks" | "backups" | "ingest" | "server";
 
@@ -58,6 +64,11 @@ export function AppSettingsDialog({
   const { spellcheckEnabled, setSpellcheckEnabled } = useSpellcheck();
   const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = React.useState<SettingsTab>("general");
+  // SN-407: dictation auto-stop silence timeout (per device, localStorage).
+  const [dictationSilenceSeconds, setDictationSilenceSeconds] = React.useState<number>(DICTATION_SILENCE_DEFAULT_SECONDS);
+  React.useEffect(() => {
+    if (open) setDictationSilenceSeconds(readDictationSilenceSeconds());
+  }, [open]);
   const [installState, setInstallState] = React.useState(() => getPwaInstallState());
   const [installing, setInstalling] = React.useState(false);
   const [reloadingApp, setReloadingApp] = React.useState(false);
@@ -256,6 +267,35 @@ export function AppSettingsDialog({
               </div>
               <p className="text-xs text-muted-foreground">
                 Browser spelling underlines in the text editor. Off does not change note content.
+              </p>
+            </section>
+
+            <section data-testid="settings-dictation-silence">
+              <p className="mb-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                Dictation auto-stop
+              </p>
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Dictation auto-stop after silence">
+                {DICTATION_SILENCE_OPTIONS.map((seconds) => (
+                  <button
+                    key={seconds}
+                    type="button"
+                    role="radio"
+                    aria-checked={dictationSilenceSeconds === seconds}
+                    data-testid={`settings-dictation-silence-${seconds}`}
+                    onClick={() => setDictationSilenceSeconds(writeDictationSilenceSeconds(seconds))}
+                    className={cn(
+                      "rounded border px-3 py-1.5 text-xs transition-colors",
+                      dictationSilenceSeconds === seconds
+                        ? "border-[color:var(--accent)] bg-[color:var(--accent)]/12 text-foreground"
+                        : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    {seconds} s
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Dictation stops after this much silence. Saved on this device; applies to the next recording.
               </p>
             </section>
 

@@ -70,6 +70,13 @@ export const COMMENT_SHORTCUT: KeyboardShortcutRef = {
   macKeys: "⌘⇧M",
 };
 
+/** SN-407: toggles dictation in the note editor and the Companion composer. */
+export const DICTATION_SHORTCUT: KeyboardShortcutRef = {
+  label: "Toggle dictation",
+  keys: "Ctrl+Shift+Space",
+  macKeys: "⌘⇧Space",
+};
+
 export const KEYBOARD_SHORTCUTS: KeyboardShortcutRef[] = [
   { label: "Bold", keys: "Ctrl+B", macKeys: "⌘B" },
   { label: "Italic", keys: "Ctrl+I", macKeys: "⌘I" },
@@ -82,6 +89,7 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcutRef[] = [
   { label: "Numbered list", keys: "Ctrl+Shift+7", macKeys: "⌘⇧7" },
   { label: "Blockquote", keys: "Ctrl+Shift+9", macKeys: "⌘⇧9" },
   COMMENT_SHORTCUT,
+  DICTATION_SHORTCUT,
 ];
 
 export const DENSITY_OPTIONS: { value: Density; label: string }[] = [

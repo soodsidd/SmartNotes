@@ -7,6 +7,10 @@
  * recording where nobody speaks also stops after `silenceSeconds`.
  */
 
+/**
+ * Detector fallback when no window is passed. The app always passes the
+ * user's setting (SN-407, see dictation-settings.ts; default 3 s).
+ */
 export const DICTATION_SILENCE_SECONDS = 10;
 
 /** Frame RMS above this counts as voice (~ -38 dBFS). */

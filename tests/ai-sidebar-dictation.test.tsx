@@ -159,3 +159,28 @@ describe("Companion composer dictation", () => {
     expect(mic).not.toBeDisabled();
   });
 });
+
+describe("SN-407 Companion composer dictation shortcut", () => {
+  beforeEach(() => {
+    recorderInstances.length = 0;
+    (globalThis as { fetch: unknown }).fetch = jest.fn(async () => jsonResponse(200, { text: "by shortcut" }));
+  });
+
+  it("Ctrl+Shift+Space in the composer starts dictation, and again stops and appends", async () => {
+    renderCompanion();
+    const input = screen.getByTestId("ai-input") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "Draft" } });
+    const mic = screen.getByTestId("ai-dictation-btn");
+    expect(mic).toHaveAttribute("aria-keyshortcuts", expect.stringContaining("Control+Shift+Space"));
+    input.focus();
+    await act(async () => {
+      fireEvent.keyDown(input, { key: " ", code: "Space", ctrlKey: true, shiftKey: true });
+    });
+    await waitFor(() => expect(mic).toHaveAttribute("data-dictation-phase", "recording"));
+    await act(async () => {
+      fireEvent.keyDown(input, { key: " ", code: "Space", ctrlKey: true, shiftKey: true });
+    });
+    await waitFor(() => expect(input.value).toBe("Draft by shortcut"));
+    expect(recorderInstances).toHaveLength(1);
+  });
+});
