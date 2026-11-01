@@ -137,6 +137,8 @@ describe("SN-378 Deep Work notebook execution", () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "sn378-project-"));
     state = await fs.mkdtemp(path.join(os.tmpdir(), "sn378-state-"));
     process.env.SMART_NOTES_STATE_DIR = state;
+    // Plot outputs are written under the vault; keep them out of the real one.
+    process.env.SMART_NOTES_VAULT = state;
     await fs.writeFile(path.join(root, "analysis.ipynb"), JSON.stringify(NOTEBOOK), "utf8");
     await fs.writeFile(path.join(root, "plain.py"), "print('plain')", "utf8");
     const request = { rootPath: root, requestedAccess: "editable" as const, branch: "av/sn-378" };
@@ -216,6 +218,9 @@ describe("SN-378 Deep Work notebook execution", () => {
   it("saves rich display outputs natively rather than as text placeholders", async () => {
     const result = await post("analysis.ipynb", "plot");
     expect(result.body.result.run.persistence).toEqual({ status: "saved", revision: expect.stringMatching(/^sha256:/) });
+    const images = result.body.result.run.images;
+    expect(images).toEqual([expect.objectContaining({ index: 0, mimeType: "image/png" })]);
+    expect(images[0].resolvedDiskPath.startsWith(state)).toBe(true);
     const saved = JSON.parse(await fs.readFile(path.join(root, "analysis.ipynb"), "utf8"));
     expect(saved.cells[2].execution_count).toBe(1);
     expect(saved.cells[2].outputs).toEqual([
@@ -230,6 +235,13 @@ describe("SN-378 Deep Work notebook execution", () => {
     source.appContext += "\n- Deep Work notebook run: enabled.";
     expect((await post("plain.py")).body.code).toBe("WORKSPACE_NOTEBOOK_RUN_UNAVAILABLE");
     expect(fake.executions).toHaveLength(0);
+  });
+
+  it("runs a workspace notebook that is not the focused file", async () => {
+    source.appContext = source.appContext.replace("- Active repository-relative file: analysis.ipynb", "- Active repository-relative file: (none reported)");
+    const result = await post("analysis.ipynb");
+    expect(result.status).toBe(200);
+    expect(fake.executions).toHaveLength(1);
   });
 
   it("rejects cell execution from a read-only Deep Work capability", async () => {

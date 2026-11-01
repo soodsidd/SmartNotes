@@ -1613,10 +1613,10 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
     const workspace = input.projectWorkspace;
     const focus = input.activeJupyterFocus?.pagePath === notePath ? input.activeJupyterFocus : null;
     const activeWorkspacePath = focus?.workspacePath || workspace.activeFile || "";
-    const canRunNotebook = Boolean(
-      workspace.capability && workspace.requestedAccess === "editable" && workspace.notebookSessionReady &&
-      focus?.documentKind === "notebook" && /\.ipynb$/i.test(activeWorkspacePath)
-    );
+    // Any editable workspace turn may run saved cells of any workspace .ipynb;
+    // the runtime itself rejects a missing session/kernel with an actionable error.
+    const canRunNotebook = Boolean(workspace.capability && workspace.requestedAccess === "editable");
+    const runNotebookPath = /\.ipynb$/i.test(activeWorkspacePath) ? activeWorkspacePath : "<relative-path>.ipynb";
     const live = projectFocusSource(focus);
     const liveOutputs = !live.blocked && focus?.documentKind === "notebook"
       ? focus.content?.activeCellOutputs ?? []
@@ -1673,8 +1673,8 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
         ? "- This capability and its registered disk root are authoritative for the entire turn. The only vault pages in scope are the host page below and its child pages; ignore other vault-page targets or similarly named Jupyter notes."
         : "- This capability and its registered disk root are authoritative for the entire turn. Ignore prior vault-page targets or similarly named Jupyter notes.",
       canRunNotebook
-        ? "- Deep Work notebook run: enabled. Only jupyter_cell_run may execute the active repository-relative .ipynb on its existing Smart Notes kernel. Vault Jupyter page tools and jupyter_notebook_context remain unavailable."
-        : "- In this workspaceCapability turn, jupyter_cell_* and jupyter_notebook_context are unavailable. Vault Jupyter page tools are unavailable too. Do not attempt or search for them, even if the shared system prompt or an earlier vault turn lists them.",
+        ? "- Deep Work notebook run: enabled. jupyter_cell_run may execute saved code cells of any repository-relative .ipynb in this workspace on its live Smart Notes kernel and return their outputs. This does NOT need Computer access; never ask the owner to enable Computer for it. Vault Jupyter page tools and jupyter_notebook_context remain unavailable."
+        : "- Notebook cell execution is unavailable in this turn because the workspace is read-only or has no capability (Computer access would not change that). jupyter_cell_* and jupyter_notebook_context are unavailable. Vault Jupyter page tools are unavailable too. Do not attempt or search for them, even if the shared system prompt or an earlier vault turn lists them.",
       "- Do not ingest the repository, dependency/build trees, hidden paths, terminal history, environment values, or secrets. Do not search for credentials.",
       "- Discover project files only through GET /api/workspace/source with operation=list and a bounded maxCount; never use vault tree/page discovery as a fallback.",
       workspace.capability
@@ -1706,12 +1706,12 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
       workspace.capability
         ? `- Bridge annotations: workspace_annotations_get / workspace_annotations_put with args { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<relative-path>", "annotations": [...] } as appropriate.`
         : "",
-      "- Notebook (.ipynb) cells: never hand-author nbformat JSON or byte-offset patches into an existing notebook. Use the capability-scoped cell tools, which preserve unrelated cells, outputs, and metadata and never start, stop, or execute kernels. Each read/mutation returns a sha256 revision; pass the latest one as expectedRevision. Use index and/or cellId (both must match). A 409 means re-read with workspace_notebook_context.",
+      "- Notebook (.ipynb) cells: never hand-author nbformat JSON or byte-offset patches into an existing notebook. Use the capability-scoped cell tools, which preserve unrelated cells, outputs, and metadata. These edit tools do not execute anything; to run a saved code cell and read its outputs use jupyter_cell_run (no Computer access needed). Each read/mutation returns a sha256 revision; pass the latest one as expectedRevision. Use index and/or cellId (both must match). A 409 means re-read with workspace_notebook_context.",
       workspace.capability
         ? `- Bridge notebook read: { "tool": "workspace_notebook_context", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<relative-path>.ipynb" } } (add index and/or cellId to read one cell; startIndex to page)`
         : "",
       canRunNotebook
-        ? `- Run one saved code cell on the active notebook's live kernel: { "tool": "jupyter_cell_run", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": ${JSON.stringify(activeWorkspacePath)}, "index": 0, "turnId": "<companionTurnId from the host connection>", "awaitSeconds": 45, "note": "optional resume note" } } (await ≤60s; stillRunning registers a wake on this thread. End your turn; Smart Notes auto-resumes with outputs. Never poll or re-run. The owner sees the run live in the cell; finished outputs are saved into it and run.persistence.revision is the next expectedRevision. If run.persistence.status is "conflict", report the outputs and ask the owner to reconcile; do not re-run.)`
+        ? `- Run one saved code cell on a workspace notebook's live kernel (defaults to the active notebook; any repository-relative .ipynb in this workspace works): { "tool": "jupyter_cell_run", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": ${JSON.stringify(runNotebookPath)}, "index": 0, "turnId": "<companionTurnId from the host connection>", "awaitSeconds": 45, "note": "optional resume note" } } (await ≤60s; stillRunning registers a wake on this thread. End your turn; Smart Notes auto-resumes with outputs. Never poll or re-run. The owner sees the run live in the cell; finished outputs are saved into it and run.persistence.revision is the next expectedRevision. If run.persistence.status is "conflict", report the outputs and ask the owner to reconcile; do not re-run.)`
         : "",
       workspace.capability && workspace.requestedAccess === "editable"
         ? `- Bridge cell create: { "tool": "workspace_cell_create", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<relative-path>.ipynb", "expectedRevision": "sha256:...", "cellType": "code", "source": "print('hello')", "index": 0 } } (omit index to append; cellType code, markdown, or raw)`
@@ -1732,8 +1732,8 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
         ? "- This workspace is editable through the bounded source API. POST may atomically create one new allowed UTF-8 source file or valid .ipynb, but creation is create-only and never overwrites."
         : "- This workspace is read-only. Do not attempt source or notebook cell mutations.",
       hostPage
-        ? "- Apart from the host-page tools below, vault page/tree/Jupyter-note APIs are outside this Deep Work turn and must never be used as a fallback for project discovery, reads, creation, or edits. Use workspace_* notebook tools for project reads and edits; only the active live notebook may use capability-scoped jupyter_cell_run for execution."
-        : "- Vault page/tree/Jupyter-note APIs are outside this Deep Work turn and must never be used as a fallback for project discovery, reads, creation, or edits. Use workspace_* notebook tools for reads and edits; only the active live notebook may use capability-scoped jupyter_cell_run for execution.",
+        ? "- Apart from the host-page tools below, vault page/tree/Jupyter-note APIs are outside this Deep Work turn and must never be used as a fallback for project discovery, reads, creation, or edits. Use workspace_* notebook tools for project reads and edits; execute notebook cells only with capability-scoped jupyter_cell_run (no Computer access needed)."
+        : "- Vault page/tree/Jupyter-note APIs are outside this Deep Work turn and must never be used as a fallback for project discovery, reads, creation, or edits. Use workspace_* notebook tools for reads and edits; execute notebook cells only with capability-scoped jupyter_cell_run (no Computer access needed).",
       "- Never use direct filesystem writes, arbitrary commands, or Jupyter lifecycle commands for project source work.",
       "- Do not change the provider working directory to the project root. The capability-authenticated workspace API/bridge is the only project read or mutation path.",
       "- Smart Notes has no authority to commit, record verification, review, approve, merge, release, deploy, clean up the worktree, or mutate Ascent Vector brief/fleet state.",
@@ -1805,7 +1805,7 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
     "- The editor shows a 'Remote update available' banner after page_write; do not infer failure from a stale editor view. Jupyter cell tools refresh the active notebook frame automatically.",
     "- page_write response now includes contentHash, updatedAt, and resolvedDiskPath — no follow-up page_get required to confirm a save.",
     "- Use vaultRelativePath before searching for the current note.",
-    "- Use vaultRelativePath for vault operations. Treat resolvedDiskPath as reference metadata except for an image-capable Read of the validated path returned by page_image_read, or when the owner explicitly requests source-level filesystem work outside the vault-tool contract.",
+    "- Use vaultRelativePath for vault operations. Treat resolvedDiskPath as reference metadata except for an image-capable Read of the validated path returned by page_image_read or of a plot path in jupyter_cell_run run.images, or when the owner explicitly requests source-level filesystem work outside the vault-tool contract.",
     "- Page paths are vault-relative slugified filenames (e.g. \"Notebook/Section/note-title.html\"). The server auto-canonicalizes missing .html extensions — omitting it is safe.",
     "- If you need to reference a different page and don't know its path: call vault_tree to browse the full structure, or page_find with a partial title.",
     encodedNotePath && apiBaseUrl
