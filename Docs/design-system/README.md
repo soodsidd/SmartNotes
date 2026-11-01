@@ -6,17 +6,21 @@ The dictation mic (`src/styles/dictation.css`) appears in the Companion
 composer and the note editor. In the phone composer it sits in the free grid
 cell directly left of Send. It is a 44px target with a 20px icon and
 `--radius-md` corners. On desktop it is 28px, matching the `icon-sm` composer
-controls. The desktop editor format bar reuses `.toolbar-btn`. On phones the
-editor shows a 56px round floating button at the bottom right, in the thumb
-zone. It sits 1rem from each edge, plus safe-area insets, and moves above the
+controls. In the note editor the mic is always a top-level format-bar control,
+never inside the Insert "+" menu. On desktop it is a labeled "Dictate" button
+(`.toolbar-btn--wide`, 12px label, `--accent` text with a 12% `--accent` hover
+tint) in its own group, with separators on both sides; while recording the
+label reads "Stop". The phone format bar has an icon-only `.toolbar-btn` mic
+just left of "+". Phones also get a 56px round floating button at the bottom
+right, in the thumb zone. It sits 1rem from each edge, plus safe-area insets, and moves above the
 on-screen keyboard using `visualViewport`. It uses `--accent` /
 `--accent-foreground` and the existing `--shadow-fab` token, which had no
-consumer before. Idle composer and toolbar mics use `--muted-foreground`, with
-`--muted` on hover.
+consumer before. The idle composer mic uses `--muted-foreground`, with
+`--muted` on hover; the icon-only phone toolbar mic matches its toolbar neighbours.
 Recording state uses a `--destructive` fill with `--surface` icon color, a
 filled stop-square icon, and a 2px `--destructive` ring that pulses at 60% to 0%
 opacity. The status line shows an 8px blinking `--destructive` dot and the
-text "Listening m:ss · tap to stop" at 12px in `--muted-foreground`. Errors such
+text "Listening m:ss · stops after 10 s of silence" at 12px in `--muted-foreground`. Errors such
 as an offline speech engine use `--destructive` text on a 10% `--destructive`
 tint with a `--border` outline, matching the SN-360 alerts. Their Retry and
 Discard actions are 44px on touch, with `--secondary` hover and a `--ring`

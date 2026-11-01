@@ -2382,7 +2382,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           <ListStyleDropdown editor={editor} />
           <ToolbarSep />
           <ToolbarBtn onClick={openLinkDialog} active={editor?.isActive("link") ?? false} title="Insert link (Ctrl+K)" testId="toolbar-link"><LinkIcon className="size-4" /></ToolbarBtn>
-          <DictationButton controller={dictation} variant="toolbar" testId="toolbar-dictate" />
+          <ToolbarSep />
+          {/* SN-406: labeled, in its own group — not part of the Insert "+" menu. */}
+          <DictationButton controller={dictation} variant="toolbar" showLabel testId="toolbar-dictate" />
           <ToolbarSep />
           <InsertOverflowDropdown
             editor={editor}
@@ -2426,6 +2428,8 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
           </ToolbarBtn>
           <ListStyleDropdown editor={editor} mobile />
           <ToolbarBtn onClick={openLinkDialog} active={editor?.isActive("link") ?? false} title="Insert link (Ctrl+K)" testId="toolbar-link-mobile"><LinkIcon className="size-4" /></ToolbarBtn>
+          {/* SN-406: dictation is a top-level toolbar control on phones too (FAB is a thumb-zone shortcut). */}
+          <DictationButton controller={dictation} variant="toolbar" testId="toolbar-dictate-mobile" />
           <InsertOverflowDropdown
             editor={editor}
             onInsertTextBox={() => insertFloatingBox()}

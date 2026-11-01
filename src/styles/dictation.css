@@ -84,3 +84,15 @@
 @media (prefers-reduced-motion: reduce) {
   .dictation-btn--recording::after, .dictation-status__dot { animation: none; }
 }
+
+/* Editor format bar: labeled desktop "Dictate" control in its own toolbar group,
+   accent-tinted so it reads as a primary action, not part of the "+" menu. */
+.toolbar-btn.dictation-btn--labeled { gap: 4px; color: var(--accent); }
+.toolbar-btn.dictation-btn--labeled:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent);
+}
+.dictation-btn__label { font-size: 12px; font-weight: 500; white-space: nowrap; }
+.toolbar-btn.dictation-btn--labeled.dictation-btn--recording,
+.toolbar-btn.dictation-btn--labeled.dictation-btn--recording:hover:not(:disabled) {
+  background: var(--destructive); color: var(--surface);
+}

@@ -1,0 +1,17 @@
+{
+  "mic": {
+    "visible": true,
+    "box": {
+      "x": 300,
+      "y": 58,
+      "width": 30,
+      "height": 28
+    },
+    "parent": "format-bar-mobile"
+  },
+  "recordingPhase": "recording",
+  "afterPhase": "idle",
+  "existingFirst": true,
+  "hasEnd": true,
+  "consoleErrors": []
+}

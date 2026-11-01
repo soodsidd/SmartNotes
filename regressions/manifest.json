@@ -1871,7 +1871,7 @@
       "name": "Dictation (local speech engine)",
       "description": "Jest: /api/speech/transcribe proxy framing + chunking + offline/timeout errors against a fake sherpa-onnx WebSocket server, 10 s silence auto-stop, and append-not-replace in the Companion composer and editor.",
       "appType": "node",
-      "command": "npm test -- tests/speech-transcribe-proxy.test.ts tests/dictation-silence-append.test.ts tests/ai-sidebar-dictation.test.tsx",
+      "command": "npm test -- tests/speech-transcribe-proxy.test.ts tests/dictation-silence-append.test.ts tests/ai-sidebar-dictation.test.tsx tests/dictation-toolbar-button.test.tsx",
       "timeoutMs": 120000,
       "enabled": true,
       "tags": [
@@ -1897,9 +1897,12 @@
         },
         {
           "path": "tests/ai-sidebar-dictation.test.tsx"
+        },
+        {
+          "path": "tests/dictation-toolbar-button.test.tsx"
         }
       ],
-      "intent": "Guards that dictated audio reaches the local engine intact (framing, >30 s chunking with no dropped segments), that an offline engine surfaces a retryable error instead of losing the clip, and that transcripts never replace existing text.",
+      "intent": "Guards that dictated audio reaches the local engine intact (framing, >30 s chunking with no dropped segments), that an offline engine surfaces a retryable error instead of losing the clip, that transcripts never replace existing text, and that the editor mic is a visible labeled top-level toolbar control (not inside the Insert menu).",
       "whenToRun": "Pre-merge when touching src/lib/speech, src/server/speech, /api/speech, use-dictation, or the composer/editor mic wiring."
     },
     {

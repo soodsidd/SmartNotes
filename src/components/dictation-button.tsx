@@ -5,7 +5,9 @@
  *
  * Variants:
  * - `composer`: Companion composer control (44px on phone, 28px desktop).
- * - `toolbar`: editor desktop format bar (`.toolbar-btn`).
+ * - `toolbar`: editor format bar (`.toolbar-btn`), desktop and phone. With
+ *   `showLabel` it renders a visible "Dictate" text label (desktop) so it is
+ *   never mistaken for part of the Insert "+" menu next to it.
  * - `fab`: editor phone floating button, bottom-right thumb zone, 56px.
  *
  * Recording state is unmistakable: `--destructive` fill, stop-square icon,
@@ -37,15 +39,33 @@ export function dictationButtonLabel(controller: DictationController): string {
   }
 }
 
+/** Short visible label for the labeled toolbar variant. */
+export function dictationButtonText(controller: DictationController): string {
+  switch (controller.phase) {
+    case "recording":
+      return "Stop";
+    case "starting":
+      return "Starting…";
+    case "stopping":
+    case "transcribing":
+      return "Transcribing…";
+    default:
+      return "Dictate";
+  }
+}
+
 export function DictationButton({
   controller,
   variant,
+  showLabel = false,
   disabled = false,
   className,
   testId,
 }: {
   controller: DictationController;
   variant: "composer" | "composer-mobile" | "toolbar" | "fab";
+  /** Toolbar only: show a visible text label next to the icon. */
+  showLabel?: boolean;
   disabled?: boolean;
   className?: string;
   testId?: string;
@@ -75,6 +95,7 @@ export function DictationButton({
         recording && "dictation-btn--recording",
         busy && "dictation-btn--busy",
         variant === "toolbar" && "toolbar-btn",
+        variant === "toolbar" && showLabel && "toolbar-btn--wide dictation-btn--labeled",
         className
       )}
     >
@@ -85,6 +106,9 @@ export function DictationButton({
       ) : (
         <Mic className={iconClass} aria-hidden="true" />
       )}
+      {variant === "toolbar" && showLabel ? (
+        <span className="dictation-btn__label">{dictationButtonText(controller)}</span>
+      ) : null}
     </button>
   );
 }
@@ -105,7 +129,7 @@ export function DictationStatus({
       <div className={cn("dictation-status", className)} role="status" aria-live="polite" data-testid={testId}>
         <span className="dictation-status__dot" aria-hidden="true" />
         <span className="dictation-status__text">
-          Listening {formatElapsed(seconds)} · tap to stop
+          Listening {formatElapsed(seconds)} · stops after 10 s of silence
         </span>
       </div>
     );

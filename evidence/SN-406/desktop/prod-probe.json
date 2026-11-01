@@ -1,0 +1,242 @@
+[
+  {
+    "viewport": "1920x1080",
+    "innerWidth": 1920,
+    "bar": {
+      "x": 484,
+      "y": 56,
+      "w": 1412,
+      "h": 35,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "barScroll": {
+      "scrollWidth": 1412,
+      "clientWidth": 1412
+    },
+    "barParent": {
+      "x": 484,
+      "y": 56,
+      "w": 1412,
+      "h": 1016,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "mic": {
+      "x": 887,
+      "y": 60,
+      "w": 26,
+      "h": 26,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "micHitTest": "toolbar-dictate",
+    "fab": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "display": "none",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "dictateCount": 2,
+    "micVisible": true,
+    "fabVisible": false
+  },
+  {
+    "viewport": "1440x900",
+    "innerWidth": 1440,
+    "bar": {
+      "x": 484,
+      "y": 56,
+      "w": 932,
+      "h": 35,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "barScroll": {
+      "scrollWidth": 932,
+      "clientWidth": 932
+    },
+    "barParent": {
+      "x": 484,
+      "y": 56,
+      "w": 932,
+      "h": 836,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "mic": {
+      "x": 887,
+      "y": 60,
+      "w": 26,
+      "h": 26,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "micHitTest": "toolbar-dictate",
+    "fab": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "display": "none",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "dictateCount": 2,
+    "micVisible": true,
+    "fabVisible": false
+  },
+  {
+    "viewport": "1280x800",
+    "innerWidth": 1280,
+    "bar": {
+      "x": 484,
+      "y": 56,
+      "w": 772,
+      "h": 35,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "barScroll": {
+      "scrollWidth": 772,
+      "clientWidth": 772
+    },
+    "barParent": {
+      "x": 484,
+      "y": 56,
+      "w": 772,
+      "h": 736,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "mic": {
+      "x": 887,
+      "y": 60,
+      "w": 26,
+      "h": 26,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "micHitTest": "toolbar-dictate",
+    "fab": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "display": "none",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "dictateCount": 2,
+    "micVisible": true,
+    "fabVisible": false
+  },
+  {
+    "viewport": "1024x768",
+    "innerWidth": 1024,
+    "bar": {
+      "x": 32,
+      "y": 68,
+      "w": 960,
+      "h": 41,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "barScroll": {
+      "scrollWidth": 960,
+      "clientWidth": 960
+    },
+    "barParent": {
+      "x": 32,
+      "y": 68,
+      "w": 960,
+      "h": 688,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "mic": {
+      "x": 493,
+      "y": 74,
+      "w": 30,
+      "h": 28,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "micHitTest": "toolbar-dictate",
+    "fab": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "display": "none",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "dictateCount": 2,
+    "micVisible": true,
+    "fabVisible": false
+  },
+  {
+    "viewport": "800x900",
+    "innerWidth": 800,
+    "bar": {
+      "x": 32,
+      "y": 68,
+      "w": 736,
+      "h": 41,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "barScroll": {
+      "scrollWidth": 736,
+      "clientWidth": 736
+    },
+    "barParent": {
+      "x": 32,
+      "y": 68,
+      "w": 736,
+      "h": 820,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "mic": {
+      "x": 493,
+      "y": 74,
+      "w": 30,
+      "h": 28,
+      "display": "flex",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "micHitTest": "toolbar-dictate",
+    "fab": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "display": "none",
+      "visibility": "visible",
+      "overflowX": "visible"
+    },
+    "dictateCount": 2,
+    "micVisible": true,
+    "fabVisible": false
+  }
+]

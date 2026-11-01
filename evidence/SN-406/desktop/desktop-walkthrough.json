@@ -1,0 +1,50 @@
+{
+  "baseUrl": "http://127.0.0.1:50536",
+  "viewport": "1440x900",
+  "steps": [
+    {
+      "step": "toolbar dictate (no menu opened)",
+      "visible": true,
+      "label": "Dictate",
+      "box": {
+        "x": 896.484375,
+        "y": 60,
+        "width": 70.5,
+        "height": 26
+      },
+      "insideAMenu": false,
+      "parentTestId": "format-bar"
+    },
+    {
+      "step": "editor recording",
+      "phase": "recording",
+      "label": "Stop",
+      "status": "Listening 0:01 · stops after 10 s of silence"
+    },
+    {
+      "step": "editor transcript",
+      "waitedMsAfterStart": 56289,
+      "autoStoppedPhase": "idle",
+      "insertedAtCaret": true,
+      "hasEnd": true,
+      "text": "FIRST-PART. This is a long dictation test for smart notes. The first part talks about the weather, which has been cool and cloudy all week with light rain in the mornings. The second part is about the research vault, where every page is stored as a file on disk and the editor saves changes automatically. Next we discuss the companion panel. Which can answer questions about the current note and draft follow-up messages. After that we describe the mobile workflow, where the phone records audio and the computer transcribes it using a local speech engine. Finally we list three fruits, apples, bananas, and oranges. The number at the end of this clip is 42. End of test. SECOND-PART."
+    },
+    {
+      "step": "composer mic",
+      "visible": true,
+      "box": {
+        "x": 1351,
+        "y": 849,
+        "width": 28,
+        "height": 28
+      }
+    },
+    {
+      "step": "composer transcript",
+      "startsWithExisting": true,
+      "hasStart": true,
+      "hasEnd": true
+    }
+  ],
+  "consoleErrors": []
+}
