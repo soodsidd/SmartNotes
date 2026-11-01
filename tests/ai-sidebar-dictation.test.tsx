@@ -177,6 +177,8 @@ describe("SN-407 Companion composer dictation shortcut", () => {
       fireEvent.keyDown(input, { key: " ", code: "Space", ctrlKey: true, shiftKey: true });
     });
     await waitFor(() => expect(mic).toHaveAttribute("data-dictation-phase", "recording"));
+    // Status reflects the configured (default 3 s) auto-stop window, not SN-406's fixed 10 s.
+    expect(screen.getByTestId("ai-dictation-status")).toHaveTextContent(/stops after 3 s of silence/);
     await act(async () => {
       fireEvent.keyDown(input, { key: " ", code: "Space", ctrlKey: true, shiftKey: true });
     });

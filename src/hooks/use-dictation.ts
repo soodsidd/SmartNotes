@@ -16,7 +16,7 @@ import {
   type RecordedClip,
   type RecorderStopReason,
 } from "@/lib/speech/recorder";
-import { readDictationSilenceSeconds } from "@/lib/speech/dictation-settings";
+import { DICTATION_SILENCE_DEFAULT_SECONDS, readDictationSilenceSeconds } from "@/lib/speech/dictation-settings";
 import { dictationShortcutAction } from "@/lib/speech/dictation-shortcut";
 
 export type DictationPhase = "idle" | "starting" | "recording" | "stopping" | "transcribing";
@@ -31,6 +31,8 @@ export interface DictationNotice {
 export interface DictationController {
   phase: DictationPhase;
   seconds: number;
+  /** SN-407: silence auto-stop window (seconds) of the current / last recording. */
+  silenceSeconds: number;
   notice: DictationNotice | null;
   hasPendingClip: boolean;
   toggle: () => void;
@@ -76,6 +78,7 @@ export class DictationRequestError extends Error {
 export function useDictation(onTranscript: (text: string) => void): DictationController {
   const [phase, setPhase] = React.useState<DictationPhase>("idle");
   const [seconds, setSeconds] = React.useState(0);
+  const [silenceSeconds, setSilenceSeconds] = React.useState(DICTATION_SILENCE_DEFAULT_SECONDS);
   const [notice, setNotice] = React.useState<DictationNotice | null>(null);
   const [hasPendingClip, setHasPendingClip] = React.useState(false);
   const recorderRef = React.useRef<DictationRecorder | null>(null);
@@ -160,9 +163,11 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
     setNotice(null);
     setSeconds(0);
     updatePhase("starting");
+    // SN-407: read the setting per recording so changes apply immediately.
+    const windowSeconds = readDictationSilenceSeconds();
+    setSilenceSeconds(windowSeconds);
     const recorder = new DictationRecorder({
-      // SN-407: read the setting per recording so changes apply immediately.
-      silenceSeconds: readDictationSilenceSeconds(),
+      silenceSeconds: windowSeconds,
       onAutoStop: (reason) => void stop(reason),
       onTick: (value) => {
         if (mountedRef.current) setSeconds(value);
@@ -213,7 +218,7 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
     if (!pendingClipRef.current) setNotice(null);
   }, []);
 
-  return { phase, seconds, notice, hasPendingClip, toggle, retry, discard, dismissNotice };
+  return { phase, seconds, silenceSeconds, notice, hasPendingClip, toggle, retry, discard, dismissNotice };
 }
 
 /**

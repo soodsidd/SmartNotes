@@ -132,7 +132,7 @@ export function DictationStatus({
       <div className={cn("dictation-status", className)} role="status" aria-live="polite" data-testid={testId}>
         <span className="dictation-status__dot" aria-hidden="true" />
         <span className="dictation-status__text">
-          Listening {formatElapsed(seconds)} · stops after 10 s of silence
+          Listening {formatElapsed(seconds)} · stops after {controller.silenceSeconds} s of silence
         </span>
       </div>
     );
