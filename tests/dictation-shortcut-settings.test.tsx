@@ -252,20 +252,22 @@ describe("note editor shortcut scope (useEditorDictation)", () => {
     });
     expect(recorderInstances).toHaveLength(0);
 
+    // Stub focus instead of focusing ProseMirror for real: jsdom's async
+    // selectionchange makes ProseMirror measure ranges (no getClientRects).
+    const active = jest.spyOn(document, "activeElement", "get").mockReturnValue(editor.view.dom);
     editor.setEditable(false);
-    (editor.view.dom as HTMLElement).focus();
     await act(async () => {
       keydown(editor.view.dom);
     });
     expect(recorderInstances).toHaveLength(0);
 
     editor.setEditable(true);
-    (editor.view.dom as HTMLElement).focus();
     await act(async () => {
       keydown(editor.view.dom);
     });
     expect(recorderInstances).toHaveLength(1);
     expect(controller.phase).toBe("recording");
+    active.mockRestore();
     editor.destroy();
     host.remove();
   });
