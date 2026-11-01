@@ -1,9 +1,0 @@
-{
-  "baseUrl": "http://127.0.0.1:49782",
-  "platform": "win32",
-  "scenarios": [],
-  "pagePath": "SN-407 push-to-talk live/push-to-talk.html",
-  "finalCaps": false,
-  "cleanupStatus": 200,
-  "pageErrors": []
-}
