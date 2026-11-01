@@ -12,7 +12,7 @@ const rehypeKatex = rehypeKatexImport as any;
 import { AlertCircle, AlignJustify, ArrowDown, Check, ChevronDown, Code2, Copy, FileText, Monitor, MoreHorizontal, Paperclip, Send, Settings, Sparkles, Square, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DictationButton, DictationStatus } from "@/components/dictation-button";
-import { useDictation, useDictationShortcut } from "@/hooks/use-dictation";
+import { useDictation, useDictationPushToTalk } from "@/hooks/use-dictation";
 import { appendTranscript } from "@/lib/speech/dictation-text";
 import {
   Dialog,
@@ -1739,9 +1739,9 @@ function AiConversation({
       [updateComposerDraft]
     )
   );
-  // SN-407: Ctrl/⌘+Shift+Space toggles dictation while focus is in the composer.
+  // SN-407: hold the push-to-talk key (default Caps Lock) while focus is in the composer.
   const composerShellRef = React.useRef<HTMLDivElement | null>(null);
-  useDictationShortcut(
+  useDictationPushToTalk(
     dictation,
     React.useCallback((active: Element | null) => Boolean(active && composerShellRef.current?.contains(active)), []),
     !composerLocked

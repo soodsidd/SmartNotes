@@ -10,7 +10,7 @@ import * as React from "react";
 import type { Editor } from "@tiptap/core";
 
 import { DictationButton, DictationStatus } from "@/components/dictation-button";
-import { useDictation, useDictationShortcut, type DictationController } from "@/hooks/use-dictation";
+import { useDictation, useDictationPushToTalk, type DictationController } from "@/hooks/use-dictation";
 import { insertTranscriptIntoEditor } from "@/lib/speech/dictation-text";
 
 export function useEditorDictation(editor: Editor | null): DictationController {
@@ -37,8 +37,8 @@ export function useEditorDictation(editor: Editor | null): DictationController {
     }, [])
   );
 
-  // SN-407: Ctrl/⌘+Shift+Space toggles dictation while the caret is in this editor.
-  useDictationShortcut(
+  // SN-407: hold the push-to-talk key (default Caps Lock) while the caret is in this editor.
+  useDictationPushToTalk(
     controller,
     React.useCallback((active: Element | null) => {
       const current = editorRef.current;

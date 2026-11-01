@@ -44,3 +44,42 @@ export function writeDictationSilenceSeconds(value: number): number {
   }
   return next;
 }
+
+/**
+ * SN-407: push-to-talk key. Stored as a physical `KeyboardEvent.code`
+ * (layout- and Caps-Lock-independent), per device. "off" disables the key.
+ */
+export const DICTATION_PTT_STORAGE_KEY = "smart-notes-dictation-ptt-key";
+export const DICTATION_PTT_DEFAULT_KEY = "CapsLock";
+export const DICTATION_PTT_OFF = "off";
+/** Fired on window after the dictation settings change in this tab. */
+export const DICTATION_SETTINGS_EVENT = "smart-notes-dictation-settings";
+
+const PTT_CODE_PATTERN = /^[A-Za-z0-9]+$/;
+
+export function readDictationPttKey(): string {
+  if (typeof window === "undefined") return DICTATION_PTT_DEFAULT_KEY;
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(DICTATION_PTT_STORAGE_KEY);
+  } catch {
+    return DICTATION_PTT_DEFAULT_KEY;
+  }
+  if (raw === null) return DICTATION_PTT_DEFAULT_KEY;
+  const value = raw.trim();
+  if (value === DICTATION_PTT_OFF) return DICTATION_PTT_OFF;
+  return PTT_CODE_PATTERN.test(value) ? value : DICTATION_PTT_DEFAULT_KEY;
+}
+
+export function writeDictationPttKey(code: string): string {
+  const next = code === DICTATION_PTT_OFF || PTT_CODE_PATTERN.test(code) ? code : DICTATION_PTT_DEFAULT_KEY;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(DICTATION_PTT_STORAGE_KEY, next);
+    } catch {
+      // storage unavailable: binding just does not persist
+    }
+    window.dispatchEvent(new Event(DICTATION_SETTINGS_EVENT));
+  }
+  return next;
+}

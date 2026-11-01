@@ -25,7 +25,11 @@ import {
   getPwaInstallState,
 } from "@/lib/pwa-install";
 import { cn } from "@/lib/utils";
-import { DENSITY_OPTIONS, KEYBOARD_SHORTCUTS } from "@/lib/app-settings";
+import { DENSITY_OPTIONS, DICTATION_SHORTCUT, KEYBOARD_SHORTCUTS } from "@/lib/app-settings";
+import { DictationPttKeySetting } from "@/components/dictation-ptt-key-setting";
+import { useDictationPttKey } from "@/hooks/use-dictation";
+import { DICTATION_PTT_OFF } from "@/lib/speech/dictation-settings";
+import { dictationKeyLabel } from "@/lib/speech/dictation-shortcut";
 import {
   fetchJupyterProfileStatus,
   stopAllJupyterSessions,
@@ -69,6 +73,7 @@ export function AppSettingsDialog({
   React.useEffect(() => {
     if (open) setDictationSilenceSeconds(readDictationSilenceSeconds());
   }, [open]);
+  const dictationPttKey = useDictationPttKey();
   const [installState, setInstallState] = React.useState(() => getPwaInstallState());
   const [installing, setInstalling] = React.useState(false);
   const [reloadingApp, setReloadingApp] = React.useState(false);
@@ -295,9 +300,11 @@ export function AppSettingsDialog({
                 ))}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Dictation stops after this much silence. Saved on this device; applies to the next recording.
+                Tapping the mic stops dictation after this much silence (holding the push-to-talk key stops on release instead). Saved on this device; applies to the next recording.
               </p>
             </section>
+
+            <DictationPttKeySetting />
 
             <section>
               <p className="mb-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Appearance</p>
@@ -338,9 +345,13 @@ export function AppSettingsDialog({
                   >
                     <span className="text-foreground">{shortcut.label}</span>
                     <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                      {typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
-                        ? shortcut.macKeys
-                        : shortcut.keys}
+                      {shortcut === DICTATION_SHORTCUT
+                        ? dictationPttKey === DICTATION_PTT_OFF
+                          ? "Off"
+                          : `Hold ${dictationKeyLabel(dictationPttKey)}`
+                        : typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform)
+                          ? shortcut.macKeys
+                          : shortcut.keys}
                     </span>
                   </li>
                 ))}

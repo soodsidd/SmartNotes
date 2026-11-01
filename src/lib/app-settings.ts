@@ -70,11 +70,15 @@ export const COMMENT_SHORTCUT: KeyboardShortcutRef = {
   macKeys: "⌘⇧M",
 };
 
-/** SN-407: toggles dictation in the note editor and the Companion composer. */
+/**
+ * SN-407: push-to-talk dictation in the note editor and the Companion
+ * composer. The key is configurable (Settings → General); the settings dialog
+ * renders the current binding in place of `keys`.
+ */
 export const DICTATION_SHORTCUT: KeyboardShortcutRef = {
-  label: "Toggle dictation",
-  keys: "Ctrl+Shift+Space",
-  macKeys: "⌘⇧Space",
+  label: "Dictate (hold to talk)",
+  keys: "Hold Caps Lock",
+  macKeys: "Hold Caps Lock",
 };
 
 export const KEYBOARD_SHORTCUTS: KeyboardShortcutRef[] = [

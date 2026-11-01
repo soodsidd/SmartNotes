@@ -16,8 +16,14 @@ import {
   type RecordedClip,
   type RecorderStopReason,
 } from "@/lib/speech/recorder";
-import { DICTATION_SILENCE_DEFAULT_SECONDS, readDictationSilenceSeconds } from "@/lib/speech/dictation-settings";
-import { dictationShortcutAction } from "@/lib/speech/dictation-shortcut";
+import {
+  DICTATION_PTT_DEFAULT_KEY,
+  DICTATION_SETTINGS_EVENT,
+  DICTATION_SILENCE_DEFAULT_SECONDS,
+  readDictationPttKey,
+  readDictationSilenceSeconds,
+} from "@/lib/speech/dictation-settings";
+import { pushToTalkAction } from "@/lib/speech/dictation-shortcut";
 
 export type DictationPhase = "idle" | "starting" | "recording" | "stopping" | "transcribing";
 
@@ -35,7 +41,15 @@ export interface DictationController {
   silenceSeconds: number;
   notice: DictationNotice | null;
   hasPendingClip: boolean;
+  /** SN-407: the current recording was started by holding the push-to-talk key. */
+  holding: boolean;
   toggle: () => void;
+  /** SN-407 push-to-talk: key down -> start a hold recording (no silence auto-stop). */
+  pressToTalk: () => void;
+  /** SN-407 push-to-talk: key up / focus lost -> stop and transcribe/insert. */
+  releaseToTalk: (options?: { capsLockOn?: boolean }) => void;
+  /** True while this surface holds a push-to-talk press. */
+  isHoldingKey: () => boolean;
   retry: () => void;
   discard: () => void;
   dismissNotice: () => void;
@@ -45,6 +59,10 @@ export const SPEECH_ENGINE_OFFLINE_MESSAGE =
   "Speech engine offline. Open OpenWhispr on the PC, then Retry. Your recording is kept.";
 
 const MIN_CLIP_SECONDS = 0.3;
+
+export const PTT_RELEASED_EARLY_MESSAGE = "Released before the microphone was ready. Hold the key while you speak.";
+export const PTT_CAPS_LOCK_ON_MESSAGE =
+  "Caps Lock is now on: the browser cannot stop the key toggling it. Press Caps Lock once to turn it off, or pick another push-to-talk key in Settings.";
 
 export async function postDictationClip(clip: RecordedClip, fetchImpl: typeof fetch = fetch): Promise<string> {
   let response: Response;
@@ -81,6 +99,13 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
   const [silenceSeconds, setSilenceSeconds] = React.useState(DICTATION_SILENCE_DEFAULT_SECONDS);
   const [notice, setNotice] = React.useState<DictationNotice | null>(null);
   const [hasPendingClip, setHasPendingClip] = React.useState(false);
+  const [holding, setHolding] = React.useState(false);
+  /** Push-to-talk key is physically held for this surface. */
+  const keyHeldRef = React.useRef(false);
+  /** The live recording is a hold (push-to-talk) recording. */
+  const holdRecordingRef = React.useRef(false);
+  /** Caps Lock was left on by the push-to-talk release (warn after insert). */
+  const capsWarningRef = React.useRef(false);
   const recorderRef = React.useRef<DictationRecorder | null>(null);
   const pendingClipRef = React.useRef<RecordedClip | null>(null);
   const phaseRef = React.useRef<DictationPhase>("idle");
@@ -111,7 +136,9 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
         if (!mountedRef.current) return;
         setHasPendingClip(false);
         if (text.trim()) {
-          setNotice(null);
+          setNotice(
+            capsWarningRef.current ? { tone: "info", message: PTT_CAPS_LOCK_ON_MESSAGE, retryable: false } : null
+          );
           onTranscriptRef.current(text.trim());
         } else {
           setNotice({ tone: "info", message: "No speech recognized.", retryable: false });
@@ -148,7 +175,11 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
       }
       if (clip.durationSeconds < MIN_CLIP_SECONDS) {
         updatePhase("idle");
-        if (mountedRef.current) setNotice({ tone: "info", message: "Recording was too short.", retryable: false });
+        // A quick tap of the push-to-talk key (e.g. Caps Lock meant as Caps
+        // Lock) is discarded silently rather than flagged.
+        if (mountedRef.current && !holdRecordingRef.current) {
+          setNotice({ tone: "info", message: "Recording was too short.", retryable: false });
+        }
         return;
       }
       if (reason === "max-length" && mountedRef.current) {
@@ -159,15 +190,20 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
     [transcribe, updatePhase]
   );
 
-  const start = React.useCallback(async () => {
+  const start = React.useCallback(async (mode: "tap" | "hold" = "tap") => {
+    const hold = mode === "hold";
     setNotice(null);
     setSeconds(0);
+    holdRecordingRef.current = hold;
+    capsWarningRef.current = false;
+    if (mountedRef.current) setHolding(hold);
     updatePhase("starting");
     // SN-407: read the setting per recording so changes apply immediately.
     const windowSeconds = readDictationSilenceSeconds();
     setSilenceSeconds(windowSeconds);
     const recorder = new DictationRecorder({
-      silenceSeconds: windowSeconds,
+      // Push-to-talk stops on key release, never on silence.
+      silenceSeconds: hold ? Number.POSITIVE_INFINITY : windowSeconds,
       onAutoStop: (reason) => void stop(reason),
       onTick: (value) => {
         if (mountedRef.current) setSeconds(value);
@@ -189,6 +225,14 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
       return;
     }
     if (recorderRef.current !== recorder) return;
+    if (hold && !keyHeldRef.current) {
+      // Key released (or focus lost) while the microphone was still opening.
+      recorderRef.current = null;
+      await recorder.cancel();
+      updatePhase("idle");
+      if (mountedRef.current) setNotice({ tone: "info", message: PTT_RELEASED_EARLY_MESSAGE, retryable: false });
+      return;
+    }
     updatePhase("recording");
   }, [stop, updatePhase]);
 
@@ -197,9 +241,28 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
     if (current === "recording") {
       void stop("user");
     } else if (current === "idle" && !pendingClipRef.current) {
-      void start();
+      void start("tap");
     }
   }, [start, stop]);
+
+  const pressToTalk = React.useCallback(() => {
+    if (keyHeldRef.current || phaseRef.current !== "idle" || pendingClipRef.current) return;
+    keyHeldRef.current = true;
+    void start("hold");
+  }, [start]);
+
+  const releaseToTalk = React.useCallback(
+    (options?: { capsLockOn?: boolean }) => {
+      if (!keyHeldRef.current) return;
+      keyHeldRef.current = false;
+      capsWarningRef.current = Boolean(options?.capsLockOn);
+      // "starting": start() sees the released key and cancels itself.
+      if (phaseRef.current === "recording" && holdRecordingRef.current) void stop("user");
+    },
+    [stop]
+  );
+
+  const isHoldingKey = React.useCallback(() => keyHeldRef.current, []);
 
   const retry = React.useCallback(() => {
     const clip = pendingClipRef.current;
@@ -218,19 +281,51 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
     if (!pendingClipRef.current) setNotice(null);
   }, []);
 
-  return { phase, seconds, silenceSeconds, notice, hasPendingClip, toggle, retry, discard, dismissNotice };
+  return {
+    phase,
+    seconds,
+    silenceSeconds,
+    notice,
+    hasPendingClip,
+    holding,
+    toggle,
+    pressToTalk,
+    releaseToTalk,
+    isHoldingKey,
+    retry,
+    discard,
+    dismissNotice,
+  };
+}
+
+/** SN-407: current push-to-talk key code ("off" when disabled); SSR-safe. */
+export function useDictationPttKey(): string {
+  const [key, setKey] = React.useState(DICTATION_PTT_DEFAULT_KEY);
+  React.useEffect(() => {
+    const sync = () => setKey(readDictationPttKey());
+    sync();
+    window.addEventListener(DICTATION_SETTINGS_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(DICTATION_SETTINGS_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return key;
 }
 
 /**
- * SN-407: wire the dictation keyboard shortcut (Ctrl/⌘+Shift+Space) to a
- * controller. `isInScope(activeElement)` says whether focus is inside this
- * surface (note editor / Companion composer); `enabled` gates starting.
+ * SN-407: wire push-to-talk to a controller. Holding the configured key
+ * (default Caps Lock) while focus is inside this surface (`isInScope`) starts
+ * listening; releasing it stops and inserts. `enabled` gates starting.
  *
- * Stop runs in the capture phase and start in the bubble phase; both skip
- * events another surface already handled (`defaultPrevented`), so one press
- * stops a recording elsewhere without also starting this surface.
+ * Listeners run in the window capture phase so editor keymaps never see the
+ * bound key first. Each surface only presses when focus is in its own scope
+ * and only releases its own hold, so editor + composer never both fire.
+ * Window blur and a hidden tab release the hold: a keyup lost to another
+ * window can never leave the microphone open.
  */
-export function useDictationShortcut(
+export function useDictationPushToTalk(
   controller: DictationController,
   isInScope: (active: Element | null) => boolean,
   enabled = true
@@ -240,33 +335,55 @@ export function useDictationShortcut(
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    const decide = (event: KeyboardEvent) => {
+    let boundKey = readDictationPttKey();
+    const syncKey = () => {
+      const next = readDictationPttKey();
+      // Rebinding mid-hold: release the old key's hold rather than strand it.
+      if (next !== boundKey) stateRef.current.controller.releaseToTalk();
+      boundKey = next;
+    };
+    const decide = (type: "keydown" | "keyup", event: KeyboardEvent) => {
       const { controller: current, isInScope: inScope, enabled: canStart } = stateRef.current;
-      return dictationShortcutAction(event, {
+      return pushToTalkAction(type, event, {
+        boundKey,
         phase: current.phase,
         hasPendingClip: current.hasPendingClip,
+        holding: current.isHoldingKey(),
         inScope: inScope(document.activeElement),
         enabled: canStart,
       });
     };
-    const onCapture = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      if (decide(event) !== "stop") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = decide("keydown", event);
+      if (action === "ignore") return;
       event.preventDefault();
-      stateRef.current.controller.toggle();
+      if (action === "press") stateRef.current.controller.pressToTalk();
     };
-    const onBubble = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      const action = decide(event);
-      if (action !== "start" && action !== "consume") return;
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (decide("keyup", event) !== "release") return;
       event.preventDefault();
-      if (action === "start") stateRef.current.controller.toggle();
+      const capsLockOn = event.code === "CapsLock" && Boolean(event.getModifierState?.("CapsLock"));
+      stateRef.current.controller.releaseToTalk({ capsLockOn });
     };
-    window.addEventListener("keydown", onCapture, true);
-    window.addEventListener("keydown", onBubble);
+    const releaseLost = () => stateRef.current.controller.releaseToTalk();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") releaseLost();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("blur", releaseLost);
+    window.addEventListener("pagehide", releaseLost);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener(DICTATION_SETTINGS_EVENT, syncKey);
+    window.addEventListener("storage", syncKey);
     return () => {
-      window.removeEventListener("keydown", onCapture, true);
-      window.removeEventListener("keydown", onBubble);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("blur", releaseLost);
+      window.removeEventListener("pagehide", releaseLost);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener(DICTATION_SETTINGS_EVENT, syncKey);
+      window.removeEventListener("storage", syncKey);
     };
   }, []);
 }

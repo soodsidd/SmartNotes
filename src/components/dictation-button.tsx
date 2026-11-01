@@ -17,8 +17,9 @@
 import * as React from "react";
 import { Loader2, Mic, Square } from "lucide-react";
 
-import type { DictationController } from "@/hooks/use-dictation";
-import { DICTATION_ARIA_KEYSHORTCUTS, DICTATION_SHORTCUT } from "@/lib/speech/dictation-shortcut";
+import { useDictationPttKey, type DictationController } from "@/hooks/use-dictation";
+import { DICTATION_PTT_OFF } from "@/lib/speech/dictation-settings";
+import { dictationKeyLabel } from "@/lib/speech/dictation-shortcut";
 import { cn } from "@/lib/utils";
 
 function formatElapsed(seconds: number): string {
@@ -76,15 +77,15 @@ export function DictationButton({
   const busy = phase === "starting" || phase === "stopping" || phase === "transcribing";
   const blocked = disabled || busy || (!recording && controller.hasPendingClip);
   const label = dictationButtonLabel(controller);
+  const pttKey = useDictationPttKey();
   const iconClass = variant === "fab" ? "size-6" : variant === "composer-mobile" ? "size-5" : "size-4";
 
   return (
     <button
       type="button"
       aria-label={label}
-      // SN-407: surface the keyboard shortcut on hover / to assistive tech.
-      title={`${label} (${DICTATION_SHORTCUT.keys})`}
-      aria-keyshortcuts={DICTATION_ARIA_KEYSHORTCUTS}
+      // SN-407: surface the push-to-talk key on hover.
+      title={pttKey === DICTATION_PTT_OFF ? label : `${label} (or hold ${dictationKeyLabel(pttKey)})`}
       aria-pressed={recording}
       data-testid={testId}
       data-dictation-phase={phase}
@@ -127,12 +128,16 @@ export function DictationStatus({
   testId?: string;
 }) {
   const { phase, seconds, notice } = controller;
+  const pttKey = useDictationPttKey();
   if (phase === "recording") {
     return (
       <div className={cn("dictation-status", className)} role="status" aria-live="polite" data-testid={testId}>
         <span className="dictation-status__dot" aria-hidden="true" />
         <span className="dictation-status__text">
-          Listening {formatElapsed(seconds)} · stops after {controller.silenceSeconds} s of silence
+          Listening {formatElapsed(seconds)} ·{" "}
+          {controller.holding
+            ? `release ${dictationKeyLabel(pttKey)} to insert`
+            : `stops after ${controller.silenceSeconds} s of silence`}
         </span>
       </div>
     );

@@ -160,29 +160,41 @@ describe("Companion composer dictation", () => {
   });
 });
 
-describe("SN-407 Companion composer dictation shortcut", () => {
+describe("SN-407 Companion composer push-to-talk", () => {
   beforeEach(() => {
     recorderInstances.length = 0;
     (globalThis as { fetch: unknown }).fetch = jest.fn(async () => jsonResponse(200, { text: "by shortcut" }));
   });
 
-  it("Ctrl+Shift+Space in the composer starts dictation, and again stops and appends", async () => {
+  it("holding Caps Lock in the composer records; releasing appends the transcript", async () => {
     renderCompanion();
     const input = screen.getByTestId("ai-input") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft" } });
     const mic = screen.getByTestId("ai-dictation-btn");
-    expect(mic).toHaveAttribute("aria-keyshortcuts", expect.stringContaining("Control+Shift+Space"));
+    await waitFor(() => expect(mic).toHaveAttribute("title", expect.stringContaining("hold Caps Lock")));
     input.focus();
     await act(async () => {
-      fireEvent.keyDown(input, { key: " ", code: "Space", ctrlKey: true, shiftKey: true });
+      fireEvent.keyDown(input, { key: "CapsLock", code: "CapsLock" });
     });
     await waitFor(() => expect(mic).toHaveAttribute("data-dictation-phase", "recording"));
-    // Status reflects the configured (default 3 s) auto-stop window, not SN-406's fixed 10 s.
-    expect(screen.getByTestId("ai-dictation-status")).toHaveTextContent(/stops after 3 s of silence/);
+    expect(screen.getByTestId("ai-dictation-status")).toHaveTextContent(/release Caps Lock to insert/);
     await act(async () => {
-      fireEvent.keyDown(input, { key: " ", code: "Space", ctrlKey: true, shiftKey: true });
+      fireEvent.keyDown(input, { key: "CapsLock", code: "CapsLock", repeat: true });
+    });
+    await act(async () => {
+      fireEvent.keyUp(input, { key: "CapsLock", code: "CapsLock" });
     });
     await waitFor(() => expect(input.value).toBe("Draft by shortcut"));
     expect(recorderInstances).toHaveLength(1);
+  });
+
+  it("the tap mic status reflects the configured (default 3 s) auto-stop window", async () => {
+    renderCompanion();
+    const mic = screen.getByTestId("ai-dictation-btn");
+    await act(async () => {
+      fireEvent.click(mic);
+    });
+    await waitFor(() => expect(mic).toHaveAttribute("data-dictation-phase", "recording"));
+    expect(screen.getByTestId("ai-dictation-status")).toHaveTextContent(/stops after 3 s of silence/);
   });
 });
