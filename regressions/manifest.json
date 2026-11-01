@@ -1869,7 +1869,7 @@
     {
       "id": "unit-sn-406-dictation",
       "name": "Dictation (local speech engine)",
-      "description": "Jest: /api/speech/transcribe proxy framing + chunking + offline/timeout errors against a fake sherpa-onnx WebSocket server, configurable silence auto-stop (SN-407 setting, default 3 s), the Ctrl/Cmd+Shift+Space dictation shortcut, and append-not-replace in the Companion composer and editor.",
+      "description": "Jest: /api/speech/transcribe proxy framing + chunking + offline/timeout errors against a fake sherpa-onnx WebSocket server, configurable silence auto-stop (SN-407 setting, default 3 s), the push-to-talk key (hold to talk / release to insert, configurable, default Caps Lock), and append-not-replace in the Companion composer and editor.",
       "appType": "node",
       "command": "npm test -- tests/speech-transcribe-proxy.test.ts tests/dictation-silence-append.test.ts tests/ai-sidebar-dictation.test.tsx tests/dictation-toolbar-button.test.tsx tests/dictation-shortcut-settings.test.tsx",
       "timeoutMs": 120000,
@@ -1905,7 +1905,7 @@
           "path": "tests/dictation-shortcut-settings.test.tsx"
         }
       ],
-      "intent": "Guards that dictated audio reaches the local engine intact (framing, >30 s chunking with no dropped segments), that an offline engine surfaces a retryable error instead of losing the clip, that transcripts never replace existing text, that the editor mic is a visible labeled top-level toolbar control (not inside the Insert menu), and that the dictation shortcut toggles only in scope while the persisted silence timeout reaches the SilenceDetector.",
+      "intent": "Guards that dictated audio reaches the local engine intact (framing, >30 s chunking with no dropped segments), that an offline engine surfaces a retryable error instead of losing the clip, that transcripts never replace existing text, that the editor mic is a visible labeled top-level toolbar control (not inside the Insert menu), that push-to-talk starts only in scope, swallows auto-repeat, inserts on release and can never strand the mic (blur / hidden tab / early release), and that the persisted key binding and silence timeout reach the handler and SilenceDetector.",
       "whenToRun": "Pre-merge when touching src/lib/speech, src/server/speech, /api/speech, use-dictation, or the composer/editor mic wiring."
     },
     {

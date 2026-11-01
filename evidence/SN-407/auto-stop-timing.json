@@ -1,33 +1,33 @@
 {
-  "baseUrl": "http://127.0.0.1:65067",
+  "baseUrl": "http://127.0.0.1:49782",
   "runs": [
     {
       "label": "desktop",
       "configuredSeconds": 2,
       "stored": "2",
       "statusWhileRecording": "Listening 0:00 · stops after 2 s of silence",
-      "autoStopMs": 2123
+      "autoStopMs": 2183
     },
     {
       "label": "desktop",
       "configuredSeconds": 10,
       "stored": "10",
       "statusWhileRecording": "Listening 0:00 · stops after 10 s of silence",
-      "autoStopMs": 10168
+      "autoStopMs": 10212
     },
     {
       "label": "phone",
       "configuredSeconds": 2,
       "stored": "2",
       "statusWhileRecording": "Listening 0:00 · stops after 2 s of silence",
-      "autoStopMs": 2129
+      "autoStopMs": 2163
     },
     {
       "label": "phone",
       "configuredSeconds": 10,
       "stored": "10",
       "statusWhileRecording": "Listening 0:00 · stops after 10 s of silence",
-      "autoStopMs": 10150
+      "autoStopMs": 10183
     }
   ],
   "pagePath": "SN-407 auto-stop timing/auto-stop-timing.html",

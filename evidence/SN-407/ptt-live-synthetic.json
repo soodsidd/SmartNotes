@@ -1,0 +1,91 @@
+{
+  "baseUrl": "http://127.0.0.1:49782",
+  "platform": "win32",
+  "input": "playwright-synthetic",
+  "scenarios": [
+    {
+      "bound": "CapsLock",
+      "settingsLabel": "Caps Lock",
+      "stored": null,
+      "phaseWhileHeld": "recording",
+      "statusWhileHeld": "Listening 0:04 · release Caps Lock to insert",
+      "hold": {
+        "foregroundOk": null,
+        "capsBefore": null,
+        "capsAfter": null
+      },
+      "phaseAfterRelease": "stopping",
+      "status": null,
+      "inserted": true,
+      "insertedText": "This is a long dictation test for smart notes. The first part tells",
+      "typedAbcBecame": "abc",
+      "capsBeforeHold": null,
+      "capsAfterHold": null,
+      "capsAfterTyping": null,
+      "capsStateChanged": null,
+      "keyEvents": {
+        "keydownFirst": 1,
+        "keydownRepeat": 100,
+        "keyup": 1,
+        "typedKeys": [
+          {
+            "key": "a",
+            "caps": false
+          },
+          {
+            "key": "b",
+            "caps": false
+          },
+          {
+            "key": "c",
+            "caps": false
+          }
+        ]
+      }
+    },
+    {
+      "bound": "F8",
+      "settingsLabel": "F8",
+      "stored": "F8",
+      "phaseWhileHeld": "recording",
+      "statusWhileHeld": "Listening 0:04 · release F8 to insert",
+      "hold": {
+        "foregroundOk": null,
+        "capsBefore": null,
+        "capsAfter": null
+      },
+      "phaseAfterRelease": "stopping",
+      "status": null,
+      "inserted": true,
+      "insertedText": "This is a long dictation test for smart notes. The first part talks about",
+      "typedAbcBecame": "abc",
+      "capsBeforeHold": null,
+      "capsAfterHold": null,
+      "capsAfterTyping": null,
+      "capsStateChanged": null,
+      "keyEvents": {
+        "keydownFirst": 1,
+        "keydownRepeat": 100,
+        "keyup": 1,
+        "typedKeys": [
+          {
+            "key": "a",
+            "caps": false
+          },
+          {
+            "key": "b",
+            "caps": false
+          },
+          {
+            "key": "c",
+            "caps": false
+          }
+        ]
+      }
+    }
+  ],
+  "pagePath": "SN-407 push-to-talk live/push-to-talk.html",
+  "finalOsCaps": false,
+  "cleanupStatus": 200,
+  "pageErrors": []
+}

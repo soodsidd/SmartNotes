@@ -1,6 +1,6 @@
 // SN-407 live check: the Settings "Dictation auto-stop" value changes the
-// real auto-stop timing, on a desktop viewport (started with Ctrl+Shift+Space
-// in the editor) and a phone viewport (started with the editor FAB).
+// real auto-stop timing, on a desktop viewport (started with the toolbar
+// Dictate mic) and a phone viewport (started with the editor FAB).
 // Chromium's fake mic plays silence.wav (pure silence), so recording must stop
 // after exactly the configured window.
 // Usage: node evidence/SN-407/auto-stop-timing.mjs <baseUrl>
@@ -77,8 +77,9 @@ async function run({ label, contextOptions, seconds, start }) {
 const desktopStart = async (page, editor) => {
   await editor.click();
   await page.keyboard.press("End");
-  await page.keyboard.press("Control+Shift+Space");
-  return page.getByTestId("toolbar-dictate");
+  const mic = page.getByTestId("toolbar-dictate");
+  await mic.click(); // tap-to-toggle mic (the silence setting applies to this flow)
+  return mic;
 };
 const phoneStart = async (page) => {
   const fab = page.getByTestId("editor-dictation-fab");
