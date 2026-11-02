@@ -26,13 +26,29 @@ import {
 import { dictationKeyLabel, pushToTalkAction, validatePttKey } from "@/lib/speech/dictation-shortcut";
 import { SilenceDetector } from "@/lib/speech/silence-detector";
 import {
-  PTT_CAPS_LOCK_ON_MESSAGE,
   PTT_RELEASED_EARLY_MESSAGE,
   useDictation,
   useDictationPushToTalk,
   type DictationController,
 } from "@/hooks/use-dictation";
 import { DictationPttKeySetting } from "@/components/dictation-ptt-key-setting";
+
+const mockSockets: Array<{
+  handlers: Record<string, (value: any) => void>;
+  emit: jest.Mock;
+  deliver: (event: string, value: any) => void;
+}> = [];
+jest.mock("socket.io-client", () => ({
+  io: jest.fn(() => {
+    const handlers: Record<string, (value: any) => void> = {};
+    const socket = { handlers, emit: jest.fn(), disconnect: jest.fn(),
+      on: jest.fn((event: string, handler: (value: any) => void) => { handlers[event] = handler; }),
+      deliver: (event: string, value: any) => handlers[event]?.(value),
+    };
+    mockSockets.push(socket);
+    return socket;
+  }),
+}));
 
 type MockRecorder = {
   options: { silenceSeconds?: number };
@@ -63,7 +79,7 @@ const caps = { key: "CapsLock", code: "CapsLock", ctrlKey: false, metaKey: false
 const idle = { boundKey: "CapsLock", phase: "idle", hasPendingClip: false, holding: false, inScope: true, enabled: true };
 
 function key(type: "keydown" | "keyup", target: EventTarget, init: Partial<KeyboardEventInit> = {}) {
-  const event = new KeyboardEvent(type, { key: "CapsLock", code: "CapsLock", bubbles: true, cancelable: true, ...init });
+  const event = new KeyboardEvent(type, { key: "F8", code: "F8", bubbles: true, cancelable: true, ...init });
   target.dispatchEvent(event);
   return event;
 }
@@ -72,6 +88,7 @@ beforeEach(() => {
   window.localStorage.clear();
   recorderInstances.length = 0;
   startGate = null;
+  mockSockets.length = 0;
   global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ text: "hello" }) })) as unknown as typeof fetch;
 });
 
@@ -239,6 +256,37 @@ function Surface({
 }
 
 describe("useDictationPushToTalk", () => {
+  beforeEach(() => writeDictationPttKey("F8"));
+  it("Windows Caps Lock uses only native bridge events and releases into the transcript pipeline", async () => {
+    writeDictationPttKey("CapsLock");
+    const platform = jest.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Windows NT 10.0)");
+    const focused = jest.spyOn(document, "hasFocus").mockReturnValue(true);
+    const inserted: string[] = [];
+    let controller!: DictationController;
+    render(<Surface id="editor" onController={(c) => (controller = c)} onTranscript={(text) => inserted.push(text)} />);
+    const input = screen.getByTestId("editor-input");
+    input.focus();
+    expect(mockSockets).toHaveLength(1);
+    await act(async () => { key("keydown", input, { key: "CapsLock", code: "CapsLock" }); });
+    expect(recorderInstances).toHaveLength(0);
+    await act(async () => {
+      mockSockets[0].deliver("dictation:caps-bridge", { ready: true });
+      mockSockets[0].deliver("dictation:caps-key", "keydown");
+    });
+    expect(controller.phase).toBe("recording");
+    await act(async () => { mockSockets[0].deliver("dictation:caps-key", "keydown"); });
+    expect(recorderInstances).toHaveLength(1);
+    await act(async () => { mockSockets[0].deliver("dictation:caps-key", "keyup"); });
+    expect(inserted).toEqual(["hello"]);
+    expect(controller.isHoldingKey()).toBe(false);
+    await act(async () => { mockSockets[0].deliver("dictation:caps-key", "keydown"); });
+    expect(controller.isHoldingKey()).toBe(true);
+    await act(async () => { mockSockets[0].deliver("disconnect", undefined); });
+    expect(controller.isHoldingKey()).toBe(false);
+    expect(recorderInstances[1].stop).toHaveBeenCalledTimes(1);
+    focused.mockRestore();
+    platform.mockRestore();
+  });
   it("hold starts (no silence auto-stop), repeats are swallowed, release transcribes and inserts", async () => {
     writeDictationSilenceSeconds(2);
     const inserted: string[] = [];
@@ -355,18 +403,19 @@ describe("useDictationPushToTalk", () => {
     expect(controller.notice?.message).toBe(PTT_RELEASED_EARLY_MESSAGE);
   });
 
-  it("warns after insert when the Caps Lock release left Caps Lock on", async () => {
+  it("does not start from browser Caps Lock events without the native bridge", async () => {
     let controller!: DictationController;
     render(<Surface id="editor" onController={(c) => (controller = c)} />);
     const input = screen.getByTestId("editor-input");
     input.focus();
     await act(async () => {
-      key("keydown", input);
+      key("keydown", input, { key: "CapsLock", code: "CapsLock" });
     });
     await act(async () => {
-      key("keyup", input, { modifierCapsLock: true } as KeyboardEventInit);
+      key("keyup", input, { key: "CapsLock", code: "CapsLock" });
     });
-    expect(controller.notice?.message).toBe(PTT_CAPS_LOCK_ON_MESSAGE);
+    expect(recorderInstances).toHaveLength(0);
+    expect(controller.phase).toBe("idle");
   });
 
   it("only the focused surface starts, and each releases only its own hold", async () => {
@@ -407,12 +456,12 @@ describe("useDictationPushToTalk", () => {
     expect(recorderInstances).toHaveLength(0);
   });
 
-  it("follows a rebinding live: the new key works, Caps Lock no longer does", async () => {
+  it("follows a rebinding live: the new key works, the old key no longer does", async () => {
     render(<Surface id="editor" onController={() => undefined} />);
     const input = screen.getByTestId("editor-input");
     input.focus();
     act(() => {
-      writeDictationPttKey("F8");
+      writeDictationPttKey("F9");
     });
     await act(async () => {
       key("keydown", input);
@@ -420,11 +469,11 @@ describe("useDictationPushToTalk", () => {
     });
     expect(recorderInstances).toHaveLength(0);
     await act(async () => {
-      key("keydown", input, { key: "F8", code: "F8" });
+      key("keydown", input, { key: "F9", code: "F9" });
     });
     expect(recorderInstances).toHaveLength(1);
     await act(async () => {
-      key("keyup", input, { key: "F8", code: "F8" });
+      key("keyup", input, { key: "F9", code: "F9" });
     });
     expect(recorderInstances[0].stop).toHaveBeenCalledTimes(1);
   });
@@ -442,6 +491,7 @@ describe("useDictationPushToTalk", () => {
 });
 
 describe("note editor push-to-talk scope (useEditorDictation)", () => {
+  beforeEach(() => writeDictationPttKey("F8"));
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Editor } = require("@tiptap/core");
   // eslint-disable-next-line @typescript-eslint/no-require-imports

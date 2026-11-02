@@ -121,7 +121,7 @@ export function DictationPttKeySetting() {
       <p className="mt-2 text-xs text-muted-foreground">
         Hold the key in a note or the Companion box to dictate; release to insert. Saved on this device.
         {boundKey === "CapsLock"
-          ? " Windows still toggles Caps Lock on each press (a browser cannot block it), so Caps Lock flips after each dictation; pick another key (e.g. F8 or Right Ctrl) to avoid that. On macOS the browser does not report Caps Lock release, so choose another key there."
+          ? " On a Windows PC running Smart Notes locally, the desktop bridge suppresses the Caps Lock toggle only while this window is active. If that bridge is unavailable, Caps Lock works normally and does not start dictation; choose another key such as F8. On macOS, choose another key because browsers do not report a usable Caps Lock release."
           : ""}
       </p>
     </section>

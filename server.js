@@ -38,6 +38,7 @@ const {
   workspaceToolRequest,
 } = require('./server/companion-log-form-bridge');
 const { createCompanionAppChannel } = require('./server/companion-app-channel');
+const { startWindowsCapsBridge } = require('./server/windows-caps-bridge');
 
 // AV preview injects NODE_ENV=production for runtimeMode projects while still
 // running `npm run dev`. Next dev webpack loaders (next-flight-css-loader) must
@@ -319,6 +320,7 @@ app.prepare().then(async () => {
     cors: { origin: '*' },
     path: '/socket.io/'
   });
+  startWindowsCapsBridge(io);
 
   // Expose io to Next.js API routes via a process-global so the aiSpliceCommit
   // handler can emit file_updated events for multi-tab synchronisation.

@@ -4,19 +4,20 @@
 // scratch note. Then REAL OS key input (os-keys.ps1 / keybd_event, not
 // Playwright's synthetic CDP keys) holds the bound key for ~4 s with typematic
 // repeat keydowns, releases it, and types "abc". We record:
-//   - the page's key event log (keydown / repeat / keyup, getModifierState)
+//   - native Caps Lock suppression (no browser Caps Lock events)
 //   - that release transcribed and inserted text after the existing text
 //   - the real Windows Caps Lock toggle state before / after, and what the
 //     real "abc" typed afterward actually produced in the note
 // Scenarios: default Caps Lock binding, then F8 bound through the Settings
-// key picker. Caps Lock is always restored to its starting state afterward.
+// key picker. A changed Caps Lock state is a failed run, never auto-repaired.
 // Usage: node evidence/SN-407/ptt-live.mjs <baseUrl> [--synthetic]
 //   --synthetic: Playwright (CDP) key events instead of real OS input, for
 //   when the desktop is locked / not interactive. Verifies the hold ->
 //   release -> transcribe -> insert pipeline and repeat handling, but cannot
 //   observe the real OS Caps Lock toggle (reported as null).
 import { chromium } from "@playwright/test";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,9 +35,10 @@ const KEYS = {
 };
 const TYPE_ABC = "d:41:1E;u:41:1E;d:42:30;u:42:30;d:43:2E;u:43:2E";
 
-function osKeys(plan) {
-  const out = execFileSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", helper, "-Plan", plan], { encoding: "utf8" });
-  return JSON.parse(out.trim());
+const execFileAsync = promisify(execFile);
+async function osKeys(plan) {
+  const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", helper, "-Plan", plan], { encoding: "utf8" });
+  return JSON.parse(stdout.trim());
 }
 
 const browser = await chromium.launch({
@@ -51,6 +53,7 @@ const browser = await chromium.launch({
 });
 const setup = await browser.newContext({ baseURL: baseUrl });
 let notebookPath = null;
+let passed = false;
 const pageErrors = [];
 
 async function scenario(bound) {
@@ -69,7 +72,7 @@ async function scenario(bound) {
   });
   const page = await context.newPage();
   page.on("pageerror", (e) => pageErrors.push(`${bound}: ${e}`));
-  await page.goto(`/?page=${encodeURIComponent(report.pagePath)}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/?page=${encodeURIComponent(report.pagePath)}`, { waitUntil: "domcontentloaded", timeout: 90_000 });
   const editor = page.locator(".ProseMirror.editor-content");
   await editor.waitFor({ timeout: 90_000 });
   const result = { bound };
@@ -95,12 +98,12 @@ async function scenario(bound) {
   await page.waitForTimeout(400);
 
   const mic = page.getByTestId("toolbar-dictate");
-  // Hold ~4 s with typematic repeats (every 33 ms after a 500 ms delay), then release.
+  // Hold ~9 s with typematic repeats (every 33 ms after a 500 ms delay), then release.
   let hold;
   if (synthetic) {
     await page.keyboard.down(bound);
     await page.waitForTimeout(500);
-    for (let i = 0; i < 100; i += 1) {
+    for (let i = 0; i < 250; i += 1) {
       await page.keyboard.down(bound); // already down -> repeat: true
       await page.waitForTimeout(33);
     }
@@ -109,7 +112,7 @@ async function scenario(bound) {
     await page.keyboard.up(bound);
     hold = { foregroundOk: null, capsBefore: null, capsAfter: null };
   } else {
-    hold = osKeys(`d:${vk}:${scan};s:500;r:${vk}:${scan}:100:33;u:${vk}:${scan}`);
+    hold = await osKeys(`d:${vk}:${scan};s:500;r:${vk}:${scan}:250:33;u:${vk}:${scan}`);
   }
   result.hold = hold;
   if (!synthetic && !hold.foregroundOk) throw new Error(`Chromium is not the foreground window (${hold.foregroundPath}); no keys sent.`);
@@ -124,7 +127,7 @@ async function scenario(bound) {
   // Real typing right after push-to-talk.
   let typed = { capsAfter: null };
   if (synthetic) await page.keyboard.type("abc");
-  else typed = osKeys(TYPE_ABC);
+  else typed = await osKeys(TYPE_ABC);
   await page.waitForTimeout(300);
   const textAfterTyping = (await editor.innerText()).trim();
   result.typedAbcBecame = textAfterTyping.slice(textAfterRelease.length).trim();
@@ -142,12 +145,16 @@ async function scenario(bound) {
     typedKeys: log.filter((e) => e.type === "keydown" && /^Key[ABC]$/.test(e.code)).map((e) => ({ key: e.key, caps: e.caps })),
   };
   await page.screenshot({ path: path.join(dir, `ptt-${bound}${synthetic ? "-synthetic" : ""}-after.png`) });
-
-  // Restore the owner's Caps Lock state no matter what.
-  if (!synthetic && typed.capsAfter !== hold.capsBefore) {
-    const restore = osKeys(`d:${KEYS.CapsLock.vk}:${KEYS.CapsLock.scan};u:${KEYS.CapsLock.vk}:${KEYS.CapsLock.scan}`);
-    result.capsRestoredTo = restore.capsAfter;
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.inserted) throw new Error(`${bound}: release did not insert a transcript`);
+  if (!synthetic && (result.capsStateChanged || typed.capsAfter !== hold.capsBefore)) {
+    throw new Error(`${bound}: Caps Lock state changed during push-to-talk`);
   }
+  if (!synthetic && bound === "CapsLock" && (result.keyEvents.keydownFirst || result.keyEvents.keyup)) {
+    throw new Error("Caps Lock reached the browser instead of being suppressed by the native bridge");
+  }
+  const expectedTyping = hold.capsBefore ? "ABC" : "abc";
+  if (result.typedAbcBecame !== expectedTyping) throw new Error(`${bound}: typing became ${result.typedAbcBecame}, expected ${expectedTyping}`);
   report.scenarios.push(result);
   console.log(JSON.stringify(result, null, 2));
   await context.close();
@@ -160,14 +167,29 @@ try {
   const sectionPath = tree.tree.find((n) => n.path === notebookPath)?.sections?.[0]?.path ?? notebookPath;
   const created = await (await setup.request.post("/api/page", { data: { notebookPath, sectionPath, title: "Push-to-talk" } })).json();
   report.pagePath = created.page.path;
-  for (const bound of ["CapsLock", "F8"]) await scenario(bound);
+  for (const bound of synthetic ? ["F8"] : ["CapsLock", "F8"]) await scenario(bound);
+  if (!synthetic) {
+    const neutral = await setup.newPage();
+    await neutral.goto("about:blank");
+    await neutral.bringToFront();
+    await neutral.waitForTimeout(1800); // let the Smart Notes heartbeat expire
+    const outside = await osKeys(`d:${KEYS.CapsLock.vk}:${KEYS.CapsLock.scan};u:${KEYS.CapsLock.vk}:${KEYS.CapsLock.scan}`);
+    if (!outside.foregroundOk || outside.capsBefore === outside.capsAfter) {
+      throw new Error("Caps Lock did not toggle normally outside Smart Notes");
+    }
+    const restore = await osKeys(`d:${KEYS.CapsLock.vk}:${KEYS.CapsLock.scan};u:${KEYS.CapsLock.vk}:${KEYS.CapsLock.scan}`);
+    report.outsideSmartNotes = { firstPress: outside, secondPress: restore };
+    if (restore.capsAfter !== outside.capsBefore) throw new Error("Caps Lock did not return to its original state outside Smart Notes");
+    await neutral.close();
+  }
+  passed = true;
 } finally {
-  report.finalOsCaps = osKeys("").capsAfter;
+  report.finalOsCaps = (await osKeys("")).capsAfter;
   if (notebookPath) {
     const del = await setup.request.delete(`/api/notebook?path=${encodeURIComponent(notebookPath)}`);
     report.cleanupStatus = del.status();
   }
   report.pageErrors = pageErrors;
-  writeFileSync(path.join(dir, synthetic ? "ptt-live-synthetic.json" : "ptt-live.json"), JSON.stringify(report, null, 2));
+  writeFileSync(path.join(dir, synthetic ? "ptt-live-synthetic.json" : passed ? "ptt-live.json" : "ptt-live-failed.json"), JSON.stringify(report, null, 2));
   await browser.close();
 }

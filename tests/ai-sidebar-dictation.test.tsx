@@ -166,23 +166,24 @@ describe("SN-407 Companion composer push-to-talk", () => {
     (globalThis as { fetch: unknown }).fetch = jest.fn(async () => jsonResponse(200, { text: "by shortcut" }));
   });
 
-  it("holding Caps Lock in the composer records; releasing appends the transcript", async () => {
+  it("holding the configured F8 key in the composer records; releasing appends the transcript", async () => {
+    window.localStorage.setItem("smart-notes-dictation-ptt-key", "F8");
     renderCompanion();
     const input = screen.getByTestId("ai-input") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft" } });
     const mic = screen.getByTestId("ai-dictation-btn");
-    await waitFor(() => expect(mic).toHaveAttribute("title", expect.stringContaining("hold Caps Lock")));
+    await waitFor(() => expect(mic).toHaveAttribute("title", expect.stringContaining("hold F8")));
     input.focus();
     await act(async () => {
-      fireEvent.keyDown(input, { key: "CapsLock", code: "CapsLock" });
+      fireEvent.keyDown(input, { key: "F8", code: "F8" });
     });
     await waitFor(() => expect(mic).toHaveAttribute("data-dictation-phase", "recording"));
-    expect(screen.getByTestId("ai-dictation-status")).toHaveTextContent(/release Caps Lock to insert/);
+    expect(screen.getByTestId("ai-dictation-status")).toHaveTextContent(/release F8 to insert/);
     await act(async () => {
-      fireEvent.keyDown(input, { key: "CapsLock", code: "CapsLock", repeat: true });
+      fireEvent.keyDown(input, { key: "F8", code: "F8", repeat: true });
     });
     await act(async () => {
-      fireEvent.keyUp(input, { key: "CapsLock", code: "CapsLock" });
+      fireEvent.keyUp(input, { key: "F8", code: "F8" });
     });
     await waitFor(() => expect(input.value).toBe("Draft by shortcut"));
     expect(recorderInstances).toHaveLength(1);

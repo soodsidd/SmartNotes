@@ -9,6 +9,7 @@
  */
 
 import * as React from "react";
+import { io } from "socket.io-client";
 
 import {
   DictationCaptureError,
@@ -47,7 +48,7 @@ export interface DictationController {
   /** SN-407 push-to-talk: key down -> start a hold recording (no silence auto-stop). */
   pressToTalk: () => void;
   /** SN-407 push-to-talk: key up / focus lost -> stop and transcribe/insert. */
-  releaseToTalk: (options?: { capsLockOn?: boolean }) => void;
+  releaseToTalk: () => void;
   /** True while this surface holds a push-to-talk press. */
   isHoldingKey: () => boolean;
   retry: () => void;
@@ -61,8 +62,6 @@ export const SPEECH_ENGINE_OFFLINE_MESSAGE =
 const MIN_CLIP_SECONDS = 0.3;
 
 export const PTT_RELEASED_EARLY_MESSAGE = "Released before the microphone was ready. Hold the key while you speak.";
-export const PTT_CAPS_LOCK_ON_MESSAGE =
-  "Caps Lock is now on: the browser cannot stop the key toggling it. Press Caps Lock once to turn it off, or pick another push-to-talk key in Settings.";
 
 export async function postDictationClip(clip: RecordedClip, fetchImpl: typeof fetch = fetch): Promise<string> {
   let response: Response;
@@ -104,8 +103,6 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
   const keyHeldRef = React.useRef(false);
   /** The live recording is a hold (push-to-talk) recording. */
   const holdRecordingRef = React.useRef(false);
-  /** Caps Lock was left on by the push-to-talk release (warn after insert). */
-  const capsWarningRef = React.useRef(false);
   const recorderRef = React.useRef<DictationRecorder | null>(null);
   const pendingClipRef = React.useRef<RecordedClip | null>(null);
   const phaseRef = React.useRef<DictationPhase>("idle");
@@ -136,9 +133,7 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
         if (!mountedRef.current) return;
         setHasPendingClip(false);
         if (text.trim()) {
-          setNotice(
-            capsWarningRef.current ? { tone: "info", message: PTT_CAPS_LOCK_ON_MESSAGE, retryable: false } : null
-          );
+          setNotice(null);
           onTranscriptRef.current(text.trim());
         } else {
           setNotice({ tone: "info", message: "No speech recognized.", retryable: false });
@@ -195,7 +190,6 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
     setNotice(null);
     setSeconds(0);
     holdRecordingRef.current = hold;
-    capsWarningRef.current = false;
     if (mountedRef.current) setHolding(hold);
     updatePhase("starting");
     // SN-407: read the setting per recording so changes apply immediately.
@@ -252,10 +246,9 @@ export function useDictation(onTranscript: (text: string) => void): DictationCon
   }, [start]);
 
   const releaseToTalk = React.useCallback(
-    (options?: { capsLockOn?: boolean }) => {
+    () => {
       if (!keyHeldRef.current) return;
       keyHeldRef.current = false;
-      capsWarningRef.current = Boolean(options?.capsLockOn);
       // "starting": start() sees the released key and cancels itself.
       if (phaseRef.current === "recording" && holdRecordingRef.current) void stop("user");
     },
@@ -336,11 +329,18 @@ export function useDictationPushToTalk(
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     let boundKey = readDictationPttKey();
+    // Caps Lock is handled before Windows toggles it by the interactive-session
+    // bridge. Browser Caps Lock events must never start dictation as a fallback.
+    const nativeCaps = /Windows/i.test(navigator.userAgent);
+    // WebSocket handshakes carry Origin; same-origin polling GETs need not.
+    const socket = nativeCaps ? io({ transports: ["websocket"] }) : null;
+    let bridgeReady = false;
     const syncKey = () => {
       const next = readDictationPttKey();
       // Rebinding mid-hold: release the old key's hold rather than strand it.
       if (next !== boundKey) stateRef.current.controller.releaseToTalk();
       boundKey = next;
+      syncNativeFocus();
     };
     const decide = (type: "keydown" | "keyup", event: KeyboardEvent) => {
       const { controller: current, isInScope: inScope, enabled: canStart } = stateRef.current;
@@ -354,33 +354,68 @@ export function useDictationPushToTalk(
       });
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      if (boundKey === "CapsLock") return;
       const action = decide("keydown", event);
       if (action === "ignore") return;
       event.preventDefault();
       if (action === "press") stateRef.current.controller.pressToTalk();
     };
     const onKeyUp = (event: KeyboardEvent) => {
+      if (boundKey === "CapsLock") return;
       if (decide("keyup", event) !== "release") return;
       event.preventDefault();
-      const capsLockOn = event.code === "CapsLock" && Boolean(event.getModifierState?.("CapsLock"));
-      stateRef.current.controller.releaseToTalk({ capsLockOn });
+      stateRef.current.controller.releaseToTalk();
     };
+    const nativeKey = (type: "keydown" | "keyup") => {
+      if (boundKey !== "CapsLock") return;
+      if (type === "keydown" && (document.visibilityState !== "visible" || !document.hasFocus())) return;
+      const event = { key: "CapsLock", code: "CapsLock", ctrlKey: false, metaKey: false,
+        shiftKey: false, altKey: false } as KeyboardEvent;
+      const action = decide(type, event);
+      if (action === "press") stateRef.current.controller.pressToTalk();
+      if (action === "release") stateRef.current.controller.releaseToTalk();
+    };
+    const syncNativeFocus = () => {
+      if (!socket) return;
+      const { isInScope, enabled: canStart } = stateRef.current;
+      const active = bridgeReady && boundKey === "CapsLock" && canStart && document.visibilityState === "visible"
+        && document.hasFocus() && isInScope(document.activeElement);
+      socket.emit("dictation:caps-focus", active);
+    };
+    socket?.on("dictation:caps-bridge", (state: { ready: boolean }) => {
+      bridgeReady = state.ready;
+      if (!bridgeReady) releaseLost();
+      syncNativeFocus();
+    });
+    socket?.on("dictation:caps-key", nativeKey);
+    socket?.on("disconnect", () => { bridgeReady = false; releaseLost(); });
+    const focusTimer = socket ? window.setInterval(syncNativeFocus, 400) : null;
+    socket?.on("connect", syncNativeFocus);
+    window.addEventListener("focusin", syncNativeFocus);
     const releaseLost = () => stateRef.current.controller.releaseToTalk();
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") releaseLost();
+      if (document.visibilityState === "hidden") {
+        releaseLost();
+        socket?.emit("dictation:caps-focus", false);
+      }
     };
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
-    window.addEventListener("blur", releaseLost);
-    window.addEventListener("pagehide", releaseLost);
+    const releaseAndDisarm = () => { releaseLost(); socket?.emit("dictation:caps-focus", false); };
+    window.addEventListener("blur", releaseAndDisarm);
+    window.addEventListener("pagehide", releaseAndDisarm);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener(DICTATION_SETTINGS_EVENT, syncKey);
     window.addEventListener("storage", syncKey);
     return () => {
+      if (focusTimer !== null) window.clearInterval(focusTimer);
+      socket?.emit("dictation:caps-focus", false);
+      socket?.disconnect();
+      window.removeEventListener("focusin", syncNativeFocus);
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
-      window.removeEventListener("blur", releaseLost);
-      window.removeEventListener("pagehide", releaseLost);
+      window.removeEventListener("blur", releaseAndDisarm);
+      window.removeEventListener("pagehide", releaseAndDisarm);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener(DICTATION_SETTINGS_EVENT, syncKey);
       window.removeEventListener("storage", syncKey);
