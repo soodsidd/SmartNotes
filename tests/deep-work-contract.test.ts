@@ -134,9 +134,8 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
     expect(context).toContain("explicit confirmation");
     expect(context).toContain("registered disk root are authoritative for the entire turn");
     expect(context).toContain("Vault page/tree/Jupyter-note APIs are outside this Deep Work turn");
-    expect(context).toContain("jupyter_cell_* and jupyter_notebook_context are unavailable");
-    expect(context).toContain("Vault Jupyter page tools are unavailable too");
-    expect(context).toContain("Do not attempt or search for them");
+    expect(context).toContain("- Deep Work notebook run: enabled.");
+    expect(context).toContain("Vault Jupyter page tools and jupyter_notebook_context remain unavailable");
     expect(context).toContain("no authority to commit, record verification, review, approve, merge, release, deploy");
     expect(context).toContain("pytest: one focused failure");
     expect(context).toContain("dwc_test_capability");
@@ -149,8 +148,9 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
     expect(context).toContain("workspace_cell_edit");
     expect(context).toContain("workspace_cell_reorder");
     expect(context).toContain("workspace_cell_delete");
-    expect(context).toContain("never start, stop, or execute kernels");
-    expect(context).not.toContain('"tool": "jupyter_cell_');
+    expect(context).toContain("These edit tools do not execute anything");
+    expect(context).toContain('"tool": "jupyter_cell_run"');
+    expect(context).not.toContain('"tool": "jupyter_cell_edit"');
 
     const readOnly = buildSmartNotesOperatingContext({
       title: descriptor.projectName,
@@ -163,6 +163,10 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
     expect(readOnly).toContain("workspace_notebook_context");
     expect(readOnly).not.toContain("workspace_cell_create");
     expect(readOnly).toContain("Do not attempt source or notebook cell mutations");
+    expect(readOnly).toContain("jupyter_cell_* and jupyter_notebook_context are unavailable");
+    expect(readOnly).toContain("Vault Jupyter page tools are unavailable too");
+    expect(readOnly).toContain("Do not attempt or search for them");
+    expect(readOnly).not.toContain('"tool": "jupyter_cell_run"');
 
     const notebookContext = buildSmartNotesOperatingContext({
       title: descriptor.projectName,
@@ -203,7 +207,18 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
       projectWorkspace: { ...descriptor, capability: "dwc_test_capability", notebookSessionReady: false },
       activeJupyterFocus: { ...focus, workspacePath: "analysis.ipynb", documentKind: "notebook" },
     });
-    expect(withoutSession).not.toContain('"tool": "jupyter_cell_run"');
+    // Editable turns may run cells even before the session is reported ready or
+    // when no notebook tab is focused; the runtime rejects a missing kernel.
+    expect(withoutSession).toContain('"tool": "jupyter_cell_run"');
+    expect(withoutSession).toContain("does NOT need Computer access");
+    const withoutFocus = buildSmartNotesOperatingContext({
+      title: descriptor.projectName,
+      path: pagePath,
+      noteType: "jupyter",
+      projectWorkspace: { ...descriptor, activeFile: undefined, capability: "dwc_test_capability" },
+    });
+    expect(withoutFocus).toContain("- Deep Work notebook run: enabled.");
+    expect(withoutFocus).toContain('"path": "<relative-path>.ipynb"');
   });
 
   it("blocks hidden, secret-shaped, dependency, VCS, and build paths from source context", () => {

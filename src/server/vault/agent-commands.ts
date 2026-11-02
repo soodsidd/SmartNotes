@@ -40,6 +40,7 @@ import { searchVault } from "./search";
 import { renderLogFormToPng, renderPageToPng, renderUiToPng, resolveUiViewportWidth } from "./page-render";
 import { uploadPageAsset } from "./assets";
 import { putCompanionImage } from "./companion-images";
+import { readCompanionPageImage } from "./companion-page-images";
 import { queryLogPage, queryNamedLogView } from "./log-query";
 import {
   createNotebookCell,
@@ -1978,6 +1979,18 @@ export async function executeVaultCommand(request: VaultCommandRequest): Promise
     case "paper":
       return runPaperCommand(action, args);
     case "companion":
+      if (action === "page_image_read") {
+        return {
+          ok: true,
+          group,
+          action,
+          data: await readCompanionPageImage(
+            requireString(args.path, "path"),
+            args.index === undefined ? 0 : Number(args.index),
+            args.includeImageData === true
+          ),
+        };
+      }
       if (action === "image_put") {
         // SN-370: durable image for inline display in the Companion sidebar.
         const image = await putCompanionImage({
@@ -2038,6 +2051,6 @@ export function listVaultCommands() {
     design: ["render"],
     paper: ["list", "create", "reference_add", "remove", "attach_pdf", "create_from_pdf"],
     app: ["template_list", "template_get", "inventory_list", "inventory_get", "query", "create", "update"],
-    companion: ["image_put"],
+    companion: ["image_put", "page_image_read"],
   };
 }

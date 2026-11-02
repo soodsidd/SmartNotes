@@ -42,6 +42,7 @@ const WORKSPACE_TOOLS = new Set([
 // its server-verified host page and the pages nested under it.
 const DEEP_WORK_HOST_PAGE_TOOLS = new Set([
   "page_get",
+  "page_image_read",
   "page_children",
   "page_create",
   "page_write",
@@ -166,6 +167,7 @@ function workspaceToolRequest(tool, args, baseUrl) {
 const ALLOWED_TOOLS = new Set([
   "recipe_list", "recipe_run", "recipe_mark", "notebook_instructions_set",
   "page_get",
+  "page_image_read",
   "page_children",
   "page_write",
   // Targeted multi-patch for large App/design HTML (and text pages). Same

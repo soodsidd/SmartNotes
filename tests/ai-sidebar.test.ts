@@ -480,6 +480,7 @@ describe("buildSmartNotesOperatingContext", () => {
     expect(context).toContain("saved on disk");
     expect(context).toContain("Remote update available");
     expect(context).toContain("page_get");
+    expect(context).toContain("For photos embedded in a saved page, call page_image_read");
     expect(context).toContain("jupyter_notebook_context");
     expect(context).toContain("jupyter_cell_create");
     expect(context).toContain("jupyter_cell_edit");
@@ -585,7 +586,7 @@ describe("buildSmartNotesOperatingContext", () => {
     expect(context).toContain("never directly Write/Edit its .form.json or .log.json sidecars");
     expect(context).toContain("literal absolute request and response paths");
     expect(context).toContain("Do not search for the bridge");
-    expect(context).toContain("page_get, page_write, page_create, the five log-form tools, app_send, the four spreadsheet tools");
+    expect(context).toContain("page_get, page_image_read, page_write, page_edit, page_create, the five log-form tools, app_send, the four spreadsheet tools");
     expect(context).toContain("do not edit resolvedDiskPath as a fallback");
     expect(context).toContain("History is the human-readable reading surface");
     expect(context).toContain("Table is the correction surface");

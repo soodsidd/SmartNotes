@@ -71,7 +71,7 @@ describe("companion_image_put", () => {
   test("is registered as a vault tool, command, and in the companion prompt", () => {
     const def = getVaultToolDefinition("companion_image_put");
     expect(def).toMatchObject({ group: "companion", action: "image_put" });
-    expect(listVaultCommands().companion).toEqual(["image_put"]);
+    expect(listVaultCommands().companion).toEqual(["image_put", "page_image_read"]);
     expect(formatVaultToolsPrompt()).toContain("companion_image_put");
   });
 
@@ -118,6 +118,27 @@ describe("companion_image_put", () => {
       await expect(putCompanionImage({})).rejects.toThrow(/exactly one of "url"/);
       await expect(putCompanionImage({ url: "https://x.test/a.png", dataBase64: PNG_BASE64 })).rejects.toThrow(/exactly one/);
       await expect(fs.stat(path.join(vaultRoot, ".companion-images"))).rejects.toThrow();
+    });
+  });
+});
+
+describe("page_image_read", () => {
+  test("reads real image bytes from a page in document order and rejects unrelated assets", async () => {
+    await withVault(async (vaultRoot) => {
+      const assetDir = path.join(vaultRoot, "Notebook/Section/Page.assets");
+      await fs.mkdir(assetDir);
+      await fs.writeFile(path.join(assetDir, "first photo.png"), PNG);
+      await fs.writeFile(path.join(assetDir, "second.png"), PNG);
+      const pageFile = path.join(vaultRoot, "Notebook/Section/Page.html");
+      await fs.writeFile(pageFile, "---\ntitle: Page\n---\n<p><img src=\"/vault/Notebook/Section/Page.assets/first%20photo.png\" alt=\"Before\"><img src=\"Page.assets/second.png\" alt=\"After\"></p>");
+      const result = await executeVaultCommand({ group: "companion", action: "page_image_read", args: { path: "Notebook/Section/Page.html", index: 1, includeImageData: true } });
+      expect(result.data).toMatchObject({ imageCount: 2, index: 1, fileName: "second.png", alt: "After", mimeType: "image/png" });
+      expect(Buffer.from((result.data as { dataBase64: string }).dataBase64, "base64").equals(PNG)).toBe(true);
+      const metadata = await executeVaultCommand({ group: "companion", action: "page_image_read", args: { path: "Notebook/Section/Page.html" } });
+      expect(metadata.data).toMatchObject({ imageCount: 2, index: 0, fileName: "first photo.png" });
+      expect(metadata.data).not.toHaveProperty("dataBase64");
+      await fs.writeFile(pageFile, "---\ntitle: Page\n---\n<img src=\"/vault/Notebook/Section/Other.assets/private.png\">");
+      await expect(executeVaultCommand({ group: "companion", action: "page_image_read", args: { path: "Notebook/Section/Page.html" } })).rejects.toThrow(/outside this page's assets/);
     });
   });
 });

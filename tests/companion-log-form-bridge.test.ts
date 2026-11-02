@@ -108,6 +108,27 @@ describe("companion vault bridge", () => {
     expect(response).toMatchObject({ ok: true, tool: "companion_image_put" });
   });
 
+  it("forwards page_image_read with a vision-readable path through the shared bridge", async () => {
+    const requestsDir = path.join(root, "requests");
+    const responsesDir = path.join(root, "responses");
+    fs.mkdirSync(requestsDir, { recursive: true });
+    const requestPath = path.join(requestsDir, "page-image-read.json");
+    const args = { path: "Notebook/Section/Page.html", index: 1 };
+    fs.writeFileSync(requestPath, JSON.stringify({ tool: "page_image_read", args }));
+    const imagePath = "C:/vault/Notebook/Section/Page.assets/photo.jpg";
+    const invokeTool = jest.fn().mockResolvedValue({ ok: true, status: 200, result: {
+      data: { imageCount: 3, index: 1, mimeType: "image/jpeg", resolvedDiskPath: imagePath },
+    } });
+
+    const response = await processBridgeRequest({ requestPath, requestsDir, responsesDir, invokeTool });
+
+    expect(ALLOWED_TOOLS.has("page_image_read")).toBe(true);
+    expect(invokeTool).toHaveBeenCalledWith("page_image_read", args);
+    expect(response).toMatchObject({ ok: true, tool: "page_image_read", result: {
+      result: { data: { imageCount: 3, resolvedDiskPath: imagePath } },
+    } });
+  });
+
   it("forwards every advertised App authoring and query tool through the default bridge allowlist", async () => {
     const requestsDir = path.join(root, "requests");
     const responsesDir = path.join(root, "responses");

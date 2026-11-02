@@ -65,9 +65,9 @@ export async function POST(request: Request) {
         !turn || turn.status !== "running" || !turn.threadKey.startsWith(`${workspace}::`) ||
         !turn.appContext.includes(`- companionTurnId: ${suppliedTurnId}`) ||
         !turn.appContext.includes("- Deep Work notebook run: enabled.") ||
-        !turn.appContext.split(/\r?\n/).includes(`- Active repository-relative file: ${path}`)
+        !/\.ipynb$/i.test(path.trim())
       ) {
-        throw new VaultError("WORKSPACE_NOTEBOOK_RUN_UNAVAILABLE", "Only the active Deep Work notebook turn with a live session may run this cell.", 403);
+        throw new VaultError("WORKSPACE_NOTEBOOK_RUN_UNAVAILABLE", "Only a running editable Deep Work turn may run a cell of a workspace .ipynb.", 403);
       }
       const result = await runWorkspaceJupyterCell(capability, {
         path,

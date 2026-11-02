@@ -54,6 +54,32 @@ async function callBridge(tool, args) {
   return { ok: false, code: 'BRIDGE_TIMEOUT', error: 'The Smart Notes bridge did not respond.' };
 }
 
+// Plot images from jupyter_cell_run are saved by the server under the vault's
+// hidden cell-output folder; attach them as MCP image content so Codex sees them.
+const CELL_IMAGE_MARKER = `${path.sep}.companion-images${path.sep}cell-outputs${path.sep}`;
+const CELL_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+function findRunImages(value, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 6) return [];
+  if (Array.isArray(value.images) && value.images.every(item => item && typeof item.resolvedDiskPath === 'string')) return value.images;
+  for (const child of Object.values(value)) {
+    const found = findRunImages(child, depth + 1);
+    if (found.length) return found;
+  }
+  return [];
+}
+async function cellRunImageContent(result) {
+  const content = [];
+  for (const image of findRunImages(result).slice(0, 8)) {
+    const file = path.resolve(image.resolvedDiskPath);
+    if (!file.includes(CELL_IMAGE_MARKER) || !/^image\/(png|jpeg|gif|webp)$/.test(String(image.mimeType))) continue;
+    try {
+      const bytes = await fs.readFile(file);
+      if (bytes.length > 0 && bytes.length <= CELL_IMAGE_MAX_BYTES) content.push({ type: 'image', data: bytes.toString('base64'), mimeType: image.mimeType });
+    } catch { /* the text result still lists the path */ }
+  }
+  return content;
+}
+
 function reply(id, result) { process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, result })}\n`); }
 function error(id, code, message) { process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } })}\n`); }
 async function handle(message) {
@@ -72,8 +98,22 @@ async function handle(message) {
       reply(message.id, { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, code: 'TOOL_NOT_ALLOWED' }) }] });
       return;
     }
-    const result = await callBridge(tool, message.params?.arguments || {});
-    reply(message.id, { isError: result.ok !== true, content: [{ type: 'text', text: JSON.stringify(result) }] });
+    const result = await callBridge(tool, tool === 'page_image_read'
+      ? { ...message.params?.arguments, includeImageData: true }
+      : message.params?.arguments || {});
+    if (tool === 'page_image_read' && result.ok === true) {
+      const image = result.result?.result?.data;
+      if (image?.dataBase64 && image?.mimeType) {
+        const { dataBase64, ...metadata } = image;
+        reply(message.id, { isError: false, content: [
+          { type: 'text', text: JSON.stringify({ ...result, result: { ...result.result, result: { ...result.result.result, data: metadata } } }) },
+          { type: 'image', data: dataBase64, mimeType: image.mimeType },
+        ] });
+        return;
+      }
+    }
+    const images = tool === 'jupyter_cell_run' && result.ok === true ? await cellRunImageContent(result) : [];
+    reply(message.id, { isError: result.ok !== true, content: [{ type: 'text', text: JSON.stringify(result) }, ...images] });
   } else {
     error(message.id, -32601, 'Method not found');
   }

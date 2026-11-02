@@ -414,7 +414,13 @@ export function buildCellWakeMessage(record: CellWakeRecord, outcome: CellWakeOu
       lines.push("", `Exception: ${run.error.ename}: ${run.error.evalue}`);
       lines.push(...fence("traceback", run.error.traceback, run.error.traceback.length, WAKE_TRACEBACK_CHARS));
     }
-    if (!run.stdout.text && !run.stderr.text && !run.result && !run.error) lines.push("", "The cell produced no output.");
+    const images = run.images ?? [];
+    if (images.length) {
+      lines.push("", `Image outputs (${images.length}): view each before describing it, with an image-capable file Read of the path (allowed with Computer access off):`);
+      for (const image of images) lines.push(`- [${image.index}] ${image.mimeType}, ${image.bytes} bytes: ${image.resolvedDiskPath}`);
+    }
+    if (run.imagesOmitted) lines.push(`${run.imagesOmitted} image output(s) were not captured for viewing.`);
+    if (!run.stdout.text && !run.stderr.text && !run.result && !run.error && !images.length) lines.push("", "The cell produced no output.");
   }
   lines.push("");
   if (outcome === "timed_out") {
