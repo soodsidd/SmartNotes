@@ -8,7 +8,14 @@ const readline = require('readline');
 function sameOrigin(socket) {
   try {
     const origin = new URL(socket.handshake.headers.origin);
-    return origin.host === socket.handshake.headers.host && (origin.protocol === 'http:' || origin.protocol === 'https:');
+    const target = new URL(`http://${socket.handshake.headers.host}`);
+    if (origin.protocol !== 'http:' && origin.protocol !== 'https:') return false;
+    if (origin.host === target.host) return true;
+    // AV's Inspect capture proxy forwards a loopback WebSocket but rewrites
+    // Host to the preview port. The browser's Origin keeps the proxy port.
+    return process.env.npm_lifecycle_event === 'dev'
+      && ['127.0.0.1', 'localhost'].includes(target.hostname)
+      && origin.hostname === target.hostname;
   } catch { return false; }
 }
 
@@ -61,4 +68,4 @@ function startWindowsCapsBridge(io) {
   return close;
 }
 
-module.exports = { startWindowsCapsBridge };
+module.exports = { sameOrigin, startWindowsCapsBridge };

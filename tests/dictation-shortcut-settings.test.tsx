@@ -32,6 +32,8 @@ import {
   type DictationController,
 } from "@/hooks/use-dictation";
 import { DictationPttKeySetting } from "@/components/dictation-ptt-key-setting";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { sameOrigin } = require("../server/windows-caps-bridge");
 
 const mockSockets: Array<{
   handlers: Record<string, (value: any) => void>;
@@ -77,6 +79,20 @@ jest.mock("@/lib/speech/recorder", () => {
 
 const caps = { key: "CapsLock", code: "CapsLock", ctrlKey: false, metaKey: false, shiftKey: false, altKey: false };
 const idle = { boundKey: "CapsLock", phase: "idle", hasPendingClip: false, holding: false, inScope: true, enabled: true };
+
+describe("Windows Caps bridge origin guard", () => {
+  const peer = (origin: string, host: string) => ({ handshake: { headers: { origin, host } } });
+  it("accepts direct same-origin sockets and the local Inspect proxy in dev only", () => {
+    expect(sameOrigin(peer("http://127.0.0.1:57079", "127.0.0.1:57079"))).toBe(true);
+    const prior = process.env.npm_lifecycle_event;
+    process.env.npm_lifecycle_event = "dev";
+    expect(sameOrigin(peer("http://127.0.0.1:57202", "127.0.0.1:57079"))).toBe(true);
+    expect(sameOrigin(peer("https://other.example", "127.0.0.1:57079"))).toBe(false);
+    if (prior === undefined) delete process.env.npm_lifecycle_event;
+    else process.env.npm_lifecycle_event = prior;
+    expect(sameOrigin(peer("http://127.0.0.1:57202", "127.0.0.1:57079"))).toBe(false);
+  });
+});
 
 function key(type: "keydown" | "keyup", target: EventTarget, init: Partial<KeyboardEventInit> = {}) {
   const event = new KeyboardEvent(type, { key: "F8", code: "F8", bubbles: true, cancelable: true, ...init });
