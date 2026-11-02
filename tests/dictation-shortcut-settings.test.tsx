@@ -8,6 +8,8 @@
 
 import "@testing-library/jest-dom";
 import * as React from "react";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { DICTATION_SHORTCUT, KEYBOARD_SHORTCUTS } from "@/lib/app-settings";
@@ -82,16 +84,28 @@ const idle = { boundKey: "CapsLock", phase: "idle", hasPendingClip: false, holdi
 
 describe("Windows Caps bridge origin guard", () => {
   const peer = (origin: string, host: string) => ({ handshake: { headers: { origin, host } } });
-  it("accepts direct same-origin sockets and the local Inspect proxy in dev only", () => {
+  it("accepts direct sockets and only the verified Inspect origin in dev", () => {
     expect(sameOrigin(peer("http://127.0.0.1:57079", "127.0.0.1:57079"))).toBe(true);
     const prior = process.env.npm_lifecycle_event;
-    process.env.npm_lifecycle_event = "dev";
-    expect(sameOrigin(peer("http://127.0.0.1:57202", "127.0.0.1:57079"))).toBe(true);
-    expect(sameOrigin(peer("https://other.example", "127.0.0.1:57079"))).toBe(false);
-    if (prior === undefined) delete process.env.npm_lifecycle_event;
-    else process.env.npm_lifecycle_event = prior;
-    expect(sameOrigin(peer("http://127.0.0.1:57202", "127.0.0.1:57079"))).toBe(false);
+    try {
+      process.env.npm_lifecycle_event = "dev";
+      const inspect = "http://127.0.0.1:57202";
+      expect(sameOrigin(peer(inspect, "127.0.0.1:57079"), inspect)).toBe(true);
+      expect(sameOrigin(peer("http://127.0.0.1:57203", "127.0.0.1:57079"), inspect)).toBe(false);
+      expect(sameOrigin(peer(inspect, "127.0.0.1:57079"))).toBe(false);
+      expect(sameOrigin(peer("https://other.example", "127.0.0.1:57079"), inspect)).toBe(false);
+    } finally {
+      if (prior === undefined) delete process.env.npm_lifecycle_event;
+      else process.env.npm_lifecycle_event = prior;
+    }
+    expect(sameOrigin(peer("http://127.0.0.1:57202", "127.0.0.1:57079"), "http://127.0.0.1:57202")).toBe(false);
   });
+});
+
+(process.platform === "win32" ? it : it.skip)("keeps swallowing a physical Caps Lock hold after DISARM, then passes the next outside-app press", () => {
+  const output = execFileSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+    path.join(__dirname, "..", "scripts", "windows-caps-bridge.ps1"), "-SelfTest"], { encoding: "utf8" });
+  expect(output).toContain("Caps Lock disarm transitions passed");
 });
 
 function key(type: "keydown" | "keyup", target: EventTarget, init: Partial<KeyboardEventInit> = {}) {
