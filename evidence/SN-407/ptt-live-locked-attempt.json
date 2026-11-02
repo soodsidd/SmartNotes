@@ -1,0 +1,10 @@
+{
+  "baseUrl": "http://127.0.0.1:57079",
+  "platform": "win32",
+  "input": "os-keybd_event",
+  "scenarios": [],
+  "pagePath": "SN-407 push-to-talk live/push-to-talk.html",
+  "finalOsCaps": false,
+  "cleanupStatus": 200,
+  "pageErrors": []
+}
