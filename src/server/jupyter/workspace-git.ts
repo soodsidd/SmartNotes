@@ -66,9 +66,13 @@ const LOCK_REGISTRY_KEY = "__smartNotesDeepWorkGitLocks__";
 const REMOTE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const TURN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Hooks resolve from a path that never holds hooks. Git for Windows warns on
+// a bare /dev/null config path and expects its prefix-relative form.
+export const NO_HOOKS_PATH = process.platform === "win32" ? "%(prefix)//dev/null" : "/dev/null";
+
 /** Fixed hardening applied before every subcommand. */
 const HARDENING_CONFIG = [
-  "core.hooksPath=/dev/null",
+  `core.hooksPath=${NO_HOOKS_PATH}`,
   "core.fsmonitor=false",
   "core.quotePath=false",
   "core.pager=cat",
@@ -773,7 +777,9 @@ async function runPush(
   const now = deps.now();
   for (const [id, preview] of registry) if (preview.expiresAt <= now) registry.delete(id);
 
-  if (args.confirmationId === undefined || args.confirmationId === null || args.confirmationId === "") {
+  const present = (value: unknown) => value !== undefined && value !== null && value !== "";
+  const confirming = present(args.confirmationId) || present(args.confirmRemote) || present(args.confirmRef);
+  if (!confirming) {
     if (!(await hasHead(context))) {
       throw new WorkspaceGitError("GIT_NOTHING_TO_PUSH", "This branch has no commits to push.", 409);
     }
@@ -787,12 +793,21 @@ async function runPush(
     const commits = await git(context, [
       "log", "--max-count=20", "--no-color", "--format=%h%x09%s", known ? `${tracking}..${sha}` : sha,
     ]);
-    for (const [id, preview] of registry) if (preview.capability === capability) registry.delete(id);
-    const preview: PushPreview = {
+    const ref = `refs/heads/${remoteBranch}`;
+    // Re-previewing the same target keeps the preview the owner already saw
+    // (and its original turn), so a confirming turn that re-checks first can
+    // still complete. A different target replaces it.
+    const existing = [...registry.values()].find((entry) =>
+      entry.capability === capability && entry.remote === remote && entry.ref === ref && entry.sha === sha && entry.branch === branch
+    );
+    if (!existing) {
+      for (const [id, entry] of registry) if (entry.capability === capability) registry.delete(id);
+    }
+    const preview: PushPreview = existing ?? {
       confirmationId: `gpc_${crypto.randomBytes(18).toString("base64url")}`,
       capability,
       remote,
-      ref: `refs/heads/${remoteBranch}`,
+      ref,
       branch,
       sha,
       turnId: turn.turnId,
@@ -810,18 +825,26 @@ async function runPush(
       remoteTrackingKnown: known,
       confirmationId: preview.confirmationId,
       expiresAt: new Date(preview.expiresAt).toISOString(),
-      hint:
-        `Nothing was pushed. Show the owner: push ${branch} (${sha.slice(0, 12)}) to ${remote} ${preview.ref}, with the commits listed. ` +
-        "End your turn and wait. Only if the owner explicitly confirms that remote and ref in a new message, call workspace_git_push again " +
-        "with confirmationId, confirmRemote, confirmRef, and that new turn's companionTurnId as turnId.",
+      // True when this preview was shown to the owner in an earlier turn, so
+      // the owner's current message may confirm it.
+      confirmableInThisTurn: preview.turnId !== turn.turnId && turn.ownerInitiated !== false,
+      hint: preview.turnId !== turn.turnId && turn.ownerInitiated !== false
+        ? `Nothing was pushed. This is the same pending preview the owner saw in an earlier turn (${remote} ${preview.ref}, ${sha.slice(0, 12)}). ` +
+          "If the owner's message in THIS turn explicitly confirms that remote and ref, call workspace_git_push now with confirmRemote and confirmRef " +
+          "restating them and this turn's companionTurnId as turnId. Otherwise ask the owner."
+        : `Nothing was pushed. Show the owner: push ${branch} (${sha.slice(0, 12)}) to ${remote} ${preview.ref}, with the commits listed, then end your turn. ` +
+          "When the owner explicitly confirms that remote and ref in their next message, call workspace_git_push directly (no new preview needed) " +
+          "with confirmRemote and confirmRef restating them and that turn's companionTurnId as turnId.",
       results: [commits],
     };
   }
 
-  const preview = typeof args.confirmationId === "string" ? registry.get(args.confirmationId) : undefined;
+  const preview = present(args.confirmationId)
+    ? (typeof args.confirmationId === "string" ? registry.get(args.confirmationId) : undefined)
+    : [...registry.values()].filter((entry) => entry.capability === capability).sort((a, b) => b.expiresAt - a.expiresAt)[0];
   if (!preview || preview.capability !== capability) {
-    throw new WorkspaceGitError("GIT_PUSH_CONFIRMATION_INVALID", "The push confirmation is unknown or expired.", 409, {
-      hint: "Call workspace_git_push without confirmationId to preview again, then ask the owner.",
+    throw new WorkspaceGitError("GIT_PUSH_CONFIRMATION_INVALID", "There is no pending push preview for this workspace (or it expired).", 409, {
+      hint: "Call workspace_git_push with only workspace and turnId to preview, show it to the owner, and end your turn.",
     });
   }
   if (preview.turnId === turn.turnId || turn.ownerInitiated === false) {

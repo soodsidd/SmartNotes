@@ -355,7 +355,6 @@ function startCompanionLogFormBridge({
   authorizeTool,
 }) {
   const pending = new Set();
-  const completed = new Set();
   let watcher = null;
   let closed = false;
   let directories = null;
@@ -364,18 +363,36 @@ function startCompanionLogFormBridge({
     if (closed || !directories || typeof fileName !== "string" || !fileName.endsWith(".json")) return;
     const requestPath = path.resolve(directories.requestsDir, fileName);
     if (!requestPath.startsWith(`${directories.requestsDir}${path.sep}`)) return;
-    if (pending.has(requestPath) || completed.has(requestPath)) return;
+    if (pending.has(requestPath)) return;
+    // SN-409: providers sometimes reuse a request id in a later turn. A
+    // response is current only if it is newer than its request; otherwise it
+    // answers an earlier request with the same id. Drop it immediately so the
+    // companion never reads a stale result (e.g. an old commit "success"),
+    // then process the rewritten request.
+    const responsePath = responsePathFor(directories.requestsDir, directories.responsesDir, requestPath);
+    let requestStat;
+    try {
+      requestStat = fs.statSync(requestPath);
+    } catch {
+      return;
+    }
+    let responseStat = null;
+    try {
+      responseStat = fs.statSync(responsePath);
+    } catch {
+      // No prior response: process this new request.
+    }
+    if (responseStat && responseStat.mtimeMs >= requestStat.mtimeMs) return;
+    if (responseStat) {
+      try {
+        fs.unlinkSync(responsePath);
+      } catch {
+        // processBridgeRequest overwrites it atomically anyway.
+      }
+    }
     pending.add(requestPath);
     setTimeout(async () => {
       try {
-        const responsePath = responsePathFor(directories.requestsDir, directories.responsesDir, requestPath);
-        try {
-          await fsp.access(responsePath);
-          completed.add(requestPath);
-          return;
-        } catch {
-          // No prior response: process this new request.
-        }
         await processBridgeRequest({
           requestPath,
           ...directories,
@@ -383,7 +400,6 @@ function startCompanionLogFormBridge({
           allowedTools,
           authorizeTool,
         });
-        completed.add(requestPath);
       } catch (error) {
         logger.warn?.("[smart-notes] companion vault bridge request failed:", error);
       } finally {

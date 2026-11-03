@@ -1,0 +1,90 @@
+{
+ "capabilityPrefix": "dwc_v6Yj",
+ "gitToolsListed": [
+  "workspace_git_status",
+  "workspace_git_diff",
+  "workspace_git_log",
+  "workspace_git_stage",
+  "workspace_git_unstage",
+  "workspace_git_commit",
+  "workspace_git_fetch",
+  "workspace_git_pull",
+  "workspace_git_push"
+ ],
+ "status": {
+  "tool": "workspace_git_status",
+  "isError": false,
+  "httpStatus": 200,
+  "status": 200,
+  "commands": [
+   {
+    "command": "git status --short --branch --untracked-files=all",
+    "exitCode": 0,
+    "stdout": "## av/sn-409-manual...origin/av/sn-409-manual\n M owner.txt\n",
+    "stderr": ""
+   }
+  ]
+ },
+ "log": {
+  "tool": "workspace_git_log",
+  "isError": false,
+  "httpStatus": 200,
+  "status": 200,
+  "commands": [
+   {
+    "command": "git log --max-count=3 --no-color --date=iso-strict --format=%H%x09%an%x09%ad%x09%s HEAD --",
+    "exitCode": 0,
+    "stdout": "c6f5eaf4446fb904c184ba3ee0904fc32788c330\tSN-409 Manual\t2026-11-02T17:32:33-08:00\tSN-409 live: companion commit\nfa146ee418f181b6180558b38a8ece0877dcf49b\tSN-409 Manual\t2026-11-02T17:23:03-08:00\tManual SN-409 companion commit\n58e1837a3e27219f9e240fe9936de6a890e45459\tSN-409 Manual\t2026-11-02T17:19:24-08:00\tinitial\n",
+    "stderr": ""
+   }
+  ]
+ },
+ "diffStaged": {
+  "tool": "workspace_git_diff",
+  "isError": false,
+  "httpStatus": 200,
+  "status": 200,
+  "commands": [
+   {
+    "command": "git diff --cached --no-ext-diff --no-textconv --no-color --",
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": ""
+   }
+  ]
+ },
+ "forbiddenTool": {
+  "isError": true,
+  "content": [
+   {
+    "type": "text",
+    "text": "{\"ok\":false,\"code\":\"TOOL_NOT_ALLOWED\"}"
+   }
+  ]
+ },
+ "wrongCapability": {
+  "isError": true,
+  "content": [
+   {
+    "type": "text",
+    "text": "{\"ok\":false,\"code\":\"WORKSPACE_CAPABILITY_MISMATCH\"}"
+   }
+  ]
+ },
+ "ownerFileStageAttemptDir": {
+  "tool": "workspace_git_stage",
+  "isError": true,
+  "httpStatus": 403,
+  "code": "WORKSPACE_PATH_BLOCKED",
+  "status": 403,
+  "commands": []
+ },
+ "pushWithoutTurn": {
+  "tool": "workspace_git_push",
+  "isError": true,
+  "httpStatus": 403,
+  "code": "GIT_PUSH_TURN_REQUIRED",
+  "status": 403,
+  "commands": []
+ }
+}

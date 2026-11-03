@@ -16,6 +16,7 @@ import {
   classifyGitFailure,
   defaultRunGit,
   gitEnvironment,
+  NO_HOOKS_PATH,
   parseGitPaths,
   resetWorkspaceGitForTesting,
   runWorkspaceGit,
@@ -300,10 +301,33 @@ describe("SN-409 Companion Git in a Deep Work workspace", () => {
     const pushArgv = argvLog.find((args) => args.includes("push"))!;
     expect(pushArgv.join(" ")).not.toMatch(/--force|-f\b|--delete|--mirror|--tags|\+/);
     expect(pushArgv.slice(-2)).toEqual(["origin", `${head}:refs/heads/${BRANCH}`]);
-    expect(pushArgv).toEqual(expect.arrayContaining(["--no-verify", "core.hooksPath=/dev/null"]));
+    expect(pushArgv).toEqual(expect.arrayContaining(["--no-verify", `core.hooksPath=${NO_HOOKS_PATH}`]));
+    expect(pushed.results[0].stderr).not.toMatch(/old-style/);
 
     // Confirmations are single-use.
     await rejects(git(capability, "push", { ...confirm, turnId: ownerTurn }), "GIT_PUSH_CONFIRMATION_INVALID");
+  });
+
+  it("lets a later owner turn re-check the same preview and confirm without its id (live-run regression)", async () => {
+    const capability = await capabilityFor(root);
+    await fs.writeFile(path.join(root, "a.txt"), "again\n");
+    sh(root, "commit", "-qam", "again");
+    const turnA = turn(capability, "11111111-1111-4111-8111-111111111111");
+    const first = await git(capability, "push", { turnId: turnA });
+    // Turn B (owner's "yes") lost the id from history and previews again first.
+    const turnB = turn(capability, "33333333-3333-4333-8333-333333333333");
+    const again = await git(capability, "push", { turnId: turnB });
+    expect(again.confirmationId).toBe(first.confirmationId);
+    const pushed = await git(capability, "push", { turnId: turnB, confirmRemote: "origin", confirmRef: `refs/heads/${BRANCH}` });
+    expect(pushed.status).toBe("pushed");
+    expect(sh(remote, "rev-parse", BRANCH)).toBe(sh(root, "rev-parse", "HEAD"));
+
+    // A preview first made in turn C still cannot be confirmed in turn C.
+    await fs.writeFile(path.join(root, "a.txt"), "third\n");
+    sh(root, "commit", "-qam", "third");
+    const turnC = turn(capability, "55555555-5555-4555-8555-555555555555");
+    await git(capability, "push", { turnId: turnC });
+    await rejects(git(capability, "push", { turnId: turnC, confirmRemote: "origin", confirmRef: BRANCH }), "GIT_PUSH_OWNER_CONFIRMATION_REQUIRED");
   });
 
   it("refuses a confirmed push when HEAD moved after the preview", async () => {
