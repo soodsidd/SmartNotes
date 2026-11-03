@@ -53,6 +53,14 @@ export function normalizeDeepWorkRelativePath(value: unknown): string | null {
   return normalized;
 }
 
+/** SN-409: true when any segment of a repository-relative path is secret-shaped. */
+export function isSecretShapedWorkspacePath(relativePath: string): boolean {
+  return relativePath
+    .replace(/\\/g, "/")
+    .split("/")
+    .some((segment) => SECRET_FILE_PATTERNS.some((pattern) => pattern.test(segment)));
+}
+
 export function workspacePathBlockReason(value: unknown): string | null {
   const relativePath = normalizeDeepWorkRelativePath(value);
   if (!relativePath) return "Path must be a safe repository-relative path.";

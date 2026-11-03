@@ -136,7 +136,11 @@ describe("SN-258 Deep Work launch, context, and return contract", () => {
     expect(context).toContain("Vault page/tree/Jupyter-note APIs are outside this Deep Work turn");
     expect(context).toContain("- Deep Work notebook run: enabled.");
     expect(context).toContain("Vault Jupyter page tools and jupyter_notebook_context remain unavailable");
-    expect(context).toContain("no authority to commit, record verification, review, approve, merge, release, deploy");
+    expect(context).toContain("no authority to record verification, review, approve, merge, release, deploy");
+    // SN-409: Git is scoped to the capability-bound workspace_git_* tools; no force/reset/arbitrary commands.
+    expect(context).toContain("workspace_git_status");
+    expect(context).toContain("Git push is two-phase");
+    expect(context).toContain("Force-push, hard reset, rebase, branch deletion, stash, checkout, arbitrary git arguments, and arbitrary commands are unavailable.");
     expect(context).toContain("pytest: one focused failure");
     expect(context).toContain("dwc_test_capability");
     expect(context).not.toContain("jupyter_cell_edit");

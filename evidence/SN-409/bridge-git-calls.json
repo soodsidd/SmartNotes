@@ -1,0 +1,378 @@
+[
+ {
+  "bridge": "765794ce4ebe",
+  "file": "req-sn409-read-notes-001.json",
+  "tool": "workspace_source_read",
+  "ok": true
+ },
+ {
+  "bridge": "765794ce4ebe",
+  "file": "req-sn409-edit-notes-001.json",
+  "tool": "workspace_source_edit",
+  "ok": true
+ },
+ {
+  "bridge": "765794ce4ebe",
+  "file": "req-sn409-status-001.json",
+  "tool": "workspace_git_status",
+  "args": {},
+  "ok": true,
+  "httpStatus": 200,
+  "code": null,
+  "pushStatus": null,
+  "results": [
+   {
+    "command": "git status --short --branch --untracked-files=all",
+    "exitCode": 0,
+    "stdout": "## av/sn-409-manual...origin/av/sn-409-manual\n M notes.md\n M owner.txt\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "765794ce4ebe",
+  "file": "req-sn409-stage-001.json",
+  "tool": "workspace_git_stage",
+  "args": {
+   "paths": [
+    "notes.md"
+   ]
+  },
+  "ok": true,
+  "httpStatus": 200,
+  "code": null,
+  "pushStatus": null,
+  "results": [
+   {
+    "command": "git add -- :(literal)notes.md",
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   },
+   {
+    "command": "git status --short --branch --untracked-files=all",
+    "exitCode": 0,
+    "stdout": "## av/sn-409-manual...origin/av/sn-409-manual\nM  notes.md\n M owner.txt\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "765794ce4ebe",
+  "file": "req-sn409-commit-001.json",
+  "tool": "workspace_git_commit",
+  "args": {
+   "message": "Manual SN-409 companion commit",
+   "paths": [
+    "notes.md"
+   ]
+  },
+  "ok": true,
+  "httpStatus": 200,
+  "code": null,
+  "pushStatus": null,
+  "results": [
+   {
+    "command": "git commit --no-verify --cleanup=strip --file=-",
+    "exitCode": 0,
+    "stdout": "[av/sn-409-manual fa146ee] Manual SN-409 companion commit\n 1 file changed, 1 insertion(+)\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\nwarning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\nwarning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   },
+   {
+    "command": "git log -1 --no-color --format=%H%x09%s",
+    "exitCode": 0,
+    "stdout": "fa146ee418f181b6180558b38a8ece0877dcf49b\tManual SN-409 companion commit\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "765794ce4ebe",
+  "file": "req-sn409-push-preview-001.json",
+  "tool": "workspace_git_push",
+  "args": {
+   "turnId": "32141b2e-60db-4d59-a876-e854ce7cf276"
+  },
+  "ok": true,
+  "httpStatus": "confirmation_required",
+  "code": null,
+  "pushStatus": "confirmation_required",
+  "results": [
+   {
+    "command": "git log --max-count=20 --no-color --format=%h%x09%s refs/remotes/origin/av/sn-409-manual..fa146ee418f181b6180558b38a8ece0877dcf49b",
+    "exitCode": 0,
+    "stdout": "fa146ee\tManual SN-409 companion commit\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "765794ce4ebe",
+  "file": "push-preview-001.json",
+  "tool": "workspace_git_push",
+  "args": {
+   "turnId": "cc201458-29e1-4a14-811c-e4284a7c9adf"
+  },
+  "ok": true,
+  "httpStatus": "confirmation_required",
+  "code": null,
+  "pushStatus": "confirmation_required",
+  "results": [
+   {
+    "command": "git log --max-count=20 --no-color --format=%h%x09%s refs/remotes/origin/av/sn-409-manual..fa146ee418f181b6180558b38a8ece0877dcf49b",
+    "exitCode": 0,
+    "stdout": "fa146ee\tManual SN-409 companion commit\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "765794ce4ebe",
+  "file": "push-confirm-001.json",
+  "tool": "workspace_git_push",
+  "args": {
+   "turnId": "cc201458-29e1-4a14-811c-e4284a7c9adf",
+   "confirmationId": "gpc_rZdNgzzVp0dF8Si2o1HFjamg",
+   "confirmRemote": "origin",
+   "confirmRef": "refs/heads/av/sn-409-manual"
+  },
+  "ok": false,
+  "httpStatus": 403,
+  "code": "GIT_PUSH_OWNER_CONFIRMATION_REQUIRED",
+  "pushStatus": 403,
+  "results": []
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "req-001-read-notes.json",
+  "tool": "workspace_source_read",
+  "ok": true
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "req-002-edit-notes.json",
+  "tool": "workspace_source_edit",
+  "ok": true
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "req-003-git-status.json",
+  "tool": "workspace_git_status",
+  "args": {},
+  "ok": true,
+  "httpStatus": 200,
+  "code": null,
+  "pushStatus": null,
+  "results": [
+   {
+    "command": "git status --short --branch --untracked-files=all",
+    "exitCode": 0,
+    "stdout": "## av/sn-409-manual...origin/av/sn-409-manual [ahead 1]\n M notes.md\n M owner.txt\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "req-004-git-stage.json",
+  "tool": "workspace_git_stage",
+  "args": {
+   "paths": [
+    "notes.md"
+   ]
+  },
+  "ok": true,
+  "httpStatus": 200,
+  "code": null,
+  "pushStatus": null,
+  "results": [
+   {
+    "command": "git add -- :(literal)notes.md",
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   },
+   {
+    "command": "git status --short --branch --untracked-files=all",
+    "exitCode": 0,
+    "stdout": "## av/sn-409-manual...origin/av/sn-409-manual [ahead 1]\nM  notes.md\n M owner.txt\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "req-005-git-commit.json",
+  "tool": "workspace_git_commit",
+  "args": {
+   "message": "SN-409 live: companion commit",
+   "paths": [
+    "notes.md"
+   ]
+  },
+  "ok": true,
+  "httpStatus": 200,
+  "code": null,
+  "pushStatus": null,
+  "results": [
+   {
+    "command": "git commit --no-verify --cleanup=strip --file=-",
+    "exitCode": 0,
+    "stdout": "[av/sn-409-manual c6f5eaf] SN-409 live: companion commit\n 1 file changed, 1 insertion(+)\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\nwarning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\nwarning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   },
+   {
+    "command": "git log -1 --no-color --format=%H%x09%s",
+    "exitCode": 0,
+    "stdout": "c6f5eaf4446fb904c184ba3ee0904fc32788c330\tSN-409 live: companion commit\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "req-006-git-push-preview.json",
+  "tool": "workspace_git_push",
+  "args": {
+   "turnId": "031c6e4c-a95a-493d-b607-6050170c12f5"
+  },
+  "ok": true,
+  "httpStatus": "confirmation_required",
+  "code": null,
+  "pushStatus": "confirmation_required",
+  "results": [
+   {
+    "command": "git log --max-count=20 --no-color --format=%h%x09%s refs/remotes/origin/av/sn-409-manual..c6f5eaf4446fb904c184ba3ee0904fc32788c330",
+    "exitCode": 0,
+    "stdout": "c6f5eaf\tSN-409 live: companion commit\nfa146ee\tManual SN-409 companion commit\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "push-preview-001.json",
+  "tool": "workspace_git_push",
+  "args": {
+   "turnId": "3ec1cab1-9792-4382-a6f0-1d064eb14deb"
+  },
+  "ok": true,
+  "httpStatus": "confirmation_required",
+  "code": null,
+  "pushStatus": "confirmation_required",
+  "results": [
+   {
+    "command": "git log --max-count=20 --no-color --format=%h%x09%s refs/remotes/origin/av/sn-409-manual..c6f5eaf4446fb904c184ba3ee0904fc32788c330",
+    "exitCode": 0,
+    "stdout": "c6f5eaf\tSN-409 live: companion commit\nfa146ee\tManual SN-409 companion commit\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "push-confirm-20261102-001.json",
+  "tool": "workspace_git_push",
+  "args": {
+   "turnId": "85fc249c-8dc7-47cf-940b-6a60486a8f15",
+   "confirmRemote": "origin",
+   "confirmRef": "refs/heads/av/sn-409-manual"
+  },
+  "ok": true,
+  "httpStatus": "pushed",
+  "code": null,
+  "pushStatus": "pushed",
+  "results": [
+   {
+    "command": "git push --porcelain --no-verify --no-follow-tags origin c6f5eaf4446fb904c184ba3ee0904fc32788c330:refs/heads/av/sn-409-manual",
+    "exitCode": 0,
+    "stdout": "To ../remote.git\n \tc6f5eaf4446fb904c184ba3ee0904fc32788c330:refs/heads/av/sn-409-manual\t58e1837..c6f5eaf\nDone\n",
+    "stderr": "warning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\nwarning: encountered old-style '/dev/null' that should be '%(prefix)//dev/null'\n"
+   }
+  ]
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "780a2217-1a8b-4a2c-9686-38d1780a233d.json",
+  "tool": "workspace_git_status",
+  "args": {},
+  "ok": true,
+  "httpStatus": 200,
+  "code": null,
+  "pushStatus": null,
+  "results": [
+   {
+    "command": "git status --short --branch --untracked-files=all",
+    "exitCode": 0,
+    "stdout": "## av/sn-409-manual...origin/av/sn-409-manual\n M owner.txt\n",
+    "stderr": ""
+   }
+  ]
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "c537bb67-4b02-4e15-87a1-989503ca65ff.json",
+  "tool": "workspace_git_log",
+  "args": {
+   "maxCount": 3
+  },
+  "ok": true,
+  "httpStatus": 200,
+  "code": null,
+  "pushStatus": null,
+  "results": [
+   {
+    "command": "git log --max-count=3 --no-color --date=iso-strict --format=%H%x09%an%x09%ad%x09%s HEAD --",
+    "exitCode": 0,
+    "stdout": "c6f5eaf4446fb904c184ba3ee0904fc32788c330\tSN-409 Manual\t2026-11-02T17:32:33-08:00\tSN-409 live: companion commit\nfa146ee418f181b6180558b38a8ece0877dcf49b\tSN-409 Manual\t2026-11-02T17:23:03-08:00\tManual SN-409 companion commit\n58e1837a3e27219f9e240fe9936de6a890e45459\tSN-409 Manual\t2026-11-02T17:19:24-08:00\tinitial\n",
+    "stderr": ""
+   }
+  ]
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "7b4a79c0-994b-4550-809d-0bc5807cc6d3.json",
+  "tool": "workspace_git_diff",
+  "args": {
+   "staged": true
+  },
+  "ok": true,
+  "httpStatus": 200,
+  "code": null,
+  "pushStatus": null,
+  "results": [
+   {
+    "command": "git diff --cached --no-ext-diff --no-textconv --no-color --",
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": ""
+   }
+  ]
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "8016d5a3-b262-4935-8d89-b447ab5c5cce.json",
+  "tool": "workspace_git_stage",
+  "args": {
+   "paths": [
+    "."
+   ]
+  },
+  "ok": false,
+  "httpStatus": 403,
+  "code": "WORKSPACE_PATH_BLOCKED",
+  "pushStatus": null,
+  "results": []
+ },
+ {
+  "bridge": "b98e8f6fe639",
+  "file": "3199459c-25f1-4b26-86ca-09299a508d71.json",
+  "tool": "workspace_git_push",
+  "args": {},
+  "ok": false,
+  "httpStatus": 403,
+  "code": "GIT_PUSH_TURN_REQUIRED",
+  "pushStatus": 403,
+  "results": []
+ }
+]

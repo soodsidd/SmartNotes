@@ -255,6 +255,39 @@ describe("companion vault bridge", () => {
     expect(invokeTool).toHaveBeenCalledTimes(6);
   });
 
+  it("SN-409: reprocesses a request id reused in a later turn instead of returning the stale response", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const bridge = startCompanionLogFormBridge({
+      rootDir: root,
+      allowedTools: WORKSPACE_TOOLS,
+      async invokeTool(_tool: string, args: Record<string, unknown>) {
+        calls.push(args);
+        return { ok: true, status: 200, call: calls.length, echo: args.marker };
+      },
+    });
+    try {
+      const { requestsDir, responsesDir } = await bridge.ready;
+      const requestPath = path.join(requestsDir, "push-confirm-001.json");
+      const responsePath = path.join(responsesDir, "push-confirm-001.json");
+      await fs.promises.writeFile(requestPath, JSON.stringify({ tool: "workspace_git_status", args: { workspace: "w", marker: "turn-2" } }));
+      expect((await waitForJson(responsePath)).result).toMatchObject({ call: 1, echo: "turn-2" });
+
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      await fs.promises.writeFile(requestPath, JSON.stringify({ tool: "workspace_git_status", args: { workspace: "w", marker: "turn-3" } }));
+      const deadline = Date.now() + 5_000;
+      let latest: any = null;
+      while (Date.now() < deadline) {
+        latest = await waitForJson(responsePath).catch(() => null);
+        if (latest?.result?.echo === "turn-3") break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(latest.result).toMatchObject({ call: 2, echo: "turn-3" });
+      expect(calls.map((args) => args.marker)).toEqual(["turn-2", "turn-3"]);
+    } finally {
+      bridge.close();
+    }
+  });
+
   it("SN-359: allowlists notebook cell tools and routes them only to /api/workspace/notebook", () => {
     const notebookTools = [
       "workspace_notebook_context",

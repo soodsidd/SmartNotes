@@ -229,8 +229,8 @@ function rewriteCompanionAppContext(appContext, target) {
       : '- apiBaseUrl: unavailable because the server bound port could not be resolved',
     companionBridgeRoot
       ? codexMcp
-        ? `- Codex Computer-OFF: call the smart_notes_companion MCP workspace_* tools (and, when a host page is named, its page_* tools) directly and read their returned JSON. Do not Write/Read bridge files. Every call must carry workspace ${JSON.stringify(deepWorkCapability)}. Create an empty .ipynb skeleton with workspace_source_create, then add cells with workspace_cell_create using each returned revision. jupyter_cell_run also needs turnId from companionTurnId below.`
-        : `- Exact capability-bound bridge paths (use these literal absolute paths; do not search, inspect a README, or resolve them against cwd, the vault root, or the disk workspace): Write { tool, args } to ${path.join(companionBridgeRoot, 'requests', '<unique-id>.json')}, then Read ${path.join(companionBridgeRoot, 'responses', '<unique-id>.json')}. If the response is not present yet, retry only that same response path briefly. This bridge accepts only workspace_source_list, workspace_source_read, workspace_source_create, workspace_source_edit, workspace_source_move, workspace_source_delete, workspace_annotations_get, workspace_annotations_put, workspace_notebook_context, workspace_cell_create/edit/reorder/delete, and jupyter_cell_run (plus page_get/page_image_read/page_children/page_create/page_write/page_edit for a named host page subtree); every request must carry workspace ${JSON.stringify(deepWorkCapability)}. workspace_source_move takes path, unused destinationPath, and expectedRevision from a bounded read; it returns the final paths and revision without needing the full source. workspace_source_delete is irreversible: summarize the named file and wait for the owner's explicit confirmation, then pass its current expectedRevision and repeat its exact path as confirmPath. jupyter_cell_run also needs turnId from companionTurnId below and a repository-relative .ipynb path. Author .ipynb cells with the workspace_cell_* tools, not hand-written nbformat JSON.`
+        ? `- Codex Computer-OFF: call the smart_notes_companion MCP workspace_* tools (and, when a host page is named, its page_* tools) directly and read their returned JSON. Do not Write/Read bridge files. Every call must carry workspace ${JSON.stringify(deepWorkCapability)}. Create an empty .ipynb skeleton with workspace_source_create, then add cells with workspace_cell_create using each returned revision. jupyter_cell_run also needs turnId from companionTurnId below. Git uses the workspace_git_* tools (never a shell); workspace_git_push also needs turnId and owner confirmation.`
+        : `- Exact capability-bound bridge paths (use these literal absolute paths; do not search, inspect a README, or resolve them against cwd, the vault root, or the disk workspace): Write { tool, args } to ${path.join(companionBridgeRoot, 'requests', '<unique-id>.json')}, then Read ${path.join(companionBridgeRoot, 'responses', '<unique-id>.json')}. If the response is not present yet, retry only that same response path briefly. This bridge accepts only workspace_source_list, workspace_source_read, workspace_source_create, workspace_source_edit, workspace_source_move, workspace_source_delete, workspace_annotations_get, workspace_annotations_put, workspace_notebook_context, workspace_cell_create/edit/reorder/delete, jupyter_cell_run, and workspace_git_status/diff/log/stage/unstage/commit/fetch/pull/push (plus page_get/page_image_read/page_children/page_create/page_write/page_edit for a named host page subtree); every request must carry workspace ${JSON.stringify(deepWorkCapability)}. workspace_source_move takes path, unused destinationPath, and expectedRevision from a bounded read; it returns the final paths and revision without needing the full source. workspace_source_delete is irreversible: summarize the named file and wait for the owner's explicit confirmation, then pass its current expectedRevision and repeat its exact path as confirmPath. jupyter_cell_run also needs turnId from companionTurnId below and a repository-relative .ipynb path. Author .ipynb cells with the workspace_cell_* tools, not hand-written nbformat JSON. Git runs only through the workspace_git_* tools (never a shell or cwd switch); workspace_git_push also needs turnId and the owner's explicit confirmation of remote and ref.`
       : '- Capability-bound shell-less bridge is unavailable for this turn.',
     hostPagePath
       ? `- This turn is isolated to the active disk workspace plus its host Smart Notes page ${hostPagePath} and that page's children. Use page_children with path = host page (or a returned child path) to discover existing children before asking the owner for a path. page_get, page_image_read, page_children, page_create (parentPath = host or child page), page_write, and page_edit are accepted only for that subtree and must carry the workspace capability; all other vault page/tree/Jupyter-note tools stay outside its authority.`
@@ -2714,6 +2714,8 @@ function createChatModule(httpServer, io, userConfig = {}) {
         project_id: activeScope.project?.id || '',
         working_directory: activeScope.workingDirectory,
         computer_access: computerAccess,
+        // SN-409: host-started turns (wakes) are not owner messages.
+        host_initiated: req === null,
       },
       doneEmitted: false,
       errorEmitted: false,
@@ -2738,6 +2740,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
           project_id: activeScope.project?.id || '',
           working_directory: activeScope.workingDirectory,
           computer_access: computerAccess,
+          host_initiated: req === null,
         },
       }),
     };
@@ -2999,6 +3002,9 @@ function createChatModule(httpServer, io, userConfig = {}) {
       model: String(job?.model || record?.model || request.model || ''),
       appContext: String(request.app_context || ''),
       pageContext: String(request.page_context || ''),
+      ownerInitiated: request.host_initiated !== true,
+      // SN-409: push confirmation checks the owner's own text, never the model's.
+      ownerMessage: request.host_initiated === true ? '' : String(request.message || ''),
     };
   }
 
