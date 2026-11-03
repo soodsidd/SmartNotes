@@ -496,6 +496,9 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
     // outer frame uses this instead of remounting the Jupyter view, which
     // would tear down the Deep Work session, its capability, and the root.
     'reload-document': ['docmanager:reload'],
+    // A move removed this path. Ask Lab to close matching tabs so a later save
+    // cannot recreate the old file; Lab retains its own unsaved-edit prompt.
+    'close-removed-document': [],
     'open-settings': ['settingeditor:open'],
     'manage-kernels': ['running:show-panel', 'running:show'],
     'focus-file': ['docmanager:open']
@@ -513,7 +516,7 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
     // SN-270: both path-addressed commands normalize here. reload-document
     // must name its target so the reload cannot land on a document the owner
     // switched to after the host queued the command.
-    const pathAddressed = semantic === 'focus-file' || semantic === 'reload-document';
+    const pathAddressed = semantic === 'focus-file' || semantic === 'reload-document' || semantic === 'close-removed-document';
     const focusPath = pathAddressed ? normalizeWorkspacePath(message && message.path) : null;
     const focusLine = message && Number.isInteger(message.line) && message.line >= 1 && message.line <= 10000000
       ? message.line
@@ -523,6 +526,24 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
     else if (!candidates) reason = 'This Deep Work command is not allowed.';
     else if (pathAddressed && !focusPath) reason = 'The requested file path is not safe.';
     else if (!app.commands || typeof app.commands.execute !== 'function') reason = 'JupyterLab commands are unavailable.';
+
+    if (!reason && semantic === 'close-removed-document') {
+      try {
+        const widgets = app.shell && typeof app.shell.widgets === 'function'
+          ? Array.from(app.shell.widgets('main'))
+          : [app.shell && app.shell.currentWidget];
+        for (const widget of widgets) {
+          if (normalizeWorkspacePath(widget && widget.context && widget.context.path) === focusPath &&
+              typeof widget.close === 'function') widget.close();
+        }
+      } catch {
+        reason = 'JupyterLab could not close the moved document.';
+      }
+      post({ source: SOURCE, version: VERSION, kind: 'command-result',
+        result: { requestId, command: semantic, ok: !reason, reason }, focus: focusSnapshot(app) });
+      if (!reason) scheduleReport(app);
+      return;
+    }
 
     // SN-270: two guards, in this order, evaluated as late as possible.
     //
@@ -1022,7 +1043,7 @@ const JUPYTER_FOCUS_BRIDGE_SOURCE = String.raw`(() => {
       const message = event.data;
       if (!message || message.source !== HOST_SOURCE || message.version !== VERSION) return;
       if (message.kind === 'apply-answer') applyAnswer(app, message);
-      else if (message.kind === 'command' && message.command === 'reload-document') void enqueueHostWork(() => dispatchCommand(app, message));
+      else if (message.kind === 'command' && (message.command === 'reload-document' || message.command === 'close-removed-document')) void enqueueHostWork(() => dispatchCommand(app, message));
       else if (message.kind === 'command') void dispatchCommand(app, message);
       else if (message.kind === 'cell-run-update') void enqueueHostWork(() => applyCellRunUpdate(app, message));
       else if (message.kind === 'follow-companion') void enqueueHostWork(() => followCompanion(app, message));

@@ -4,6 +4,7 @@ import {
   createWorkspaceSource,
   deleteWorkspaceSource,
   listWorkspaceSources,
+  moveWorkspaceSource,
   readWorkspaceSource,
   writeWorkspaceSource,
 } from "@/server/jupyter/workspace-files";
@@ -83,6 +84,22 @@ export async function DELETE(request: Request) {
     return NextResponse.json(
       await deleteWorkspaceSource(workspace, body.path, body.expectedRevision, body.confirmPath)
     );
+  } catch (error) {
+    const response = toErrorResponse(error);
+    return NextResponse.json(response.body, { status: response.status });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = (await request.json().catch(() => ({}))) as {
+      workspace?: unknown;
+      path?: unknown;
+      destinationPath?: unknown;
+      expectedRevision?: unknown;
+    };
+    const workspace = workspaceRequestFromValue(body.workspace);
+    return NextResponse.json(await moveWorkspaceSource(workspace, body.path, body.destinationPath, body.expectedRevision));
   } catch (error) {
     const response = toErrorResponse(error);
     return NextResponse.json(response.body, { status: response.status });

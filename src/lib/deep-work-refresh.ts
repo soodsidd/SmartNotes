@@ -35,6 +35,8 @@ export interface DeepWorkSourceUpdatedEvent {
   path?: unknown;
   /** Content revision after the write. */
   revision?: unknown;
+  /** Source path removed by a move to `path`; any open Lab tab must close. */
+  removedPath?: unknown;
   /**
    * SN-381: set when the write saved a Companion cell run's outputs. The
    * matching `workspace_cell_run_updated` event reconciles the open document

@@ -209,6 +209,7 @@ describe("companion vault bridge", () => {
       { name: "list", tool: "workspace_source_list", args: { workspace: capability, maxCount: 10 } },
       { name: "create", tool: "workspace_source_create", args: { workspace: capability, path: "walkthrough.ipynb", source: "{}" } },
       { name: "delete", tool: "workspace_source_delete", args: { workspace: capability, path: "old.py", expectedRevision: `sha256:${"0".repeat(64)}`, confirmPath: "old.py" } },
+      { name: "move", tool: "workspace_source_move", args: { workspace: capability, path: "old.py", destinationPath: "new.py", expectedRevision: `sha256:${"0".repeat(64)}` } },
       { name: "cell-create", tool: "workspace_cell_create", args: { workspace: capability, path: "walkthrough.ipynb", expectedRevision: `sha256:${"0".repeat(64)}`, source: "x = 1" } },
       { name: "cell-run", tool: "jupyter_cell_run", args: { workspace: capability, path: "walkthrough.ipynb", index: 0, turnId: "turn" } },
       { name: "cell-run-wrong-capability", tool: "jupyter_cell_run", args: { workspace: `dwc_${"b".repeat(43)}`, path: "walkthrough.ipynb", index: 0 } },
@@ -231,6 +232,7 @@ describe("companion vault bridge", () => {
     const list = await processBridgeRequest({ requestPath: path.join(requestsDir, "list.json"), ...options });
     const create = await processBridgeRequest({ requestPath: path.join(requestsDir, "create.json"), ...options });
     const deleted = await processBridgeRequest({ requestPath: path.join(requestsDir, "delete.json"), ...options });
+    const moved = await processBridgeRequest({ requestPath: path.join(requestsDir, "move.json"), ...options });
     const wrongCapability = await processBridgeRequest({ requestPath: path.join(requestsDir, "wrong-capability.json"), ...options });
     const vaultFallback = await processBridgeRequest({ requestPath: path.join(requestsDir, "vault-fallback.json"), ...options });
     const cellCreate = await processBridgeRequest({ requestPath: path.join(requestsDir, "cell-create.json"), ...options });
@@ -242,6 +244,7 @@ describe("companion vault bridge", () => {
     expect(list).toMatchObject({ ok: true, tool: "workspace_source_list" });
     expect(create).toMatchObject({ ok: true, tool: "workspace_source_create" });
     expect(deleted).toMatchObject({ ok: true, tool: "workspace_source_delete" });
+    expect(moved).toMatchObject({ ok: true, tool: "workspace_source_move" });
     expect(wrongCapability).toMatchObject({ ok: false, code: "WORKSPACE_CAPABILITY_MISMATCH" });
     expect(vaultFallback).toMatchObject({ ok: false, code: "TOOL_NOT_ALLOWED" });
     expect(cellCreate).toMatchObject({ ok: true, tool: "workspace_cell_create" });
@@ -249,7 +252,7 @@ describe("companion vault bridge", () => {
     expect(cellRunWrongCapability).toMatchObject({ ok: false, code: "WORKSPACE_CAPABILITY_MISMATCH" });
     expect(cellWrongCapability).toMatchObject({ ok: false, code: "WORKSPACE_CAPABILITY_MISMATCH" });
     expect(vaultJupyter).toMatchObject({ ok: false, code: "TOOL_NOT_ALLOWED" });
-    expect(invokeTool).toHaveBeenCalledTimes(5);
+    expect(invokeTool).toHaveBeenCalledTimes(6);
   });
 
   it("SN-359: allowlists notebook cell tools and routes them only to /api/workspace/notebook", () => {
@@ -303,6 +306,11 @@ describe("companion vault bridge", () => {
       endpoint: `${base}/api/workspace/source`,
       method: "DELETE",
       body: { workspace, path: "old.py", confirmPath: "old.py" },
+    });
+    expect(workspaceToolRequest("workspace_source_move", { workspace, path: "old.py", destinationPath: "new.py" }, base)).toEqual({
+      endpoint: `${base}/api/workspace/source`,
+      method: "PATCH",
+      body: { workspace, path: "old.py", destinationPath: "new.py" },
     });
     expect(workspaceToolRequest("jupyter_cell_edit", { path: "x" }, base)).toBeNull();
     expect(workspaceToolRequest("jupyter_cell_run", { workspace, path: "a.ipynb", index: 0, turnId: "turn" }, base)).toEqual({

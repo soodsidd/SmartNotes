@@ -65,6 +65,7 @@ describe('SN-399 Codex stdio MCP bridge', () => {
     expect(listed).not.toContain('page_list');
     expect(tools.find((tool: any) => tool.name === 'workspace_source_create').inputSchema.required).toContain('source');
     expect(tools.find((tool: any) => tool.name === 'workspace_source_delete').inputSchema.required).toContain('confirmPath');
+    expect(tools.find((tool: any) => tool.name === 'workspace_source_move').inputSchema.required).toEqual(['workspace', 'path', 'destinationPath', 'expectedRevision']);
     expect(tools.find((tool: any) => tool.name === 'workspace_cell_create').inputSchema.required).toContain('expectedRevision');
     expect(ALLOWED_TOOLS.has('page_get')).toBe(true);
 

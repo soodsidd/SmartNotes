@@ -4,6 +4,7 @@ import {
   fetchWorkspaceAnnotations,
   fetchWorkspaceSource,
   listWorkspaceSources,
+  moveWorkspaceSource,
   saveWorkspaceAnnotations,
 } from "@/lib/api/workspace";
 
@@ -48,6 +49,11 @@ describe("SN-258 workspace API client helpers", () => {
         path: "walkthrough.ipynb",
         source: '{"nbformat":4}',
       }),
+    }));
+    await moveWorkspaceSource("deep-work:test", "src/index.ts", "modules/index.ts", `sha256:${"a".repeat(64)}`);
+    expect(fetch).toHaveBeenNthCalledWith(5, "/api/workspace/source", expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ workspace: "deep-work:test", path: "src/index.ts", destinationPath: "modules/index.ts", expectedRevision: `sha256:${"a".repeat(64)}` }),
     }));
   });
 

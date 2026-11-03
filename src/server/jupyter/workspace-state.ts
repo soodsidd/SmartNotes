@@ -117,6 +117,41 @@ function annotationFile(directory: string, relativePath: string): string {
   return path.join(directory, "annotations", `${hash(relativePath)}.json`);
 }
 
+/** The file move locks both annotation keys alongside the source and destination. */
+export async function workspaceAnnotationMovePaths(
+  request: WorkspaceStateRequest,
+  sourcePath: string,
+  destinationPath: string
+): Promise<{ source: string; destination: string }> {
+  const directory = await workspaceDirectory(request);
+  return {
+    source: annotationFile(directory, sourcePath),
+    destination: annotationFile(directory, destinationPath),
+  };
+}
+
+/** Read the source record and rewrite its embedded path for the destination key. */
+export async function workspaceAnnotationMoveContents(
+  sourceFile: string,
+  destinationPath: string
+): Promise<string | null> {
+  const sourceStat = await fs.lstat(sourceFile).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!sourceStat) return null;
+  const stored = await readJson(sourceFile, ANNOTATION_MAX_BYTES);
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    throw new VaultError("WORKSPACE_STATE_INVALID", "Stored workspace annotations are invalid.", 500);
+  }
+  const annotations = parseAnnotations(stored);
+  const serialized = JSON.stringify({ version: 1, path: destinationPath, annotations });
+  if (Buffer.byteLength(serialized, "utf8") > ANNOTATION_MAX_BYTES) {
+    throw new VaultError("WORKSPACE_STATE_TOO_LARGE", "Workspace annotations exceed their size limit.", 413);
+  }
+  return serialized;
+}
+
 function parseAnnotations(value: unknown): WorkspaceAnnotation[] {
   const list = value && typeof value === "object" && !Array.isArray(value)
     ? (value as { annotations?: unknown }).annotations
@@ -184,11 +219,21 @@ export async function writeWorkspaceAnnotations(
     }
   }
   const directory = await workspaceDirectory(request);
-  await atomicJsonWrite(
-    annotationFile(directory, relativePath),
-    { version: 1, path: relativePath, annotations },
-    ANNOTATION_MAX_BYTES
-  );
+  const filePath = annotationFile(directory, relativePath);
+  const serialized = JSON.stringify({ version: 1, path: relativePath, annotations });
+  if (Buffer.byteLength(serialized, "utf8") > ANNOTATION_MAX_BYTES) {
+    throw new VaultError("WORKSPACE_STATE_TOO_LARGE", "Workspace annotations exceed their size limit.", 413);
+  }
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await withFileMutation(filePath, async () => {
+    // A move also owns this key. Recheck after waiting for its lock so an
+    // in-flight annotation write cannot recreate the old path's record.
+    const latest = await readWorkspaceSource(request, relativePath);
+    if (latest.revision !== current.revision) {
+      throw new VaultError("WORKSPACE_ANNOTATION_CONFLICT", "Workspace file changed before annotations were saved.", 409);
+    }
+    await atomicReplaceFile(filePath, serialized, { encoding: "utf8" });
+  });
 }
 
 export async function readWorkspaceAnnotations(
