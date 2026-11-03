@@ -29,6 +29,10 @@ const schemas = {
     properties: { workspace: { type: 'string' }, path: { type: 'string' }, expectedRevision: { type: 'string' }, confirmPath: { type: 'string', description: 'Repeat the exact path only after the owner confirms deletion.' } },
     required: ['workspace', 'path', 'expectedRevision', 'confirmPath'],
   },
+  workspace_source_move: {
+    properties: { workspace: { type: 'string' }, path: { type: 'string' }, destinationPath: { type: 'string' }, expectedRevision: { type: 'string', description: 'The sha256 revision from a prior read; a truncated read is sufficient.' } },
+    required: ['workspace', 'path', 'destinationPath', 'expectedRevision'],
+  },
   workspace_cell_create: {
     properties: { workspace: { type: 'string' }, path: { type: 'string' }, expectedRevision: { type: 'string', description: 'The sha256 revision returned by the prior read or mutation.' }, cellType: { type: 'string', enum: ['markdown', 'code', 'raw'] }, source: { type: 'string' }, index: { type: 'integer' } },
     required: ['workspace', 'path', 'expectedRevision', 'cellType', 'source'],

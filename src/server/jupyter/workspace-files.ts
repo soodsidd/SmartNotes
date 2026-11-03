@@ -590,3 +590,74 @@ export async function deleteWorkspaceSource(
     return { path: resolved.relativePath, deleted: true as const };
   });
 }
+
+/** Relocate one revision-matched file without reading its contents through the bounded source API. */
+export async function moveWorkspaceSource(
+  request: ProjectWorkspaceRequest,
+  relativePath: unknown,
+  destinationPath: unknown,
+  expectedRevision: unknown
+): Promise<{ sourcePath: string; path: string; revision: string; size: number }> {
+  if (typeof expectedRevision !== "string" || !/^sha256:[a-f0-9]{64}$/.test(expectedRevision)) {
+    throw new VaultError("INVALID_WORKSPACE_REVISION", "A strong expectedRevision is required.");
+  }
+  const source = await resolveFile(request, relativePath);
+  if (source.workspace.accessMode !== "editable") {
+    throw new VaultError("WORKSPACE_READ_ONLY", "This workspace is read-only.", 403);
+  }
+  const destination = await resolveCreateTarget(request, destinationPath);
+  const samePath = process.platform === "win32"
+    ? source.absolutePath.toLowerCase() === destination.absolutePath.toLowerCase()
+    : source.absolutePath === destination.absolutePath;
+  if (samePath) {
+    throw new VaultError("WORKSPACE_FILE_EXISTS", "The destination must be an unused file path.", 409);
+  }
+  const locked = [source.absolutePath, destination.absolutePath].sort();
+  return withFileMutation(locked[0]!, () => withFileMutation(locked[1]!, async () => {
+    await resolveFile(request, source.relativePath);
+    const checkedDestination = await resolveCreateTarget(request, destination.relativePath);
+    if (await fs.lstat(destination.absolutePath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    })) {
+      throw new VaultError("WORKSPACE_FILE_EXISTS", "The destination must be an unused file path.", 409);
+    }
+    const bytes = await fs.readFile(source.absolutePath);
+    if (revision(bytes) !== expectedRevision) {
+      throw new VaultError("WORKSPACE_REVISION_CONFLICT", "Workspace file changed after it was read.", 409);
+    }
+    const createdDirectories: string[] = [];
+    let linked = false;
+    try {
+      for (const directory of checkedDestination.missingDirectories) {
+        await fs.mkdir(directory);
+        createdDirectories.push(directory);
+      }
+      // Recheck both paths after creating parents. link is create-only on all
+      // supported platforms, unlike rename, which may replace a collision.
+      await resolveFile(request, source.relativePath);
+      await resolveCreateTarget(request, destination.relativePath);
+      if (revision(await fs.readFile(source.absolutePath)) !== expectedRevision) {
+        throw new VaultError("WORKSPACE_REVISION_CONFLICT", "Workspace file changed while the move was being applied.", 409);
+      }
+      try {
+        await fs.link(source.absolutePath, destination.absolutePath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+          throw new VaultError("WORKSPACE_FILE_EXISTS", "The destination must be an unused file path.", 409);
+        }
+        throw error;
+      }
+      linked = true;
+      await fs.unlink(source.absolutePath);
+      linked = false;
+    } catch (error) {
+      if (linked) await fs.unlink(destination.absolutePath).catch(() => undefined);
+      for (const directory of createdDirectories.reverse()) await fs.rmdir(directory).catch(() => undefined);
+      throw error;
+    }
+    const result = { sourcePath: source.relativePath, path: destination.relativePath, revision: expectedRevision, size: bytes.length };
+    announceWorkspaceSourceWrite(source.workspace.realRoot, result);
+    return result;
+  }));
+}

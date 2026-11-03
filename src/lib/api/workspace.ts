@@ -71,6 +71,19 @@ export async function createWorkspaceSource(
   }));
 }
 
+export async function moveWorkspaceSource(
+  workspace: string,
+  path: string,
+  destinationPath: string,
+  expectedRevision: string
+): Promise<{ sourcePath: string; path: string; revision: string; size: number }> {
+  return readJson(await fetch("/api/workspace/source", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workspace, path, destinationPath, expectedRevision }),
+  }));
+}
+
 export async function fetchWorkspaceAnnotations(
   workspace: string,
   path: string

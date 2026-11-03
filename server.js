@@ -355,7 +355,7 @@ app.prepare().then(async () => {
       ? global.__smartNotesDeepWorkCapabilities__?.get(args.workspace)
       : null;
     const isMutation = tool === 'workspace_source_create' || tool === 'workspace_source_edit'
-      || tool === 'workspace_source_delete' || tool.startsWith('workspace_cell_')
+      || tool === 'workspace_source_delete' || tool === 'workspace_source_move' || tool.startsWith('workspace_cell_')
       || tool === 'jupyter_cell_run';
     const actionId = record?.accessMode === 'editable' && record.expiresAt > Date.now() && isMutation
       ? crypto.randomUUID() : null;

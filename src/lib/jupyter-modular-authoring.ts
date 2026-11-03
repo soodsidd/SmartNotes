@@ -29,7 +29,7 @@ const SHARED_GUIDANCE = [
 export function jupyterModularAuthoringGuidance(target: JupyterModularAuthoringTarget): string[] {
   const scope = target.kind === "page"
     ? "- Put modules and subdirectories inside this page's own .jupyter folder, beside notebook.ipynb."
-    : "- Put modules where the repository's existing layout expects them. Never rearrange or rename existing folders; only add new files when needed.";
+    : "- Put modules where the repository's existing layout expects them. When the owner asks to relocate an existing file, use workspace_source_move with its current revision instead of copying its contents and deleting the original.";
   return [
     "",
     "Modular notebook authoring (guidance, use your judgment):",

@@ -230,7 +230,7 @@ describe("SN-387 modular authoring guidance in the operating context", () => {
       } as never,
     });
     expect(notebook).toContain("Modular notebook authoring (guidance, use your judgment):");
-    expect(notebook).toContain("Never rearrange or rename existing folders");
+    expect(notebook).toContain("use workspace_source_move with its current revision");
     expect(notebook).toContain("workspace_source_create (missing subdirectories are created)");
     expect(notebook).toContain("workspace_source_edit");
     expect(notebook).not.toContain("jupyter_file_write");

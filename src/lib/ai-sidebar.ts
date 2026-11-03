@@ -1686,6 +1686,7 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
         ? `- Read example: GET ${sourceEndpoint}?workspace=${encodeURIComponent(workspace.capability)}&path=<encoded-relative-path>&maxBytes=65536`
         : "",
       "- Write project source only through PUT /api/workspace/source with the expected revision and bounded, non-overlapping {start,end,text} edits. A 409 means re-read and ask/reconcile; never overwrite it.",
+      "- Move an existing file with PATCH /api/workspace/source using {workspace,path,destinationPath,expectedRevision}. The destination must be unused. A truncated source read still gives the full-file revision needed to move a file larger than 64 KiB. The response gives both final paths and the revision.",
       "- Delete one workspace file only after describing the exact file and waiting for the owner's explicit confirmation. Then pass its latest sha256 expectedRevision and repeat the same workspace-relative path as confirmPath. Never delete a directory or a file the owner did not confirm.",
       "- Shell-less project tools use the literal request/response paths in the server-authoritative Host-side companion connection block. Do not search for that bridge or resolve it against the project.",
       workspace.capability
@@ -1699,6 +1700,9 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
         : "",
       workspace.capability
         ? `- Bridge create: { "tool": "workspace_source_create", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<new-relative-path>", "source": "<UTF-8 source or valid nbformat v4 JSON>" } }`
+        : "",
+      workspace.capability && workspace.requestedAccess === "editable"
+        ? `- Bridge move: { "tool": "workspace_source_move", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<existing-relative-path>", "destinationPath": "<unused-relative-path>", "expectedRevision": "sha256:..." } }`
         : "",
       workspace.capability && workspace.requestedAccess === "editable"
         ? `- Bridge delete after owner confirmation: { "tool": "workspace_source_delete", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "path": "<confirmed-relative-path>", "expectedRevision": "sha256:...", "confirmPath": "<same-confirmed-relative-path>" } }`
