@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -364,13 +365,15 @@ export function announceWorkspaceSourceWrite(
   rootPath: string,
   result: Pick<WorkspaceSourceRead, "path" | "revision">,
   // SN-400: the cell a Companion notebook operation touched, so Follow Companion can reveal it.
-  cell?: { cellId?: string | null; cellIndex?: number | null }
+  cell?: { cellId?: string | null; cellIndex?: number | null },
+  removedPath?: string
 ): void {
   emitVaultSideEffects({
     workspaceSourceUpdated: {
       rootPath,
       path: result.path,
       revision: result.revision,
+      ...(removedPath ? { removedPath } : {}),
       ...(cell?.cellId ? { cellId: cell.cellId } : {}),
       ...(Number.isInteger(cell?.cellIndex) && (cell!.cellIndex as number) >= 0 ? { cellIndex: cell!.cellIndex as number } : {}),
     },
@@ -591,6 +594,38 @@ export async function deleteWorkspaceSource(
   });
 }
 
+/** Hard links are unavailable on exFAT/FAT and some network or synced folders. */
+const HARD_LINK_UNSUPPORTED = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "ENOSYS"]);
+
+/**
+ * Create `to` with the bytes of `from` without ever replacing an existing
+ * file. Prefer a hard link; where links are unsupported, copy exclusively and
+ * verify the copy's revision. Never falls back to rename, which can overwrite.
+ */
+async function placeExclusive(from: string, to: string, expectedRevision: string): Promise<void> {
+  const collision = () => new VaultError("WORKSPACE_FILE_EXISTS", "The destination must be an unused file path.", 409);
+  try {
+    await fs.link(from, to);
+    return;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? "";
+    if (code === "EEXIST") throw collision();
+    if (!HARD_LINK_UNSUPPORTED.has(code)) throw error;
+  }
+  try {
+    await fs.copyFile(from, to, fsConstants.COPYFILE_EXCL);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") throw collision();
+    // COPYFILE_EXCL proved `to` was unused, so anything left is a partial copy.
+    await fs.unlink(to).catch(() => undefined);
+    throw error;
+  }
+  if (revision(await fs.readFile(to)) !== expectedRevision) {
+    await fs.unlink(to).catch(() => undefined);
+    throw new VaultError("WORKSPACE_MOVE_VERIFY_FAILED", "The copied file did not match the source revision; nothing was moved.", 409);
+  }
+}
+
 /** Relocate one revision-matched file without reading its contents through the bounded source API. */
 export async function moveWorkspaceSource(
   request: ProjectWorkspaceRequest,
@@ -612,8 +647,14 @@ export async function moveWorkspaceSource(
   if (samePath) {
     throw new VaultError("WORKSPACE_FILE_EXISTS", "The destination must be an unused file path.", 409);
   }
-  const locked = [source.absolutePath, destination.absolutePath].sort();
-  return withFileMutation(locked[0]!, () => withFileMutation(locked[1]!, async () => {
+  // Load state helpers only when moving: workspace-state reads source files and
+  // otherwise has a static dependency on this module.
+  const { workspaceAnnotationMovePaths, workspaceAnnotationMoveContents } = await import("@/server/jupyter/workspace-state");
+  const annotations = await workspaceAnnotationMovePaths(request, source.relativePath, destination.relativePath);
+  const locked = [source.absolutePath, destination.absolutePath, annotations.source, annotations.destination].sort();
+  const withMoveLocks = <T>(index: number, operation: () => Promise<T>): Promise<T> =>
+    index === locked.length ? operation() : withFileMutation(locked[index]!, () => withMoveLocks(index + 1, operation));
+  return withMoveLocks(0, async () => {
     await resolveFile(request, source.relativePath);
     const checkedDestination = await resolveCreateTarget(request, destination.relativePath);
     if (await fs.lstat(destination.absolutePath).catch((error: NodeJS.ErrnoException) => {
@@ -622,42 +663,64 @@ export async function moveWorkspaceSource(
     })) {
       throw new VaultError("WORKSPACE_FILE_EXISTS", "The destination must be an unused file path.", 409);
     }
+    if (await fs.lstat(annotations.destination).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    })) {
+      throw new VaultError("WORKSPACE_ANNOTATIONS_EXIST", "The destination already has workspace annotations.", 409);
+    }
+    const annotationContents = await workspaceAnnotationMoveContents(annotations.source, destination.relativePath);
     const bytes = await fs.readFile(source.absolutePath);
     if (revision(bytes) !== expectedRevision) {
       throw new VaultError("WORKSPACE_REVISION_CONFLICT", "Workspace file changed after it was read.", 409);
     }
     const createdDirectories: string[] = [];
-    let linked = false;
+    let destinationCreated = false;
+    let sourceRemoved = false;
+    let annotationCreated = false;
     try {
       for (const directory of checkedDestination.missingDirectories) {
         await fs.mkdir(directory);
         createdDirectories.push(directory);
       }
-      // Recheck both paths after creating parents. link is create-only on all
-      // supported platforms, unlike rename, which may replace a collision.
+      // Recheck both paths after creating parents. placeExclusive is
+      // create-only, unlike rename, which may replace a collision.
       await resolveFile(request, source.relativePath);
       await resolveCreateTarget(request, destination.relativePath);
       if (revision(await fs.readFile(source.absolutePath)) !== expectedRevision) {
         throw new VaultError("WORKSPACE_REVISION_CONFLICT", "Workspace file changed while the move was being applied.", 409);
       }
-      try {
-        await fs.link(source.absolutePath, destination.absolutePath);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-          throw new VaultError("WORKSPACE_FILE_EXISTS", "The destination must be an unused file path.", 409);
+      if (annotationContents !== null) {
+        await fs.mkdir(path.dirname(annotations.destination), { recursive: true });
+        try {
+          await fs.writeFile(annotations.destination, annotationContents, { flag: "wx" });
+          annotationCreated = true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+            throw new VaultError("WORKSPACE_ANNOTATIONS_EXIST", "The destination already has workspace annotations.", 409);
+          }
+          throw error;
         }
-        throw error;
       }
-      linked = true;
+      await placeExclusive(source.absolutePath, destination.absolutePath, expectedRevision);
+      destinationCreated = true;
       await fs.unlink(source.absolutePath);
-      linked = false;
+      sourceRemoved = true;
+      if (annotationCreated) await fs.unlink(annotations.source);
     } catch (error) {
-      if (linked) await fs.unlink(destination.absolutePath).catch(() => undefined);
+      // Restore the source before removing the destination if a later step
+      // fails. Never destroy the sole remaining copy of the file.
+      if (sourceRemoved) {
+        await placeExclusive(destination.absolutePath, source.absolutePath, expectedRevision);
+        sourceRemoved = false;
+      }
+      if (destinationCreated && !sourceRemoved) await fs.unlink(destination.absolutePath).catch(() => undefined);
+      if (annotationCreated) await fs.unlink(annotations.destination).catch(() => undefined);
       for (const directory of createdDirectories.reverse()) await fs.rmdir(directory).catch(() => undefined);
       throw error;
     }
     const result = { sourcePath: source.relativePath, path: destination.relativePath, revision: expectedRevision, size: bytes.length };
-    announceWorkspaceSourceWrite(source.workspace.realRoot, result);
+    announceWorkspaceSourceWrite(source.workspace.realRoot, result, undefined, source.relativePath);
     return result;
-  }));
+  });
 }

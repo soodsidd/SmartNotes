@@ -135,6 +135,7 @@ export interface JupyterNotebookViewProps {
    * workspace, its capability, and the active file.
    */
   externalReload?: { path: string; nonce: number } | null;
+  externalRemoved?: { path: string; nonce: number } | null;
   externalRun?: { path: string; nonce: number; run: JupyterCellRunPayload } | null;
   externalConflict?: string | null;
   /** SN-400: Follow Companion — open this file/cell in the running Lab frame (bump nonce). */
@@ -259,6 +260,7 @@ export function JupyterNotebookView({
   onWorkspaceReady,
   onAskInCompanion,
   externalReload,
+  externalRemoved,
   externalRun,
   externalConflict,
   externalFollow,
@@ -416,6 +418,14 @@ export function JupyterNotebookView({
     handledExternalReloadRef.current = externalReload.nonce;
     dispatchCommand("reload-document", undefined, { path: externalReload.path });
   }, [dispatchCommand, externalReload, frameLoaded, state.phase, workspace]);
+
+  const handledExternalRemovedRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!workspace || !externalRemoved || state.phase !== "ready" || !frameLoaded) return;
+    if (handledExternalRemovedRef.current === externalRemoved.nonce) return;
+    handledExternalRemovedRef.current = externalRemoved.nonce;
+    dispatchCommand("close-removed-document", undefined, { path: externalRemoved.path });
+  }, [dispatchCommand, externalRemoved, frameLoaded, state.phase, workspace]);
 
   const handledExternalRunRef = React.useRef<number | null>(null);
   React.useEffect(() => {

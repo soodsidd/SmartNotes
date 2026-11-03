@@ -1215,6 +1215,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
   // src/lib/deep-work-refresh.ts for why a remount loses the root.
   const [workspaceDocumentReload, setWorkspaceDocumentReload] =
     React.useState<{ path: string; nonce: number } | null>(null);
+  const [workspaceDocumentRemoved, setWorkspaceDocumentRemoved] =
+    React.useState<{ path: string; nonce: number } | null>(null);
   const [workspaceDocumentConflict, setWorkspaceDocumentConflict] = React.useState<string | null>(null);
   const [workspaceCellRun, setWorkspaceCellRun] = React.useState<{
     path: string;
@@ -2919,6 +2921,18 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     // file-changed conflict handling rather than being silently reverted.
     const handleWorkspaceSourceUpdated = (event: DeepWorkSourceUpdatedEvent) => {
       const current = draftRef.current;
+      if (
+        (activeDeepWorkWorkspace(projectWorkspaceRef.current, current?.path ?? null) || activeBoundWorkspaceRef.current) &&
+        sameDeepWorkRootPath(event.rootPath, workspaceSessionRef.current?.rootPath)
+      ) {
+        const removedPath = normalizeJupyterWorkspacePath(event.removedPath);
+        if (removedPath) {
+          setWorkspaceDocumentRemoved((previous) => ({ path: removedPath, nonce: (previous?.nonce ?? 0) + 1 }));
+          if (activeJupyterFocusRef.current?.workspacePath === removedPath) {
+            setWorkspaceDocumentConflict(`Companion moved ${removedPath}. Its old editor tab is closing; open the destination to continue editing.`);
+          }
+        }
+      }
       const decision = deepWorkSourceRefreshDecision({
         deepWorkActive:
           Boolean(activeDeepWorkWorkspace(projectWorkspaceRef.current, current?.path ?? null)) ||
@@ -8044,6 +8058,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                         onFocusChange={setActiveJupyterFocus}
                         onWorkspaceReady={setWorkspaceSession}
                         externalReload={visible && activeProjectWorkspace ? workspaceDocumentReload : null}
+                        externalRemoved={visible && activeProjectWorkspace ? workspaceDocumentRemoved : null}
                         externalConflict={visible && activeProjectWorkspace ? workspaceDocumentConflict : null}
                         externalRun={visible && activeProjectWorkspace ? workspaceCellRun : null}
                         externalFollow={visible && activeProjectWorkspace ? workspaceFollow : null}

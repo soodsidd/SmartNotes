@@ -25,6 +25,7 @@ import {
   readWorkspaceCompanion,
   writeWorkspaceAnnotations,
   writeWorkspaceCompanion,
+  workspaceAnnotationMovePaths,
 } from "@/server/jupyter/workspace-state";
 import { resolveProjectWorkspace } from "@/server/jupyter/workspace-root";
 
@@ -53,6 +54,7 @@ describe("SN-258 bounded workspace source and app-state collaboration", () => {
 
   afterEach(async () => {
     resetWorkspaceCapabilitiesForTesting();
+    delete (global as Record<string, unknown>)._smartNotesIo;
     delete process.env.SMART_NOTES_STATE_DIR;
     await fs.rm(parent, { recursive: true, force: true });
     await fs.rm(state, { recursive: true, force: true });
@@ -196,6 +198,8 @@ describe("SN-258 bounded workspace source and app-state collaboration", () => {
     expect(bounded.truncated).toBe(true);
     const resolved = await resolveProjectWorkspace(request());
     const capability = issueWorkspaceCapability({ ...request(), projectName: "LeRobot" }, resolved).capability;
+    const emit = jest.fn();
+    (global as Record<string, unknown>)._smartNotesIo = { emit };
     const response = await moveWorkspaceSourceRoute(new Request("http://smart-notes.test/api/workspace/source", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -205,6 +209,91 @@ describe("SN-258 bounded workspace source and app-state collaboration", () => {
     expect(await response.json()).toEqual({ sourcePath: "large.py", path: "modules/new/large.py", revision: bounded.revision, size: bytes.length });
     expect(await fs.readFile(path.join(root, "modules/new/large.py"))).toEqual(bytes);
     await expect(fs.stat(path.join(root, "large.py"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(emit).toHaveBeenCalledWith("workspace_source_updated", expect.objectContaining({
+      path: "modules/new/large.py", removedPath: "large.py", revision: bounded.revision,
+    }));
+  });
+
+  it("moves anchored annotations with their file and rejects an occupied annotation key", async () => {
+    const original = await readWorkspaceSource(request(), "src/index.ts");
+    const annotation = {
+      id: "review-1",
+      anchor: { revision: original.revision, start: 6, end: 11, selectedText: "value", quotedText: "value" },
+      data: { comment: "keep this" },
+    };
+    await writeWorkspaceAnnotations(request(), "src/index.ts", [annotation]);
+    await fs.writeFile(path.join(root, "occupied.ts"), "const value = 1;\n");
+    await writeWorkspaceAnnotations(request(), "occupied.ts", [annotation]);
+    await fs.unlink(path.join(root, "occupied.ts"));
+
+    await expect(moveWorkspaceSource(request(), "src/index.ts", "occupied.ts", original.revision))
+      .rejects.toMatchObject({ code: "WORKSPACE_ANNOTATIONS_EXIST", status: 409 });
+    expect((await readWorkspaceAnnotations(request(), "src/index.ts")).annotations).toHaveLength(1);
+    await expect(fs.stat(path.join(root, "occupied.ts"))).rejects.toMatchObject({ code: "ENOENT" });
+
+    const moved = await moveWorkspaceSource(request(), "src/index.ts", "modules/index.ts", original.revision);
+    expect(moved.revision).toBe(original.revision);
+    expect((await readWorkspaceAnnotations(request(), "modules/index.ts")).annotations[0]).toMatchObject({
+      id: "review-1", status: "current", data: { comment: "keep this" },
+    });
+    const annotationPaths = await workspaceAnnotationMovePaths(request(), "src/index.ts", "modules/index.ts");
+    await expect(fs.stat(annotationPaths.source)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(JSON.parse(await fs.readFile(annotationPaths.destination, "utf8"))).toMatchObject({ path: "modules/index.ts" });
+    await expect(fs.stat(path.join(root, "src/index.ts"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("falls back to an exclusive verified copy where hard links are unsupported", async () => {
+    const original = await readWorkspaceSource(request(), "src/index.ts");
+    await writeWorkspaceAnnotations(request(), "src/index.ts", []);
+    const link = jest.spyOn(fs, "link").mockRejectedValue(Object.assign(new Error("unsupported"), { code: "ENOTSUP" }));
+    try {
+      const moved = await moveWorkspaceSource(request(), "src/index.ts", "modules/index.ts", original.revision);
+      expect(moved).toMatchObject({ sourcePath: "src/index.ts", path: "modules/index.ts", revision: original.revision });
+    } finally {
+      link.mockRestore();
+    }
+    expect(await fs.readFile(path.join(root, "modules/index.ts"), "utf8")).toBe(original.source);
+    await expect(fs.stat(path.join(root, "src/index.ts"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await readWorkspaceAnnotations(request(), "modules/index.ts")).annotations).toEqual([]);
+  });
+
+  it("leaves the source and annotations in place when the copy fallback fails", async () => {
+    const original = await readWorkspaceSource(request(), "src/index.ts");
+    await writeWorkspaceAnnotations(request(), "src/index.ts", []);
+    const link = jest.spyOn(fs, "link").mockRejectedValue(Object.assign(new Error("cross-device"), { code: "EXDEV" }));
+    const copy = jest.spyOn(fs, "copyFile").mockRejectedValue(Object.assign(new Error("denied"), { code: "EACCES" }));
+    try {
+      await expect(moveWorkspaceSource(request(), "src/index.ts", "modules/index.ts", original.revision))
+        .rejects.toMatchObject({ code: "EACCES" });
+    } finally {
+      link.mockRestore();
+      copy.mockRestore();
+    }
+    expect(await fs.readFile(path.join(root, "src/index.ts"), "utf8")).toBe(original.source);
+    expect((await readWorkspaceAnnotations(request(), "src/index.ts")).annotations).toEqual([]);
+    await expect(fs.stat(path.join(root, "modules"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rolls back the destination annotation record when removing the source file fails", async () => {
+    const original = await readWorkspaceSource(request(), "src/index.ts");
+    await writeWorkspaceAnnotations(request(), "src/index.ts", []);
+    const sourceFile = path.join(root, "src/index.ts");
+    const realUnlink = fs.unlink.bind(fs);
+    const unlink = jest.spyOn(fs, "unlink").mockImplementation(async (file) => {
+      if (file === sourceFile) throw Object.assign(new Error("busy"), { code: "EBUSY" });
+      return realUnlink(file);
+    });
+    try {
+      await expect(moveWorkspaceSource(request(), "src/index.ts", "modules/index.ts", original.revision))
+        .rejects.toMatchObject({ code: "EBUSY" });
+    } finally {
+      unlink.mockRestore();
+    }
+    expect(await fs.readFile(sourceFile, "utf8")).toBe(original.source);
+    expect((await readWorkspaceAnnotations(request(), "src/index.ts")).annotations).toEqual([]);
+    await expect(fs.stat(path.join(root, "modules/index.ts"))).rejects.toMatchObject({ code: "ENOENT" });
+    const moved = await moveWorkspaceSource(request(), "src/index.ts", "modules/index.ts", original.revision);
+    expect(moved.path).toBe("modules/index.ts");
   });
 
   it("rejects collisions, stale revisions, read-only access and unsafe move paths without moving", async () => {

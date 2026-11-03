@@ -37,6 +37,7 @@ export type JupyterDeepWorkCommand =
   | "new-notebook"
   | "reload-files"
   | "reload-document"
+  | "close-removed-document"
   | "open-settings"
   | "manage-kernels"
   | "focus-file";
@@ -437,6 +438,7 @@ const JUPYTER_DEEP_WORK_COMMANDS = new Set<JupyterDeepWorkCommand>([
   "new-notebook",
   "reload-files",
   "reload-document",
+  "close-removed-document",
   "open-settings",
   "manage-kernels",
   "focus-file",
@@ -596,7 +598,7 @@ export function createJupyterCommandMessage(
   // asynchronously, so "reload whatever is focused" would reload whichever
   // document happened to win the race. The path travels with the envelope and
   // the bridge re-checks it against the live focus immediately before running.
-  if (command === "focus-file" || command === "reload-document") {
+  if (command === "focus-file" || command === "reload-document" || command === "close-removed-document") {
     const path = normalizeJupyterWorkspacePath(target?.path);
     if (!path) return null;
     message.path = path;

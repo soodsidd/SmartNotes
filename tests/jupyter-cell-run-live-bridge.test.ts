@@ -86,7 +86,7 @@ function fakeNotebook(path: string, disk: FakeCell[], metadata: Record<string, u
       document.dirty = false;
     }),
   };
-  const widget = { content, context };
+  const widget = { content, context, close: jest.fn() };
   const commands = {
     hasCommand: () => true,
     execute: jest.fn(async (id: string) => {
@@ -96,9 +96,10 @@ function fakeNotebook(path: string, disk: FakeCell[], metadata: Record<string, u
       }
     }),
   };
-  const app = { shell: { currentWidget: widget, currentPath: path }, commands, restored: Promise.resolve() };
+  const app = { shell: { currentWidget: widget, currentPath: path, widgets: () => [widget] }, commands, restored: Promise.resolve() };
   return {
     app,
+    widget,
     context,
     content,
     scroller,
@@ -253,6 +254,17 @@ describe("SN-381 Companion cell runs in the open JupyterLab notebook", () => {
     expect(lab.cell(1)).toEqual(CELLS[1]);
     expect(lab.context.revert).not.toHaveBeenCalled();
     expect(notices()).toHaveLength(0);
+  });
+
+  it("closes the matching Lab tab when Companion removes its source path", async () => {
+    send({ kind: "command", requestId: "moved-1", command: "close-removed-document", path: "other.ipynb" });
+    await settle();
+    expect(lab.widget.close).not.toHaveBeenCalled();
+    send({ kind: "command", requestId: "moved-2", command: "close-removed-document", path: "analysis.ipynb" });
+    await settle();
+    expect(lab.widget.close).toHaveBeenCalledTimes(1);
+    expect(posted.filter((entry) => entry.kind === "command-result").pop()?.result)
+      .toMatchObject({ requestId: "moved-2", ok: true });
   });
 
   it("applies a Companion edit's reload before the run that follows it", async () => {

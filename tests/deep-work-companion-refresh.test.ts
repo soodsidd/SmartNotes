@@ -236,6 +236,9 @@ describe("SN-270 Deep Work root survives a Companion notebook edit", () => {
         path: "notebooks/walkthrough.ipynb",
       }));
       expect(createJupyterCommandMessage("reload-2", "reload-document")).toBeNull();
+      expect(createJupyterCommandMessage("move-1", "close-removed-document", { path: "old.ipynb" }))
+        .toEqual(expect.objectContaining({ command: "close-removed-document", path: "old.ipynb" }));
+      expect(createJupyterCommandMessage("move-2", "close-removed-document")).toBeNull();
     });
 
     it("maps reload-document to docmanager:reload and guards identity before dirty state", () => {
