@@ -29,6 +29,39 @@ const schemas = {
     properties: { workspace: { type: 'string' }, path: { type: 'string' }, expectedRevision: { type: 'string' }, confirmPath: { type: 'string', description: 'Repeat the exact path only after the owner confirms deletion.' } },
     required: ['workspace', 'path', 'expectedRevision', 'confirmPath'],
   },
+  workspace_git_diff: {
+    properties: { workspace: { type: 'string' }, staged: { type: 'boolean' }, stat: { type: 'boolean' }, paths: { type: 'array', items: { type: 'string' } } },
+    required: ['workspace'],
+  },
+  workspace_git_log: {
+    properties: { workspace: { type: 'string' }, maxCount: { type: 'integer', minimum: 1, maximum: 100 }, paths: { type: 'array', items: { type: 'string' } } },
+    required: ['workspace'],
+  },
+  workspace_git_stage: {
+    properties: { workspace: { type: 'string' }, paths: { type: 'array', items: { type: 'string' }, description: 'Named repository-relative files you changed; never directories.' } },
+    required: ['workspace', 'paths'],
+  },
+  workspace_git_unstage: {
+    properties: { workspace: { type: 'string' }, paths: { type: 'array', items: { type: 'string' } } },
+    required: ['workspace', 'paths'],
+  },
+  workspace_git_commit: {
+    properties: { workspace: { type: 'string' }, message: { type: 'string' }, paths: { type: 'array', items: { type: 'string' }, description: 'The exact staged set; any other staged path refuses the commit.' } },
+    required: ['workspace', 'message', 'paths'],
+  },
+  workspace_git_fetch: { properties: { workspace: { type: 'string' }, remote: { type: 'string' } }, required: ['workspace'] },
+  workspace_git_pull: { properties: { workspace: { type: 'string' }, remote: { type: 'string' } }, required: ['workspace'] },
+  workspace_git_push: {
+    properties: {
+      workspace: { type: 'string' },
+      turnId: { type: 'string', description: 'companionTurnId of this turn.' },
+      remote: { type: 'string' },
+      confirmationId: { type: 'string', description: 'Only after the owner confirmed the preview in a later message.' },
+      confirmRemote: { type: 'string' },
+      confirmRef: { type: 'string' },
+    },
+    required: ['workspace', 'turnId'],
+  },
   workspace_cell_create: {
     properties: { workspace: { type: 'string' }, path: { type: 'string' }, expectedRevision: { type: 'string', description: 'The sha256 revision returned by the prior read or mutation.' }, cellType: { type: 'string', enum: ['markdown', 'code', 'raw'] }, source: { type: 'string' }, index: { type: 'integer' } },
     required: ['workspace', 'path', 'expectedRevision', 'cellType', 'source'],

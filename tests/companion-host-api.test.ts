@@ -81,7 +81,7 @@ describe("companion host-local vault API target", () => {
     expect(extractDeepWorkCapability(context)).toBe(capability);
     expect(rewritten).toContain("Host-side Deep Work connection (server-authoritative)");
     expect(rewritten).toContain("accepts only workspace_source_list, workspace_source_read, workspace_source_create");
-    expect(rewritten).toContain("workspace_notebook_context, workspace_cell_create/edit/reorder/delete, and jupyter_cell_run");
+    expect(rewritten).toContain("workspace_notebook_context, workspace_cell_create/edit/reorder/delete, jupyter_cell_run, and workspace_git_status/diff/log/stage/unstage/commit/fetch/pull/push");
     expect(rewritten).toContain("page_image_read");
     expect(rewritten).toContain("sole direct file-read exceptions");
     expect(rewritten).not.toContain("jupyter_cell_edit");

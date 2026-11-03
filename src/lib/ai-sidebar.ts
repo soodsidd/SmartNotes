@@ -1736,7 +1736,21 @@ export function buildSmartNotesOperatingContext(input: SmartNotesOperatingContex
         : "- Vault page/tree/Jupyter-note APIs are outside this Deep Work turn and must never be used as a fallback for project discovery, reads, creation, or edits. Use workspace_* notebook tools for reads and edits; execute notebook cells only with capability-scoped jupyter_cell_run (no Computer access needed).",
       "- Never use direct filesystem writes, arbitrary commands, or Jupyter lifecycle commands for project source work.",
       "- Do not change the provider working directory to the project root. The capability-authenticated workspace API/bridge is the only project read or mutation path.",
-      "- Smart Notes has no authority to commit, record verification, review, approve, merge, release, deploy, clean up the worktree, or mutate Ascent Vector brief/fleet state.",
+      "- Git (SN-409): use only the capability-bound workspace_git_* tools; never a shell, cwd switch, or Computer access for Git. Results carry exitCode and bounded stdout/stderr; on failure read code and hint (GIT_AUTH_FAILED, GIT_CONFLICT, GIT_PUSH_REJECTED, GIT_NOT_FOUND, ...) and report them to the owner.",
+      workspace.capability
+        ? `- Git inspect: { "tool": "workspace_git_status", "args": { "workspace": ${JSON.stringify(workspace.capability)} } }; workspace_git_diff { workspace, staged?, stat?, paths? }; workspace_git_log { workspace, maxCount?, paths? }.`
+        : "",
+      workspace.capability && workspace.requestedAccess === "editable"
+        ? `- Git write: workspace_git_stage { workspace, paths: ["<file you changed>"] } (named files only, never directories or secret files); workspace_git_unstage { workspace, paths }; workspace_git_commit { workspace, message, paths: <the exact staged set> }; workspace_git_fetch { workspace, remote? }; workspace_git_pull { workspace, remote? } (fast-forward only).`
+        : "",
+      workspace.requestedAccess === "editable"
+        ? "- Preserve the owner's uncommitted work: stage only files you changed this session, check workspace_git_status first, and never stage, unstage, or commit the owner's other changes unless they ask. A GIT_STAGED_SET_MISMATCH means other paths are staged; ask the owner."
+        : "",
+      workspace.capability && workspace.requestedAccess === "editable"
+        ? `- Git push is two-phase: { "tool": "workspace_git_push", "args": { "workspace": ${JSON.stringify(workspace.capability)}, "turnId": "<companionTurnId>" } } returns a preview (remote, ref, sha, commits, confirmationId) and pushes nothing. Show it to the owner and END YOUR TURN. Only after the owner explicitly confirms that remote and ref in a new message, call workspace_git_push again with confirmationId, confirmRemote, confirmRef, and the new turn's companionTurnId.`
+        : "",
+      "- Force-push, hard reset, rebase, branch deletion, stash, checkout, arbitrary git arguments, and arbitrary commands are unavailable.",
+      "- Smart Notes has no authority to record verification, review, approve, merge, release, deploy, clean up the worktree, or mutate Ascent Vector brief/fleet state.",
       "- Exploratory Jupyter execution is not formal Ascent Vector verification evidence.",
       ...hostPageLines,
       "",

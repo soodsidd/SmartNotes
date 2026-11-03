@@ -36,6 +36,17 @@ const WORKSPACE_TOOLS = new Set([
   "workspace_cell_delete",
   // The sole Deep Work execute tool; still capability-bound to /api/workspace.
   "jupyter_cell_run",
+  // SN-409 capability-bound Git (/api/workspace/git). Fixed operations only;
+  // there is no free-form command or argv tool.
+  "workspace_git_status",
+  "workspace_git_diff",
+  "workspace_git_log",
+  "workspace_git_stage",
+  "workspace_git_unstage",
+  "workspace_git_commit",
+  "workspace_git_fetch",
+  "workspace_git_pull",
+  "workspace_git_push",
 ]);
 
 // SN-404: page tools a page-bound Deep Work bridge also accepts, but only for
@@ -152,6 +163,14 @@ function workspaceToolRequest(tool, args, baseUrl) {
       endpoint: `${baseUrl}/api/workspace/notebook`,
       method: "POST",
       body: { ...input, operation: WORKSPACE_CELL_OPERATIONS.get(tool) },
+    };
+  }
+  if (tool.startsWith("workspace_git_") && WORKSPACE_TOOLS.has(tool)) {
+    const { operation: _ignored, ...rest } = input;
+    return {
+      endpoint: `${baseUrl}/api/workspace/git`,
+      method: "POST",
+      body: { ...rest, operation: tool.slice("workspace_git_".length) },
     };
   }
   if (tool === "jupyter_cell_run" && input.workspace) {
