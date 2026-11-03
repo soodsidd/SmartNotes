@@ -119,13 +119,17 @@ export const ImageLayout = Image.extend({
 
       const appliedSrc = String(props.node.attrs.src ?? "");
       const appliedWidth = normalizeWidth(props.node.attrs.width);
-      // TipTap's resize view appends "px" to the width attribute. For a
-      // percentage preset that produces an invalid value such as "50%px".
-      // Size the outer inline container against the editor column instead;
-      // the picture and handles then share exactly the same width.
+      // TipTap's resize view appends "px" to the width attribute. Saved
+      // widths are already normalized ("240px" or "50%"), so its initial
+      // style is invalid until we apply the saved display width ourselves.
+      // Keep percentage sizing on the container so the picture and handles
+      // share the same width relative to the editor column.
+      const container = nodeView.dom as HTMLElement;
+      const image = container.querySelector("[data-resize-wrapper] > img") as HTMLImageElement | null;
+      if (appliedWidth?.endsWith("px") && image) {
+        image.style.width = appliedWidth;
+      }
       if (appliedWidth?.endsWith("%")) {
-        const container = nodeView.dom as HTMLElement;
-        const image = container.querySelector("[data-resize-wrapper] > img") as HTMLImageElement | null;
         container.style.width = appliedWidth;
         if (image) {
           image.style.width = "100%";
