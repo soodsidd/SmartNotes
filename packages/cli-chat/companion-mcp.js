@@ -57,7 +57,7 @@ const schemas = {
       turnId: { type: 'string', description: 'companionTurnId of this turn.' },
       remote: { type: 'string' },
       confirmationId: { type: 'string', description: 'Optional; from the preview.' },
-      confirmRemote: { type: 'string', description: 'Only after the owner confirmed the previewed remote and ref in a later message.' },
+      confirmRemote: { type: 'string', description: "Only after the owner's own later message named the previewed remote and branch; the server checks that message." },
       confirmRef: { type: 'string' },
     },
     required: ['workspace', 'turnId'],

@@ -84,6 +84,8 @@ describe("SN-377 companion wake host", () => {
       pageContext: "body",
       // SN-409: browser sends are owner messages (push confirmation authority).
       ownerInitiated: true,
+      // SN-409 review: the owner's own text, checked for push confirmation.
+      ownerMessage: "Run the training cell",
     });
     expect(turn.appContext).toContain("- notePath: Nb/Sec/page.html");
     expect(chat.host.listRunningTurns().map((entry: { turnId: string }) => entry.turnId)).toEqual([body.turn_id]);
@@ -110,7 +112,8 @@ describe("SN-377 companion wake host", () => {
     expect(record.request.message).toBe("[Jupyter cell wake — automatic resume]");
     // SN-409: a host-started wake turn is never an owner confirmation.
     expect(record.request.host_initiated).toBe(true);
-    expect(chat.host.getTurn(turnId)).toMatchObject({ ownerInitiated: false });
+    // Its host-written message is never treated as the owner's words.
+    expect(chat.host.getTurn(turnId)).toMatchObject({ ownerInitiated: false, ownerMessage: "" });
     // The server-authoritative connection block is appended once by acceptTurn.
     expect(record.request.app_context.match(/Host-side companion connection/g)).toHaveLength(1);
     expect(chat.host.isThreadBusy("Nb/Sec/page.html::whole")).toBe(true);

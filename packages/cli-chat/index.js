@@ -3003,6 +3003,8 @@ function createChatModule(httpServer, io, userConfig = {}) {
       appContext: String(request.app_context || ''),
       pageContext: String(request.page_context || ''),
       ownerInitiated: request.host_initiated !== true,
+      // SN-409: push confirmation checks the owner's own text, never the model's.
+      ownerMessage: request.host_initiated === true ? '' : String(request.message || ''),
     };
   }
 

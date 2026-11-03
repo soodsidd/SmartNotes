@@ -19,6 +19,7 @@ import {
   NO_HOOKS_PATH,
   parseGitPaths,
   resetWorkspaceGitForTesting,
+  ownerMessageConfirmsPush,
   runWorkspaceGit,
   type CompanionTurnView,
   type GitRunner,
@@ -52,13 +53,20 @@ describe("SN-409 Companion Git in a Deep Work workspace", () => {
     return issueWorkspaceCapability(request, await resolveProjectWorkspace(request)).capability;
   }
 
-  function turn(capability: string, turnId: string, ownerInitiated = true): string {
+  // Owner turns default to a reply that names the previewed remote and branch.
+  function turn(
+    capability: string,
+    turnId: string,
+    ownerInitiated = true,
+    ownerMessage = `Yes, push to origin ${BRANCH}.`
+  ): string {
     turns.set(turnId, {
       turnId,
       status: "running",
       threadKey: `${capability}::companion`,
       appContext: `- workspaceCapability: ${capability}\n- companionTurnId: ${turnId}`,
       ownerInitiated,
+      ownerMessage: ownerInitiated === false ? "" : ownerMessage,
     });
     return turnId;
   }
@@ -328,6 +336,51 @@ describe("SN-409 Companion Git in a Deep Work workspace", () => {
     const turnC = turn(capability, "55555555-5555-4555-8555-555555555555");
     await git(capability, "push", { turnId: turnC });
     await rejects(git(capability, "push", { turnId: turnC, confirmRemote: "origin", confirmRef: BRANCH }), "GIT_PUSH_OWNER_CONFIRMATION_REQUIRED");
+  });
+
+  it("requires the owner's own message to name the previewed remote and ref (review cycle 1)", async () => {
+    const capability = await capabilityFor(root);
+    await fs.writeFile(path.join(root, "a.txt"), "owner words\n");
+    sh(root, "commit", "-qam", "owner words");
+    const remoteBefore = sh(remote, "rev-parse", BRANCH);
+    const preview = await git(capability, "push", { turnId: turn(capability, "11111111-1111-4111-8111-111111111111") });
+    const confirm = { confirmationId: preview.confirmationId, confirmRemote: "origin", confirmRef: BRANCH };
+
+    // The model restates remote and ref, but the owner said something unrelated.
+    const unrelated = turn(capability, "33333333-3333-4333-8333-333333333333", true, "fix the typo in the README");
+    await rejects(git(capability, "push", { ...confirm, turnId: unrelated }), "GIT_PUSH_CONFIRMATION_REQUIRED");
+    // A re-preview in that turn does not invite the model to confirm.
+    const recheck = await git(capability, "push", { turnId: unrelated });
+    expect(recheck).toMatchObject({ confirmationId: preview.confirmationId, confirmableInThisTurn: false });
+    // Naming only the remote (or only the branch) is not enough.
+    const remoteOnly = turn(capability, "55555555-5555-4555-8555-555555555555", true, "yes push to origin");
+    await rejects(git(capability, "push", { ...confirm, turnId: remoteOnly }), "GIT_PUSH_CONFIRMATION_REQUIRED");
+    const branchOnly = turn(capability, "66666666-6666-4666-8666-666666666666", true, `go ahead with ${BRANCH}`);
+    await rejects(git(capability, "push", { ...confirm, turnId: branchOnly }), "GIT_PUSH_CONFIRMATION_REQUIRED");
+    // MINOR 2: a turn without an explicit ownerInitiated flag never confirms.
+    const unflagged = turn(capability, "77777777-7777-4777-8777-777777777777");
+    delete turns.get(unflagged)!.ownerInitiated;
+    await rejects(git(capability, "push", { ...confirm, turnId: unflagged }), "GIT_PUSH_OWNER_CONFIRMATION_REQUIRED");
+    expect(sh(remote, "rev-parse", BRANCH)).toBe(remoteBefore);
+
+    // Naming both, case-insensitively and with punctuation around them, is accepted.
+    const named = turn(capability, "88888888-8888-4888-8888-888888888888", true, `Confirmed: push ORIGIN \`${BRANCH.toUpperCase()}\`.`);
+    expect(await git(capability, "push", { turnId: named })).toMatchObject({ confirmableInThisTurn: true });
+    const pushed = await git(capability, "push", { ...confirm, turnId: named });
+    expect(pushed.status).toBe("pushed");
+    expect(sh(remote, "rev-parse", BRANCH)).toBe(sh(root, "rev-parse", "HEAD"));
+  });
+
+  it("matches owner confirmation words as whole tokens only", () => {
+    const ref = "refs/heads/main";
+    expect(ownerMessageConfirmsPush("push to origin main", "origin", ref)).toBe(true);
+    expect(ownerMessageConfirmsPush("Yes, push origin/main!", "origin", ref)).toBe(true);
+    expect(ownerMessageConfirmsPush('ok: "origin" refs/heads/main', "origin", ref)).toBe(true);
+    expect(ownerMessageConfirmsPush("originally the maintainer said yes", "origin", ref)).toBe(false);
+    expect(ownerMessageConfirmsPush("push upstream/main to origin-mirror", "origin", ref)).toBe(false);
+    expect(ownerMessageConfirmsPush("push to origin main-2", "origin", ref)).toBe(false);
+    expect(ownerMessageConfirmsPush("", "origin", ref)).toBe(false);
+    expect(ownerMessageConfirmsPush(undefined, "origin", ref)).toBe(false);
   });
 
   it("refuses a confirmed push when HEAD moved after the preview", async () => {

@@ -108,6 +108,8 @@ export interface CompanionTurnView {
   threadKey: string;
   appContext: string;
   ownerInitiated?: boolean;
+  /** The owner's own text for this turn (empty for host-started turns). */
+  ownerMessage?: string;
 }
 
 export interface WorkspaceGitDeps {
@@ -587,6 +589,40 @@ function requireCallingTurn(
   return turn;
 }
 
+/**
+ * True only for a turn the owner started (describeTurn sets ownerInitiated
+ * explicitly; a missing flag never counts as the owner).
+ */
+function isOwnerTurn(turn: CompanionTurnView): boolean {
+  return turn.ownerInitiated === true;
+}
+
+// Quotes, brackets and sentence punctuation around a word ("origin," `main`.)
+const TOKEN_EDGE_PUNCTUATION = /^["'`\u2018\u2019\u201c\u201d([{<*_]+|["'`\u2018\u2019\u201c\u201d)\]}>*_,.;:!?]+$/g;
+
+/**
+ * SN-409 review: the owner's own message in the confirming turn must name the
+ * previewed remote and its ref (branch or refs/heads/<branch>, or the combined
+ * <remote>/<branch>) as whole tokens, case-insensitive. The model cannot
+ * confirm a push on the owner's behalf from an unrelated reply.
+ */
+export function ownerMessageConfirmsPush(message: unknown, remote: string, ref: string): boolean {
+  if (typeof message !== "string" || !message.trim()) return false;
+  const tokens = new Set(
+    message
+      .split(/\s+/)
+      .map((token) => token.replace(TOKEN_EDGE_PUNCTUATION, "").toLowerCase())
+      .filter(Boolean)
+  );
+  const remoteName = remote.toLowerCase();
+  const fullRef = ref.toLowerCase();
+  const branchName = fullRef.startsWith("refs/heads/") ? fullRef.slice("refs/heads/".length) : fullRef;
+  const combined = `${remoteName}/${branchName}`;
+  const namesRemote = tokens.has(remoteName) || tokens.has(combined);
+  const namesRef = tokens.has(branchName) || tokens.has(fullRef) || tokens.has(combined);
+  return namesRemote && namesRef;
+}
+
 function normalizeConfirmRef(value: unknown): string {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
@@ -814,6 +850,8 @@ async function runPush(
       expiresAt: now + PUSH_CONFIRMATION_TTL_MS,
     };
     registry.set(preview.confirmationId, preview);
+    const confirmable = preview.turnId !== turn.turnId && isOwnerTurn(turn) &&
+      ownerMessageConfirmsPush(turn.ownerMessage, preview.remote, preview.ref);
     return {
       ok: true,
       operation: "push",
@@ -827,13 +865,14 @@ async function runPush(
       expiresAt: new Date(preview.expiresAt).toISOString(),
       // True when this preview was shown to the owner in an earlier turn, so
       // the owner's current message may confirm it.
-      confirmableInThisTurn: preview.turnId !== turn.turnId && turn.ownerInitiated !== false,
-      hint: preview.turnId !== turn.turnId && turn.ownerInitiated !== false
-        ? `Nothing was pushed. This is the same pending preview the owner saw in an earlier turn (${remote} ${preview.ref}, ${sha.slice(0, 12)}). ` +
-          "If the owner's message in THIS turn explicitly confirms that remote and ref, call workspace_git_push now with confirmRemote and confirmRef " +
+      confirmableInThisTurn: confirmable,
+      hint: confirmable
+        ? `Nothing was pushed. This is the same pending preview the owner saw in an earlier turn (${remote} ${preview.ref}, ${sha.slice(0, 12)}), ` +
+          "and the owner's message in THIS turn names that remote and branch. If it confirms the push, call workspace_git_push now with confirmRemote and confirmRef " +
           "restating them and this turn's companionTurnId as turnId. Otherwise ask the owner."
         : `Nothing was pushed. Show the owner: push ${branch} (${sha.slice(0, 12)}) to ${remote} ${preview.ref}, with the commits listed, then end your turn. ` +
-          "When the owner explicitly confirms that remote and ref in their next message, call workspace_git_push directly (no new preview needed) " +
+          `Ask the owner to reply naming the remote and branch (for example "push to ${remote} ${preview.ref.slice("refs/heads/".length)}"); the server checks the owner's own message for both. ` +
+          "When they do, call workspace_git_push directly (no new preview needed) " +
           "with confirmRemote and confirmRef restating them and that turn's companionTurnId as turnId.",
       results: [commits],
     };
@@ -847,7 +886,7 @@ async function runPush(
       hint: "Call workspace_git_push with only workspace and turnId to preview, show it to the owner, and end your turn.",
     });
   }
-  if (preview.turnId === turn.turnId || turn.ownerInitiated === false) {
+  if (preview.turnId === turn.turnId || !isOwnerTurn(turn)) {
     throw new WorkspaceGitError(
       "GIT_PUSH_OWNER_CONFIRMATION_REQUIRED",
       "A push must be confirmed by the owner in a later message than the preview.",
@@ -860,6 +899,15 @@ async function runPush(
       "GIT_PUSH_CONFIRMATION_MISMATCH",
       `Confirmation must restate remote ${preview.remote} and ref ${preview.ref} exactly.`,
       409
+    );
+  }
+  if (!ownerMessageConfirmsPush(turn.ownerMessage, preview.remote, preview.ref)) {
+    const branchName = preview.ref.slice("refs/heads/".length);
+    throw new WorkspaceGitError(
+      "GIT_PUSH_CONFIRMATION_REQUIRED",
+      `The owner's message in this turn does not name remote ${preview.remote} and branch ${branchName}; nothing was pushed.`,
+      403,
+      { hint: `Ask the owner to confirm by naming both, for example "push to ${preview.remote} ${branchName}", then end your turn.` }
     );
   }
   if (preview.branch !== branch) {
