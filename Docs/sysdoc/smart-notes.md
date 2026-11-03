@@ -1186,6 +1186,8 @@ The editor tracks which `<h2>` the cursor is under and exposes it as `EditorSect
 
 ### HTML persistence (SN-8)
 
+Saved image display dimensions stay fixed when a text page opens or is revisited. Page entry replaces editor content without emitting an edit update, and the image resize view reads the saved width without writing it back. A deliberate drag or width preset still saves the new dimension. TipTap appends px to resize-view width attributes, while Smart Notes stores pixel widths as normalized strings such as 240px; ImageLayout therefore applies the normalized pixel style after creating the view. Percentage widths continue to size the outer container so the displayed image and selection handles share the same bounds. Tests cover repeated page swaps, reload, browser geometry on desktop and mobile, and unchanged page HTML during navigation.
+
 ### HTML persistence (SN-8)
 
 - **Save path:** `onUpdate` emits `editor.getHTML()`; the vault stores the HTML body after YAML frontmatter.

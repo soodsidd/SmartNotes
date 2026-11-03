@@ -4,7 +4,7 @@
 
 import { Editor } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
-import { createEditorExtensions } from "@/lib/rich-text-editor-config";
+import { createEditorExtensions, setEditorHtmlSilent } from "@/lib/rich-text-editor-config";
 
 function makeEditor(content = "<p></p>") {
   const el = document.createElement("div");
@@ -27,6 +27,37 @@ function selectImage(editor: Editor) {
 }
 
 describe("image layout extension (SN-59)", () => {
+  test("saved pixel widths survive silent page swaps and reload without dirtying content (SN-410)", () => {
+    const first = '<p>First <img src="/first.png" width="240" alt="first"></p>';
+    const second = '<p>Second <img src="/second.png" width="120" alt="second"></p>';
+    const editor = makeEditor(first);
+    const onUpdate = jest.fn();
+    editor.on("update", onUpdate);
+
+    const assertImage = (src: string, width: string) => {
+      const container = editor.view.dom.querySelector<HTMLElement>('[data-resize-container][data-node="image"]');
+      const image = container?.querySelector<HTMLImageElement>("[data-resize-wrapper] > img");
+      expect(image?.getAttribute("src")).toBe(src);
+      expect(image?.style.width).toBe(width);
+      expect(container?.querySelector('[data-resize-handle="right"]')).not.toBeNull();
+      expect(editor.getHTML()).toContain(`width="${width}"`);
+    };
+
+    assertImage("/first.png", "240px");
+    for (let visit = 0; visit < 3; visit += 1) {
+      setEditorHtmlSilent(editor, second);
+      assertImage("/second.png", "120px");
+      setEditorHtmlSilent(editor, first);
+      assertImage("/first.png", "240px");
+    }
+    expect(onUpdate).not.toHaveBeenCalled();
+
+    const reloaded = makeEditor(editor.getHTML());
+    expect(reloaded.view.dom.querySelector<HTMLImageElement>('[data-resize-wrapper] > img')?.style.width).toBe("240px");
+    reloaded.destroy();
+    editor.destroy();
+  });
+
   test("percentage presets size the image and resize bounds together on insert and reload", () => {
     const editor = makeEditor("<p></p>");
     editor.commands.setImage({ src: "/vault/nb/sec/page.assets/chart.png", alt: "chart" });

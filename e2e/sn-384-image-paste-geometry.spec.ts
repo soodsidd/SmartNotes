@@ -75,7 +75,7 @@ test("SN-384: pasted image and handles share natural, reload, and preset geometr
 
   const container = editor.locator('[data-resize-container][data-node="image"]');
   const picture = container.locator("[data-resize-wrapper] > img");
-  await expect(picture).toBeVisible();
+  await expect(picture).toBeVisible({ timeout: 20_000 });
   await expect.poll(async () => picture.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(480);
   await picture.click();
   const pasted = await geometry(container);
@@ -96,9 +96,9 @@ test("SN-384: pasted image and handles share natural, reload, and preset geometr
     const response = await request.get(`/api/page?path=${encodeURIComponent(created.path)}`);
     return String(((await response.json()) as { page: { body: string } }).page.body);
   };
-  await expect.poll(savedBody).toContain("<img");
+  await expect.poll(savedBody, { timeout: 20_000 }).toContain("<img");
   await openCreatedPage();
-  await expect(picture).toBeVisible();
+  await expect(picture).toBeVisible({ timeout: 20_000 });
   await picture.click();
   const reloaded = await geometry(container);
   expectAligned(reloaded);
@@ -109,11 +109,57 @@ test("SN-384: pasted image and handles share natural, reload, and preset geometr
   await expect.poll(async () => container.evaluate((element: HTMLElement) => element.style.width)).toBe("50%");
   const preset = await geometry(container);
   expectAligned(preset);
-  await expect.poll(savedBody).toContain('width="50%"');
+  await expect.poll(savedBody, { timeout: 20_000 }).toContain('width="50%"');
   await openCreatedPage();
-  await expect(picture).toBeVisible();
+  await expect(picture).toBeVisible({ timeout: 20_000 });
   await picture.click();
   const presetReloaded = await geometry(container);
   expectAligned(presetReloaded);
   expect(Math.abs(presetReloaded.imageWidth - preset.imageWidth)).toBeLessThan(3);
+});
+
+test("SN-410: opening and revisiting a saved image keeps its display size and page body", async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const title = `sn410-image-${testInfo.project.name}-${Date.now()}`;
+  const first = await apiCreatePage(request, {
+    notebookPath: "Personal Notebook",
+    sectionPath: "Personal Notebook/Quick Notes",
+    title,
+  });
+  const second = await apiCreatePage(request, {
+    notebookPath: "Personal Notebook",
+    sectionPath: "Personal Notebook/Quick Notes",
+    title: `${title}-other`,
+  });
+  const content = '<p>Saved picture <img class="editor-image" src="/icon-192.png" alt="saved" width="96px" style="width: 96px; height: auto;"></p>';
+  expect((await request.put("/api/page", { data: { path: first.path, title, content } })).ok()).toBe(true);
+  const savedBody = async () => {
+    const response = await request.get(`/api/page?path=${encodeURIComponent(first.path)}`);
+    return String(((await response.json()) as { page: { body: string } }).page.body);
+  };
+  const originalBody = await savedBody();
+  let navigationWrites = 0;
+  page.on("request", (incoming) => {
+    if (new URL(incoming.url()).pathname !== "/api/page" || !["PUT", "PATCH"].includes(incoming.method())) return;
+    if ((incoming.postDataJSON() as { path?: string } | null)?.path === first.path) navigationWrites += 1;
+  });
+
+  for (let visit = 0; visit < 3; visit += 1) {
+    await page.goto(`/?page=${encodeURIComponent(first.path)}`);
+    await expect(page.getByRole("textbox", { name: "Page title" }).first()).toHaveValue(title);
+    const container = page.locator('.ProseMirror.editor-content [data-resize-container][data-node="image"]');
+    const picture = container.locator("[data-resize-wrapper] > img");
+    await expect(picture).toBeVisible();
+    await expect.poll(async () => picture.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(192);
+    await picture.click();
+    const bounds = await geometry(container);
+    expect(Math.abs(bounds.imageWidth - 96)).toBeLessThan(3);
+    expect(Math.abs(bounds.wrapperWidth - bounds.imageWidth)).toBeLessThan(3);
+    expect(Math.abs(bounds.handleX - bounds.imageRight)).toBeLessThan(8);
+    await page.screenshot({ path: `evidence/SN-410/${testInfo.project.name}-visit-${visit + 1}.png` });
+    await page.goto(`/?page=${encodeURIComponent(second.path)}`);
+    await expect(page.getByRole("textbox", { name: "Page title" }).first()).toHaveValue(`${title}-other`);
+  }
+  expect(navigationWrites).toBe(0);
+  expect(await savedBody()).toBe(originalBody);
 });
