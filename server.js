@@ -374,6 +374,14 @@ app.prepare().then(async () => {
     }
   }
 
+  // Stable companion scope for a Deep Work capability: one per real root, so a
+  // reissued capability for the same workspace keeps its provider session.
+  function resolveDeepWorkScopeKey(capability) {
+    const record = global.__smartNotesDeepWorkCapabilities__?.get(capability);
+    if (!record || record.expiresAt <= Date.now()) return null;
+    return `deep-work:${crypto.createHash('sha256').update(record.realRoot).digest('hex').slice(0, 32)}`;
+  }
+
   async function resolveDeepWorkTurn(capability) {
     for (const [token, registeredBridge] of deepWorkBridges) {
       if (registeredBridge.expiresAt <= Date.now()) {
@@ -402,9 +410,8 @@ app.prepare().then(async () => {
       deepWorkBridges.set(capability, registered);
     }
     const ready = await registered.bridge.ready;
-    const rootHash = crypto.createHash('sha256').update(record.realRoot).digest('hex').slice(0, 32);
     return {
-      scopeKey: `deep-work:${rootHash}`,
+      scopeKey: resolveDeepWorkScopeKey(capability),
       workingDirectory: __dirname,
       companionBridgeRoot: ready.rootDir,
     };
@@ -423,6 +430,7 @@ app.prepare().then(async () => {
       return address && typeof address === 'object' ? address.port : 0;
     },
     resolveDeepWorkTurn,
+    resolveDeepWorkScopeKey,
     systemPrompt: getSystemPrompt,
     welcomeMessage:
       'Hi! Ask me about your notes. Vault writes save on disk immediately; click Reload in the editor to view updates.'

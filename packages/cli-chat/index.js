@@ -864,6 +864,26 @@ function createChatModule(httpServer, io, userConfig = {}) {
   function getSessionScopeKey(scopeKey, threadKey = '') {
     return threadKey ? JSON.stringify(['thread', threadKey]) : scopeKey;
   }
+
+  // Deep Work capabilities (dwc_...) are reissued whenever the owner reopens a
+  // workspace, and Smart Notes addresses Deep Work threads by that capability.
+  // Provider continuity and live-turn discovery must survive a reissue, so they
+  // use the capability's stable root scope (deep-work:<root hash>) instead. The
+  // record keeps the capability thread key that Deep Work tools authorize by.
+  function stableThreadKey(threadKey, deepWorkScopeKey = '') {
+    const key = String(threadKey || '');
+    if (!deepWorkScopeKey || !key.startsWith('dwc_')) return key;
+    const split = key.indexOf('::');
+    return split < 0 ? deepWorkScopeKey : `${deepWorkScopeKey}${key.slice(split)}`;
+  }
+
+  function resolveStableThreadKey(threadKey) {
+    const key = String(threadKey || '');
+    if (!key.startsWith('dwc_') || typeof cfg.resolveDeepWorkScopeKey !== 'function') return key;
+    const split = key.indexOf('::');
+    const scopeKey = cfg.resolveDeepWorkScopeKey(split < 0 ? key : key.slice(0, split));
+    return scopeKey ? stableThreadKey(key, scopeKey) : key;
+  }
   function clearProviderSession(provider, scopeKey = buildScopeKey(appId, '')) {
     if (sessionState[provider]) delete sessionState[provider][scopeKey];
     saveSessions();
@@ -1112,6 +1132,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       project_id: extra.project_id || '',
       scope_key: extra.scope_key || buildScopeKey(appId, ''),
       thread_key: extra.thread_key || '',
+      session_thread_key: extra.session_thread_key || extra.thread_key || '',
       request: extra.request && typeof extra.request === 'object' ? extra.request : {},
       events: Array.isArray(extra.events) ? extra.events.slice() : [],
     };
@@ -1137,6 +1158,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
     record.project_id = raw.project_id || raw.projectId || raw.request?.project_id || record.project_id;
     record.scope_key = raw.scope_key || raw.scopeKey || record.scope_key || buildScopeKey(appId, record.project_id);
     record.thread_key = raw.thread_key || record.thread_key;
+    record.session_thread_key = raw.session_thread_key || record.thread_key;
     record.request = raw.request && typeof raw.request === 'object' ? raw.request : {};
     record.events = legacyEvents
       .filter(entry => entry && typeof entry === 'object')
@@ -1287,6 +1309,10 @@ function createChatModule(httpServer, io, userConfig = {}) {
         status: record.status,
         provider: record.provider || '',
         project_id: record.project_id || '',
+        thread_key: record.thread_key || '',
+        session_thread_key: record.session_thread_key || record.thread_key || '',
+        created_at: record.created_at,
+        request_message: String(record.request?.message || ''),
         last_seq: getLastEventSeq(record),
         updated_at: record.updated_at,
       }))
@@ -1866,7 +1892,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
     // SN-356: per-turn overlay; the module-level sandboxCfg is never mutated.
     const turnSandboxCfg = applyComputerAccess(sandboxCfg, computerAccess);
     const sessionScopeKey = computerAccessSessionKey(
-      getSessionScopeKey(runOptions.scopeKey || buildScopeKey(appId, ''), runOptions.threadKey),
+      getSessionScopeKey(runOptions.scopeKey || buildScopeKey(appId, ''), runOptions.sessionThreadKey ?? runOptions.threadKey),
       computerAccess
     );
     let tracedCommand = '';
@@ -2597,7 +2623,10 @@ function createChatModule(httpServer, io, userConfig = {}) {
     // Companion checkbox. Absent/false = off. It applies to Deep Work turns
     // too: the owner's checkbox is the only authority, and silently forcing
     // Deep Work turns off made a checked box arm nothing (rework cycle 2).
-    const sessionScopeKey = computerAccessSessionKey(getSessionScopeKey(activeScope.scopeKey, threadKey), computerAccess);
+    // A reopened Deep Work workspace has a new capability; resume the provider
+    // session by the stable root scope so the conversation is not lost.
+    const sessionThreadKey = deepWorkCapability ? stableThreadKey(threadKey, activeScope.scopeKey) : threadKey;
+    const sessionScopeKey = computerAccessSessionKey(getSessionScopeKey(activeScope.scopeKey, sessionThreadKey), computerAccess);
     const chatId = requestedTurnId || crypto.randomUUID();
     if (deepWorkCapability) appContext += `\n- companionTurnId: ${chatId}`;
     const pdfTextResults = await Promise.all(sanitizedPdfAttachments.map(doc => extractPdfText(doc.path)));
@@ -2699,6 +2728,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       projectId: activeScope.project?.id || '',
       scopeKey: activeScope.scopeKey,
       threadKey,
+      sessionThreadKey,
       sessionScopeKey,
       workingDirectory: activeScope.workingDirectory,
       request: {
@@ -2727,6 +2757,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
         project_id: activeScope.project?.id || '',
         scope_key: activeScope.scopeKey,
         thread_key: threadKey,
+        session_thread_key: sessionThreadKey,
         request: {
           message,
           app_context: appContext,
@@ -2750,6 +2781,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       workingDirectory: activeScope.workingDirectory,
       scopeKey: activeScope.scopeKey,
       threadKey,
+      sessionThreadKey,
       projectId: activeScope.project?.id || '',
       boundPort: companionApiTarget.port,
       computerAccess,
@@ -2937,9 +2969,19 @@ function createChatModule(httpServer, io, userConfig = {}) {
     if (apiPath === '/history' && req.method === 'GET') {
       const activeScope = getActiveScopeSettings();
       const includeAllScopes = url.searchParams.get('all_scopes') === '1';
+      // Server-authoritative live turns for one companion thread, matched by the
+      // stable thread identity so a reopened Deep Work workspace (new
+      // capability) still finds the turn it started before navigating away.
+      const requestedThreadKey = String(url.searchParams.get('thread_key') || '').trim();
+      const threadSessionKey = requestedThreadKey ? resolveStableThreadKey(requestedThreadKey) : '';
       sendJson(res, 200, {
         messages: loadHistory(activeScope.scopeKey),
         active_turns: listActiveTurnSummaries(activeScope.scopeKey, includeAllScopes),
+        ...(threadSessionKey ? {
+          thread_session_key: threadSessionKey,
+          thread_active_turns: listActiveTurnSummaries(activeScope.scopeKey, true)
+            .filter(turn => turn.session_thread_key === threadSessionKey),
+        } : {}),
         stateScopeId: activeScope.scopeKey,
         projectId: activeScope.project?.id || '',
       });

@@ -312,6 +312,7 @@ import {
   isCompanionTurnBusyOnThread,
   createEmptyCompanionSidecar,
   describeTerminalTurnStatus,
+  companionPointerFromLiveTurn,
   findCompanionActiveTurn,
   getCompanionActiveTurn,
   getCompanionScopeSession,
@@ -327,6 +328,7 @@ import {
   withCompanionProviderPreferences,
   type AiScope,
   type CompanionActiveTurn,
+  type CompanionThreadLiveTurn,
   type CompanionProviderPreferences,
   type CompanionSidecar,
   type CompanionStoredMessage,
@@ -2120,6 +2122,9 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       }
 
       if (!stillOnScope()) {
+        // The owner moved on while the lookup was in flight. Let discovery probe
+        // again on return instead of treating this pointer as already handled.
+        reattachDiscoveryKeyRef.current = null;
         return;
       }
 
@@ -3345,7 +3350,12 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       scopeKey: companionScopeKey,
     })) {
       detachActiveTurn();
-      void resetProviderSession(companionThreadKey);
+      // Deep Work threads keep provider continuity: the server resumes them by
+      // the workspace's stable root identity, so returning to the page must not
+      // wipe the conversation the model is still part of.
+      if (!companionStorePath.startsWith("dwc_")) {
+        void resetProviderSession(companionThreadKey);
+      }
     }
   }, [companionStorePath, companionScopeKey, companionThreadKey, detachActiveTurn, resetProviderSession]);
 
@@ -3581,7 +3591,9 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     reattachDiscoveryKeyRef.current = discoveryKey;
 
     let cancelled = false;
+    let settled = false;
     void (async () => {
+     try {
       let found:
         | {
             path: string;
@@ -3590,6 +3602,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
             sidecar: CompanionSidecar | null;
           }
         | null = null;
+      let pathSidecar: CompanionSidecar | null = null;
       if (companionSidecarRef.current && companionPageRef.current === path) {
         const active = findCompanionActiveTurn(companionSidecarRef.current, scopeKey);
         if (active) {
@@ -3613,11 +3626,58 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         if (cancelled) {
           return;
         }
+        if (candidate.path === path) pathSidecar = sidecar;
         if (sidecar) {
           const active = findCompanionActiveTurn(sidecar, candidate.preferredScopeKey);
           if (active) {
             found = { path: candidate.path, ...active, sidecar };
           }
+        }
+      }
+      // Deep Work fallback: the thread's capability is reissued when the
+      // workspace reopens, so the durable pointer can be missing (or filed under
+      // the old capability) while the server still runs the turn. Ask the server
+      // for live turns on this thread's stable identity and reattach to them.
+      if (!found && !cancelled && path.startsWith("dwc_")) {
+        const threadKey = `${path}::${scopeKey}`;
+        let liveTurns: CompanionThreadLiveTurn[] = [];
+        try {
+          const response = await fetch(
+            `/api/chat/history?all_scopes=1&thread_key=${encodeURIComponent(threadKey)}`,
+            { cache: "no-store" }
+          );
+          if (response.ok) {
+            const data = (await response.json().catch(() => ({}))) as {
+              thread_active_turns?: CompanionThreadLiveTurn[];
+            };
+            liveTurns = Array.isArray(data.thread_active_turns) ? data.thread_active_turns : [];
+          }
+        } catch {
+          liveTurns = [];
+        }
+        if (cancelled) {
+          return;
+        }
+        const transcript =
+          aiMessagesBindingKeyRef.current === threadKey
+            ? aiMessagesRef.current
+            : fromStoredCompanionMessages(getCompanionScopeSession(pathSidecar, scopeKey)?.messages ?? []);
+        const pointer = companionPointerFromLiveTurn(liveTurns, transcript);
+        if (pointer && activeTurnIdRef.current !== pointer.turnId) {
+          found = { path, scopeKey, pointer, sidecar: null };
+          // Re-file the pointer so terminal cleanup and a later cold return find it.
+          void (async () => {
+            try {
+              const base = await fetchCompanionSessions(path);
+              if (getCompanionActiveTurn(base, scopeKey)) return;
+              const next = setCompanionActiveTurn(base, scopeKey, pointer);
+              companionSidecarRef.current = next;
+              companionPageRef.current = path;
+              await saveCompanionSessions(path, next);
+            } catch {
+              // Best-effort; the live reattach below does not depend on it.
+            }
+          })();
         }
       }
       if (cancelled || !found) {
@@ -3641,10 +3701,19 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         return;
       }
       await reattachOrReconcileTurn(found.path, found.scopeKey, found.pointer);
+     } finally {
+      settled = true;
+     }
     })();
 
     return () => {
       cancelled = true;
+      // A probe abandoned mid-flight (navigation, panel toggle) must not leave
+      // this thread marked as already probed, or returning to it would skip
+      // reattach entirely.
+      if (!settled && reattachDiscoveryKeyRef.current === discoveryKey) {
+        reattachDiscoveryKeyRef.current = null;
+      }
     };
   }, [
     vaultUiStateHydrated,

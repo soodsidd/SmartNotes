@@ -1326,6 +1326,51 @@ export function setCompanionScopeSession(
  * missed events); `reconcile` when it has already reached a terminal state and
  * must be recovered from the durable run record.
  */
+/** Server live-turn summary for one companion thread (GET /api/chat/history?thread_key=). */
+export interface CompanionThreadLiveTurn {
+  turn_id?: string | null;
+  created_at?: number | null;
+  request_message?: string | null;
+}
+
+/**
+ * Rebuild a reattach pointer from the server's per-thread live-turn lookup.
+ * Deep Work threads are addressed by a capability that is reissued when the
+ * workspace reopens, so the browser's durable pointer can be missing (or
+ * filed under the old capability) while the server still runs the turn. The
+ * newest live turn wins; its existing assistant bubble (the message right after
+ * the turn's user message) is reused so the replay does not duplicate it.
+ */
+export function companionPointerFromLiveTurn(
+  liveTurns: ReadonlyArray<CompanionThreadLiveTurn | null | undefined> | null | undefined,
+  messages: ReadonlyArray<{ id: string; role: string; content: string }>
+): CompanionActiveTurn | null {
+  const live = (Array.isArray(liveTurns) ? liveTurns : [])
+    .filter((turn): turn is CompanionThreadLiveTurn => typeof turn?.turn_id === "string" && turn.turn_id.trim() !== "")
+    .sort((left, right) => (Number(right.created_at) || 0) - (Number(left.created_at) || 0))[0];
+  if (!live?.turn_id) {
+    return null;
+  }
+  const request = String(live.request_message ?? "").trim();
+  let assistantMessageId = "";
+  if (request) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role === "user" && message.content.trim() === request) {
+        const next = messages[index + 1];
+        if (next?.role === "assistant") assistantMessageId = next.id;
+        break;
+      }
+    }
+  }
+  return normalizeCompanionActiveTurn({
+    turnId: live.turn_id,
+    assistantMessageId: assistantMessageId || `assistant-${live.turn_id.trim()}`,
+    lastSeq: -1,
+    startedAt: Number(live.created_at) || undefined,
+  });
+}
+
 export function resolveLiveTurnReattachAction(
   pointer: CompanionActiveTurn | null | undefined,
   activeTurns: ReadonlyArray<{ turn_id?: string | null }> | null | undefined
