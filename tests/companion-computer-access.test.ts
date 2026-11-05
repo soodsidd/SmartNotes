@@ -317,12 +317,13 @@ describe("SN-356 mid-session toggle through /api/chat/send", () => {
     const capability = `dwc_${"b".repeat(43)}`;
     const thread = {
       provider: "codex", thread_key: `${capability}::whole`,
-      app_context: `Smart Notes Deep Work operating context:\n- workspaceCapability: ${capability}`,
+      app_context: `Smart Notes Deep Work operating context:\n- workspaceCapability: ${capability}\n- Access: editable`,
     };
     const off = await send({ ...thread, message: "create a notebook" });
     expect(off.args).toContain("mcp_servers.smart_notes_companion.command=node");
     expect(off.args.join(" ")).toContain(capability);
     expect(off.stdin).toContain("call the smart_notes_companion MCP workspace_* tools");
+    expect(off.stdin).toContain("When Access above is editable, attempt workspace_cell_edit");
     expect(off.stdin).not.toContain("Exact capability-bound bridge paths");
     const on = await send({ ...thread, message: "continue", computer_access: true });
     expect(on.args.join(" ")).not.toContain("mcp_servers.smart_notes_companion");
