@@ -29,9 +29,9 @@ import { VaultError } from "@/server/vault/errors";
 //     pathspec magic, no .git, no secret-shaped files). Commit requires the
 //     caller to restate the exact staged set, so an owner's unrelated staged
 //     change is never swept into a Companion commit.
-//   - Push is two-phase: a preview records remote, ref, and HEAD sha for the
-//     calling turn; only a later owner-initiated turn on the same capability
-//     thread may confirm it by restating remote and ref. Force, delete, tags,
+//   - Push runs in one call from an owner-initiated turn whose own message asks
+//     to push (or answers a push the model proposed in an earlier owner turn);
+//     wake/host turns and "don't push" messages never push. Force, delete, tags,
 //     hard reset, branch deletion, and rebases have no code path here.
 // ---------------------------------------------------------------------------
 
@@ -550,6 +550,8 @@ interface PushPreview {
   branch: string;
   sha: string;
   turnId: string;
+  /** Raised in an owner turn that did not forbid pushing, so a later owner reply may approve it. */
+  answerable: boolean;
   expiresAt: number;
 }
 
@@ -597,36 +599,25 @@ function isOwnerTurn(turn: CompanionTurnView): boolean {
   return turn.ownerInitiated === true;
 }
 
-// Quotes, brackets and sentence punctuation around a word ("origin," `main`.)
-const TOKEN_EDGE_PUNCTUATION = /^["'`\u2018\u2019\u201c\u201d([{<*_]+|["'`\u2018\u2019\u201c\u201d)\]}>*_,.;:!?]+$/g;
+const PUSH_WORD = /\bpush(?:es|ed|ing)?\b/;
+const PUSH_NEGATION = /\b(?:don't|dont|do not|never|no|not|without|hold off(?: on)?|skip)\s+(?:\w+\s+){0,2}?push/;
 
-/**
- * SN-409 review: the owner's own message in the confirming turn must name the
- * previewed remote and its ref (branch or refs/heads/<branch>, or the combined
- * <remote>/<branch>) as whole tokens, case-insensitive. The model cannot
- * confirm a push on the owner's behalf from an unrelated reply.
- */
-export function ownerMessageConfirmsPush(message: unknown, remote: string, ref: string): boolean {
-  if (typeof message !== "string" || !message.trim()) return false;
-  const tokens = new Set(
-    message
-      .split(/\s+/)
-      .map((token) => token.replace(TOKEN_EDGE_PUNCTUATION, "").toLowerCase())
-      .filter(Boolean)
-  );
-  const remoteName = remote.toLowerCase();
-  const fullRef = ref.toLowerCase();
-  const branchName = fullRef.startsWith("refs/heads/") ? fullRef.slice("refs/heads/".length) : fullRef;
-  const combined = `${remoteName}/${branchName}`;
-  const namesRemote = tokens.has(remoteName) || tokens.has(combined);
-  const namesRef = tokens.has(branchName) || tokens.has(fullRef) || tokens.has(combined);
-  return namesRemote && namesRef;
+function normalizeOwnerText(message: unknown): string {
+  return typeof message === "string" ? message.toLowerCase().replace(/[\u2018\u2019]/g, "'") : "";
 }
 
-function normalizeConfirmRef(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const trimmed = value.trim();
-  return trimmed.startsWith("refs/heads/") ? trimmed : `refs/heads/${trimmed}`;
+/** True when the owner's own message says not to push ("don't push", "without pushing"). */
+export function ownerMessageForbidsPush(message: unknown): boolean {
+  return PUSH_NEGATION.test(normalizeOwnerText(message));
+}
+
+/**
+ * True when the owner's own message asks to push ("commit and push", "push it")
+ * and does not say not to. The model cannot authorize a push on the owner's behalf.
+ */
+export function ownerMessageRequestsPush(message: unknown): boolean {
+  const text = normalizeOwnerText(message);
+  return PUSH_WORD.test(text) && !ownerMessageForbidsPush(text);
 }
 
 // ---------------------------------------------------------------------------
@@ -813,137 +804,70 @@ async function runPush(
   const now = deps.now();
   for (const [id, preview] of registry) if (preview.expiresAt <= now) registry.delete(id);
 
-  const present = (value: unknown) => value !== undefined && value !== null && value !== "";
-  const confirming = present(args.confirmationId) || present(args.confirmRemote) || present(args.confirmRef);
-  if (!confirming) {
-    if (!(await hasHead(context))) {
-      throw new WorkspaceGitError("GIT_NOTHING_TO_PUSH", "This branch has no commits to push.", 409);
-    }
-    const upstream = await upstreamOf(context, branch);
-    const remote = await chooseRemote(context, parseRemoteName(args.remote), upstream);
-    const remoteBranch = upstream && upstream.remote === remote ? upstream.branch : branch;
-    await validateBranchName(context, remoteBranch);
-    const sha = await headSha(context);
-    const tracking = `refs/remotes/${remote}/${remoteBranch}`;
-    const known = (await git(context, ["rev-parse", "--verify", "--quiet", tracking])).exitCode === 0;
-    const commits = await git(context, [
-      "log", "--max-count=20", "--no-color", "--format=%h%x09%s", known ? `${tracking}..${sha}` : sha,
-    ]);
-    const ref = `refs/heads/${remoteBranch}`;
-    // Re-previewing the same target keeps the preview the owner already saw
-    // (and its original turn), so a confirming turn that re-checks first can
-    // still complete. A different target replaces it.
-    const existing = [...registry.values()].find((entry) =>
-      entry.capability === capability && entry.remote === remote && entry.ref === ref && entry.sha === sha && entry.branch === branch
-    );
-    if (!existing) {
+  if (!(await hasHead(context))) {
+    throw new WorkspaceGitError("GIT_NOTHING_TO_PUSH", "This branch has no commits to push.", 409);
+  }
+  const upstream = await upstreamOf(context, branch);
+  const remote = await chooseRemote(context, parseRemoteName(args.remote), upstream);
+  const remoteBranch = upstream && upstream.remote === remote ? upstream.branch : branch;
+  await validateBranchName(context, remoteBranch);
+  const sha = await headSha(context);
+  const ref = `refs/heads/${remoteBranch}`;
+  const tracking = `refs/remotes/${remote}/${remoteBranch}`;
+  const known = (await git(context, ["rev-parse", "--verify", "--quiet", tracking])).exitCode === 0;
+  const commits = await git(context, [
+    "log", "--max-count=20", "--no-color", "--format=%h%x09%s", known ? `${tracking}..${sha}` : sha,
+  ]);
+
+  // Owner request 2026-11-05: the owner asking to push (e.g. "commit and push")
+  // is the authorization; no second confirmation round-trip. Still never from a
+  // host-started/wake turn, and never when the owner did not ask (or said not to),
+  // unless the owner is replying in a later turn to a push the model proposed.
+  const pending = [...registry.values()].find((entry) =>
+    entry.capability === capability && entry.remote === remote && entry.ref === ref && entry.sha === sha &&
+    entry.branch === branch && entry.turnId !== turn.turnId && entry.answerable
+  );
+  const ownerTurn = isOwnerTurn(turn);
+  const forbids = ownerMessageForbidsPush(turn.ownerMessage);
+  const authorized = ownerTurn && !forbids && (ownerMessageRequestsPush(turn.ownerMessage) || Boolean(pending));
+  if (args.dryRun === true || !authorized) {
+    if (!pending || !authorized) {
       for (const [id, entry] of registry) if (entry.capability === capability) registry.delete(id);
+      const preview: PushPreview = {
+        confirmationId: `gpc_${crypto.randomBytes(18).toString("base64url")}`,
+        capability, remote, ref, branch, sha,
+        turnId: turn.turnId,
+        answerable: ownerTurn && !forbids,
+        expiresAt: now + PUSH_CONFIRMATION_TTL_MS,
+      };
+      registry.set(preview.confirmationId, preview);
     }
-    const preview: PushPreview = existing ?? {
-      confirmationId: `gpc_${crypto.randomBytes(18).toString("base64url")}`,
-      capability,
-      remote,
-      ref,
-      branch,
-      sha,
-      turnId: turn.turnId,
-      expiresAt: now + PUSH_CONFIRMATION_TTL_MS,
-    };
-    registry.set(preview.confirmationId, preview);
-    const confirmable = preview.turnId !== turn.turnId && isOwnerTurn(turn) &&
-      ownerMessageConfirmsPush(turn.ownerMessage, preview.remote, preview.ref);
     return {
       ok: true,
       operation: "push",
-      status: "confirmation_required",
+      status: args.dryRun === true && authorized ? "preview" : "owner_request_required",
       branch,
       remote,
-      ref: preview.ref,
+      ref,
       sha,
       remoteTrackingKnown: known,
-      confirmationId: preview.confirmationId,
-      expiresAt: new Date(preview.expiresAt).toISOString(),
-      // True when this preview was shown to the owner in an earlier turn, so
-      // the owner's current message may confirm it.
-      confirmableInThisTurn: confirmable,
-      hint: confirmable
-        ? `Nothing was pushed. This is the same pending preview the owner saw in an earlier turn (${remote} ${preview.ref}, ${sha.slice(0, 12)}), ` +
-          "and the owner's message in THIS turn names that remote and branch. If it confirms the push, call workspace_git_push now with confirmRemote and confirmRef " +
-          "restating them and this turn's companionTurnId as turnId. Otherwise ask the owner."
-        : `Nothing was pushed. Show the owner: push ${branch} (${sha.slice(0, 12)}) to ${remote} ${preview.ref}, with the commits listed, then end your turn. ` +
-          `Ask the owner to reply naming the remote and branch (for example "push to ${remote} ${preview.ref.slice("refs/heads/".length)}"); the server checks the owner's own message for both. ` +
-          "When they do, call workspace_git_push directly (no new preview needed) " +
-          "with confirmRemote and confirmRef restating them and that turn's companionTurnId as turnId.",
+      hint: args.dryRun === true && authorized
+        ? "Nothing was pushed (dryRun). Call workspace_git_push without dryRun to push."
+        : "Nothing was pushed: the owner's message in this turn did not ask to push. Tell the owner what would be pushed and ask; " +
+          "if they agree in their next message, call workspace_git_push again with that turn's companionTurnId.",
       results: [commits],
     };
   }
 
-  const preview = present(args.confirmationId)
-    ? (typeof args.confirmationId === "string" ? registry.get(args.confirmationId) : undefined)
-    : [...registry.values()].filter((entry) => entry.capability === capability).sort((a, b) => b.expiresAt - a.expiresAt)[0];
-  if (!preview || preview.capability !== capability) {
-    throw new WorkspaceGitError("GIT_PUSH_CONFIRMATION_INVALID", "There is no pending push preview for this workspace (or it expired).", 409, {
-      hint: "Call workspace_git_push with only workspace and turnId to preview, show it to the owner, and end your turn.",
-    });
-  }
-  if (preview.turnId === turn.turnId || !isOwnerTurn(turn)) {
-    throw new WorkspaceGitError(
-      "GIT_PUSH_OWNER_CONFIRMATION_REQUIRED",
-      "A push must be confirmed by the owner in a later message than the preview.",
-      403,
-      { hint: "End your turn after the preview; continue only when the owner replies with an explicit confirmation." }
-    );
-  }
-  if (args.confirmRemote !== preview.remote || normalizeConfirmRef(args.confirmRef) !== preview.ref) {
-    throw new WorkspaceGitError(
-      "GIT_PUSH_CONFIRMATION_MISMATCH",
-      `Confirmation must restate remote ${preview.remote} and ref ${preview.ref} exactly.`,
-      409
-    );
-  }
-  if (!ownerMessageConfirmsPush(turn.ownerMessage, preview.remote, preview.ref)) {
-    const branchName = preview.ref.slice("refs/heads/".length);
-    throw new WorkspaceGitError(
-      "GIT_PUSH_CONFIRMATION_REQUIRED",
-      `The owner's message in this turn does not name remote ${preview.remote} and branch ${branchName}; nothing was pushed.`,
-      403,
-      { hint: `Ask the owner to confirm by naming both, for example "push to ${preview.remote} ${branchName}", then end your turn.` }
-    );
-  }
-  if (preview.branch !== branch) {
-    registry.delete(preview.confirmationId);
-    throw new WorkspaceGitError("GIT_PUSH_STALE", "The checked-out branch changed since the preview.", 409, {
-      hint: "Preview again and ask the owner.",
-    });
-  }
-  const sha = await headSha(context);
-  if (sha !== preview.sha) {
-    registry.delete(preview.confirmationId);
-    throw new WorkspaceGitError("GIT_PUSH_STALE", "HEAD moved since the owner confirmed the preview; nothing was pushed.", 409, {
-      hint: "Preview again so the owner confirms the exact commits.",
-    });
-  }
-  registry.delete(preview.confirmationId);
+  for (const [id, entry] of registry) if (entry.capability === capability) registry.delete(id);
   const result = ensureSuccess("push", await git(context, [
-    "push", "--porcelain", "--no-verify", "--no-follow-tags", preview.remote, `${preview.sha}:${preview.ref}`,
+    "push", "--porcelain", "--no-verify", "--no-follow-tags", remote, `${sha}:${ref}`,
   ], { network: true }));
-  const results = [result];
-  const upstream = await upstreamOf(context, branch);
+  const results = [commits, result];
   if (!upstream) {
-    const tracking = `${preview.remote}/${preview.ref.slice("refs/heads/".length)}`;
-    const setUpstream = await git(context, ["branch", `--set-upstream-to=${tracking}`, branch]);
-    results.push(setUpstream);
+    results.push(await git(context, ["branch", `--set-upstream-to=${remote}/${remoteBranch}`, branch]));
   }
-  return {
-    ok: true,
-    operation: "push",
-    status: "pushed",
-    branch,
-    remote: preview.remote,
-    ref: preview.ref,
-    sha: preview.sha,
-    results,
-  };
+  return { ok: true, operation: "push", status: "pushed", branch, remote, ref, sha, results };
 }
 
 /**

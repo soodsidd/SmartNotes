@@ -19,7 +19,7 @@ import {
   NO_HOOKS_PATH,
   parseGitPaths,
   resetWorkspaceGitForTesting,
-  ownerMessageConfirmsPush,
+  ownerMessageRequestsPush,
   runWorkspaceGit,
   type CompanionTurnView,
   type GitRunner,
@@ -53,12 +53,12 @@ describe("SN-409 Companion Git in a Deep Work workspace", () => {
     return issueWorkspaceCapability(request, await resolveProjectWorkspace(request)).capability;
   }
 
-  // Owner turns default to a reply that names the previewed remote and branch.
+  // Owner turns default to a message that asks to commit and push.
   function turn(
     capability: string,
     turnId: string,
     ownerInitiated = true,
-    ownerMessage = `Yes, push to origin ${BRANCH}.`
+    ownerMessage = "commit and push"
   ): string {
     turns.set(turnId, {
       turnId,
@@ -255,11 +255,7 @@ describe("SN-409 Companion Git in a Deep Work workspace", () => {
     await fs.writeFile(path.join(root, "a.txt"), "hooked\n");
     await git(capability, "stage", { paths: ["a.txt"] });
     await git(capability, "commit", { message: "no hooks", paths: ["a.txt"] });
-    const preview = await git(capability, "push", { turnId: turn(capability, "11111111-1111-4111-8111-111111111111") });
-    await git(capability, "push", {
-      confirmationId: preview.confirmationId, confirmRemote: "origin", confirmRef: BRANCH,
-      turnId: turn(capability, "33333333-3333-4333-8333-333333333333"),
-    });
+    await git(capability, "push", { turnId: turn(capability, "11111111-1111-4111-8111-111111111111") });
     await expect(fs.access(marker)).rejects.toThrow();
   });
 
@@ -271,7 +267,7 @@ describe("SN-409 Companion Git in a Deep Work workspace", () => {
     await rejects(git(capability, "stage", { paths: ["a.txt"] }), "WORKSPACE_READ_ONLY");
   });
 
-  it("pushes only after a later owner turn confirms the previewed remote and ref", async () => {
+  it("pushes in one call when the owner's own message asks to push", async () => {
     const capability = await capabilityFor(root);
     await fs.writeFile(path.join(root, "a.txt"), "to push\n");
     await git(capability, "stage", { paths: ["a.txt"] });
@@ -280,118 +276,58 @@ describe("SN-409 Companion Git in a Deep Work workspace", () => {
     const remoteBefore = sh(remote, "rev-parse", BRANCH);
 
     await rejects(git(capability, "push", {}), "GIT_PUSH_TURN_REQUIRED");
-    const previewTurn = turn(capability, "11111111-1111-4111-8111-111111111111");
-    const preview = await git(capability, "push", { turnId: previewTurn, force: true });
-    expect(preview).toMatchObject({ status: "confirmation_required", remote: "origin", ref: `refs/heads/${BRANCH}`, sha: head });
-    expect(preview.results[0].stdout).toContain("push me");
-    expect(sh(remote, "rev-parse", BRANCH)).toBe(remoteBefore);
-    const confirmationId = preview.confirmationId as string;
-    const confirm = { confirmationId, confirmRemote: "origin", confirmRef: `refs/heads/${BRANCH}` };
-
-    // Same turn (no owner reply) and a host-started wake turn cannot confirm.
-    await rejects(git(capability, "push", { ...confirm, turnId: previewTurn }), "GIT_PUSH_OWNER_CONFIRMATION_REQUIRED");
-    const wakeTurn = turn(capability, "22222222-2222-4222-8222-222222222222", false);
-    await rejects(git(capability, "push", { ...confirm, turnId: wakeTurn }), "GIT_PUSH_OWNER_CONFIRMATION_REQUIRED");
-    const ownerTurn = turn(capability, "33333333-3333-4333-8333-333333333333");
-    await rejects(git(capability, "push", { ...confirm, confirmRef: "refs/heads/main", turnId: ownerTurn }), "GIT_PUSH_CONFIRMATION_MISMATCH");
-    await rejects(git(capability, "push", { ...confirm, confirmRemote: "upstream", turnId: ownerTurn }), "GIT_PUSH_CONFIRMATION_MISMATCH");
-    // A turn bound to another capability cannot confirm either.
     const otherCapability = await capabilityFor(root);
-    const foreignTurn = turn(otherCapability, "44444444-4444-4444-8444-444444444444");
-    await rejects(git(capability, "push", { ...confirm, turnId: foreignTurn }), "GIT_PUSH_TURN_REQUIRED");
+    await rejects(git(capability, "push", { turnId: turn(otherCapability, "44444444-4444-4444-8444-444444444444") }), "GIT_PUSH_TURN_REQUIRED");
+    // dryRun previews without pushing.
+    const ownerTurn = turn(capability, "33333333-3333-4333-8333-333333333333");
+    const dry = await git(capability, "push", { turnId: ownerTurn, dryRun: true });
+    expect(dry).toMatchObject({ status: "preview", remote: "origin", ref: `refs/heads/${BRANCH}`, sha: head });
+    expect(dry.results[0].stdout).toContain("push me");
     expect(sh(remote, "rev-parse", BRANCH)).toBe(remoteBefore);
 
     argvLog = [];
-    const pushed = await git(capability, "push", { ...confirm, confirmRef: BRANCH, turnId: ownerTurn, force: true });
+    const pushed = await git(capability, "push", { turnId: ownerTurn, force: true });
     expect(pushed).toMatchObject({ status: "pushed", sha: head });
-    expect(pushed.results[0].exitCode).toBe(0);
     expect(sh(remote, "rev-parse", BRANCH)).toBe(head);
     const pushArgv = argvLog.find((args) => args.includes("push"))!;
     expect(pushArgv.join(" ")).not.toMatch(/--force|-f\b|--delete|--mirror|--tags|\+/);
     expect(pushArgv.slice(-2)).toEqual(["origin", `${head}:refs/heads/${BRANCH}`]);
     expect(pushArgv).toEqual(expect.arrayContaining(["--no-verify", `core.hooksPath=${NO_HOOKS_PATH}`]));
-    expect(pushed.results[0].stderr).not.toMatch(/old-style/);
-
-    // Confirmations are single-use.
-    await rejects(git(capability, "push", { ...confirm, turnId: ownerTurn }), "GIT_PUSH_CONFIRMATION_INVALID");
   });
 
-  it("lets a later owner turn re-check the same preview and confirm without its id (live-run regression)", async () => {
-    const capability = await capabilityFor(root);
-    await fs.writeFile(path.join(root, "a.txt"), "again\n");
-    sh(root, "commit", "-qam", "again");
-    const turnA = turn(capability, "11111111-1111-4111-8111-111111111111");
-    const first = await git(capability, "push", { turnId: turnA });
-    // Turn B (owner's "yes") lost the id from history and previews again first.
-    const turnB = turn(capability, "33333333-3333-4333-8333-333333333333");
-    const again = await git(capability, "push", { turnId: turnB });
-    expect(again.confirmationId).toBe(first.confirmationId);
-    const pushed = await git(capability, "push", { turnId: turnB, confirmRemote: "origin", confirmRef: `refs/heads/${BRANCH}` });
-    expect(pushed.status).toBe("pushed");
-    expect(sh(remote, "rev-parse", BRANCH)).toBe(sh(root, "rev-parse", "HEAD"));
-
-    // A preview first made in turn C still cannot be confirmed in turn C.
-    await fs.writeFile(path.join(root, "a.txt"), "third\n");
-    sh(root, "commit", "-qam", "third");
-    const turnC = turn(capability, "55555555-5555-4555-8555-555555555555");
-    await git(capability, "push", { turnId: turnC });
-    await rejects(git(capability, "push", { turnId: turnC, confirmRemote: "origin", confirmRef: BRANCH }), "GIT_PUSH_OWNER_CONFIRMATION_REQUIRED");
-  });
-
-  it("requires the owner's own message to name the previewed remote and ref (review cycle 1)", async () => {
+  it("never pushes from a wake turn or when the owner did not ask, but honors a later owner yes", async () => {
     const capability = await capabilityFor(root);
     await fs.writeFile(path.join(root, "a.txt"), "owner words\n");
     sh(root, "commit", "-qam", "owner words");
     const remoteBefore = sh(remote, "rev-parse", BRANCH);
-    const preview = await git(capability, "push", { turnId: turn(capability, "11111111-1111-4111-8111-111111111111") });
-    const confirm = { confirmationId: preview.confirmationId, confirmRemote: "origin", confirmRef: BRANCH };
 
-    // The model restates remote and ref, but the owner said something unrelated.
-    const unrelated = turn(capability, "33333333-3333-4333-8333-333333333333", true, "fix the typo in the README");
-    await rejects(git(capability, "push", { ...confirm, turnId: unrelated }), "GIT_PUSH_CONFIRMATION_REQUIRED");
-    // A re-preview in that turn does not invite the model to confirm.
-    const recheck = await git(capability, "push", { turnId: unrelated });
-    expect(recheck).toMatchObject({ confirmationId: preview.confirmationId, confirmableInThisTurn: false });
-    // Naming only the remote (or only the branch) is not enough.
-    const remoteOnly = turn(capability, "55555555-5555-4555-8555-555555555555", true, "yes push to origin");
-    await rejects(git(capability, "push", { ...confirm, turnId: remoteOnly }), "GIT_PUSH_CONFIRMATION_REQUIRED");
-    const branchOnly = turn(capability, "66666666-6666-4666-8666-666666666666", true, `go ahead with ${BRANCH}`);
-    await rejects(git(capability, "push", { ...confirm, turnId: branchOnly }), "GIT_PUSH_CONFIRMATION_REQUIRED");
-    // MINOR 2: a turn without an explicit ownerInitiated flag never confirms.
+    const wake = await git(capability, "push", { turnId: turn(capability, "22222222-2222-4222-8222-222222222222", false) });
+    expect(wake.status).toBe("owner_request_required");
     const unflagged = turn(capability, "77777777-7777-4777-8777-777777777777");
     delete turns.get(unflagged)!.ownerInitiated;
-    await rejects(git(capability, "push", { ...confirm, turnId: unflagged }), "GIT_PUSH_OWNER_CONFIRMATION_REQUIRED");
+    expect((await git(capability, "push", { turnId: unflagged })).status).toBe("owner_request_required");
+    const dont = turn(capability, "66666666-6666-4666-8666-666666666666", true, "commit it but don't push yet");
+    expect((await git(capability, "push", { turnId: dont })).status).toBe("owner_request_required");
+    const unrelated = turn(capability, "33333333-3333-4333-8333-333333333333", true, "fix the typo in the README");
+    const asked = await git(capability, "push", { turnId: unrelated });
+    expect(asked.status).toBe("owner_request_required");
+    // Re-calling in the same turn still does not push.
+    expect((await git(capability, "push", { turnId: unrelated })).status).toBe("owner_request_required");
     expect(sh(remote, "rev-parse", BRANCH)).toBe(remoteBefore);
 
-    // Naming both, case-insensitively and with punctuation around them, is accepted.
-    const named = turn(capability, "88888888-8888-4888-8888-888888888888", true, `Confirmed: push ORIGIN \`${BRANCH.toUpperCase()}\`.`);
-    expect(await git(capability, "push", { turnId: named })).toMatchObject({ confirmableInThisTurn: true });
-    const pushed = await git(capability, "push", { ...confirm, turnId: named });
-    expect(pushed.status).toBe("pushed");
+    // The owner replies "yes" in a later turn to the proposed push.
+    const yes = turn(capability, "88888888-8888-4888-8888-888888888888", true, "yes go ahead");
+    expect((await git(capability, "push", { turnId: yes })).status).toBe("pushed");
     expect(sh(remote, "rev-parse", BRANCH)).toBe(sh(root, "rev-parse", "HEAD"));
   });
 
-  it("matches owner confirmation words as whole tokens only", () => {
-    const ref = "refs/heads/main";
-    expect(ownerMessageConfirmsPush("push to origin main", "origin", ref)).toBe(true);
-    expect(ownerMessageConfirmsPush("Yes, push origin/main!", "origin", ref)).toBe(true);
-    expect(ownerMessageConfirmsPush('ok: "origin" refs/heads/main', "origin", ref)).toBe(true);
-    expect(ownerMessageConfirmsPush("originally the maintainer said yes", "origin", ref)).toBe(false);
-    expect(ownerMessageConfirmsPush("push upstream/main to origin-mirror", "origin", ref)).toBe(false);
-    expect(ownerMessageConfirmsPush("push to origin main-2", "origin", ref)).toBe(false);
-    expect(ownerMessageConfirmsPush("", "origin", ref)).toBe(false);
-    expect(ownerMessageConfirmsPush(undefined, "origin", ref)).toBe(false);
-  });
-
-  it("refuses a confirmed push when HEAD moved after the preview", async () => {
-    const capability = await capabilityFor(root);
-    const preview = await git(capability, "push", { turnId: turn(capability, "11111111-1111-4111-8111-111111111111") });
-    await fs.writeFile(path.join(root, "a.txt"), "later\n");
-    sh(root, "commit", "-qam", "later");
-    await rejects(git(capability, "push", {
-      confirmationId: preview.confirmationId, confirmRemote: "origin", confirmRef: `refs/heads/${BRANCH}`,
-      turnId: turn(capability, "33333333-3333-4333-8333-333333333333"),
-    }), "GIT_PUSH_STALE");
+  it("detects an owner push request and its negations", () => {
+    for (const text of ["commit and push", "Push it.", "please push to origin main", "commit, then pushing is fine", "did you push?"]) {
+      expect(ownerMessageRequestsPush(text)).toBe(true);
+    }
+    for (const text of ["commit but don't push", "do not push", "commit without pushing", "not push yet", "fix the typo", "", undefined, "pushover"]) {
+      expect(ownerMessageRequestsPush(text)).toBe(false);
+    }
   });
 
   it("fetches, fast-forward pulls, and reports rejected pushes and divergence", async () => {
@@ -428,9 +364,7 @@ describe("SN-409 Companion Git in a Deep Work workspace", () => {
     await fs.writeFile(path.join(root, "a.txt"), "local\n");
     await git(capability, "stage", { paths: ["a.txt"] });
     await git(capability, "commit", { message: "local", paths: ["a.txt"] });
-    const preview = await git(capability, "push", { turnId: turn(capability, "11111111-1111-4111-8111-111111111111") });
     await expect(git(capability, "push", {
-      confirmationId: preview.confirmationId, confirmRemote: "origin", confirmRef: `refs/heads/${BRANCH}`,
       turnId: turn(capability, "33333333-3333-4333-8333-333333333333"),
     })).rejects.toMatchObject({ code: "GIT_PUSH_REJECTED", result: expect.objectContaining({ exitCode: 1 }) });
     await git(capability, "fetch");
