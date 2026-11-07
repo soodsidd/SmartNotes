@@ -29,6 +29,11 @@ export function nonTextContentWidth(root: HTMLElement): number {
   }
   for (const element of root.querySelectorAll<HTMLElement>("img, video, iframe, embed, object, canvas, svg")) {
     if (element.style.width.endsWith("%")) continue;
+    // An image without a saved pixel width is fluid: it fills the column it is
+    // given. Letting it drive the column width is a feedback loop (column grows
+    // by the image margin, image fills the wider column, repeat) that made
+    // unsized pictures creep up to their natural size on every page visit.
+    if (element instanceof HTMLImageElement && !element.style.width.endsWith("px")) continue;
     const container = element instanceof HTMLImageElement
       ? element.closest<HTMLElement>("[data-resize-container]") : null;
     const explicit = parseFloat(element.style.width) || 0;

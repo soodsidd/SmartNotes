@@ -1414,10 +1414,12 @@ body.page-print-active .floating-text-box__resize-width { display: none; }
   display: inline-block;
   max-width: 100%;
 }
+/* Only pixel-sized images may exceed the reading column (SN-398). Unsized images
+   stay capped at the column so they cannot feed the content-width loop. */
 @media (min-width: 768px) {
-  .editor-content .editor-image,
-  .editor-content [data-resize-container][data-node="image"],
-  .editor-content [data-resize-container][data-node="image"] [data-resize-wrapper] { max-width: none; }
+  .editor-content .editor-image[style*="px"],
+  .editor-content [data-resize-container][data-node="image"]:has(img[style*="px"]),
+  .editor-content [data-resize-container][data-node="image"]:has(img[style*="px"]) [data-resize-wrapper] { max-width: none; }
 }
 
 [data-resize-container][data-node="image"] [data-resize-handle] {
