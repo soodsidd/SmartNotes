@@ -3040,6 +3040,9 @@ function createChatModule(httpServer, io, userConfig = {}) {
       turnId: chatId,
       status: String(job?.status || record?.status || ''),
       threadKey: String(job?.threadKey || record?.thread_key || ''),
+      // This capability was resolved before the turn was accepted. A page-bound
+      // Deep Work chat may use a page/scope thread key instead of a dwc_ key.
+      workspaceCapability: extractDeepWorkCapability(request.app_context),
       provider: String(job?.provider || record?.provider || request.provider || ''),
       model: String(job?.model || record?.model || request.model || ''),
       appContext: String(request.app_context || ''),

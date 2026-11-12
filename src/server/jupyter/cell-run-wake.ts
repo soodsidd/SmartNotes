@@ -62,6 +62,8 @@ export interface CompanionTurnInfo {
   turnId: string;
   status: string;
   threadKey: string;
+  /** Capability validated at turn acceptance; independent of chat thread address. */
+  workspaceCapability?: string | null;
   provider: string;
   model: string;
   appContext: string;

@@ -73,6 +73,7 @@ describe("SN-261 Deep Work Companion turn binding", () => {
     chat.handleRequest(postRequest({
       message: "Inspect main.py",
       provider: "test-unknown-provider",
+      thread_key: "AI/Robotic Arm/le-robot.html::page_tree",
       app_context: [
         "Smart Notes Deep Work operating context:",
         "- Registered workspace root identity: C:\\Projects\\LeRobot",
@@ -84,6 +85,10 @@ describe("SN-261 Deep Work Companion turn binding", () => {
 
     expect(sent.status).toBe(200);
     expect(resolveDeepWorkTurn).toHaveBeenCalledWith(capability);
+    expect(chat.host.getTurn(sent.body.turn_id)).toMatchObject({
+      threadKey: "AI/Robotic Arm/le-robot.html::page_tree",
+      workspaceCapability: capability,
+    });
     const record = JSON.parse(fs.readFileSync(
       path.join(stateDirectory, "jobs", `${sent.body.turn_id}.json`),
       "utf8"

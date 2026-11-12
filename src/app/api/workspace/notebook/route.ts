@@ -56,13 +56,13 @@ export async function POST(request: Request) {
       }
       const suppliedTurnId = request.headers.get("x-smart-notes-turn-id") || args.turnId;
       const host = (globalThis as Record<string, unknown>)._smartNotesCompanionHost as {
-        getTurn?: (turnId: string) => { status: string; threadKey: string; appContext: string } | null;
+        getTurn?: (turnId: string) => { status: string; workspaceCapability: string | null; appContext: string } | null;
       } | undefined;
       const turn = typeof suppliedTurnId === "string" && /^[0-9a-f-]{36}$/i.test(suppliedTurnId)
         ? host?.getTurn?.(suppliedTurnId)
         : null;
       if (
-        !turn || turn.status !== "running" || !turn.threadKey.startsWith(`${workspace}::`) ||
+        !turn || turn.status !== "running" || turn.workspaceCapability !== workspace ||
         !turn.appContext.includes(`- companionTurnId: ${suppliedTurnId}`) ||
         !turn.appContext.includes("- Deep Work notebook run: enabled.") ||
         !/\.ipynb$/i.test(path.trim())

@@ -152,7 +152,7 @@ describe("SN-378 Deep Work notebook execution", () => {
       status: "ready", frameOrigins: [], startedAt: new Date().toISOString(),
     });
     source = {
-      turnId: crypto.randomUUID(), status: "running", threadKey: `${capability}::whole`, provider: "codex", model: "test",
+      turnId: crypto.randomUUID(), status: "running", threadKey: `${capability}::whole", workspaceCapability: capability, provider: "codex", model: "test",
       appContext: `Smart Notes Deep Work operating context:\n- workspaceCapability: ${capability}\n- Active repository-relative file: analysis.ipynb\n- Deep Work notebook run: enabled.\n- companionTurnId: PLACEHOLDER\n\nHost-side Deep Work connection (server-authoritative):`,
       pageContext: "notebook context",
     };
@@ -244,10 +244,24 @@ describe("SN-378 Deep Work notebook execution", () => {
     expect(fake.executions).toHaveLength(1);
   });
 
+  it("runs from a page-bound Deep Work chat while rejecting a different capability", async () => {
+    source.threadKey = "AI/Robotic Arm/le-robot.html::page_tree";
+    const allowed = await post("analysis.ipynb");
+    expect(allowed.status).toBe(200);
+    expect(fake.executions).toEqual(["print('quick')"]);
+
+    source.workspaceCapability = `dwc_${"x".repeat(43)}`;
+    const denied = await post("analysis.ipynb");
+    expect(denied.status).toBe(403);
+    expect(denied.body.code).toBe("WORKSPACE_NOTEBOOK_RUN_UNAVAILABLE");
+    expect(fake.executions).toHaveLength(1);
+  });
+
   it("rejects cell execution from a read-only Deep Work capability", async () => {
     const request = { rootPath: root, requestedAccess: "read-only" as const, branch: "av/sn-378" };
     capability = issueWorkspaceCapability(request, await resolveProjectWorkspace(request)).capability;
     source.threadKey = `${capability}::whole`;
+    source.workspaceCapability = capability;
     source.appContext = `Smart Notes Deep Work operating context:\n- workspaceCapability: ${capability}\n- Active repository-relative file: analysis.ipynb\n- Deep Work notebook run: enabled.\n- companionTurnId: ${source.turnId}`;
     const result = await post("analysis.ipynb");
     expect(result.status).toBe(403);
