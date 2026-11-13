@@ -26,6 +26,7 @@ import {
 } from "@/lib/pwa-install";
 import { cn } from "@/lib/utils";
 import { DENSITY_OPTIONS, DICTATION_SHORTCUT, KEYBOARD_SHORTCUTS } from "@/lib/app-settings";
+import { DictationGpuSetting } from "@/components/dictation-gpu-setting";
 import { DictationPttKeySetting } from "@/components/dictation-ptt-key-setting";
 import { useDictationPttKey } from "@/hooks/use-dictation";
 import { DICTATION_PTT_OFF } from "@/lib/speech/dictation-settings";
@@ -305,6 +306,8 @@ export function AppSettingsDialog({
             </section>
 
             <DictationPttKeySetting />
+
+            <DictationGpuSetting open={open} />
 
             <section>
               <p className="mb-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Appearance</p>

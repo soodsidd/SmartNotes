@@ -1871,7 +1871,7 @@
       "name": "Dictation (local speech engine)",
       "description": "Jest: /api/speech/transcribe proxy framing + chunking + offline/timeout errors against a fake sherpa-onnx WebSocket server, configurable silence auto-stop (SN-407 setting, default 3 s), the push-to-talk key (hold to talk / release to insert, configurable, default Caps Lock), and append-not-replace in the Companion composer and editor.",
       "appType": "node",
-      "command": "npm test -- tests/speech-transcribe-proxy.test.ts tests/dictation-silence-append.test.ts tests/ai-sidebar-dictation.test.tsx tests/dictation-toolbar-button.test.tsx tests/dictation-shortcut-settings.test.tsx",
+      "command": "npm test -- tests/speech-transcribe-proxy.test.ts tests/dictation-silence-append.test.ts tests/ai-sidebar-dictation.test.tsx tests/dictation-toolbar-button.test.tsx tests/dictation-shortcut-settings.test.tsx tests/speech-engine-gpu.test.ts tests/dictation-gpu-setting.test.tsx",
       "timeoutMs": 120000,
       "enabled": true,
       "tags": [

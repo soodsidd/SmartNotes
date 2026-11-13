@@ -16,8 +16,13 @@ import {
   joinTranscripts,
   planChunks,
 } from "@/lib/speech/pcm";
+import {
+  DEFAULT_SPEECH_ENGINE_URL,
+  resolveSpeechEngineTargets,
+  resolveSpeechEngineUrl,
+} from "@/server/speech/engine-settings";
 
-export const DEFAULT_SPEECH_ENGINE_URL = "ws://127.0.0.1:6006";
+export { DEFAULT_SPEECH_ENGINE_URL, resolveSpeechEngineUrl };
 
 /** Max bytes per WebSocket message (sherpa-onnx reference client uses 10240). */
 export const ENGINE_MESSAGE_BYTES = 10_240;
@@ -42,14 +47,16 @@ type WebSocketLike = {
 export type WebSocketFactory = (url: string) => WebSocketLike;
 
 export interface EngineOptions {
+  /** Single engine URL (no fallback). */
   url?: string;
+  /**
+   * Engine URLs in preference order (GPU first, CPU fallback). Used by
+   * transcribeClip only; defaults to the GPU setting + env (engine-settings.ts).
+   */
+  urls?: string[];
   connectTimeoutMs?: number;
   responseTimeoutMs?: number;
   createSocket?: WebSocketFactory;
-}
-
-export function resolveSpeechEngineUrl(): string {
-  return process.env.SMART_NOTES_SPEECH_ENGINE_URL?.trim() || DEFAULT_SPEECH_ENGINE_URL;
 }
 
 function defaultFactory(url: string): WebSocketLike {
@@ -196,9 +203,24 @@ export async function transcribeClip(
   options: EngineOptions = {}
 ): Promise<TranscribeClipResult> {
   const ranges = planChunks(samples, sampleRate);
+  const targets = options.url ? [options.url] : options.urls?.length ? options.urls : await resolveSpeechEngineTargets();
+  let target = 0;
   const parts: string[] = [];
   for (const range of ranges) {
-    parts.push(await transcribeChunk(samples.subarray(range.start, range.end), sampleRate, options));
+    const chunk = samples.subarray(range.start, range.end);
+    for (;;) {
+      try {
+        parts.push(await transcribeChunk(chunk, sampleRate, { ...options, url: targets[target] }));
+        break;
+      } catch (error) {
+        // GPU engine stopped/warming/crashed: fall back to the next engine and
+        // stay there for the rest of the clip. Only "offline" falls back; a
+        // timeout or protocol error from a live engine still fails the clip.
+        const offline = error instanceof SpeechEngineError && error.code === "engine_offline";
+        if (!offline || target >= targets.length - 1) throw error;
+        target += 1;
+      }
+    }
   }
   return {
     text: joinTranscripts(parts),
