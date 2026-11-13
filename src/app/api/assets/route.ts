@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { uploadPageAsset } from "@/server/vault/assets";
 import { toErrorResponse, VaultError } from "@/server/vault/errors";
-import { MAX_PAGE_ASSET_BYTES, PAGE_ASSET_TOO_LARGE_HINT } from "@/lib/editor-asset-upload";
+import { pageAssetLimit } from "@/lib/editor-asset-upload";
 
 function searchParamPath(request: Request) {
   const url = new URL(request.url);
@@ -21,8 +21,9 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) {
       throw new VaultError("INVALID_INPUT", "Multipart field \"file\" is required.");
     }
-    if (file.size > MAX_PAGE_ASSET_BYTES) {
-      throw new VaultError("INVALID_INPUT", PAGE_ASSET_TOO_LARGE_HINT, 413);
+    const limit = pageAssetLimit(file);
+    if (file.size > limit.maxBytes) {
+      throw new VaultError("INVALID_INPUT", limit.hint, 413);
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());

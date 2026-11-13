@@ -693,7 +693,7 @@ Upload a file to a page's sibling `.assets/` directory.
 
 **Body:** `multipart/form-data` with field `file`.
 
-**Accepted types (SN-393):** any file type. The former image/PDF extension allowlist was removed from `uploadPageAsset`; callers that need narrower types keep their own guards (`log_form_asset_put` images only, paper tools PDF only). Files above `MAX_PAGE_ASSET_BYTES` (50 MiB, `src/lib/editor-asset-upload.ts`) are rejected client-side by `readFileForUpload` before any bytes are sent, and server-side with `413 INVALID_INPUT` — the page HTML is never touched on rejection. `/vault/*` serves unknown extensions as `application/octet-stream` with `X-Content-Type-Options: nosniff`, so uploaded `.html`/script files download rather than execute in the app origin.
+**Accepted types (SN-393):** any file type. The former image/PDF extension allowlist was removed from `uploadPageAsset`; callers that need narrower types keep their own guards (`log_form_asset_put` images only, paper tools PDF only). Files above the cap from `pageAssetLimit()` (`src/lib/editor-asset-upload.ts`): **200 MiB for PDFs** (`MAX_PDF_ASSET_BYTES`, matched by `application/pdf` or a `.pdf` extension) and **50 MiB for everything else** (`MAX_PAGE_ASSET_BYTES`). They are rejected client-side by `readFileForUpload` before any bytes are sent, and server-side with `413 INVALID_INPUT` — the page HTML is never touched on rejection. `/vault/*` serves unknown extensions as `application/octet-stream` with `X-Content-Type-Options: nosniff`, so uploaded `.html`/script files download rather than execute in the app origin.
 
 **Response (201):** `{ asset: { url, path, fileName, isImage } }` — `url` is a `/vault/...` path suitable for `<img src>` or file-attachment chip links.
 

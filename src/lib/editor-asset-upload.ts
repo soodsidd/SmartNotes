@@ -13,6 +13,21 @@ export const CLOUD_FILE_READ_HINT =
 export const MAX_PAGE_ASSET_BYTES = 50 * 1024 * 1024;
 export const PAGE_ASSET_TOO_LARGE_HINT = "File is too large. Maximum attachment size is 50 MiB.";
 
+/** PDF attachments get a larger cap than other assets (scanned books, papers with figures). */
+export const MAX_PDF_ASSET_BYTES = 200 * 1024 * 1024;
+export const PDF_ASSET_TOO_LARGE_HINT = "PDF is too large. Maximum PDF attachment size is 200 MiB.";
+
+export function isPdfAsset(file: { name?: string; type?: string }): boolean {
+  return file.type === "application/pdf" || /\.pdf$/i.test(file.name ?? "");
+}
+
+/** Size cap and owner-facing message for one attachment. */
+export function pageAssetLimit(file: { name?: string; type?: string }): { maxBytes: number; hint: string } {
+  return isPdfAsset(file)
+    ? { maxBytes: MAX_PDF_ASSET_BYTES, hint: PDF_ASSET_TOO_LARGE_HINT }
+    : { maxBytes: MAX_PAGE_ASSET_BYTES, hint: PAGE_ASSET_TOO_LARGE_HINT };
+}
+
 const EMPTY_OR_SYNCING_HINT =
   "That file looks empty or still syncing from the cloud. Wait for the download to finish, then try again.";
 
@@ -51,8 +66,9 @@ export function describeAssetUploadFailure(error: unknown): string {
  * cannot fail mid-upload with "Failed to fetch".
  */
 export async function readFileForUpload(file: File): Promise<Blob> {
-  if (file.size > MAX_PAGE_ASSET_BYTES) {
-    throw new Error(PAGE_ASSET_TOO_LARGE_HINT);
+  const limit = pageAssetLimit(file);
+  if (file.size > limit.maxBytes) {
+    throw new Error(limit.hint);
   }
   if (!Number.isFinite(file.size) || file.size <= 0) {
     throw new Error(EMPTY_OR_SYNCING_HINT);

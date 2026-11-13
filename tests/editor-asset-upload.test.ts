@@ -9,6 +9,9 @@
 import {
   CLOUD_FILE_READ_HINT,
   MAX_PAGE_ASSET_BYTES,
+  MAX_PDF_ASSET_BYTES,
+  PDF_ASSET_TOO_LARGE_HINT,
+  pageAssetLimit,
   PAGE_ASSET_TOO_LARGE_HINT,
   describeAssetUploadFailure,
   readFileForUpload,
@@ -45,6 +48,28 @@ describe("readFileForUpload", () => {
     const file = { name: "archive.zip", size: MAX_PAGE_ASSET_BYTES + 1, type: "application/zip", arrayBuffer: read } as unknown as File;
     await expect(readFileForUpload(file)).rejects.toThrow(PAGE_ASSET_TOO_LARGE_HINT);
     expect(read).not.toHaveBeenCalled();
+  });
+
+  test("PDFs up to 200 MiB pass the size check; other files keep the 50 MiB cap", async () => {
+    const read = jest.fn(async () => new Uint8Array([1, 2, 3]).buffer);
+    const bigPdf = { name: "scan.pdf", size: 150 * 1024 * 1024, type: "application/pdf", arrayBuffer: read } as unknown as File;
+    await expect(readFileForUpload(bigPdf)).resolves.toBeInstanceOf(Blob);
+    expect(read).toHaveBeenCalledTimes(1);
+
+    const bigZip = { name: "data.zip", size: 150 * 1024 * 1024, type: "application/zip", arrayBuffer: read } as unknown as File;
+    await expect(readFileForUpload(bigZip)).rejects.toThrow(PAGE_ASSET_TOO_LARGE_HINT);
+  });
+
+  test("rejects PDFs over 200 MiB before reading bytes", async () => {
+    const read = jest.fn();
+    const file = { name: "huge.pdf", size: MAX_PDF_ASSET_BYTES + 1, type: "application/pdf", arrayBuffer: read } as unknown as File;
+    await expect(readFileForUpload(file)).rejects.toThrow(PDF_ASSET_TOO_LARGE_HINT);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  test("recognises PDFs by extension when the browser sends no MIME type", () => {
+    expect(pageAssetLimit({ name: "Paper.PDF", type: "" }).maxBytes).toBe(MAX_PDF_ASSET_BYTES);
+    expect(pageAssetLimit({ name: "photo.png", type: "image/png" }).maxBytes).toBe(MAX_PAGE_ASSET_BYTES);
   });
 
   test("returns a Blob with the file bytes when readable", async () => {
