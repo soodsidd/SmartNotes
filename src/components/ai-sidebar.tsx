@@ -90,7 +90,28 @@ const EFFORT_OPTIONS = [
   { value: "high", label: "High" },
 ] as const;
 
+/**
+ * Links in Companion messages open in a new tab so clicking one never
+ * navigates away from (replaces) the running Smart Notes instance. In-message
+ * "#" anchors (e.g. GFM footnotes) keep default same-page behavior.
+ */
+export function ChatMarkdownLink({ href, children, title }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  if (typeof href === "string" && href.startsWith("#")) {
+    return (
+      <a href={href} title={title}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <a href={href} title={title} target="_blank" rel="noopener noreferrer" data-testid="companion-chat-link">
+      {children}
+    </a>
+  );
+}
+
 const CHAT_MARKDOWN_COMPONENTS = {
+  a: ChatMarkdownLink,
   table: ({ children }: React.PropsWithChildren) => (
     <div className="chat-prose-table-wrap">
       <table>{children}</table>
