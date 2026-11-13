@@ -1323,8 +1323,56 @@ export async function saveCompanionSessions(
     await fs.rm(sidecarAbsPath, { force: true });
     return;
   }
+  const existing = await readCompanionSessions(storePath).catch(() => ({ scopes: {} }));
+  const replaced = findReplacedCompanionThreads(existing.scopes, scopes);
+  if (replaced.length > 0) {
+    throw new VaultError(
+      "COMPANION_THREAD_CONFLICT",
+      `Refusing to replace the ${replaced.join(", ")} conversation in ${storePath} with an unrelated one. Clear the chat first to start over.`,
+      409
+    );
+  }
   const sidecar = { version: 1, scopes };
   await writeAtomically(sidecarAbsPath, JSON.stringify(sidecar));
+}
+
+function companionMessageIdentity(message: unknown): string | null {
+  if (!message || typeof message !== "object") return null;
+  const { id, role, content } = message as { id?: unknown; role?: unknown; content?: unknown };
+  if (typeof id === "string" && id) return `id:${id}`;
+  return typeof content === "string" ? `${String(role)}:${content.slice(0, 500)}` : null;
+}
+
+function companionScopeMessages(scope: unknown): unknown[] {
+  const messages = (scope as { messages?: unknown } | null)?.messages;
+  return Array.isArray(messages) ? messages : [];
+}
+
+/**
+ * Scope keys whose saved conversation would be replaced by an unrelated one:
+ * both the stored and the incoming thread have messages, but they share none.
+ * Normal saves always overlap (appending, trimming to the 50-message cap,
+ * editing a later message); clearing a chat sends no messages for the scope.
+ * This blocks a client from writing one conversation over another page's.
+ */
+export function findReplacedCompanionThreads(
+  existingScopes: Record<string, unknown>,
+  incomingScopes: Record<string, unknown>
+): string[] {
+  const replaced: string[] = [];
+  for (const [scopeKey, incoming] of Object.entries(incomingScopes ?? {})) {
+    const next = companionScopeMessages(incoming);
+    const previous = companionScopeMessages(existingScopes?.[scopeKey]);
+    if (next.length === 0 || previous.length === 0) continue;
+    const known = new Set(previous.map(companionMessageIdentity).filter(Boolean));
+    if (!next.some((message) => {
+      const identity = companionMessageIdentity(message);
+      return identity !== null && known.has(identity);
+    })) {
+      replaced.push(scopeKey);
+    }
+  }
+  return replaced;
 }
 
 export async function deleteCompanionSessions(storePath: string): Promise<void> {

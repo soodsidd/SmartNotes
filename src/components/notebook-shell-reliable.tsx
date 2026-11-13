@@ -1312,6 +1312,11 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
   const keepConversationRef = React.useRef(false);
   const aiMessagesRef = React.useRef<AiSidebarMessage[]>([]);
   const aiMessagesBindingKeyRef = React.useRef<string | null>(null);
+  // The in-memory transcript may only be persisted to the thread it is bound to.
+  // Without this, a save racing a thread switch (e.g. leaving Deep Work, whose
+  // messages are still in memory) writes one conversation over another page's.
+  const isTranscriptBoundTo = (path: string, scopeKey: string) =>
+    aiMessagesBindingKeyRef.current === `${path}::${scopeKey}`;
   const companionScopeKeyRef = React.useRef<string>("whole");
   // SN-202: current displayed thread's storePath (shared-scope identity). Async
   // turn-lifecycle gates compare against this, not the active page, so a shared
@@ -2441,7 +2446,9 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         if (path) {
           const scopeKey = companionScopeKeyRef.current;
           companionLoadedRef.current = { path, scopeKey };
-          void saveCompanionThread(path, scopeKey, aiMessagesRef.current);
+          if (isTranscriptBoundTo(path, scopeKey)) {
+            void saveCompanionThread(path, scopeKey, aiMessagesRef.current);
+          }
         }
       }
 
@@ -2498,7 +2505,9 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       if (!latest || getCompanionActiveTurn(latest, pending.scopeKey)?.turnId !== pending.turnId) return;
       // Terminal confirmation is the first point where ordinary transcript
       // persistence may release the live pointer.
-      await saveCompanionThread(pending.path, pending.scopeKey, aiMessages);
+      if (isTranscriptBoundTo(pending.path, pending.scopeKey)) {
+        await saveCompanionThread(pending.path, pending.scopeKey, aiMessages);
+      }
       await clearCompanionActiveTurnPointer(pending.path, pending.scopeKey, pending.turnId);
       if (!keepConversationRef.current) {
         await clearCompanionScopeOnPage(pending.path, pending.scopeKey);
@@ -3382,7 +3391,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     if (loaded && loaded.path === path && loaded.scopeKey === scopeKey) {
       return;
     }
-    if (loaded) {
+    if (loaded && isTranscriptBoundTo(loaded.path, loaded.scopeKey)) {
       void saveCompanionThread(loaded.path, loaded.scopeKey, aiMessagesRef.current);
     }
 
@@ -3777,8 +3786,14 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       return;
     }
     const scopeKey = companionScopeKey;
+    // Only persist a transcript that belongs to this thread; right after a
+    // thread switch the previous thread's messages are still in memory.
+    if (!isTranscriptBoundTo(path, scopeKey)) {
+      return;
+    }
     const snapshot = aiMessages;
     const timer = window.setTimeout(() => {
+      if (!isTranscriptBoundTo(path, scopeKey)) return;
       void saveCompanionThread(path, scopeKey, snapshot);
     }, COMPANION_SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
