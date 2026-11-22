@@ -182,5 +182,20 @@ describe("PwaRegistrar", () => {
       await fireControllerChange();
       expect(reload).not.toHaveBeenCalled();
     });
+
+    it("retries a later update after an earlier flush failed", async () => {
+      let failNext = true;
+      registerReloadDrain(async () => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("offline");
+        }
+      });
+      const fireControllerChange = mountWithController({});
+      await fireControllerChange();
+      expect(reload).not.toHaveBeenCalled();
+      await fireControllerChange();
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
   });
 });

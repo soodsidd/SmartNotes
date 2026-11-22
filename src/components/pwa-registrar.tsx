@@ -39,6 +39,8 @@ export function PwaRegistrar() {
         action: drain.ok ? "drained-reload" : "drain-failed-stay",
       });
       if (!drain.ok) {
+        // Release the guard so a later controllerchange (next deploy) can retry.
+        isReloadingForUpdate = false;
         return;
       }
       window.location.reload();
