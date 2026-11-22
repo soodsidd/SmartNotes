@@ -128,3 +128,41 @@ test("sidebar page-pane blank menu and page right-click menu create music pages"
   expect(blank.request().postDataJSON()).toMatchObject({ noteType: "music", notebookPath: "Personal Notebook" });
   await expect(page.getByTestId("music-page")).toBeVisible({ timeout: 20000 });
 });
+
+test("page ellipsis converts text and music, and Add Page chevron chooses a type", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const title = `sn415-convert-${Date.now()}`;
+  const response = await page.request.post("/api/page", {
+    data: { notebookPath: "Personal Notebook", sectionPath: "Personal Notebook/Quick Notes", title },
+  });
+  expect(response.status()).toBe(201);
+  const { page: created } = await response.json() as { page: { path: string } };
+  let addedPath: string | null = null;
+  try {
+    await page.goto(`/?page=${encodeURIComponent(created.path)}`);
+    const row = page.getByTestId(`page-${created.path}`);
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.locator("button[data-page-menu]").click();
+    const convertedToMusic = page.waitForResponse((result) => result.url().endsWith("/api/page") && result.request().method() === "PATCH" && result.request().postDataJSON()?.action === "convertType");
+    await page.getByTestId(`page-convert-${created.path}`).click();
+    expect((await convertedToMusic).request().postDataJSON().noteType).toBe("music");
+    await expect(page.getByTestId("music-page")).toBeVisible({ timeout: 20_000 });
+
+    await row.locator("button[data-page-menu]").click();
+    const convertedToText = page.waitForResponse((result) => result.url().endsWith("/api/page") && result.request().method() === "PATCH" && result.request().postDataJSON()?.action === "convertType");
+    await page.getByTestId(`page-convert-${created.path}`).click();
+    expect((await convertedToText).request().postDataJSON().noteType).toBe("text");
+    await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 20_000 });
+
+    await page.getByTestId("page-pane-add-type").click();
+    const createdMusic = page.waitForResponse((result) => result.url().endsWith("/api/page") && result.request().method() === "POST" && result.request().postDataJSON()?.noteType === "music");
+    await page.getByRole("menuitem", { name: "Music page" }).click();
+    const added = await createdMusic;
+    expect(added.status()).toBe(201);
+    addedPath = ((await added.json()) as { page: { path: string } }).page.path;
+    await expect(page.getByTestId("music-page")).toBeVisible({ timeout: 20_000 });
+  } finally {
+    if (addedPath) await page.request.delete(`/api/page?path=${encodeURIComponent(addedPath)}`);
+    await page.request.delete(`/api/page?path=${encodeURIComponent(created.path)}`);
+  }
+});

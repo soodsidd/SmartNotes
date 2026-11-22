@@ -35,6 +35,28 @@ Initial body.
 }
 
 describe("page route", () => {
+  it("converts text and music without changing the body or ink sidecar", async () => {
+    await withVaultFixture(async (vaultRoot) => {
+      const sidecar = path.join(vaultRoot, "Notebook", "Section", "seed.ink.json");
+      await fs.writeFile(sidecar, "{\"scene\":null}", "utf8");
+      const convert = (noteType: string) => PATCH(new Request("http://localhost/api/page", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "convertType", path: "Notebook/Section/seed.html", noteType }),
+      }));
+      const music = await convert("music");
+      expect(music.status).toBe(200);
+      await expect(music.json()).resolves.toMatchObject({ page: { noteType: "music" } });
+      const text = await convert("text");
+      expect(text.status).toBe(200);
+      await expect(text.json()).resolves.toMatchObject({ page: { noteType: "text" } });
+      const source = await fs.readFile(path.join(vaultRoot, "Notebook", "Section", "seed.html"), "utf8");
+      expect(source).toContain("Initial body.");
+      expect(source).not.toContain("note_type:");
+      expect(await fs.readFile(sidecar, "utf8")).toBe("{\"scene\":null}");
+      expect((await convert("jupyter")).status).toBe(400);
+    });
+  });
   it("loads and saves a page through the route handlers", async () => {
     await withVaultFixture(async (vaultRoot) => {
       const getResponse = await GET(

@@ -122,6 +122,7 @@ export async function PATCH(request: Request) {
       sectionPath?: string;
       targetSectionPath?: string;
       workspace?: DeepWorkDescriptor | null;
+      noteType?: string;
     };
 
     if (body.action === "jupyterWorkspace") {
@@ -134,6 +135,19 @@ export async function PATCH(request: Request) {
         throw new VaultError("INVALID_INPUT", "The selected workspace is not an owner-opened disk folder.", 400);
       }
       const page = await updatePageMetadata(existing.path, { [JUPYTER_PAGE_WORKSPACE_KEY]: record });
+      emitVaultSideEffects({ treeChanged: true });
+      return NextResponse.json({ page: toApiPageDocument(page) });
+    }
+
+    if (body.action === "convertType") {
+      if (body.noteType !== "text" && body.noteType !== "music") {
+        throw new VaultError("INVALID_INPUT", "Pages can be converted to text or music.", 400);
+      }
+      const existing = await readPage(body.path ?? "");
+      if (existing.metadata.note_type !== undefined && existing.metadata.note_type !== "text" && existing.metadata.note_type !== "music") {
+        throw new VaultError("INVALID_INPUT", "Only text and music pages can be converted.", 400);
+      }
+      const page = await updatePageMetadata(existing.path, { note_type: body.noteType === "text" ? undefined : "music" });
       emitVaultSideEffects({ treeChanged: true });
       return NextResponse.json({ page: toApiPageDocument(page) });
     }

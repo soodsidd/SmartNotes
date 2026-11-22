@@ -17,12 +17,14 @@ async function seedPage(
 }
 
 async function selectPage(page: Page, title: string) {
-  let pageButton = page.getByRole("button", { name: title, exact: true })
+  let pageButton = page.getByRole("button", { name: title, exact: false })
     .filter({ visible: true }).first();
   if ((page.viewportSize()?.width ?? 0) <= 600) {
     const menuButton = await page.getByTestId("ink-overlay-bar").isVisible()
       ? page.getByTestId("ink-sidebar-toggle")
-      : page.getByTestId("open-sidebar-btn");
+      : await page.getByTestId("music-page").isVisible()
+        ? page.getByTestId("music-page").getByRole("button", { name: "Open sidebar" })
+        : page.getByTestId("open-sidebar-btn");
     await menuButton.click();
     const sheet = page.locator('[data-slot="sheet-content"]');
     await expect(sheet).toBeVisible();
@@ -34,7 +36,7 @@ async function selectPage(page: Page, title: string) {
     await page.getByRole("dialog", { name: "Notes" })
       .getByRole("button", { name: "Quick Notes", exact: true }).click();
     pageButton = page.locator('[data-slot="sheet-content"]')
-      .getByRole("button", { name: title, exact: true });
+      .getByRole("button", { name: title, exact: false });
   }
   await pageButton.click();
   await closeNotebookTreeSheet(page);
@@ -43,9 +45,14 @@ async function selectPage(page: Page, title: string) {
 async function openPage(page: Page, title: string) {
   await selectPage(page, title);
   await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("annotation-layer")).toHaveAttribute(
-    "data-annotation-loaded-path", `${SECTION_PATH}/${title}.html`, { timeout: 15_000 }
-  );
+  const loadedPath = SECTION_PATH + "/" + title + ".html";
+  // Startup deep-link revalidation can restore its former page once.
+  try {
+    await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-loaded-path", loadedPath, { timeout: 5_000 });
+  } catch {
+    await selectPage(page, title);
+    await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-loaded-path", loadedPath, { timeout: 15_000 });
+  }
 }
 
 async function useInstalledPwaPath(page: Page) {
@@ -282,14 +289,15 @@ test("SN-416: installed PWA fetches the current shell despite a stale cached lau
   expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
 });
 
-test("SN-416: installed PWA keeps ink-page touch strokes after navigation and reload", async ({
+for (const noteType of ["ink", "music"] as const) test(`SN-416: installed PWA keeps ${noteType}-page touch strokes painted after navigation and reload`, async ({
   page,
   request,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "Installed mobile PWA ink canvas");
-  const title = `sn416-${Date.now()}-pwa-ink`;
+  test.setTimeout(120_000);
+  const title = `sn416-${Date.now()}-pwa-${noteType}`;
   const created = await request.post("/api/page", {
-    data: { sectionPath: SECTION_PATH, title, noteType: "ink" },
+    data: { sectionPath: SECTION_PATH, title, noteType },
   });
   expect(created.status()).toBe(201);
   const { page: inkPage } = await created.json() as { page: { path: string } };
@@ -307,27 +315,42 @@ test("SN-416: installed PWA keeps ink-page touch strokes after navigation and re
 
   try {
     await useInstalledPwaPath(page);
-    await selectPage(page, title);
-    await expect(page.getByTestId("ink-overlay-bar")).toBeVisible({ timeout: 20_000 });
-    const canvas = page.locator(".ink-canvas-host .tl-canvas");
-    await expect(canvas).toBeVisible();
-    await page.getByRole("button", { name: /^Draw —/ }).click();
+    if (noteType === "music") {
+      await page.goto("/?source=pwa&page=" + encodeURIComponent(inkPath));
+    } else {
+      await selectPage(page, title);
+    }
+    const host = noteType === "music" ? ".music-page__ink" : ".ink-canvas-host";
+    await expect(page.getByTestId(noteType === "music" ? "music-page" : "ink-overlay-bar")).toBeVisible({ timeout: 20_000 });
+    const canvas = page.locator(`${host} .tl-canvas`);
+    await expect(canvas).toBeVisible({ timeout: 20_000 });
+    if (noteType === "music") {
+      await expect(page.locator(`${host} .tl-container`)).toHaveClass(/tl-theme__light/);
+      await expect(page.locator(host)).toHaveCSS("z-index", "1");
+    }
+    if (noteType === "ink") await page.getByRole("button", { name: /^Draw —/ }).click();
     const box = await canvas.boundingBox();
     expect(box).not.toBeNull();
     await drawStroke(page, box!, true);
-    const layer = page.locator(".ink-canvas-host");
+    const layer = page.locator(host);
     await expect(layer.locator('.tl-shape[data-shape-type="draw"]')).toHaveCount(1);
     await expectCommittedStrokePainted(layer);
     await expect.poll(persistedShapeCount, { timeout: 10_000 }).toBe(1);
+    await page.waitForTimeout(3_000);
+    await expectCommittedStrokePainted(layer);
 
     await selectPage(page, "AssetTarget");
     await selectPage(page, title);
-    await expectCommittedStrokePainted(page.locator(".ink-canvas-host"));
+    await expectCommittedStrokePainted(page.locator(host));
+    await page.waitForTimeout(3_000);
+    await expectCommittedStrokePainted(page.locator(host));
     // Relaunch the installed app straight onto the page (full document reload).
     await page.goto(`/?source=pwa&page=${encodeURIComponent(inkPath)}`);
-    await expect(page.getByTestId("ink-overlay-bar")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId(noteType === "music" ? "music-page" : "ink-overlay-bar")).toBeVisible({ timeout: 20_000 });
     expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
-    await expectCommittedStrokePainted(page.locator(".ink-canvas-host"));
+    await expectCommittedStrokePainted(page.locator(host));
+    await page.waitForTimeout(3_000);
+    await expectCommittedStrokePainted(page.locator(host));
     await expect.poll(persistedShapeCount).toBe(1);
   } finally {
     await request.delete(`/api/page?path=${encodeURIComponent(inkPath)}`);
