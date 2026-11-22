@@ -4,6 +4,76 @@ import path from "node:path";
 
 const evidence = path.resolve(__dirname, "evidence", "SN-415");
 
+test("SN-418: large touch targets flip pages in fullscreen Play mode and keep fresh ink", async ({ browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const context = await browser.newContext({ baseURL, viewport: { width: 768, height: 1024 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const paths: string[] = [];
+  try {
+    const response = await context.request.post("/api/page", {
+      data: { sectionPath: "Personal Notebook/Quick Notes", title: `sn418-song-${Date.now()}`, noteType: "music" },
+    });
+    expect(response.status()).toBe(201);
+    const { page: created } = await response.json() as { page: { path: string } };
+    paths.push(created.path);
+    await page.goto(`/?page=${encodeURIComponent(created.path)}`);
+    const music = page.getByTestId("music-page");
+    const enterPlay = music.getByRole("button", { name: "Play mode", exact: true });
+    const exitPlay = music.getByRole("button", { name: "Exit play mode" });
+    const turns = music.getByRole("navigation", { name: "Turn music page" });
+    const previous = turns.getByRole("button", { name: "Previous page" });
+    const next = turns.getByRole("button", { name: "Next page" });
+    await enterPlay.tap();
+    await expect(turns).toHaveCount(0);
+    await exitPlay.tap();
+
+    for (const pageNumber of [2, 3]) {
+      const pending = page.waitForResponse((r) => r.url().endsWith("/api/page") && r.request().method() === "POST" && r.status() === 201);
+      await music.getByRole("button", { name: "Add next page" }).tap();
+      const { page: added } = await (await pending).json() as { page: { path: string } };
+      paths.push(added.path);
+      await expect(music.getByLabel(`Page ${pageNumber} of ${pageNumber}`)).toBeVisible();
+    }
+
+    const canvas = music.locator(".tl-canvas");
+    await expect(canvas).toBeVisible();
+    const paper = (await canvas.boundingBox())!;
+    await page.mouse.move(paper.x + paper.width / 3, paper.y + paper.height / 3);
+    await page.mouse.down();
+    await page.mouse.move(paper.x + paper.width / 2, paper.y + paper.height / 3, { steps: 6 });
+    await page.mouse.up();
+    const ink = music.locator('.tl-shape[data-shape-type="draw"]');
+    await expect(ink).toHaveCount(1);
+
+    await enterPlay.tap();
+    await expect(music).toHaveClass(/music-page--fullscreen/);
+    await expect(music.getByRole("toolbar", { name: "Music ink tools" })).toHaveCount(0);
+    await expect(next).toBeDisabled();
+    const target = (await previous.boundingBox())!;
+    expect(target.width).toBeGreaterThan(250);
+    expect(target.height).toBeGreaterThanOrEqual(56);
+    await page.mouse.move(target.x + 15, target.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(target.x + 100, target.y + 20, { steps: 6 });
+    await page.mouse.up();
+    await expect(music.getByLabel("Page 3 of 3")).toBeVisible();
+
+    for (const [button, pageNumber] of [[previous, 2], [previous, 1], [next, 2], [next, 3]] as const) {
+      await button.tap();
+      await expect(music.getByLabel(`Page ${pageNumber} of 3`)).toBeVisible();
+      await expect(music).toHaveClass(/music-page--fullscreen/);
+      if (pageNumber === 1) await expect(previous).toBeDisabled();
+    }
+    await expect(ink).toBeVisible();
+    await exitPlay.tap();
+    await expect(music.getByRole("toolbar", { name: "Music ink tools" })).toBeVisible();
+    await expect(turns).toHaveCount(0);
+  } finally {
+    for (const pagePath of paths.reverse()) await context.request.delete(`/api/page?path=${encodeURIComponent(pagePath)}`);
+    await context.close();
+  }
+});
+
 test("music page keeps ink aligned through reload, full screen, and print", async ({ page }) => {
   test.setTimeout(120_000);
   await fs.mkdir(evidence, { recursive: true });

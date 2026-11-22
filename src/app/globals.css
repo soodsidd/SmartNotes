@@ -47,6 +47,13 @@ body {
   overscroll-behavior: none;
 }
 
+/* The standalone surfaces already size and clip the canvas. Keep saved SVG
+   ink eligible for painting even when mobile chrome changes the viewport. */
+.ink-canvas-host .tl-canvas,
+.music-page__ink .tl-canvas {
+  content-visibility: visible;
+}
+
 /* Text-page annotation layer: same PWA touch fix as ink notes, but never on
    tl-html-layer (Tldraw may host interactive UI there on ink-note pages). */
 .annotation-layer-host .tl-container,
@@ -3121,12 +3128,21 @@ mark {
 .music-page__page-indicator { font-size: .75rem; color: var(--muted-foreground); flex-shrink: 0; white-space: nowrap; }
 .music-page__bar button:disabled { opacity: 0.35; cursor: not-allowed; }
 .music-page__bar button:disabled:hover { background: transparent; }
+.music-page__bar .music-page__play { width: auto; padding-inline: .75rem; font-size: .875rem; background: var(--secondary); white-space: nowrap; }
+.music-page__bar .music-page__play:hover { background: var(--accent); color: var(--accent-foreground); }
 .music-page__viewport { flex: 1; min-height: 0; overflow: auto; padding: 1rem .5rem; background: var(--muted); display: flex; flex-direction: column; align-items: center; }
+.music-page--playing .music-page__ink { pointer-events: none; }
+.music-page__turns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; padding: .5rem .5rem max(.5rem, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); }
+.music-page__turns button { display: flex; justify-content: center; align-items: center; gap: .5rem; min-height: 56px; padding: .5rem; border-radius: var(--radius-md); background: var(--secondary); color: var(--foreground); font-size: .875rem; font-weight: 500; touch-action: manipulation; }
+.music-page__turns button:hover:not(:disabled) { background: var(--accent); color: var(--accent-foreground); }
+.music-page__turns button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.music-page__turns button:disabled { opacity: .35; }
+.music-page__turns svg { width: 20px; height: 20px; flex: none; }
 .music-page__add-row { display: flex; justify-content: center; padding: 1.25rem .5rem; flex-shrink: 0; }
 .music-page__add-btn { display: inline-flex; align-items: center; gap: .4rem; padding: .375rem .875rem; border: 1px dashed var(--border); border-radius: var(--radius-md); font-size: .8125rem; color: var(--muted-foreground); background: var(--surface); cursor: pointer; transition: border-color .15s, color .15s; }
 .music-page__add-btn:hover { border-color: var(--accent); color: var(--accent); }
 .music-page__add-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.music-page__scaled { position: relative; flex-shrink: 0; }
+.music-page__scaled { position: relative; flex-shrink: 0; overflow: clip; }
 .music-page__paper { position: relative; z-index: 0; width: 794px; height: 1123px; transform-origin: top left; background: #fff; color: #323638; box-shadow: 0 0 0 1px var(--border); }
 .music-staff { position: absolute; inset: 0; pointer-events: none; }
 .music-staff__title { position: absolute; top: 60px; left: 104px; right: 70px; padding-bottom: .5rem; border-bottom: 1px solid #d4d6d8; font-size: 1rem; color: #171b1d; }

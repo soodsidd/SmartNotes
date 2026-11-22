@@ -324,6 +324,7 @@ for (const noteType of ["ink", "music"] as const) test(`SN-416: installed PWA ke
     await expect(page.getByTestId(noteType === "music" ? "music-page" : "ink-overlay-bar")).toBeVisible({ timeout: 20_000 });
     const canvas = page.locator(`${host} .tl-canvas`);
     await expect(canvas).toBeVisible({ timeout: 20_000 });
+    await expect(canvas).toHaveCSS("content-visibility", "visible");
     if (noteType === "music") {
       await expect(page.locator(`${host} .tl-container`)).toHaveClass(/tl-theme__light/);
       await expect(page.locator(host)).toHaveCSS("z-index", "1");
@@ -338,6 +339,10 @@ for (const noteType of ["ink", "music"] as const) test(`SN-416: installed PWA ke
     await expect.poll(persistedShapeCount, { timeout: 10_000 }).toBe(1);
     await page.waitForTimeout(3_000);
     await expectCommittedStrokePainted(layer);
+    const viewport = page.viewportSize()!;
+    await page.setViewportSize({ width: viewport.width, height: viewport.height - 80 });
+    await expectCommittedStrokePainted(layer);
+    await page.setViewportSize(viewport);
 
     await selectPage(page, "AssetTarget");
     await selectPage(page, title);

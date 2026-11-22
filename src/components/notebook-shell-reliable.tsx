@@ -1168,6 +1168,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
   const [pageContextMenu, setPageContextMenu] = React.useState<PageContextMenuState | null>(null);
   const [ghostContextMenu, setGhostContextMenu] = React.useState<GhostContextMenuState | null>(null);
   const [inkReloadNonce, setInkReloadNonce] = React.useState(0);
+  const [playingMusicAnchor, setPlayingMusicAnchor] = React.useState<string | null>(null);
   const [spreadsheetReloadNonce, setSpreadsheetReloadNonce] = React.useState(0);
   const [jupyterFrameCache, setJupyterFrameCache] = React.useState<
     JupyterFrameEntry<JupyterNotebookViewProps["workspace"]>[]
@@ -1819,6 +1820,11 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     () => (activeMusicSiblings && draft ? activeMusicSiblings.findIndex((p) => p.path === draft.path) : undefined),
     [activeMusicSiblings, draft]
   );
+  const activeMusicAnchor = draft?.noteType === "music" ? musicChainAnchor(draft) : null;
+
+  React.useEffect(() => {
+    if (playingMusicAnchor && activeMusicAnchor !== playingMusicAnchor) setPlayingMusicAnchor(null);
+  }, [activeMusicAnchor, playingMusicAnchor]);
 
   const companionSubtreeRootPath = React.useMemo(
     () => (draft?.path ? resolveSubtreeRootPath(draft.path, allPages) : null),
@@ -4886,6 +4892,15 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       if (leavingDraft?.noteType === "spreadsheet") {
         const saved = await flushSave();
         if (!saved) return;
+      }
+      if ((leavingDraft?.noteType === "ink" || leavingDraft?.noteType === "music") && !versionPreviewRef.current) {
+        try {
+          await inkCanvasRef.current?.flushPending();
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Save the ink before leaving this page.");
+          return;
+        }
+        if (activePagePathRef.current !== leavingPagePath) return;
       }
 
       setVersionPreview(null);
@@ -8143,6 +8158,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                   onOpenSidebar={() => setSidebarOpen(true)}
                   musicSiblings={draft.noteType === "music" ? activeMusicSiblings : undefined}
                   musicPageIndex={draft.noteType === "music" ? activeMusicPageIndex : undefined}
+                  musicPlaying={activeMusicAnchor !== null && playingMusicAnchor === activeMusicAnchor && !activeVersionPreview}
+                  onMusicPlayingChange={activeMusicAnchor && !activeVersionPreview ? (playing) => setPlayingMusicAnchor(playing ? activeMusicAnchor : null) : undefined}
                   onAddMusicPage={draft.noteType === "music" && !activeVersionPreview ? handleCreateMusicContinuation : undefined}
                   onNavigateMusicPage={draft.noteType === "music" && !activeVersionPreview ? (pagePath) => { void openPage(pagePath); } : undefined}
                   onSaveStatusChange={(status) => {

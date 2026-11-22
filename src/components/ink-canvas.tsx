@@ -21,6 +21,7 @@ function countDrawShapes(snapshot: unknown): number {
 
 export interface InkCanvasHandle {
   flush: () => Promise<void>;
+  flushPending: () => Promise<void>;
 }
 
 export interface InkCanvasProps {
@@ -41,6 +42,8 @@ export interface InkCanvasProps {
   onAddMusicPage?: () => void;
   /** SN-417: navigate to another page in this song. */
   onNavigateMusicPage?: (pagePath: string) => void;
+  musicPlaying?: boolean;
+  onMusicPlayingChange?: (playing: boolean) => void;
 }
 
 // Custom grid component: renders graph-paper style lines that pan and scale with the camera.
@@ -120,7 +123,7 @@ const COMPONENTS_MUSIC = {
 } as const;
 
 const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(function InkCanvasInner(
-  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly = false, music = false, musicSiblings, musicPageIndex, onAddMusicPage, onNavigateMusicPage },
+  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly = false, music = false, musicSiblings, musicPageIndex, onAddMusicPage, onNavigateMusicPage, musicPlaying = false, onMusicPlayingChange },
   ref
 ) {
   const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -130,8 +133,11 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = React.useRef(false);
   const pendingRef = React.useRef(false);
+  const changeVersionRef = React.useRef(0);
+  const savedVersionRef = React.useRef(0);
   const editorRef = React.useRef<Editor | null>(null);
   const musicViewportRef = React.useRef<HTMLDivElement | null>(null);
+  const musicInkRef = React.useRef<HTMLDivElement | null>(null);
   const [musicFitScale, setMusicFitScale] = React.useState(1);
   const [musicPrinting, setMusicPrinting] = React.useState(false);
   // Print always lays the paper out at 1:1 A4, whatever the on-screen fit is.
@@ -162,13 +168,18 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     const update = () => {
       // A temporarily hidden PWA viewport can report zero width while its
       // sheet or browser chrome settles. Keep the last usable paper scale.
-      if (viewport.clientWidth > 0) setMusicFitScale(Math.min(1, viewport.clientWidth / MUSIC_PAPER_WIDTH));
+      const padding = window.getComputedStyle(viewport);
+      const width = viewport.clientWidth - parseFloat(padding.paddingLeft || "0") - parseFloat(padding.paddingRight || "0");
+      const height = viewport.clientHeight - parseFloat(padding.paddingTop || "0") - parseFloat(padding.paddingBottom || "0");
+      if (width > 0 && (!musicPlaying || height > 0)) {
+        setMusicFitScale(Math.min(1, width / MUSIC_PAPER_WIDTH, musicPlaying ? height / MUSIC_PAPER_HEIGHT : 1));
+      }
     };
     const observer = new ResizeObserver(update);
     observer.observe(viewport);
     update();
     return () => observer.disconnect();
-  }, [music, musicFullscreen, snapshot]);
+  }, [music, musicFullscreen, musicPlaying, snapshot]);
 
   React.useEffect(() => {
     if (!music) return;
@@ -197,13 +208,20 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   }, [music, musicScale]);
 
   React.useEffect(() => {
-    if (!musicFullscreen) return;
+    if (!musicFullscreen && !musicPlaying) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMusicFullscreen(false);
+      if (event.key !== "Escape") return;
+      if (musicPlaying) onMusicPlayingChange?.(false);
+      setMusicFullscreen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [musicFullscreen]);
+  }, [musicFullscreen, musicPlaying, onMusicPlayingChange]);
+
+  React.useLayoutEffect(() => {
+    if (music) editorRef.current?.updateInstanceState({ isReadonly: readOnly || musicPlaying });
+    if (musicInkRef.current) musicInkRef.current.inert = musicPlaying;
+  }, [music, readOnly, musicPlaying]);
 
   // Keep ref in sync with state so scheduleSave always captures the latest value.
   React.useEffect(() => {
@@ -258,11 +276,6 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       timerRef.current = null;
     }
 
-    const editor = editorRef.current;
-    if (!editor) {
-      return;
-    }
-
     if (savingRef.current) {
       await new Promise<void>((resolve) => {
         const check = () => {
@@ -276,14 +289,19 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       });
     }
 
+    const editor = editorRef.current;
+    if (!editor) return;
+
     savingRef.current = true;
     onSaveStatusChange?.("saving");
     setSaveStatus("saving");
 
     const snap = editor.getSnapshot();
+    const version = changeVersionRef.current;
     const mode = backgroundModeRef.current;
     try {
       await saveInkScene(pagePath, snap, mode);
+      savedVersionRef.current = version;
       logDrawEvent("ink.save", { path: pagePath, trigger: "flush", shapes: countDrawShapes(snap), ok: true });
       onSaveStatusChange?.("saved");
       setSaveStatus("saved");
@@ -298,7 +316,13 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     }
   }, [onSaveStatusChange, pagePath]);
 
-  React.useImperativeHandle(ref, () => ({ flush: flushSave }), [flushSave]);
+  const flushPending = React.useCallback(async () => {
+    while (editorRef.current && (changeVersionRef.current !== savedVersionRef.current || savingRef.current)) {
+      await flushSave();
+    }
+  }, [flushSave]);
+
+  React.useImperativeHandle(ref, () => ({ flush: flushSave, flushPending }), [flushSave, flushPending]);
 
   const scheduleSave = React.useCallback(() => {
     if (readOnly) return;
@@ -320,9 +344,11 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       setSaveStatus("saving");
 
       const snap = editor.getSnapshot();
+      const version = changeVersionRef.current;
       const mode = backgroundModeRef.current;
       saveInkScene(pagePath, snap, mode)
         .then(() => {
+          savedVersionRef.current = version;
           logDrawEvent("ink.save", { path: pagePath, trigger: "autosave", shapes: countDrawShapes(snap), ok: true });
           onSaveStatusChange?.("saved");
           setSaveStatus("saved");
@@ -348,7 +374,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   React.useEffect(() => {
     if (readOnly || previewSidecarJson !== undefined) return;
     return registerReloadDrain(async () => {
-      const dirty = Boolean(timerRef.current) || savingRef.current || pendingRef.current;
+      const dirty = changeVersionRef.current !== savedVersionRef.current || savingRef.current;
       logDrawEvent("ink.reload-drain", { path: pagePath, dirty });
       if (dirty) {
         await flushSave();
@@ -393,19 +419,22 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       }
       editor.updateInstanceState({
         isGridMode: backgroundModeRef.current === "grid",
-        isReadonly: readOnly,
+        isReadonly: readOnly || musicPlaying,
       });
-      if (readOnly) {
-        return;
-      }
       // Listen only to user-originated document changes for autosave.
-      const cleanup = editor.store.listen(
-        () => { scheduleSave(); },
+      const cleanup = readOnly ? undefined : editor.store.listen(
+        () => {
+          changeVersionRef.current += 1;
+          scheduleSave();
+        },
         { source: "user", scope: "document" }
       );
-      return cleanup;
+      return () => {
+        cleanup?.();
+        if (editorRef.current === editor) editorRef.current = null;
+      };
     },
-    [music, readOnly, scheduleSave]
+    [music, musicPlaying, readOnly, scheduleSave]
   );
 
   const saveLabel =
@@ -414,7 +443,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     saveStatus === "saved"  ? "Saved"   :
     saveStatus === "error"  ? "Save error" : "";
 
-  if (snapshot === undefined) {
+  if (snapshot === undefined && !musicPlaying) {
     return (
       <div className="flex h-full w-full flex-col">
         <InkOverlayBar
@@ -433,52 +462,55 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
 
   const components = music ? COMPONENTS_MUSIC : backgroundMode === "grid" ? COMPONENTS_GRID : COMPONENTS_BLANK;
 
-  const hasMusicSiblings = musicSiblings && musicSiblings.length > 1 && musicPageIndex !== undefined;
+  const hasMusicSiblings = !!musicSiblings && musicSiblings.length > 1 && musicPageIndex !== undefined && musicPageIndex >= 0;
+  const previousMusicPage = hasMusicSiblings ? musicSiblings[musicPageIndex - 1] : undefined;
+  const nextMusicPage = hasMusicSiblings ? musicSiblings[musicPageIndex + 1] : undefined;
 
   if (music) {
     return (
-      <div className={`music-page ${musicFullscreen ? "music-page--fullscreen" : ""}`} data-testid="music-page">
+      <div className={`music-page ${musicFullscreen || musicPlaying ? "music-page--fullscreen" : ""} ${musicPlaying ? "music-page--playing" : ""}`} data-testid="music-page">
         <div className="music-page__bar" data-print-chrome="true">
-          <button type="button" onClick={onOpenSidebar} aria-label="Open sidebar"><Menu className="size-4" /></button>
-          {hasMusicSiblings && (
+          {!musicPlaying && <button type="button" onClick={onOpenSidebar} aria-label="Open sidebar"><Menu className="size-4" /></button>}
+          {hasMusicSiblings && !musicPlaying && (
             <button
               type="button"
               aria-label="Previous page"
               data-testid="music-prev-page"
-              disabled={musicPageIndex === 0}
-              onClick={() => { if (musicPageIndex! > 0) onNavigateMusicPage?.(musicSiblings![musicPageIndex! - 1].path); }}
+              disabled={!previousMusicPage}
+              onClick={() => { if (previousMusicPage) onNavigateMusicPage?.(previousMusicPage.path); }}
             ><ChevronLeft className="size-4" /></button>
           )}
           <span className="music-page__name">{title || "Untitled music page"}</span>
           <span className="music-page__spacer" />
           {saveLabel && <span className="music-page__status">{saveLabel}</span>}
           {hasMusicSiblings && (
-            <span className="music-page__page-indicator" aria-label={`Page ${musicPageIndex! + 1} of ${musicSiblings!.length}`}>{musicPageIndex! + 1}/{musicSiblings!.length}</span>
+            <span className="music-page__page-indicator" aria-label={`Page ${musicPageIndex + 1} of ${musicSiblings.length}`}>{musicPageIndex + 1}/{musicSiblings.length}</span>
           )}
-          {hasMusicSiblings && (
+          {hasMusicSiblings && !musicPlaying && (
             <button
               type="button"
               aria-label="Next page"
               data-testid="music-next-page"
-              disabled={musicPageIndex === musicSiblings!.length - 1}
-              onClick={() => { if (musicPageIndex! < musicSiblings!.length - 1) onNavigateMusicPage?.(musicSiblings![musicPageIndex! + 1].path); }}
+              disabled={!nextMusicPage}
+              onClick={() => { if (nextMusicPage) onNavigateMusicPage?.(nextMusicPage.path); }}
             ><ChevronRight className="size-4" /></button>
           )}
-          <button type="button" onClick={() => setMusicFullscreen((value) => !value)} aria-label={musicFullscreen ? "Exit full screen" : "Full screen"} data-testid="music-fullscreen-toggle">
+          {onMusicPlayingChange && <button type="button" className="music-page__play" onClick={() => onMusicPlayingChange(!musicPlaying)}>{musicPlaying ? "Exit play mode" : "Play mode"}</button>}
+          {!musicPlaying && <button type="button" onClick={() => setMusicFullscreen((value) => !value)} aria-label={musicFullscreen ? "Exit full screen" : "Full screen"} data-testid="music-fullscreen-toggle">
             {musicFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-          </button>
-          <button type="button" onClick={() => { void flushSave().then(() => window.print()); }} aria-label="Print music page" data-testid="music-print"><Printer className="size-4" /></button>
+          </button>}
+          {!musicPlaying && <button type="button" onClick={() => { void flushSave().then(() => window.print()); }} aria-label="Print music page" data-testid="music-print"><Printer className="size-4" /></button>}
         </div>
         <div className="music-page__viewport" ref={musicViewportRef}>
           <div className="music-page__scaled" style={{ width: MUSIC_PAPER_WIDTH * musicScale, height: MUSIC_PAPER_HEIGHT * musicScale }}>
             <div className="music-page__paper" style={{ transform: `scale(${musicScale})` }}>
               <MusicStaff title={title} />
             </div>
-            <div className="music-page__ink">
-              <Tldraw key={previewSidecarJson ?? pagePath} snapshot={snapshot ?? undefined} onMount={handleMount} components={components} colorScheme="light" />
+            <div className="music-page__ink" ref={musicInkRef}>
+              {snapshot !== undefined && <Tldraw key={previewSidecarJson ?? pagePath} snapshot={snapshot ?? undefined} onMount={handleMount} components={components} colorScheme="light" />}
             </div>
           </div>
-          {!readOnly && onAddMusicPage && (
+          {!readOnly && !musicPlaying && onAddMusicPage && (
             <div className="music-page__add-row" data-print-chrome="true">
               <button type="button" className="music-page__add-btn" onClick={onAddMusicPage} aria-label="Add next page" data-testid="music-add-page">
                 <FilePlus className="size-4" aria-hidden />
@@ -487,7 +519,10 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
             </div>
           )}
         </div>
-        {!readOnly && <div className="music-page__dock" role="toolbar" aria-label="Music ink tools" data-print-chrome="true">
+        {musicPlaying && hasMusicSiblings && onNavigateMusicPage && (
+          <MusicPageTurns previous={previousMusicPage?.path} next={nextMusicPage?.path} onNavigate={onNavigateMusicPage} />
+        )}
+        {!readOnly && !musicPlaying && <div className="music-page__dock" role="toolbar" aria-label="Music ink tools" data-print-chrome="true">
           <button type="button" aria-label="Select" aria-pressed={musicTool === "select"} onClick={() => changeMusicTool("select")}><MousePointer2 className="size-4" /></button>
           <button type="button" aria-label="Pen" aria-pressed={musicTool === "draw"} onClick={() => changeMusicTool("draw")}><PenLine className="size-4" /></button>
           <button type="button" aria-label="Eraser" aria-pressed={musicTool === "eraser"} onClick={() => changeMusicTool("eraser")}><Eraser className="size-4" /></button>
@@ -528,6 +563,47 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     </div>
   );
 });
+
+function MusicPageTurns({ previous, next, onNavigate }: { previous?: string; next?: string; onNavigate: (path: string) => void }) {
+  const pointer = React.useRef<{ id: number; x: number; y: number; cancelled: boolean } | null>(null);
+  return (
+    <nav
+      className="music-page__turns"
+      aria-label="Turn music page"
+      data-print-chrome="true"
+      onPointerDown={(event) => {
+        if (!event.isPrimary) {
+          if (pointer.current) pointer.current.cancelled = true;
+          return;
+        }
+        pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY, cancelled: false };
+      }}
+      onPointerMove={(event) => {
+        const start = pointer.current;
+        if (start?.id === event.pointerId && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) {
+          start.cancelled = true;
+        }
+      }}
+      onPointerCancel={(event) => {
+        if (pointer.current?.id === event.pointerId) pointer.current.cancelled = true;
+      }}
+      onPointerLeave={() => {
+        if (pointer.current) pointer.current.cancelled = true;
+      }}
+    >
+      <button type="button" disabled={!previous} onClick={(event) => {
+        if (previous && (event.detail === 0 || !pointer.current?.cancelled)) onNavigate(previous);
+      }}>
+        <ChevronLeft aria-hidden="true" /> Previous page
+      </button>
+      <button type="button" disabled={!next} onClick={(event) => {
+        if (next && (event.detail === 0 || !pointer.current?.cancelled)) onNavigate(next);
+      }}>
+        Next page <ChevronRight aria-hidden="true" />
+      </button>
+    </nav>
+  );
+}
 
 function InkOverlayBar({
   title,
@@ -593,7 +669,7 @@ function InkOverlayBar({
  * It is keyed by pagePath so the editor fully remounts on page switch.
  */
 export const InkCanvas = React.forwardRef<InkCanvasHandle, InkCanvasProps>(function InkCanvas(
-  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly, music, musicSiblings, musicPageIndex, onAddMusicPage, onNavigateMusicPage },
+  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly, music, musicSiblings, musicPageIndex, onAddMusicPage, onNavigateMusicPage, musicPlaying, onMusicPlayingChange },
   ref
 ) {
   return (
@@ -611,6 +687,8 @@ export const InkCanvas = React.forwardRef<InkCanvasHandle, InkCanvasProps>(funct
       musicPageIndex={musicPageIndex}
       onAddMusicPage={onAddMusicPage}
       onNavigateMusicPage={onNavigateMusicPage}
+      musicPlaying={musicPlaying}
+      onMusicPlayingChange={onMusicPlayingChange}
     />
   );
 });

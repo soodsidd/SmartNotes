@@ -7,11 +7,11 @@
 
 import React from "react";
 import { act, render, waitFor } from "@testing-library/react";
-import { InkCanvas } from "@/components/ink-canvas";
+import { InkCanvas, type InkCanvasHandle } from "@/components/ink-canvas";
 import { __resetReloadGuardForTests, drainBeforeReload } from "@/lib/reload-guard";
 import { saveInkScene } from "@/lib/api/ink";
 
-jest.mock("tldraw/tldraw.css", () => ({}), { virtual: true });
+jest.mock("tldraw/tldraw.css", () => ({}));
 jest.mock("@/lib/draw-mode-debug", () => ({ logDrawEvent: jest.fn() }));
 jest.mock("@/lib/api/ink", () => ({
   fetchInkScene: jest.fn().mockResolvedValue({ scene: null, backgroundMode: "blank" }),
@@ -86,5 +86,22 @@ describe("InkCanvas reload drain (SN-416)", () => {
     act(() => userChange!());
 
     expect((await drain()).ok).toBe(false);
+  });
+
+  it("saves pending ink before navigation and retries a failed write", async () => {
+    const ref = React.createRef<InkCanvasHandle>();
+    await mountCanvas({ ref });
+    await act(async () => { await ref.current!.flushPending(); });
+    expect(saveInkScene).not.toHaveBeenCalled();
+
+    act(() => userChange!());
+    jest.mocked(saveInkScene).mockRejectedValueOnce(new Error("offline"));
+    await act(async () => {
+      await expect(ref.current!.flushPending()).rejects.toThrow("Failed to save ink scene.");
+      await ref.current!.flushPending();
+      await ref.current!.flushPending();
+    });
+    expect(saveInkScene).toHaveBeenCalledTimes(2);
+    expect(saveInkScene).toHaveBeenLastCalledWith("Notebook/Section/Sketch.html", snapshot, "blank");
   });
 });
