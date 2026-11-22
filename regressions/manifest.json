@@ -1504,9 +1504,9 @@
     },
     {
       "id": "e2e-sn-216-draw-persistence",
-      "name": "SN-216 draw stroke remains visible and durable",
-      "description": "Playwright desktop/mobile: finger and stylus-with-palm text-page ink strokes retain painted SVG geometry and persisted shapes through autosave, draw-mode exit, and page reopen.",
-      "intent": "Catches the user-visible regression where an in-progress ink stroke appears briefly but its committed SVG is absent, invisible, or not persisted.",
+      "name": "SN-216/SN-416 draw strokes and installed PWA shell stay durable",
+      "description": "Playwright desktop/mobile: text-page finger and stylus-with-palm strokes retain painted geometry and persistence; a controlled mobile PWA launch rejects stale cached HTML and keeps an ink-page touch stroke through navigation and reload.",
+      "intent": "Catches disappearing committed ink strokes and stale installed-PWA navigation shells.",
       "whenToRun": "Pre-merge when changing draw-mode loading, Tldraw integration, annotation reconciliation, autosave, PWA delivery, or production startup.",
       "failureMeaning": "Desktop or touch/stylus users may draw a stroke that disappears from the canvas or is lost on reopen.",
       "appType": "browser",
@@ -1520,6 +1520,7 @@
         "mobile",
         "annotations",
         "draw",
+        "pwa",
         "targeted"
       ],
       "feature": "annotations",
@@ -1533,6 +1534,12 @@
       "sourceFiles": [
         {
           "path": "e2e/sn-216-draw-persistence.spec.ts"
+        },
+        {
+          "path": "scripts/service-worker.template.js"
+        },
+        {
+          "path": "src/components/ink-canvas.tsx"
         },
         {
           "path": "src/components/annotation-layer.tsx"

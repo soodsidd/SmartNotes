@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { closeNotebookTreeSheet, ensureNotebookTreeVisible } from "./helpers";
+import { closeNotebookTreeSheet } from "./helpers";
 
 const VAULT = path.resolve(__dirname, "..", ".e2e-vault");
 const SECTION_PATH = "Personal Notebook/Quick Notes";
@@ -16,11 +16,42 @@ async function seedPage(
   expect(response.ok()).toBeTruthy();
 }
 
-async function openPage(page: Page, title: string) {
-  const tree = await ensureNotebookTreeVisible(page);
-  await tree.getByText(title, { exact: true }).first().click();
-  await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 15_000 });
+async function selectPage(page: Page, title: string) {
+  let pageButton = page.getByRole("button", { name: title, exact: true })
+    .filter({ visible: true }).first();
+  if ((page.viewportSize()?.width ?? 0) <= 600) {
+    const menuButton = await page.getByTestId("ink-overlay-bar").isVisible()
+      ? page.getByTestId("ink-sidebar-toggle")
+      : page.getByTestId("open-sidebar-btn");
+    await menuButton.click();
+    await page.getByRole("dialog", { name: "Notes" })
+      .getByRole("button", { name: "Quick Notes", exact: true }).click();
+    pageButton = page.locator('[data-slot="sheet-content"]')
+      .getByRole("button", { name: title, exact: true });
+  }
+  await pageButton.click();
   await closeNotebookTreeSheet(page);
+}
+
+async function openPage(page: Page, title: string) {
+  await selectPage(page, title);
+  await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("annotation-layer")).toHaveAttribute(
+    "data-annotation-loaded-path", `${SECTION_PATH}/${title}.html`, { timeout: 15_000 }
+  );
+}
+
+async function useInstalledPwaPath(page: Page) {
+  await page.goto("/?source=pwa");
+  await expect.poll(async () => {
+    try {
+      return await page.evaluate(() => Boolean(navigator.serviceWorker.controller));
+    } catch {
+      return false; // The first worker claim can reload the page mid-check.
+    }
+  }, { timeout: 20_000 }).toBe(true);
+  await page.reload();
+  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 20_000 });
 }
 
 async function drawStroke(
@@ -159,7 +190,11 @@ test("SN-216: a new stroke stays rendered through autosave and reopen", async ({
 
   try {
     await seedPage(request, title);
-    await page.goto("/");
+    if (mobile) {
+      await useInstalledPwaPath(page);
+    } else {
+      await page.goto("/");
+    }
     await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 20_000 });
     await openPage(page, title);
 
@@ -212,5 +247,80 @@ test("SN-216: a new stroke stays rendered through autosave and reopen", async ({
   } finally {
     await fs.rm(pagePath, { force: true });
     await fs.rm(sidecarPath, { force: true });
+  }
+});
+
+test("SN-416: installed PWA fetches the current shell despite a stale cached launch", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "Installed mobile PWA delivery path");
+  await useInstalledPwaPath(page);
+
+  const { buildId } = await (await request.get("/api/version")).json() as { buildId: string };
+  const staleMarker = "sn416-stale-cached-shell";
+  const cachedMarker = await page.evaluate(async ({ buildId, staleMarker }) => {
+    const cache = await caches.open(`smart-notes-app-shell-${buildId}`);
+    await cache.put(window.location.href, new Response(
+      `<!doctype html><title>${staleMarker}</title><body>${staleMarker}</body>`,
+      { headers: { "Content-Type": "text/html" } }
+    ));
+    return (await (await cache.match(window.location.href))?.text())?.includes(staleMarker);
+  }, { buildId, staleMarker });
+  expect(cachedMarker).toBe(true);
+
+  await page.reload();
+  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 20_000 });
+  await expect(page).not.toHaveTitle(staleMarker);
+  expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+});
+
+test("SN-416: installed PWA keeps ink-page touch strokes after navigation and reload", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "Installed mobile PWA ink canvas");
+  const title = `sn416-${Date.now()}-pwa-ink`;
+  const created = await request.post("/api/page", {
+    data: { sectionPath: SECTION_PATH, title, noteType: "ink" },
+  });
+  expect(created.status()).toBe(201);
+  const { page: inkPage } = await created.json() as { page: { path: string } };
+  const inkPath = inkPage.path;
+  const persistedShapeCount = async () => {
+    const response = await request.get(`/api/ink?path=${encodeURIComponent(inkPath)}`);
+    expect(response.ok()).toBe(true);
+    const { scene } = await response.json() as {
+      scene: { document?: { store?: Record<string, { typeName?: string; type?: string }> } } | null;
+    };
+    return Object.values(scene?.document?.store ?? {}).filter(
+      (record) => record.typeName === "shape" && record.type === "draw"
+    ).length;
+  };
+
+  try {
+    await useInstalledPwaPath(page);
+    await selectPage(page, title);
+    await expect(page.getByTestId("ink-overlay-bar")).toBeVisible({ timeout: 20_000 });
+    const canvas = page.locator(".ink-canvas-host .tl-canvas");
+    await expect(canvas).toBeVisible();
+    await page.getByRole("button", { name: /^Draw —/ }).click();
+    const box = await canvas.boundingBox();
+    expect(box).not.toBeNull();
+    await drawStroke(page, box!, true);
+    const layer = page.locator(".ink-canvas-host");
+    await expect(layer.locator('.tl-shape[data-shape-type="draw"]')).toHaveCount(1);
+    await expectCommittedStrokePainted(layer);
+    await expect.poll(persistedShapeCount, { timeout: 10_000 }).toBe(1);
+
+    await selectPage(page, "AssetTarget");
+    await selectPage(page, title);
+    await expectCommittedStrokePainted(page.locator(".ink-canvas-host"));
+    await page.reload();
+    await selectPage(page, title);
+    await expectCommittedStrokePainted(page.locator(".ink-canvas-host"));
+    await expect.poll(persistedShapeCount).toBe(1);
+  } finally {
+    await request.delete(`/api/page?path=${encodeURIComponent(inkPath)}`);
   }
 });

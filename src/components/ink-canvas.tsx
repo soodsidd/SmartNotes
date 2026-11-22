@@ -5,8 +5,17 @@ import { Tldraw, type Editor, type TLStoreSnapshot, type TLGridProps } from "tld
 import "tldraw/tldraw.css";
 import { Grid2X2, Menu, PenLine } from "lucide-react";
 import { fetchInkScene, parseInkSidecarJson, saveInkScene, type InkBackgroundMode } from "@/lib/api/ink";
+import { logDrawEvent } from "@/lib/draw-mode-debug";
+import { registerReloadDrain } from "@/lib/reload-guard";
 
 const AUTOSAVE_DELAY_MS = 1200;
+
+/** Draw-shape count for draw-mode-debug evidence (never logs shape content). */
+function countDrawShapes(snapshot: unknown): number {
+  const store = (snapshot as { document?: { store?: Record<string, { typeName?: string; type?: string }> } } | null)
+    ?.document?.store;
+  return Object.values(store ?? {}).filter((record) => record.typeName === "shape" && record.type === "draw").length;
+}
 
 export interface InkCanvasHandle {
   flush: () => Promise<void>;
@@ -123,6 +132,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     fetchInkScene(pagePath)
       .then(({ scene, backgroundMode: mode }) => {
         if (!cancelled) {
+          logDrawEvent("ink.scene-load", { path: pagePath, shapes: countDrawShapes(scene) });
           setSnapshot((scene as TLStoreSnapshot | null) ?? null);
           setBackgroundMode(mode);
           backgroundModeRef.current = mode;
@@ -180,9 +190,11 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     const mode = backgroundModeRef.current;
     try {
       await saveInkScene(pagePath, snap, mode);
+      logDrawEvent("ink.save", { path: pagePath, trigger: "flush", shapes: countDrawShapes(snap), ok: true });
       onSaveStatusChange?.("saved");
       setSaveStatus("saved");
     } catch {
+      logDrawEvent("ink.save", { path: pagePath, trigger: "flush", shapes: countDrawShapes(snap), ok: false });
       onSaveStatusChange?.("error");
       setSaveStatus("error");
       throw new Error("Failed to save ink scene.");
@@ -217,11 +229,13 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       const mode = backgroundModeRef.current;
       saveInkScene(pagePath, snap, mode)
         .then(() => {
+          logDrawEvent("ink.save", { path: pagePath, trigger: "autosave", shapes: countDrawShapes(snap), ok: true });
           onSaveStatusChange?.("saved");
           setSaveStatus("saved");
           setTimeout(() => { onSaveStatusChange?.("idle"); setSaveStatus("idle"); }, 1200);
         })
         .catch(() => {
+          logDrawEvent("ink.save", { path: pagePath, trigger: "autosave", shapes: countDrawShapes(snap), ok: false });
           onSaveStatusChange?.("error");
           setSaveStatus("error");
         })
@@ -234,6 +248,19 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
         });
     }, AUTOSAVE_DELAY_MS);
   }, [onSaveStatusChange, pagePath, readOnly]);
+
+  // SN-416: a PWA worker update reloads the page. Flush a debounced or
+  // in-flight autosave first so the last strokes are not discarded.
+  React.useEffect(() => {
+    if (readOnly || previewSidecarJson !== undefined) return;
+    return registerReloadDrain(async () => {
+      const dirty = Boolean(timerRef.current) || savingRef.current || pendingRef.current;
+      logDrawEvent("ink.reload-drain", { path: pagePath, dirty });
+      if (dirty) {
+        await flushSave();
+      }
+    });
+  }, [flushSave, pagePath, previewSidecarJson, readOnly]);
 
   // Save immediately (no debounce) — used when toggling background mode.
   const saveNow = React.useCallback((mode: InkBackgroundMode) => {
