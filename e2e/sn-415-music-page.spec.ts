@@ -29,7 +29,7 @@ test("SN-418: large touch targets flip pages in fullscreen Play mode and keep fr
 
     for (const pageNumber of [2, 3]) {
       const pending = page.waitForResponse((r) => r.url().endsWith("/api/page") && r.request().method() === "POST" && r.status() === 201);
-      await music.getByRole("button", { name: "Add next page" }).tap();
+      await music.getByRole("button", { name: "Add next page" }).tap({ timeout: 15_000 });
       const { page: added } = await (await pending).json() as { page: { path: string } };
       paths.push(added.path);
       await expect(music.getByLabel(`Page ${pageNumber} of ${pageNumber}`)).toBeVisible();
@@ -56,6 +56,15 @@ test("SN-418: large touch targets flip pages in fullscreen Play mode and keep fr
     await page.mouse.down();
     await page.mouse.move(target.x + 100, target.y + 20, { steps: 6 });
     await page.mouse.up();
+    await expect(music.getByLabel("Page 3 of 3")).toBeVisible();
+
+    const touch = await context.newCDPSession(page);
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: target.x + 20, y: target.y + 20 }, { x: target.x + 60, y: target.y + 20 }],
+    });
+    await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await touch.detach();
     await expect(music.getByLabel("Page 3 of 3")).toBeVisible();
 
     for (const [button, pageNumber] of [[previous, 2], [previous, 1], [next, 2], [next, 3]] as const) {

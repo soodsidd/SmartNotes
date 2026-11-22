@@ -3138,7 +3138,7 @@ mark {
 .music-page__turns button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .music-page__turns button:disabled { opacity: .35; }
 .music-page__turns svg { width: 20px; height: 20px; flex: none; }
-.music-page__add-row { display: flex; justify-content: center; padding: 1.25rem .5rem; flex-shrink: 0; }
+.music-page__add-row { display: flex; justify-content: center; padding: 1.25rem .5rem calc(1.25rem + 56px + 1rem); flex-shrink: 0; }
 .music-page__add-btn { display: inline-flex; align-items: center; gap: .4rem; padding: .375rem .875rem; border: 1px dashed var(--border); border-radius: var(--radius-md); font-size: .8125rem; color: var(--muted-foreground); background: var(--surface); cursor: pointer; transition: border-color .15s, color .15s; }
 .music-page__add-btn:hover { border-color: var(--accent); color: var(--accent); }
 .music-page__add-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
