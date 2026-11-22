@@ -444,6 +444,7 @@ import { fetchAnnotationsScene } from "@/lib/api/annotations";
 import { cn } from "@/lib/utils";
 import type { PageComment } from "@/lib/comment-types";
 import { isPageKeyNote, keyNoteMenuLabel } from "@/lib/key-note";
+import { filterMusicChain, musicChainAnchor } from "@/lib/music-chain";
 import {
   PAGE_LINES_METADATA_KEY,
   applyPageLinesMetadata,
@@ -1797,7 +1798,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     [tree]
   );
 
-  /** SN-417: ordered sibling music pages for the active page (same container + same parentId + music type). */
+  /** SN-417: ordered sibling music pages for the active page (same chain anchor + same container).
+   *  Uses musicChainAnchor so unrelated top-level music pages (parentId===null) don't group together. */
   const activeMusicSiblings = React.useMemo<Array<{ path: string; title: string }> | undefined>(() => {
     if (!draft || draft.noteType !== "music") return undefined;
     let containerPages: VaultPage[] = [];
@@ -1810,9 +1812,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         break;
       }
     }
-    return containerPages
-      .filter((p) => p.noteType === "music" && p.parentId === draft.parentId)
-      .map((p) => ({ path: p.path, title: p.title }));
+    return filterMusicChain(containerPages, draft);
   }, [draft, tree]);
 
   const activeMusicPageIndex = React.useMemo(
@@ -5786,9 +5786,9 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       return [] as typeof tree[0]["pages"];
     })();
 
-    const musicSiblingCount = containerPages.filter(
-      (p) => p.noteType === "music" && p.parentId === currentDraft.parentId
-    ).length;
+    // Chain anchor: top-level pages are their own anchor; continuations share the anchor in parentId.
+    const chainAnchor = musicChainAnchor(currentDraft);
+    const musicSiblingCount = filterMusicChain(containerPages, currentDraft).length;
 
     // Strip any "(page N)" suffix from the base title, then append the next page number.
     const baseTitle = currentDraft.title.replace(/ \(page \d+\)$/, "");
@@ -5800,7 +5800,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         notebookPath: currentDraft.notebookPath,
         title: newTitle,
         noteType: "music",
-        parentId: currentDraft.parentId,
+        parentId: chainAnchor,
       });
 
       // Reorder: insert the new page immediately after the current page in the container.

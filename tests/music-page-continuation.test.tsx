@@ -13,6 +13,7 @@ import * as React from "react";
 import "@testing-library/jest-dom";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { InkCanvas } from "@/components/ink-canvas";
+import { filterMusicChain, musicChainAnchor } from "@/lib/music-chain";
 
 beforeAll(() => {
   global.ResizeObserver = class { observe() {} disconnect() {} unobserve() {} };
@@ -117,4 +118,50 @@ it("does not show Add next page button in readOnly mode", async () => {
   );
   await waitFor(() => expect(screen.getByTestId("music-page")).toBeInTheDocument());
   expect(screen.queryByTestId("music-add-page")).not.toBeInTheDocument();
+});
+
+// --- Chain anchor / grouping logic (SN-417 reviewer fix) ---
+
+describe("musicChainAnchor", () => {
+  it("returns own path for a top-level page (parentId === null)", () => {
+    expect(musicChainAnchor({ path: "NB/Sec/SongA.html", parentId: null })).toBe("NB/Sec/SongA.html");
+  });
+
+  it("returns parentId for a continuation page", () => {
+    expect(musicChainAnchor({ path: "NB/Sec/SongA (page 2).html", parentId: "NB/Sec/SongA.html" })).toBe("NB/Sec/SongA.html");
+  });
+});
+
+describe("filterMusicChain", () => {
+  const pages = [
+    { path: "NB/Sec/SongA.html", title: "Song A", noteType: "music" as const, parentId: null },
+    { path: "NB/Sec/SongA (page 2).html", title: "Song A (page 2)", noteType: "music" as const, parentId: "NB/Sec/SongA.html" },
+    { path: "NB/Sec/SongB.html", title: "Song B", noteType: "music" as const, parentId: null },
+    { path: "NB/Sec/SongB (page 2).html", title: "Song B (page 2)", noteType: "music" as const, parentId: "NB/Sec/SongB.html" },
+    { path: "NB/Sec/Note.html", title: "Plain note", noteType: "note" as const, parentId: null },
+  ];
+
+  it("two unrelated top-level music pages in the same section are NOT siblings of each other", () => {
+    const siblingsA = filterMusicChain(pages, pages[0]);
+    expect(siblingsA.map((p) => p.path)).toEqual(["NB/Sec/SongA.html", "NB/Sec/SongA (page 2).html"]);
+
+    const siblingsB = filterMusicChain(pages, pages[2]);
+    expect(siblingsB.map((p) => p.path)).toEqual(["NB/Sec/SongB.html", "NB/Sec/SongB (page 2).html"]);
+  });
+
+  it("viewing a continuation page yields the same chain as viewing the anchor page", () => {
+    const fromAnchor = filterMusicChain(pages, pages[0]);
+    const fromContinuation = filterMusicChain(pages, pages[1]);
+    expect(fromAnchor).toEqual(fromContinuation);
+  });
+
+  it("excludes non-music pages even if they share the same parentId", () => {
+    const chain = filterMusicChain(pages, pages[0]);
+    expect(chain.some((p) => p.path === "NB/Sec/Note.html")).toBe(false);
+  });
+
+  it("single top-level music page returns only itself", () => {
+    const isolated = [{ path: "NB/Sec/Solo.html", title: "Solo", noteType: "music" as const, parentId: null }];
+    expect(filterMusicChain(isolated, isolated[0])).toHaveLength(1);
+  });
 });
