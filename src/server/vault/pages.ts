@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { BIBLIOGRAPHY_PATH, isBibliographyPath, paperPath, paperReferenceIds } from "@/lib/papers";
 import { getVaultRoot } from "./config";
 import { VaultError } from "./errors";
+import type { InkEngineId } from "@/lib/ink-engine";
+import { SMART_NOTES_ANNOTATIONS_SUFFIX, SMART_NOTES_INK_SUFFIX, validateInkScene } from "./ink-sidecars";
 import { parseFrontmatterDocument, serializeFrontmatterDocument } from "./frontmatter";
 import { dirNameFromLabel, fileNameFromTitle, isPageFileName, resolveVaultPath, siblingAssetDirectory, toVaultRelativePath } from "./paths";
 import {
@@ -1123,6 +1125,7 @@ export async function relinkDesignPage(input: RelinkDesignPageInput) {
   // Move SN-owned sidecars to the new stem; leave the old HTML untouched.
   for (const extension of [
     ".annotations.json",
+    SMART_NOTES_ANNOTATIONS_SUFFIX,
     ".companion.json",
     ".ref.json",
   ] as const) {
@@ -1145,6 +1148,7 @@ export async function unlinkDesignPage(pagePath: string) {
   const { absolutePath, relativePath } = resolveVaultPath(pagePath, "page");
   await removeDesignLinkSidecar(absolutePath);
   await fs.rm(absolutePath.replace(/\.html$/i, ".annotations.json"), { force: true });
+  await fs.rm(absolutePath.replace(/\.html$/i, SMART_NOTES_ANNOTATIONS_SUFFIX), { force: true });
   await fs.rm(absolutePath.replace(/\.html$/i, ".companion.json"), { force: true });
   await fs.rm(absolutePath.replace(/\.html$/i, ".ref.json"), { force: true });
   const assetDirectory = resolveVaultPath(siblingAssetDirectory(relativePath), "section");
@@ -1188,12 +1192,14 @@ function parseInkSidecar(data: unknown): { scene: unknown; backgroundMode: InkBa
   };
 }
 
-export async function readInkScene(pagePath: string): Promise<{ scene: unknown; backgroundMode: InkBackgroundMode }> {
+export async function readInkScene(pagePath: string, engine: InkEngineId = "tldraw"): Promise<{ scene: unknown; backgroundMode: InkBackgroundMode }> {
   const { absolutePath } = resolveVaultPath(pagePath, "page");
-  const sidecarPath = absolutePath.replace(/\.html$/i, ".ink.json");
+  const sidecarPath = absolutePath.replace(/\.html$/i, engine === "smart-notes" ? SMART_NOTES_INK_SUFFIX : ".ink.json");
   try {
     const raw = await fs.readFile(sidecarPath, "utf8");
-    return parseInkSidecar(JSON.parse(raw) as unknown);
+    const result = parseInkSidecar(JSON.parse(raw) as unknown);
+    if (engine === "smart-notes") validateInkScene(result.scene, engine);
+    return result;
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
       return { scene: null, backgroundMode: "blank" };
@@ -1205,10 +1211,12 @@ export async function readInkScene(pagePath: string): Promise<{ scene: unknown; 
 export async function saveInkScene(
   pagePath: string,
   scene: unknown,
-  backgroundMode: InkBackgroundMode = "blank"
+  backgroundMode: InkBackgroundMode = "blank",
+  engine: InkEngineId = "tldraw"
 ): Promise<void> {
+  validateInkScene(scene, engine);
   const { absolutePath } = resolveVaultPath(pagePath, "page");
-  const sidecarAbsPath = absolutePath.replace(/\.html$/i, ".ink.json");
+  const sidecarAbsPath = absolutePath.replace(/\.html$/i, engine === "smart-notes" ? SMART_NOTES_INK_SUFFIX : ".ink.json");
   const sidecar: InkSidecar = { scene, inkMeta: { backgroundMode } };
   await writeAtomically(sidecarAbsPath, JSON.stringify(sidecar));
 }
@@ -1238,13 +1246,16 @@ function parseAnnotationsSidecar(data: unknown): { scene: unknown; drawableBotto
 }
 
 export async function readAnnotationsScene(
-  pagePath: string
+  pagePath: string,
+  engine: InkEngineId = "tldraw"
 ): Promise<{ scene: unknown; drawableBottom?: number }> {
   const { absolutePath } = resolveVaultPath(pagePath, "page");
-  const sidecarPath = absolutePath.replace(/\.html$/i, ".annotations.json");
+  const sidecarPath = absolutePath.replace(/\.html$/i, engine === "smart-notes" ? SMART_NOTES_ANNOTATIONS_SUFFIX : ".annotations.json");
   try {
     const raw = await fs.readFile(sidecarPath, "utf8");
-    return parseAnnotationsSidecar(JSON.parse(raw) as unknown);
+    const result = parseAnnotationsSidecar(JSON.parse(raw) as unknown);
+    if (engine === "smart-notes") validateInkScene(result.scene, engine);
+    return result;
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
       return { scene: null };
@@ -1256,10 +1267,12 @@ export async function readAnnotationsScene(
 export async function saveAnnotationsScene(
   pagePath: string,
   scene: unknown,
-  options?: { drawableBottom?: number }
+  options?: { drawableBottom?: number; engine?: InkEngineId }
 ): Promise<void> {
+  const engine = options?.engine ?? "tldraw";
+  validateInkScene(scene, engine);
   const { absolutePath } = resolveVaultPath(pagePath, "page");
-  const sidecarAbsPath = absolutePath.replace(/\.html$/i, ".annotations.json");
+  const sidecarAbsPath = absolutePath.replace(/\.html$/i, engine === "smart-notes" ? SMART_NOTES_ANNOTATIONS_SUFFIX : ".annotations.json");
   const sidecar: { scene: unknown; drawableBottom?: number } = { scene };
   if (options?.drawableBottom != null && Number.isFinite(options.drawableBottom)) {
     sidecar.drawableBottom = Math.ceil(options.drawableBottom);
@@ -1642,6 +1655,8 @@ async function moveSidecarIfPresent(
   extension:
     | ".ink.json"
     | ".annotations.json"
+    | typeof SMART_NOTES_INK_SUFFIX
+    | typeof SMART_NOTES_ANNOTATIONS_SUFFIX
     | ".companion.json"
     | ".ref.json"
     | ".log.json"
@@ -2294,6 +2309,8 @@ export async function renamePage(pagePath: string, title: string) {
   const movedSidecars: Array<
     | ".ink.json"
     | ".annotations.json"
+    | typeof SMART_NOTES_INK_SUFFIX
+    | typeof SMART_NOTES_ANNOTATIONS_SUFFIX
     | ".companion.json"
     | ".ref.json"
     | ".log.json"
@@ -2319,6 +2336,8 @@ export async function renamePage(pagePath: string, title: string) {
     for (const extension of [
       ".ink.json",
       ".annotations.json",
+      SMART_NOTES_INK_SUFFIX,
+      SMART_NOTES_ANNOTATIONS_SUFFIX,
       ".companion.json",
       ".ref.json",
       ".log.json",
@@ -2387,6 +2406,7 @@ export async function deletePage(pagePath: string) {
   if (page.designLinked) {
     await removeDesignLinkSidecar(absolutePath);
     await fs.rm(absolutePath.replace(/\.html$/i, ".annotations.json"), { force: true });
+    await fs.rm(absolutePath.replace(/\.html$/i, SMART_NOTES_ANNOTATIONS_SUFFIX), { force: true });
     await fs.rm(absolutePath.replace(/\.html$/i, ".companion.json"), { force: true });
     await fs.rm(absolutePath.replace(/\.html$/i, ".ref.json"), { force: true });
     const assetDirectory = resolveVaultPath(siblingAssetDirectory(relativePath), "section");
@@ -2404,6 +2424,8 @@ export async function deletePage(pagePath: string) {
   await fs.rm(absolutePath, { force: false });
   await fs.rm(absolutePath.replace(/\.html$/i, ".ink.json"), { force: true });
   await fs.rm(absolutePath.replace(/\.html$/i, ".annotations.json"), { force: true });
+  await fs.rm(absolutePath.replace(/\.html$/i, SMART_NOTES_INK_SUFFIX), { force: true });
+  await fs.rm(absolutePath.replace(/\.html$/i, SMART_NOTES_ANNOTATIONS_SUFFIX), { force: true });
   await fs.rm(absolutePath.replace(/\.html$/i, ".companion.json"), { force: true });
   await fs.rm(absolutePath.replace(/\.html$/i, ".ref.json"), { force: true });
   await fs.rm(absolutePath.replace(/\.html$/i, ".log.json"), { force: true });
@@ -2678,7 +2700,8 @@ export async function movePage(pagePath: string, targetSectionPath: string) {
     if (oldPath === srcRelPath) movedRootSource = nextSource;
     await addArtifact(oldAbsolute, newAbsolute, nextSource);
     for (const suffix of [
-      ".ink.json", ".annotations.json", ".companion.json", ".ref.json", ".log.json",
+      ".ink.json", ".annotations.json", SMART_NOTES_INK_SUFFIX, SMART_NOTES_ANNOTATIONS_SUFFIX,
+      ".companion.json", ".ref.json", ".log.json",
       ".form.json", ".design-link.json", SPREADSHEET_SIDECAR_EXTENSION,
       ...((await listAppDataSidecars(oldAbsolute)).map((name) => name.slice(path.basename(oldAbsolute, ".html").length))),
     ]) {

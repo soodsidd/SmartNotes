@@ -10,10 +10,12 @@ export interface CachedPageEntry {
 
 export interface PageContentCacheOptions {
   maxEntries?: number;
+  loadAnnotations?: typeof fetchAnnotationsScene;
 }
 
 export class PageContentCache {
   private readonly maxEntries: number;
+  private readonly loadAnnotations: typeof fetchAnnotationsScene;
   private readonly entries = new Map<string, CachedPageEntry>();
   private readonly order: string[] = [];
   private readonly inflightAnnotations = new Map<
@@ -23,6 +25,7 @@ export class PageContentCache {
 
   constructor(options: PageContentCacheOptions = {}) {
     this.maxEntries = options.maxEntries ?? 24;
+    this.loadAnnotations = options.loadAnnotations ?? fetchAnnotationsScene;
   }
 
   get(path: string): CachedPageEntry | undefined {
@@ -91,7 +94,7 @@ export class PageContentCache {
     }
 
     logAnnotationDebug("cache.annotations.miss", { path });
-    const request = fetchAnnotationsScene(path)
+    const request = this.loadAnnotations(path)
       .then(({ scene, drawableBottom }) => {
         const sceneValue = scene ?? null;
         if (this.entries.has(path)) {

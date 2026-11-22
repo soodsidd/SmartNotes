@@ -441,7 +441,7 @@ import {
 } from "@/lib/print-settings";
 import { PrintSettingsDialog } from "@/components/print-settings-dialog";
 import { pageContentCache } from "@/lib/page-content-cache";
-import { fetchAnnotationsScene } from "@/lib/api/annotations";
+import { inkSidecars } from "@/lib/ink-engine-sidecars";
 import { cn } from "@/lib/utils";
 import type { PageComment } from "@/lib/comment-types";
 import { isPageKeyNote, keyNoteMenuLabel } from "@/lib/key-note";
@@ -1280,6 +1280,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
   const inkCanvasRef = React.useRef<InkCanvasHandle | null>(null);
   const designInkRef = React.useRef<AnnotationLayerHandle | null>(null);
   const [inkEngine, setInkEngine] = React.useState<AvailableInkEngineId>(DEFAULT_INK_ENGINE);
+  const inkEngineRef = React.useRef(inkEngine);
+  inkEngineRef.current = inkEngine;
   React.useEffect(() => setInkEngine(readInkEngine()), []);
   const spreadsheetPageRef = React.useRef<SpreadsheetPageHandle | null>(null);
   const annotationLayerRef = React.useRef<AnnotationLayerHandle | null>(null);
@@ -4279,13 +4281,13 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                 annotationsScene: null,
               });
             }
-            void pageContentCache.ensureAnnotations(parentPagePath).then(({ scene }) => {
-              if (activePagePathRef.current === parentPagePath) {
-                annotationLayerRef.current?.loadScene(
-                  scene ?? null
-                );
-              }
-            });
+            if (inkEngineRef.current === "tldraw") {
+              void pageContentCache.ensureAnnotations(parentPagePath).then(({ scene }) => {
+                if (activePagePathRef.current === parentPagePath && inkEngineRef.current === "tldraw") {
+                  annotationLayerRef.current?.loadScene(scene ?? null);
+                }
+              });
+            }
           }
         }
         await loadTree({ pagePath: activePagePathRef.current });
@@ -11975,27 +11977,27 @@ function EditorPanel({
 
   React.useEffect(() => {
     setAnnotationMode("edit");
-    setAnnotationScene(null);
-    setDrawableBottom(undefined);
     setInkTool("draw");
     setInkColor("black");
     setInkStroke("m");
   }, [draft.path]);
 
+  React.useLayoutEffect(() => {
+    setAnnotationScene(null);
+    setDrawableBottom(undefined);
+  }, [draft.path, inkEngine, previewAnnotationsJson]);
+
   React.useEffect(() => {
     if (previewAnnotationsJson !== undefined) return;
-    const cached = pageContentCache.get(draft.path);
-    if (cached?.drawableBottom != null) {
-      setDrawableBottom(cached.drawableBottom);
-    }
-    void fetchAnnotationsScene(draft.path)
-      .then(({ drawableBottom: nextDrawableBottom }) => {
-        if (nextDrawableBottom != null) {
-          setDrawableBottom(nextDrawableBottom);
-        }
-      })
-      .catch(() => undefined);
-  }, [draft.path, previewAnnotationsJson]);
+    let cancelled = false;
+    const sidecar = inkSidecars[inkEngine].annotation;
+    const cached = sidecar.getCached(draft.path);
+    if (cached?.drawableBottom != null) setDrawableBottom(cached.drawableBottom);
+    void sidecar.load(draft.path).then(({ drawableBottom: bottom }) => {
+      if (!cancelled && bottom != null) setDrawableBottom((current) => current ?? bottom);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [draft.path, inkEngine, previewAnnotationsJson]);
 
   const handleDrawableBottomChange = React.useCallback((value: number) => {
     setDrawableBottom((current) => (current === value ? current : value));

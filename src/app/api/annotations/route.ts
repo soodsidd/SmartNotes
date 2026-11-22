@@ -1,21 +1,16 @@
 import { NextResponse } from "next/server";
 import { readAnnotationsScene, saveAnnotationsScene } from "@/server/vault/pages";
 import { toErrorResponse, VaultError } from "@/server/vault/errors";
+import { parseInkEngine } from "@/server/vault/ink-sidecars";
 
 export const dynamic = "force-dynamic";
 
-function searchParamPath(request: Request) {
-  const url = new URL(request.url);
-  const pagePath = url.searchParams.get("path");
-  if (!pagePath) {
-    throw new VaultError("INVALID_PATH", 'Query parameter "path" is required.');
-  }
-  return pagePath;
-}
-
 export async function GET(request: Request) {
   try {
-    const { scene, drawableBottom } = await readAnnotationsScene(searchParamPath(request));
+    const query = new URL(request.url).searchParams;
+    const path = query.get("path");
+    if (!path) throw new VaultError("INVALID_PATH", 'Query parameter "path" is required.');
+    const { scene, drawableBottom } = await readAnnotationsScene(path, parseInkEngine(query.get("engine")));
     return NextResponse.json({ scene, drawableBottom });
   } catch (error) {
     const response = toErrorResponse(error);
@@ -25,15 +20,17 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { path, scene, drawableBottom } = (await request.json()) as {
+    const { path, scene, drawableBottom, engine } = (await request.json()) as {
       path?: string;
       scene?: unknown;
       drawableBottom?: number;
+      engine?: unknown;
     };
     if (!path) {
       throw new VaultError("INVALID_PATH", 'Body field "path" is required.');
     }
     await saveAnnotationsScene(path, scene ?? null, {
+      engine: parseInkEngine(engine),
       drawableBottom:
         typeof drawableBottom === "number" && Number.isFinite(drawableBottom)
           ? drawableBottom

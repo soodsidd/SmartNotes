@@ -234,8 +234,9 @@ export function createTldrawInkEngine(editor: Editor): InkEngine {
         if (isReadonly) editor.updateInstanceState({ isReadonly: true });
       }
     },
-    toSvg: async () => {
-      const ids = editor.getCurrentPageShapesSorted().map((shape) => shape.id);
+    toSvg: async (strokeIds) => {
+      const filter = strokeIds && new Set(strokeIds);
+      const ids = editor.getCurrentPageShapesSorted().map((shape) => shape.id).filter((id) => !filter || filter.has(id));
       if (!ids.length) return null;
       return await editor.getSvgString(ids, {
         background: false,

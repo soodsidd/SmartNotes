@@ -4,6 +4,7 @@ import * as React from "react";
 import type { InkEngine, InkScene } from "@/lib/ink-engine";
 import { DEFAULT_INK_ENGINE, type AvailableInkEngineId } from "@/lib/ink-engine-preference";
 import { TldrawInkSurface } from "@/components/tldraw-ink-adapter";
+import { SmartNotesInkSurface } from "@/lib/ink-engine/surface";
 
 export interface InkEngineSurfaceProps {
   variant: "annotation" | "note" | "music";
@@ -14,6 +15,7 @@ export interface InkEngineSurfaceProps {
 
 const surfaces: Record<AvailableInkEngineId, React.ComponentType<InkEngineSurfaceProps>> = {
   tldraw: TldrawInkSurface,
+  "smart-notes": SmartNotesInkSurface,
 };
 
 export function InkEngineSurface({

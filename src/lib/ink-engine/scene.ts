@@ -16,6 +16,11 @@ export const INK_WIDTHS: Readonly<Record<InkSize, number>> = { s: 1.5, m: 2.625,
 
 const colors = new Set<string>(INK_COLORS.map(({ id }) => id));
 
+export function countSmartNotesStrokes(value: unknown): number | undefined {
+  const scene = value as Partial<SmartNotesInkScene> | null | undefined;
+  if (scene?.version === 2 && Array.isArray(scene.strokes)) return scene.strokes.length;
+}
+
 function isPoint(value: unknown): value is InkPoint {
   return Array.isArray(value) && value.length === 3 && value.every(Number.isFinite)
     && value[2] >= 0 && value[2] <= 1;

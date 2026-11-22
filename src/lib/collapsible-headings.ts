@@ -1,4 +1,6 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { strokeGeometry } from "@/lib/ink-engine/geometry";
+import { isSmartNotesInkScene } from "@/lib/ink-engine/scene";
 
 export interface CollapsibleHeadingSection {
   key: string;
@@ -108,6 +110,12 @@ function collectShapeRelativePoints(
 }
 
 export function extractAnnotationVerticalRanges(snapshot: unknown): VerticalRange[] {
+  if (isSmartNotesInkScene(snapshot)) {
+    return snapshot.strokes.map((stroke) => {
+      const { bounds } = strokeGeometry(stroke);
+      return { minY: bounds.top, maxY: bounds.bottom };
+    });
+  }
   const store = (snapshot as { document?: { store?: Record<string, unknown> } } | null)?.document
     ?.store;
   if (!store) {

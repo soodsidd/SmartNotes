@@ -14,7 +14,7 @@ import type { AnnotationLayerHandle } from "@/components/annotation-layer";
 import { INK_COLORS, type InkColor, type InkSize, type InkTool } from "@/lib/ink-engine";
 
 interface AnnotationDrawToolbarProps {
-  layerRef: React.RefObject<AnnotationLayerHandle | null>;
+  layerRef?: React.RefObject<AnnotationLayerHandle | null>;
   activeTool: InkTool;
   activeColor: InkColor;
   activeStroke: InkSize;
@@ -23,7 +23,9 @@ interface AnnotationDrawToolbarProps {
   onToolChange: (tool: InkTool) => void;
   onColorChange: (color: InkColor) => void;
   onStrokeChange: (size: InkSize) => void;
-  onExitDrawMode: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onExitDrawMode?: () => void;
   variant?: "desktop" | "mobile";
 }
 
@@ -159,25 +161,29 @@ export function AnnotationDrawToolbar({
   onToolChange,
   onColorChange,
   onStrokeChange,
+  onUndo,
+  onRedo,
   onExitDrawMode,
   variant = "desktop",
 }: AnnotationDrawToolbarProps) {
   const isMobile = variant === "mobile";
 
   function handleTool(tool: InkTool) {
-    layerRef.current?.setTool(tool);
+    layerRef?.current?.setTool(tool);
     onToolChange(tool);
   }
 
   function handleUndo() {
-    layerRef.current?.undo();
+    if (onUndo) onUndo();
+    else layerRef?.current?.undo();
   }
 
   function handleRedo() {
-    layerRef.current?.redo();
+    if (onRedo) onRedo();
+    else layerRef?.current?.redo();
   }
 
-  const exitButton = (
+  const exitButton = onExitDrawMode && (
     <button
       type="button"
       title="Exit draw mode"
@@ -253,7 +259,7 @@ export function AnnotationDrawToolbar({
           data-testid={isMobile ? `ink-color-${color.id}-mobile` : `ink-color-${color.id}`}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
-            layerRef.current?.setColor(color.id);
+            layerRef?.current?.setColor(color.id);
             onColorChange(color.id);
           }}
           className={cn(
@@ -282,7 +288,7 @@ export function AnnotationDrawToolbar({
           data-testid={isMobile ? `ink-stroke-${size.id}-mobile` : `ink-stroke-${size.id}`}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
-            layerRef.current?.setStroke(size.id);
+            layerRef?.current?.setStroke(size.id);
             onStrokeChange(size.id);
           }}
           className={cn(
@@ -315,7 +321,7 @@ export function AnnotationDrawToolbar({
           testIdPrefix="ink-color"
           options={INK_COLORS.map((color) => ({ id: color.id, label: `Ink color ${color.id}` }))}
           onSelect={(colorId) => {
-            layerRef.current?.setColor(colorId);
+            layerRef?.current?.setColor(colorId);
             onColorChange(colorId);
           }}
           renderTrigger={() => (
@@ -340,7 +346,7 @@ export function AnnotationDrawToolbar({
           testIdPrefix="ink-stroke"
           options={STROKE_SIZES.map((size) => ({ id: size.id, label: size.label }))}
           onSelect={(strokeId) => {
-            layerRef.current?.setStroke(strokeId);
+            layerRef?.current?.setStroke(strokeId);
             onStrokeChange(strokeId);
           }}
           renderTrigger={() => (
@@ -359,8 +365,7 @@ export function AnnotationDrawToolbar({
             );
           }}
         />
-        <InkToolbarSep />
-        {exitButton}
+        {exitButton && <><InkToolbarSep />{exitButton}</>}
       </div>
     );
   }
@@ -374,8 +379,7 @@ export function AnnotationDrawToolbar({
       {colorGroup}
       <InkToolbarSep />
       {strokeGroup}
-      <InkToolbarSep />
-      {exitButton}
+      {exitButton && <><InkToolbarSep />{exitButton}</>}
     </div>
   );
 }

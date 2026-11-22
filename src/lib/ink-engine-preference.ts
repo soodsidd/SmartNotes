@@ -7,12 +7,10 @@ export const INK_ENGINE_OPTIONS = [
   { id: "smart-notes", label: "Smart Notes ink" },
 ] as const;
 
-// Register Smart Notes ink here when its surface and sidecar support ship.
-const AVAILABLE_INK_ENGINES = ["tldraw"] as const;
-export type AvailableInkEngineId = (typeof AVAILABLE_INK_ENGINES)[number];
+export type AvailableInkEngineId = InkEngineId;
 
 export function isInkEngineAvailable(value: unknown): value is AvailableInkEngineId {
-  return AVAILABLE_INK_ENGINES.some((engine) => engine === value);
+  return INK_ENGINE_OPTIONS.some(({ id }) => id === value);
 }
 
 export function readInkEngine(): AvailableInkEngineId {

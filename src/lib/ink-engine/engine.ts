@@ -25,6 +25,7 @@ export class SmartNotesInkEngine implements InkEngine {
   private future: (readonly InkStroke[])[] = [];
   private documentListeners = new Set<() => void>();
   private sessionListeners = new Set<() => void>();
+  private viewListeners = new Set<() => void>();
   private version = 0;
   private gesture: Gesture | null = null;
   private selected = new Set<string>();
@@ -45,12 +46,16 @@ export class SmartNotesInkEngine implements InkEngine {
     return () => { listeners.delete(listener); };
   }
 
-  subscribeView = (listener: () => void) => this.subscribe(listener, "session");
+  subscribeView = (listener: () => void) => {
+    this.viewListeners.add(listener);
+    return () => { this.viewListeners.delete(listener); };
+  };
   getViewVersion = () => this.version;
 
-  private notify() {
+  private notify(session = true) {
     this.version++;
-    for (const listener of this.sessionListeners) listener();
+    for (const listener of this.viewListeners) listener();
+    if (session) for (const listener of this.sessionListeners) listener();
   }
 
   private replace(strokes: readonly InkStroke[], userEdit: boolean) {
@@ -187,7 +192,7 @@ export class SmartNotesInkEngine implements InkEngine {
   cancel() {
     if (!this.gesture) return;
     this.gesture = null;
-    this.notify();
+    this.notify(false);
   }
 
   private hit(point: Point, tolerance: number) {
@@ -213,7 +218,7 @@ export class SmartNotesInkEngine implements InkEngine {
         this.gesture = { kind: lasso ? "lasso" : this.selectionMode, points: [point] };
       }
     }
-    this.notify();
+    this.notify(false);
   }
 
   private extendErase(gesture: EraseGesture, point: Point, tolerance: number) {
@@ -249,7 +254,7 @@ export class SmartNotesInkEngine implements InkEngine {
         gesture.offset = [end[0] - gesture.start[0], end[1] - gesture.start[1]];
         break;
     }
-    this.notify();
+    this.notify(false);
   }
 
   private region(gesture: SelectGesture) {
@@ -282,7 +287,7 @@ export class SmartNotesInkEngine implements InkEngine {
         if (region.length >= 3) this.selected = new Set(strokesInRegion(this.strokes, region).map(({ id }) => id));
       }
     }
-    this.notify();
+    this.notify(false);
   }
 
   deleteSelected() {

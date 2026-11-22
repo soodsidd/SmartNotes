@@ -367,6 +367,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
           pagePath,
           shapeCount: countAnnotationShapes(cached.annotationsScene),
         });
+        if (cached.drawableBottom != null) onDrawableBottomChange?.(cached.drawableBottom);
         applyScene((cached.annotationsScene) ?? null, forPath);
         return;
       }
@@ -674,7 +675,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
     const exportInkOverlay = React.useCallback(async (): Promise<PageInkExport | null> => {
       const editor = editorRef.current;
-      if (!editor || countAnnotationShapes(editor.getScene()) === 0) {
+      if (!editor || editor.getStrokeCount() === 0) {
         return null;
       }
 
@@ -894,6 +895,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       };
 
       const onTouchStart = (event: TouchEvent) => {
+        if (event.target instanceof Element && event.target.closest("[data-sn-ink-controls]")) return;
         const action = decidePenAwareTouchGesture({
           touchCount: event.touches.length,
           penMode: penModeRef.current,
@@ -927,6 +929,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       };
 
       const onTouchMove = (event: TouchEvent) => {
+        if (penDownRef.current) return;
         if (!gesture.active) return;
         const anchorY = panAnchorY(event.touches);
         if (anchorY == null) return;
@@ -949,6 +952,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       // while the stylus is drawing (palm rejection). The stylus itself reports
       // `pointerType === "pen"` and is never blocked.
       const blockPointerDuringGesture = (event: PointerEvent) => {
+        if (event.target instanceof Element && event.target.closest("[data-sn-ink-controls]")) return;
         if ((gesture.active || penDownRef.current) && event.pointerType === "touch") {
           event.stopPropagation();
         }

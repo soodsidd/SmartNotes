@@ -8,14 +8,17 @@ import { MusicStaff, MUSIC_PAPER_HEIGHT, MUSIC_PAPER_WIDTH } from "@/components/
 import { logDrawEvent } from "@/lib/draw-mode-debug";
 import { registerReloadDrain } from "@/lib/reload-guard";
 import { InkEngineSurface } from "@/components/ink-engine-surface";
-import { inkDocumentsMatch, type InkColor, type InkDocument, type InkEngine, type InkScene } from "@/lib/ink-engine";
+import { INK_COLORS, inkDocumentsMatch, type InkColor, type InkDocument, type InkEngine, type InkScene, type InkSize } from "@/lib/ink-engine";
 import { DEFAULT_INK_ENGINE, type AvailableInkEngineId } from "@/lib/ink-engine-preference";
 import { inkSidecars } from "@/lib/ink-engine-sidecars";
+import { countSmartNotesStrokes } from "@/lib/ink-engine/scene";
 
 const AUTOSAVE_DELAY_MS = 1200;
 
 /** Draw-shape count for draw-mode-debug evidence (never logs shape content). */
 function countDrawShapes(snapshot: unknown): number {
+  const strokeCount = countSmartNotesStrokes(snapshot);
+  if (strokeCount != null) return strokeCount;
   const store = (snapshot as { document?: { store?: Record<string, { typeName?: string; type?: string }> } } | null)
     ?.document?.store;
   return Object.values(store ?? {}).filter((record) => record.typeName === "shape" && record.type === "draw").length;
@@ -77,7 +80,9 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   const [musicFullscreen, setMusicFullscreen] = React.useState(false);
   const [musicTool, setMusicTool] = React.useState<"select" | "draw" | "eraser">("draw");
   const [musicColor, setMusicColor] = React.useState<InkColor>("black");
-  const [musicSize, setMusicSize] = React.useState<"s" | "m" | "l">("m");
+  const [musicSize, setMusicSize] = React.useState<InkSize>("m");
+  const smartNotes = inkEngine === "smart-notes";
+  const musicColors = smartNotes ? INK_COLORS : INK_COLORS.slice(0, 3);
 
   const changeMusicTool = (tool: "select" | "draw" | "eraser") => {
     setMusicTool(tool);
@@ -87,7 +92,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     setMusicColor(color);
     editorRef.current?.setColor(color);
   };
-  const changeMusicSize = (size: "s" | "m" | "l") => {
+  const changeMusicSize = (size: InkSize) => {
     setMusicSize(size);
     editorRef.current?.setSize(size);
   };
@@ -136,6 +141,10 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     if (!music) return;
     editorRef.current?.setCamera({ x: 0, y: 0, z: musicScale }, { force: true });
   }, [music, musicScale]);
+
+  React.useLayoutEffect(() => {
+    editorRef.current?.setReadOnly(readOnly || musicPlaying);
+  }, [musicPlaying, readOnly]);
 
   React.useEffect(() => {
     if (!musicFullscreen && !musicPlaying) return;
@@ -495,9 +504,10 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
           <button type="button" aria-label="Pen" aria-pressed={musicTool === "draw"} onClick={() => changeMusicTool("draw")}><PenLine className="size-4" /></button>
           <button type="button" aria-label="Eraser" aria-pressed={musicTool === "eraser"} onClick={() => changeMusicTool("eraser")}><Eraser className="size-4" /></button>
           <span className="music-page__dock-separator" />
-          {(["black", "blue", "red"] as const).map((color) => <button type="button" key={color} aria-label={`${color} ink`} aria-pressed={musicColor === color} onClick={() => changeMusicColor(color)}><span className={`music-page__color music-page__color--${color}`} /></button>)}
-          <select aria-label="Pen thickness" value={musicSize} onChange={(event) => changeMusicSize(event.target.value as "s" | "m" | "l")}>
+          {musicColors.map(({ id, hex }) => <button type="button" key={id} aria-label={`${id} ink`} aria-pressed={musicColor === id} onClick={() => changeMusicColor(id)}><span className={`music-page__color music-page__color--${id}`} style={smartNotes ? { backgroundColor: hex } : undefined} /></button>)}
+          <select aria-label="Pen thickness" value={musicSize} onChange={(event) => changeMusicSize(event.target.value as InkSize)}>
             <option value="s">Thin</option><option value="m">Medium</option><option value="l">Thick</option>
+            {smartNotes && <option value="xl">Extra thick</option>}
           </select>
           <button type="button" aria-label="Undo" onClick={() => editorRef.current?.undo()}><Undo2 className="size-4" /></button>
           <button type="button" aria-label="Redo" onClick={() => editorRef.current?.redo()}><Redo2 className="size-4" /></button>

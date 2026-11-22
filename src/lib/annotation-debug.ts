@@ -1,3 +1,5 @@
+import { countSmartNotesStrokes } from "@/lib/ink-engine/scene";
+
 export const ANNOTATION_DEBUG_PREFIX = "[SN-55 annotations]";
 
 export function isAnnotationDebugEnabled(): boolean {
@@ -13,6 +15,8 @@ export function logAnnotationDebug(
 }
 
 export function countAnnotationShapes(snapshot: unknown): number {
+  const strokeCount = countSmartNotesStrokes(snapshot);
+  if (strokeCount != null) return strokeCount;
   const store = (snapshot as { document?: { store?: Record<string, unknown> } } | null)?.document
     ?.store;
   if (!store) return 0;

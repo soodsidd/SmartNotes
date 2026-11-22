@@ -402,18 +402,15 @@ Deletes a page and its sibling `.assets/` directory, plus `.ink.json` (ink notes
 
 ### GET /api/ink?path=\<vault-relative-path\>
 
-Returns the Tldraw scene snapshot for an ink page.
+Returns the saved scene and paper background for an ink or music page. Pass engine=smart-notes to select the Smart Notes sidecar. Omit engine or pass tldraw to read the tldraw sidecar.
 
-**Response:** `{ scene: TldrawSnapshot | null }` — `null` when no sidecar exists yet (new ink note that has never been saved).
+The response has fields scene and backgroundMode. The scene is null when the selected sidecar is missing. Background mode is blank or grid.
 
 ### PUT /api/ink
 
-Persists the Tldraw scene snapshot for an ink page. Called by the `InkCanvas` component on every autosave (1200 ms debounce).
+Saves the selected engine's scene and background. The body includes path, scene, optional backgroundMode, and optional engine. Omitting engine selects tldraw. With engine set to smart-notes, scene is null or a valid version 2 scene and the route writes <page-stem>.sn-ink.json.
 
-**Body:** `{ path: string, scene: TldrawSnapshot }`
-**Response:** `{ ok: true }`
-
-Route handler: `src/app/api/ink/route.ts`. Client wrapper: `src/lib/api/ink.ts` (`fetchInkScene`, `saveInkScene`).
+InkCanvas calls this route after the 1200 ms autosave debounce or on flush. Success returns { ok: true }. See src/app/api/ink/route.ts and src/lib/api/ink.ts.
 
 ### GET /api/jupyter/session?path=\<path\>, POST /api/jupyter/session, DELETE /api/jupyter/session?path=\<path\>, DELETE /api/jupyter/session
 
@@ -425,18 +422,13 @@ Route handler: `src/app/api/jupyter/session/route.ts`. Runtime: `src/server/jupy
 
 ### GET /api/annotations?path=\<vault-relative-path\>
 
-Returns the Tldraw scene snapshot for a **text page** annotation sidecar (`<page-stem>.annotations.json`).
-
-**Response:** `{ scene: TldrawSnapshot | null }`
+Returns the saved annotation scene and optional drawableBottom for the selected engine. Pass engine=smart-notes to read <page-stem>.sn-annotations.json. The default tldraw engine reads <page-stem>.annotations.json. The scene is null when the selected sidecar is missing.
 
 ### PUT /api/annotations
 
-Persists the annotation scene for a text page. Called by `AnnotationLayer` on autosave (1200 ms debounce, same pattern as ink notes).
+Saves page-space annotations for the selected engine. The body includes path, scene, optional drawableBottom, and optional engine. Omitting engine selects tldraw. With engine set to smart-notes, scene is null or a valid version 2 scene.
 
-**Body:** `{ path: string, scene: TldrawSnapshot }`
-**Response:** `{ ok: true }`
-
-Route handler: `src/app/api/annotations/route.ts`. Client wrapper: `src/lib/api/annotations.ts`.
+AnnotationLayer calls this route on autosave and flush. Success returns { ok: true }. See src/app/api/annotations/route.ts and src/lib/api/annotations.ts.
 
 ### GET/PUT /api/pdf-annotations
 
@@ -1889,7 +1881,7 @@ These are lessons that apply across multiple areas of the codebase - things that
 
 ## 14. Ink Notes (Drawing Surface)
 
-**Plain English:** An ink note is a separate note type — a blank drawing canvas rather than a text document. You create one from the "New ink note" option in any section's context menu. Opening an ink note shows a Tldraw drawing surface instead of the rich-text editor. Your drawing is saved automatically as you work. You can always get back to the rest of the app via the overlay toolbar at the top of the canvas.
+**Plain English:** An ink note is a separate note type — a blank drawing canvas rather than a text document. You create one from the "New ink note" option in any section's context menu. Opening an ink note shows the drawing engine selected in Settings. Your drawing is saved automatically as you work. You can always get back to the rest of the app via the overlay toolbar at the top of the canvas.
 
 **Design decision (v1):** Ink is note-first, not PDF-first, and not inline ink over flowing rich text. An ink note is its own page with its own file; it is not a layer on top of a text page.
 
@@ -1901,15 +1893,19 @@ The tldraw adapter (the only module that imports the SDK) embeds tldraw 5.x usin
 
 **Lazy loading (startup perf):** Both `InkCanvas` and `AnnotationLayer` are loaded via `next/dynamic` with `ssr: false` in `notebook-shell-reliable.tsx`. This keeps Tldraw (~1.7 MB of JS) out of the initial page bundle; the chunk only downloads when the user first opens an ink note or an annotated text page. The static imports were replaced with `import type` for the handle/props types (type-only, erased at compile time) and `dynamic()` calls for the component values. Both component files export their Props interface to support the type cast on the dynamic import result.
 
-**Ink engine preference (SN-422):** Settings > General > Ink engine defaults to tldraw. Smart Notes ink appears as a disabled option until SN-423 provides its renderer and sidecars. The device-local preference is stored under `smart-notes:ink-engine`; test fixtures can seed `tldraw` before loading the app. A supported switch awaits the active surface's pending saves, persists the choice, then remounts that surface. A save failure leaves the current engine active.
+**Ink engine preference (SN-422, SN-423).** Choose tldraw or Smart Notes ink under Settings → General → Ink engine. The device stores the choice under the localStorage key smart-notes:ink-engine and defaults to tldraw. A switch flushes pending edits, saves the preference, and remounts the active surface. A save failure keeps the current engine active.
 
-The `InkEngine` contract covers scene loading, tools and stroke styles, undo history, read-only state, camera, change notifications, geometry, and SVG export. The ink wrappers continue to own input routing, scrolling, layout, and saves. Renderer and sidecar routing are keyed by engine.
+**Smart Notes ink.** Draw with six colors and four pen sizes, erase whole strokes, or tap a stroke, drag a box, or draw a lasso to select ink. Drag selected strokes to move them. Delete a selection from the selection controls or with Delete/Backspace. Undo and redo cover drawing, erasing, moving, and deleting. A loaded scene starts with empty history. Shapes, text boxes, arrows, image paste, resizing, rotation, and highlighter remain tldraw features.
+
+The renderer under src/lib/ink-engine uses Pointer Events and coalesced samples when the browser supplies them. Stylus pressure comes from the device. Mouse and finger pressure is estimated from movement speed and stored with the samples. The perfect-freehand outline uses the SN-154 base widths of 1.5, 2.625, 3.75, and 7.5 page pixels. Display and SVG export share the outline. Opening a scene, changing a camera, or navigating the surface creates no user document edit.
+
+Standalone notes use internal wheel pan, Ctrl/Cmd+wheel zoom, and two-finger pan and pinch. Text and music pages supply their own camera. Pointer mapping accounts for the host's CSS scale before translating screen input into page coordinates. The SN-156 pen-aware gesture rule is shared with AnnotationLayer. The registered draw-mode-debug source also emits smart-ink.mount and smart-ink.edit with the surface variant and stroke count.
 
 ### Persistence model
 
-When an ink note is opened, `InkCanvas` looks up the engine's sidecar route. The tldraw route calls `GET /api/ink?path=…`. If a sidecar exists its snapshot is loaded through the adapter; otherwise Tldraw starts with a blank canvas. On every user-originated change to the Tldraw store (filtered to `"user"` source to ignore internal bookkeeping), a 1200 ms debounced save fires `PUT /api/ink` with the current `InkEngine.getScene()`. The sidecar is written atomically by `saveInkScene` in `src/server/vault/pages.ts`. No save is triggered on mount or on programmatic store changes. SN-416: live (non-preview, writable) canvases also register a reload-guard drain, so any hard reload that goes through `drainBeforeReload` (PWA worker update, update banner, Settings -> Reload app) first flushes a debounced or in-flight save.
+InkCanvas loads and saves only the active engine's sidecar. tldraw owns <page-stem>.ink.json and Smart Notes ink owns <page-stem>.sn-ink.json. Smart Notes ink stores { version: 2, strokes: [{ id, points: [[x, y, pressure], ...], color, size, createdAt }] } as the scene in the existing ink API envelope with background metadata. Coordinates are in page pixels, and pressure ranges from 0 to 1. Both files can coexist beside the same page. Rename, move, and delete handle each sidecar alongside its page.
 
-Tldraw continues to own the existing `.ink.json` and `.annotations.json` sidecars. Each additional engine must register its own storage route and cache before it can be enabled.
+The wrapper debounces committed user changes by 1200 ms, then sends the active scene through PUT /api/ink. The server writes the sidecar atomically. Mounting, loading, and changing camera position do not trigger a save. The SN-416 reload drain and live-document flush let the wrapper finish pending writes before a PWA reload, an engine switch, or music navigation. Existing tldraw version snapshots use the tldraw sidecar format.
 
 ### App-chrome overlay
 
@@ -1934,7 +1930,6 @@ ote_type: ink in frontmatter) still show a PenLine icon in indigo and an indigo-
 
 ---
 
-
 ## Music Pages (SN-415)
 
 ## Music Pages (SN-415)
@@ -1953,7 +1948,7 @@ The sidebar uses a music icon. Text page lines and rich-text export remain text-
 
 ## 15. Text Page Annotations
 
-**Plain English:** Stylus ink on text pages is a separate layer, not mixed into the HTML body. Each page may have a sibling file `<page-stem>.annotations.json` holding a Tldraw scene. You enter Draw mode from the format ribbon pen icon; the draw toolbar **X** exit control returns to typing. Ink notes open a standalone canvas as described in section 14.
+**Plain English:** Stylus ink on text pages is a separate layer, not mixed into the HTML body. Each engine keeps its own annotation sidecar beside the page. You enter Draw mode from the format ribbon pen icon; the draw toolbar **X** exit control returns to typing. Ink notes open a standalone canvas as described in section 14.
 
 **Interaction:** Glass overlay — TipTap always renders the page; Draw mode only disables typing and enables the transparent ink layer. All ink tools live in the format ribbon (`AnnotationDrawToolbar`); Tldraw UI is hidden in the content area. Because hidden Tldraw UI also disables Tldraw's built-in keyboard shortcuts, `RichTextEditor` listens for undo/redo key commands at the window level only while Draw mode is active and forwards them to `AnnotationLayer`. Editable HTML inputs are excluded so dialogs and other text fields keep their own native shortcuts.
 
@@ -1963,17 +1958,17 @@ The sidebar uses a music icon. Text page lines and rich-text export remain text-
 
 **Page TOC ink remap (SN-220):** Unlike collapse (which refuses when ink would shift), generating/refreshing/removing a top-of-page TOC intentionally remaps ink. `RichTextEditor` measures the TOC `offsetHeight` delta and calls `AnnotationLayer.applyVerticalRemap(deltaY)` so every shape Y and `drawableBottom` move with the prose. Unsafe remap refuses the TOC mutation and reverts HTML — never leave misaligned ink. Pure snapshot helpers: `src/lib/annotation-vertical-remap.ts`.
 
-**Engine and storage (SN-422):** `AnnotationLayer` uses the same ink-engine selection as standalone notes, including on design-page overlays. It keeps page-owner saves, touch routing, scroll and zoom mapping, drawable extent, and TOC reflow in the wrapper. The adapter applies those operations to tldraw and retains the SN-154 scale marker on new annotation strokes.
+**Engine and storage (SN-422, SN-423).** AnnotationLayer uses the selected engine on text and design pages. The wrapper owns page-owner saves, touch scrolling, workspace camera sync, drawable extent, and TOC reflow. Smart Notes ink applies page-space translations to v2 strokes and keeps the undo/redo coordinates aligned after a reflow. Its painted bounds feed the heading-collapse guard and drawable extent.
 
-**Storage:** `{ scene: TldrawSnapshot, drawableBottom?: number }` in `.annotations.json`. `drawableBottom` (page-space px) persists the scrollable drawable extent below the text body so reload restores margin ink area even before shapes hydrate. Server helpers: `readAnnotationsScene`, `saveAnnotationsScene`, `deleteAnnotationsScene` in `src/server/vault/pages.ts`. Version history uses kind `"annotations"` under `.versions/<page-stem>.annotations/`.
+**Sidecar files.** tldraw writes .annotations.json and Smart Notes ink writes .sn-annotations.json through the same API with engine=smart-notes. Both envelopes contain scene and optional drawableBottom. This page-space extent restores the scrollable drawing margin after reload. Each engine has a separate annotation cache. Existing version snapshots use the tldraw .annotations format.
 
 **Extended canvas below text (SN-123):** Text pages add a OneNote-style drawable margin under the TipTap body. `pageFrameHeight` is `max(textHeight, viewportHeight) + bottomCanvasPadding`, where default padding is `max(viewportHeight, 800px)`. The annotation overlay still uses the sticky viewport clip + `syncAnnotationCamera` in normal edit/draw mode; only the scrollable frame grows below the prose column. The canvas always keeps a full blank margin below the lowest stroke (OneNote-style): whenever a stroke lacks a viewport-scaled margin of empty space beneath it, the frame extends so the user can scroll *past* their last stroke and keep drawing. The margin is `autoGrowBottomMargin(viewportHeight)` (≈0.9 viewport, floor `AUTO_GROW_BOTTOM_MARGIN_PX` = 600px); `drawableBottom` is set to `lowestStrokeBottom + margin` on stroke end (immediate frame growth) and on autosave (persisted to the sidecar). Because the extent is derived from the lowest stroke rather than the previous frame height, it is stable and never compounds. TipTap content height is unchanged — only the canvas/frame extends. Print/export use `getExportSnapshot().frameHeight`, which includes the extended drawable area so margin ink appears in HTML export and print snapshots. Helpers: `src/lib/page-frame.ts`, `src/lib/annotation-extent.ts`.
 
-**Navigation lifecycle (SN-55):** `AnnotationLayer` stays mounted across text-page switches. Page sidecars are loaded through the in-memory `pageContentCache`; repeat visits use the cached scene and only miss paths call `GET /api/annotations`. While an incoming page's sidecar is pending, the layer hides previous-page ink and only loads the Tldraw store after the sidecar belongs to the current path. Saves target `loadedPathRef` (the page whose scene currently occupies the persistent Tldraw store), not the live `pagePath` prop, so rapid switches cannot write outgoing strokes onto the incoming page. Draw-mode interactivity is also gated on `loadedPathRef === pagePath`; until the selected page owns the loaded store, the annotation layer remains passive even if the toolbar is in Draw mode. Programmatic `InkEngine.loadScene` calls are ignored by the user-edit listener so scene hydration cannot mark ink dirty or trigger autosave. Switching to an ink-less page reloads a captured empty Tldraw snapshot to clear the previous scene without remounting. Cached or fetched scenes are handed to Tldraw through `hydratedSceneRef` plus a scene version; do not load from delayed React snapshot state, because returning to a cached page can otherwise reapply a stale empty scene.
+**Navigation lifecycle (SN-55):** `AnnotationLayer` stays mounted across text-page switches. Page sidecars are loaded through the active engine's in-memory cache; repeat visits use the cached scene and only miss paths call `GET /api/annotations`. While an incoming page's sidecar is pending, the layer hides previous-page ink and only loads the engine after the sidecar belongs to the current path. Saves target `loadedPathRef` (the page whose scene currently occupies the mounted engine), not the live `pagePath` prop, so rapid switches cannot write outgoing strokes onto the incoming page. Draw-mode interactivity is also gated on `loadedPathRef === pagePath`; until the selected page owns the loaded store, the annotation layer remains passive even if the toolbar is in Draw mode. Programmatic `InkEngine.loadScene` calls are ignored by the user-edit listener so scene hydration cannot mark ink dirty or trigger autosave. Switching to an ink-less page reloads the engine's captured empty scene to clear the previous scene without remounting. Cached or fetched scenes are handed to the engine through `hydratedSceneRef` plus a scene version; do not load from delayed React snapshot state, because returning to a cached page can otherwise reapply a stale empty scene.
 
 **Debugging:** Set `NEXT_PUBLIC_SN55_ANNOTATION_DEBUG=1` before starting the preview to emit browser console events with the `[SN-55 annotations]` prefix. The trace logs hydration, cache hit/miss, store-owner loads, user document changes, flush/autosave targets, annotation API calls, and the current scene snapshot handoff to the editor collapse guard.
 
-**Lifecycle:** Rename, move, and delete relocate or remove the annotations sidecar alongside the `.html` page (same as `.ink.json`). Page-leave snapshots pair HTML and annotations with a shared millisecond timestamp so restore can recover both.
+**Lifecycle.** Rename, move, and delete carry each annotation sidecar with the page. Legacy page-leave snapshots pair HTML and tldraw annotations by millisecond timestamp.
 
 ### Lessons Learned
 
@@ -2005,7 +2000,7 @@ The sidebar uses a music icon. Text page lines and rich-text export remain text-
 
 **Plain English:** Text pages can leave the app three ways. **Export HTML** (toolbar download icon or active-page sidebar menu) saves a self-contained `.html` file with the note title, TipTap body HTML, vault images inlined as data URIs, and annotation ink embedded as an SVG overlay. **Export DOCX** (active text-page sidebar menu) saves a `.docx` for Google Docs handoff with the page title, body text structure, links, tables, lists, and embedded vault images. **Print** (toolbar printer icon or `Ctrl/Cmd+P` on a text page) follows the Windows-style pattern (SN-120): apply saved layout settings silently and open the **browser print dialog immediately** — no mandatory in-app modal first. **Advanced print settings** (toolbar print chevron → *Advanced print settings…*) is a separate, optional modal for page margins and line spacing only; it does not gate printing.
 
-**HTML export pipeline:** `notebook-shell-reliable.tsx` flushes pending annotation saves, reads `RichTextEditorHandle.getExportSnapshot()`, calls `AnnotationLayerHandle.exportInkOverlay()` (`editor.getSvgString` over current page shapes), inlines `/vault/...` assets via `inlineVaultAssetsInHtml` in `src/lib/page-export.ts`, strips the duplicate leading `<h1>` from body HTML (`stripDuplicatePageHeading`) because the export header already renders the page title, and downloads the bundle with `triggerHtmlBundleDownload`. Ink notes and version-preview mode disable export/print actions.
+**HTML export pipeline:** `notebook-shell-reliable.tsx` flushes pending annotation saves, reads `RichTextEditorHandle.getExportSnapshot()`, calls `AnnotationLayerHandle.exportInkOverlay()` (the active engine exports SVG for the current page geometry), inlines `/vault/...` assets via `inlineVaultAssetsInHtml` in `src/lib/page-export.ts`, strips the duplicate leading `<h1>` from body HTML (`stripDuplicatePageHeading`) because the export header already renders the page title, and downloads the bundle with `triggerHtmlBundleDownload`. Ink notes and version-preview mode disable export/print actions.
 
 **DOCX interchange pipeline (SN-81):** Section menus expose **Import DOCX**, which posts the selected file and target section to `POST /api/page/docx`. The server parses `word/document.xml`, relationships, numbering, and media from the OOXML package, creates a new text page through the normal vault lifecycle, writes extracted images to the new page's sibling `.assets/` directory, and stores imported image references as `/vault/...` URLs. Page menus expose **Export DOCX**, which sends the active editor snapshot to `PUT /api/page/docx`; server-side conversion writes the page title, headings, paragraphs, ordered/unordered lists, tables, bold/italic/underline/strike runs, hyperlinks, and embedded vault images into an OOXML package. `PUT /api/page/docx` names the download from the page title; non-ASCII characters (for example em-dash `—`) use RFC 5987 `filename*` with an ASCII fallback so `Content-Disposition` stays valid and the export does not surface as a connection error. Optional frontmatter keys `sourceUrl` and `publishedUrl` are supported for Google Docs source/published link tracking. Math degrades to plain text/source markers; ink annotations, comments, companion threads, and other Smart Notes-only context are not included in DOCX v1. For Google Docs publishing, download the Google Doc as `.docx`, import it into the intended Smart Notes section, edit/AI/ink inside Smart Notes, export `.docx`, upload to Drive, then open with Google Docs.
 
