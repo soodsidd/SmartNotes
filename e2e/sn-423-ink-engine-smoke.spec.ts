@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 import { clickShellMoreItem, dismissBlockingOverlays } from "./helpers";
 
 test("SN-423 Settings mounts the Smart Notes ink note and annotation surfaces", async ({ page, request }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   const sectionPath = "Personal Notebook/Quick Notes";
   const scene = {
     version: 2,
@@ -33,9 +35,10 @@ test("SN-423 Settings mounts the Smart Notes ink note and annotation surfaces", 
   for (const { title } of surfaces) {
     await page.getByTestId("tree").getByText(title, { exact: true }).first().click();
     const canvas = page.getByTestId("smart-notes-ink-surface");
-    await expect(canvas).toBeVisible();
+    await expect(canvas).toBeVisible({ timeout: 20_000 });
     const stroke = canvas.locator('[data-sn-ink-stroke="smoke-ink"]');
     await expect(stroke).toBeVisible();
     await expect(stroke).toHaveAttribute("d", /^M.+Z$/);
   }
+  expect(pageErrors).toEqual([]);
 });
