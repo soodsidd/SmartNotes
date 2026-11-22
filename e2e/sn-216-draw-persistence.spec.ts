@@ -24,6 +24,13 @@ async function selectPage(page: Page, title: string) {
       ? page.getByTestId("ink-sidebar-toggle")
       : page.getByTestId("open-sidebar-btn");
     await menuButton.click();
+    const sheet = page.locator('[data-slot="sheet-content"]');
+    await expect(sheet).toBeVisible();
+    // Reopening from the ink bar keeps the last drilled section view.
+    const drillBack = sheet.getByTestId("mobile-drill-back");
+    if (await drillBack.isVisible()) {
+      await drillBack.click();
+    }
     await page.getByRole("dialog", { name: "Notes" })
       .getByRole("button", { name: "Quick Notes", exact: true }).click();
     pageButton = page.locator('[data-slot="sheet-content"]')
@@ -316,8 +323,10 @@ test("SN-416: installed PWA keeps ink-page touch strokes after navigation and re
     await selectPage(page, "AssetTarget");
     await selectPage(page, title);
     await expectCommittedStrokePainted(page.locator(".ink-canvas-host"));
-    await page.reload();
-    await selectPage(page, title);
+    // Relaunch the installed app straight onto the page (full document reload).
+    await page.goto(`/?source=pwa&page=${encodeURIComponent(inkPath)}`);
+    await expect(page.getByTestId("ink-overlay-bar")).toBeVisible({ timeout: 20_000 });
+    expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
     await expectCommittedStrokePainted(page.locator(".ink-canvas-host"));
     await expect.poll(persistedShapeCount).toBe(1);
   } finally {
