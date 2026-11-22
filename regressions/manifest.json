@@ -821,7 +821,7 @@
     {
       "id": "e2e-sn-415-music-page",
       "name": "Music page ink and print",
-      "description": "Playwright tablet-width music paper, ink reload, full screen, and print",
+      "description": "Playwright tablet-width music paper, ink reload, full screen, print, and 1:1 stroke coordinates on scaled-down paper",
       "appType": "browser",
       "command": "npm run test:e2e -- e2e/sn-415-music-page.spec.ts --project=desktop",
       "timeoutMs": 300000,
