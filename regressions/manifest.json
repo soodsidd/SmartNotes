@@ -820,11 +820,11 @@
     },
     {
       "id": "e2e-sn-415-music-page",
-      "name": "Music page ink and print",
-      "description": "Playwright tablet-width music paper, ink reload, full screen, print, and 1:1 stroke coordinates on scaled-down paper, plus sidebar blank-menu and page right-click music page creation",
+      "name": "Music page ink, print, and multi-page song",
+      "description": "Playwright: music paper, ink reload, full screen, print, 1:1 stroke coordinates on scaled paper, sidebar menus, page-type controls, and SN-417 continuation — Add next page creates a sibling with correct order, Prev/Next navigation works, ink persists independently on each page after reload",
       "appType": "browser",
       "command": "npm run test:e2e -- e2e/sn-415-music-page.spec.ts --project=desktop",
-      "timeoutMs": 300000,
+      "timeoutMs": 360000,
       "enabled": true,
       "tags": ["e2e", "browser", "music", "ink", "targeted"],
       "feature": "music",
@@ -834,8 +834,8 @@
       "cost": "slow",
       "lifecycle": "pre-merge",
       "sourceFiles": [{ "path": "e2e/sn-415-music-page.spec.ts" }],
-      "intent": "Music staff remains aligned with saved ink on screen and in print.",
-      "whenToRun": "Pre-merge when changing music paper or ink rendering."
+      "intent": "Music staff stays aligned with ink on screen and in print; continuation pages are ordered correctly and have independent ink sidecars.",
+      "whenToRun": "Pre-merge when changing music page rendering, ink, page creation, or navigation."
     },
     {
       "id": "e2e-sn-26-ink-note",

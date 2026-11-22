@@ -15,6 +15,8 @@ staff lines, `#33383b` brace, and `#323638` clefs. Those fixed values belong
 to the printable paper artwork, not app chrome; no new app theme tokens were
 added. Keyboard focus uses the existing `--ring` token.
 
+**SN-417 multi-page controls:** The Add next page button uses `--border` (dashed), `--muted-foreground` text, `--surface` background, `--radius-md` corners, and `--accent` border/text on hover — all existing tokens. The Previous/Next chevron buttons reuse the top-bar 44px button style. The N/M page indicator uses `--muted-foreground` at 0.75rem, matching the status label. Disabled nav buttons drop to 35% opacity with `cursor: not-allowed`. No new color, spacing, or typography tokens were added.
+
 ## Dictation mic (SN-406)
 
 The dictation mic (`src/styles/dictation.css`) appears in the Companion

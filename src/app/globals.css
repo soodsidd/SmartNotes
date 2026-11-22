@@ -3116,10 +3116,17 @@ mark {
 .music-page__bar button:hover { background: var(--secondary); }
 .music-page__bar button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .music-page__name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .875rem; font-weight: 500; }
-.music-page__status { margin-left: auto; font-size: .75rem; color: var(--muted-foreground); }
-.music-page__name + button { margin-left: auto; }
-.music-page__viewport { flex: 1; min-height: 0; overflow: auto; padding: 1rem .5rem; background: var(--muted); }
-.music-page__scaled { position: relative; margin: 0 auto; }
+.music-page__spacer { flex: 1; min-width: 0; }
+.music-page__status { font-size: .75rem; color: var(--muted-foreground); flex-shrink: 0; }
+.music-page__page-indicator { font-size: .75rem; color: var(--muted-foreground); flex-shrink: 0; white-space: nowrap; }
+.music-page__bar button:disabled { opacity: 0.35; cursor: not-allowed; }
+.music-page__bar button:disabled:hover { background: transparent; }
+.music-page__viewport { flex: 1; min-height: 0; overflow: auto; padding: 1rem .5rem; background: var(--muted); display: flex; flex-direction: column; align-items: center; }
+.music-page__add-row { display: flex; justify-content: center; padding: 1.25rem .5rem; flex-shrink: 0; }
+.music-page__add-btn { display: inline-flex; align-items: center; gap: .4rem; padding: .375rem .875rem; border: 1px dashed var(--border); border-radius: var(--radius-md); font-size: .8125rem; color: var(--muted-foreground); background: var(--surface); cursor: pointer; transition: border-color .15s, color .15s; }
+.music-page__add-btn:hover { border-color: var(--accent); color: var(--accent); }
+.music-page__add-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.music-page__scaled { position: relative; flex-shrink: 0; }
 .music-page__paper { position: relative; z-index: 0; width: 794px; height: 1123px; transform-origin: top left; background: #fff; color: #323638; box-shadow: 0 0 0 1px var(--border); }
 .music-staff { position: absolute; inset: 0; pointer-events: none; }
 .music-staff__title { position: absolute; top: 60px; left: 104px; right: 70px; padding-bottom: .5rem; border-bottom: 1px solid #d4d6d8; font-size: 1rem; color: #171b1d; }
@@ -3143,7 +3150,9 @@ mark {
   body:has(.music-page) [data-testid="app-shell"] { display: block !important; }
   body:has(.music-page) [data-testid="page-main"] { display: block !important; height: auto !important; overflow: visible !important; }
   .music-page, .music-page--fullscreen { position: static !important; display: block !important; width: 794px !important; height: 1123px !important; margin: 0 !important; background: #fff !important; }
-  .music-page__viewport, .music-page__scaled { width: 794px !important; height: 1123px !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; background: #fff !important; }
+  .music-page__viewport { width: 794px !important; height: 1123px !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; background: #fff !important; display: block !important; }
+  .music-page__scaled { width: 794px !important; height: 1123px !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; background: #fff !important; }
+  .music-page__add-row { display: none !important; }
   .music-page__paper { transform: none !important; box-shadow: none !important; }
   .music-page__ink .tlui-layout, .music-page__ink .tlui-menu-zone { display: none !important; }
   @page { size: A4; margin: 0; }
