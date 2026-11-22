@@ -129,6 +129,88 @@ test("sidebar page-pane blank menu and page right-click menu create music pages"
   await expect(page.getByTestId("music-page")).toBeVisible({ timeout: 20000 });
 });
 
+test("SN-417: continuation page is added immediately after current, prev/next navigates, and ink persists independently after reload", async ({ page }) => {
+  test.setTimeout(180_000);
+  await fs.mkdir(evidence, { recursive: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // Create the first music page.
+  const title = `sn417-song-${Date.now()}`;
+  const r1 = await page.request.post("/api/page", {
+    data: { notebookPath: "Personal Notebook", sectionPath: "Personal Notebook/Quick Notes", title, noteType: "music" },
+  });
+  expect(r1.status()).toBe(201);
+  const { page: page1 } = await r1.json() as { page: { path: string } };
+
+  // Open the first page.
+  await page.goto(`/?page=${encodeURIComponent(page1.path)}`);
+  const music = page.getByTestId("music-page");
+  await expect(music).toBeVisible({ timeout: 20_000 });
+
+  // Add a continuation from the music page view.
+  const addBtn = music.getByTestId("music-add-page");
+  await expect(addBtn).toBeVisible({ timeout: 10_000 });
+  const page2Response = page.waitForResponse(
+    (r) => r.url().includes("/api/page") && r.request().method() === "POST" && r.status() === 201
+  );
+  await addBtn.click();
+  const page2Created = await page2Response;
+  const { page: page2 } = await page2Created.json() as { page: { path: string; title: string } };
+
+  // Should auto-navigate to the new page.
+  await expect(page.getByTestId("music-page")).toBeVisible({ timeout: 20_000 });
+
+  // Page 2 should be titled as a continuation.
+  expect(page2.title).toMatch(/page 2/i);
+
+  // Verify prev/next nav appears on page 2.
+  const prevBtn = music.getByTestId("music-prev-page");
+  const nextBtn = music.getByTestId("music-next-page");
+  await expect(prevBtn).toBeVisible({ timeout: 10_000 });
+  await expect(nextBtn).toBeVisible({ timeout: 5_000 });
+  await expect(prevBtn).not.toBeDisabled();
+  await expect(nextBtn).toBeDisabled();
+
+  // Draw a stroke on page 2.
+  await expect(music.locator(".tl-canvas")).toBeVisible({ timeout: 15_000 });
+  const paperBox2 = (await music.locator(".music-page__paper").boundingBox())!;
+  await page.mouse.move(paperBox2.x + paperBox2.width * 0.4, paperBox2.y + paperBox2.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(paperBox2.x + paperBox2.width * 0.6, paperBox2.y + paperBox2.height * 0.5, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const ink = await page.request.get(`/api/ink?path=${encodeURIComponent(page2.path)}`);
+    const data = await ink.json() as { scene?: { document?: { store?: Record<string, unknown> } } };
+    return Object.keys(data.scene?.document?.store ?? {}).filter((k) => k.startsWith("shape:")).length;
+  }, { timeout: 10_000 }).toBeGreaterThan(0);
+
+  // Navigate back to page 1 via Prev button.
+  await prevBtn.click();
+  await expect(page.getByTestId("music-page")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".music-page__name")).toHaveText(title, { timeout: 10_000 });
+
+  // Verify page 1's ink sidecar has no shapes (ink is independent).
+  const ink1 = await page.request.get(`/api/ink?path=${encodeURIComponent(page1.path)}`);
+  const data1 = await ink1.json() as { scene?: { document?: { store?: Record<string, unknown> } } };
+  const page1Shapes = Object.keys(data1.scene?.document?.store ?? {}).filter((k) => k.startsWith("shape:")).length;
+  expect(page1Shapes).toBe(0);
+
+  // Page 1 shows no Prev button and an enabled Next button.
+  const prevOnPage1 = music.getByTestId("music-prev-page");
+  const nextOnPage1 = music.getByTestId("music-next-page");
+  await expect(prevOnPage1).toBeDisabled();
+  await expect(nextOnPage1).not.toBeDisabled();
+
+  // After reload, page 2 ink persists.
+  await page.goto(`/?page=${encodeURIComponent(page2.path)}`);
+  await expect(page.getByTestId("music-page")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".music-page__ink .tl-shape").first()).toBeVisible({ timeout: 15_000 });
+
+  // Clean up.
+  await page.request.delete(`/api/page?path=${encodeURIComponent(page2.path)}`);
+  await page.request.delete(`/api/page?path=${encodeURIComponent(page1.path)}`);
+});
+
 test("page ellipsis converts text and music, and Add Page chevron chooses a type", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const title = `sn415-convert-${Date.now()}`;
