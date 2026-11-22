@@ -23,6 +23,12 @@ let userChange: (() => void) | null = null;
 const snapshot = {
   document: { store: { "shape:a": { typeName: "shape", type: "draw" } } },
 };
+let documentRecords: Record<string, { typeName: string; type: string }> = {};
+
+function drawStroke(notify = true) {
+  documentRecords = snapshot.document.store;
+  if (notify) userChange?.();
+}
 
 jest.mock("tldraw", () => {
   const ReactMock = jest.requireActual<typeof import("react")>("react");
@@ -31,8 +37,9 @@ jest.mock("tldraw", () => {
       ReactMock.useEffect(() => {
         onMount({
           updateInstanceState: jest.fn(),
-          getSnapshot: () => snapshot,
+          getSnapshot: () => ({ document: { store: documentRecords } }),
           store: {
+            serialize: () => ({ ...documentRecords }),
             listen: (fn: () => void) => {
               userChange = fn;
               return () => { userChange = null; };
@@ -49,6 +56,7 @@ describe("InkCanvas reload drain (SN-416)", () => {
   beforeEach(() => {
     __resetReloadGuardForTests();
     userChange = null;
+    documentRecords = {};
     jest.mocked(saveInkScene).mockClear();
   });
 
@@ -65,7 +73,7 @@ describe("InkCanvas reload drain (SN-416)", () => {
 
   it("flushes a stroke still inside the autosave debounce before reload", async () => {
     await mountCanvas();
-    act(() => userChange!());
+    act(drawStroke);
     expect(saveInkScene).not.toHaveBeenCalled();
 
     const result = await drain();
@@ -83,7 +91,7 @@ describe("InkCanvas reload drain (SN-416)", () => {
   it("fails the drain when the flush cannot reach the server", async () => {
     await mountCanvas();
     jest.mocked(saveInkScene).mockRejectedValueOnce(new Error("offline"));
-    act(() => userChange!());
+    act(drawStroke);
 
     expect((await drain()).ok).toBe(false);
   });
@@ -94,7 +102,7 @@ describe("InkCanvas reload drain (SN-416)", () => {
     await act(async () => { await ref.current!.flushPending(); });
     expect(saveInkScene).not.toHaveBeenCalled();
 
-    act(() => userChange!());
+    act(() => drawStroke(false));
     jest.mocked(saveInkScene).mockRejectedValueOnce(new Error("offline"));
     await act(async () => {
       await expect(ref.current!.flushPending()).rejects.toThrow("Failed to save ink scene.");

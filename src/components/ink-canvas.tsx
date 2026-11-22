@@ -133,8 +133,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = React.useRef(false);
   const pendingRef = React.useRef(false);
-  const changeVersionRef = React.useRef(0);
-  const savedVersionRef = React.useRef(0);
+  const savedDocumentRef = React.useRef<TLStoreSnapshot["store"] | null>(null);
   const editorRef = React.useRef<Editor | null>(null);
   const musicViewportRef = React.useRef<HTMLDivElement | null>(null);
   const musicInkRef = React.useRef<HTMLDivElement | null>(null);
@@ -297,11 +296,10 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     setSaveStatus("saving");
 
     const snap = editor.getSnapshot();
-    const version = changeVersionRef.current;
     const mode = backgroundModeRef.current;
     try {
       await saveInkScene(pagePath, snap, mode);
-      savedVersionRef.current = version;
+      savedDocumentRef.current = snap.document.store;
       logDrawEvent("ink.save", { path: pagePath, trigger: "flush", shapes: countDrawShapes(snap), ok: true });
       onSaveStatusChange?.("saved");
       setSaveStatus("saved");
@@ -316,11 +314,23 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     }
   }, [onSaveStatusChange, pagePath]);
 
+  const hasUnsavedDocument = React.useCallback(() => {
+    const editor = editorRef.current;
+    const saved = savedDocumentRef.current;
+    if (!editor || !saved) return false;
+    // Tldraw batches store listener notifications to animation frames. Inspect
+    // the live immutable records before a navigation or reload can unmount them.
+    const document = editor.store.serialize("document");
+    const recordIds = Object.keys(document) as Array<keyof typeof document>;
+    return recordIds.length !== Object.keys(saved).length ||
+      recordIds.some((id) => document[id] !== saved[id]);
+  }, []);
+
   const flushPending = React.useCallback(async () => {
-    while (editorRef.current && (changeVersionRef.current !== savedVersionRef.current || savingRef.current)) {
+    while (editorRef.current && (savingRef.current || hasUnsavedDocument())) {
       await flushSave();
     }
-  }, [flushSave]);
+  }, [flushSave, hasUnsavedDocument]);
 
   React.useImperativeHandle(ref, () => ({ flush: flushSave, flushPending }), [flushSave, flushPending]);
 
@@ -344,11 +354,10 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       setSaveStatus("saving");
 
       const snap = editor.getSnapshot();
-      const version = changeVersionRef.current;
       const mode = backgroundModeRef.current;
       saveInkScene(pagePath, snap, mode)
         .then(() => {
-          savedVersionRef.current = version;
+          savedDocumentRef.current = snap.document.store;
           logDrawEvent("ink.save", { path: pagePath, trigger: "autosave", shapes: countDrawShapes(snap), ok: true });
           onSaveStatusChange?.("saved");
           setSaveStatus("saved");
@@ -374,13 +383,13 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   React.useEffect(() => {
     if (readOnly || previewSidecarJson !== undefined) return;
     return registerReloadDrain(async () => {
-      const dirty = changeVersionRef.current !== savedVersionRef.current || savingRef.current;
+      const dirty = savingRef.current || hasUnsavedDocument();
       logDrawEvent("ink.reload-drain", { path: pagePath, dirty });
       if (dirty) {
-        await flushSave();
+        await flushPending();
       }
     });
-  }, [flushSave, pagePath, previewSidecarJson, readOnly]);
+  }, [flushPending, hasUnsavedDocument, pagePath, previewSidecarJson, readOnly]);
 
   // Save immediately (no debounce) — used when toggling background mode.
   const saveNow = React.useCallback((mode: InkBackgroundMode) => {
@@ -421,12 +430,10 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
         isGridMode: backgroundModeRef.current === "grid",
         isReadonly: readOnly || musicPlaying,
       });
+      savedDocumentRef.current = editor.store.serialize("document");
       // Listen only to user-originated document changes for autosave.
       const cleanup = readOnly ? undefined : editor.store.listen(
-        () => {
-          changeVersionRef.current += 1;
-          scheduleSave();
-        },
+        scheduleSave,
         { source: "user", scope: "document" }
       );
       return () => {
@@ -495,7 +502,22 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
               onClick={() => { if (nextMusicPage) onNavigateMusicPage?.(nextMusicPage.path); }}
             ><ChevronRight className="size-4" /></button>
           )}
-          {onMusicPlayingChange && <button type="button" className="music-page__play" onClick={() => onMusicPlayingChange(!musicPlaying)}>{musicPlaying ? "Exit play mode" : "Play mode"}</button>}
+          {onMusicPlayingChange && (
+            <button type="button" className="music-page__play" onClick={async () => {
+              if (musicPlaying) {
+                onMusicPlayingChange(false);
+                return;
+              }
+              try {
+                await flushPending();
+                onMusicPlayingChange(true);
+              } catch {
+                // The save status is already visible. Keep the editing canvas open.
+              }
+            }}>
+              {musicPlaying ? "Exit play mode" : "Play mode"}
+            </button>
+          )}
           {!musicPlaying && <button type="button" onClick={() => setMusicFullscreen((value) => !value)} aria-label={musicFullscreen ? "Exit full screen" : "Full screen"} data-testid="music-fullscreen-toggle">
             {musicFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
           </button>}
