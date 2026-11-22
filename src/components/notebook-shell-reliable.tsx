@@ -11304,6 +11304,11 @@ export const Sidebar = React.memo(function Sidebar({
                 New page
               </button>
               <button type="button" role="menuitem" className={itemClass} disabled={!scopedCreateTarget}
+                data-testid="blank-menu-new-music"
+                onClick={run(() => { if (scopedCreateTarget) onCreateMusicPage(scopedCreateTarget); })}>
+                New music page
+              </button>
+              <button type="button" role="menuitem" className={itemClass} disabled={!scopedCreateTarget}
                 data-testid="blank-menu-new-jupyter"
                 onClick={run(() => { if (scopedCreateTarget) onCreateJupyterNotebook(scopedCreateTarget); })}>
                 New Jupyter notebook
@@ -11464,6 +11469,24 @@ export const Sidebar = React.memo(function Sidebar({
             data-testid={`page-context-create-${pageContextMenu.pagePath}`}
           >
             New child page
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              setPageContextMenu(null);
+              onCreateMusicPage({
+                notebookPath: pageContextMenu.notebookPath,
+                notebookName: pageContextMenu.notebookName,
+                sectionPath: pageContextMenu.sectionPath ?? null,
+                sectionName: pageContextMenu.sectionName ?? null,
+                parentId: pageContextMenu.pagePath,
+                targetLabel: pageContextMenu.pageTitle,
+              });
+            }}
+            data-testid={`page-context-create-music-${pageContextMenu.pagePath}`}
+          >
+            New child music page
           </button>
           <button
             type="button"
