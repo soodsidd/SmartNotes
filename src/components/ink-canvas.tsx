@@ -2,13 +2,15 @@
 
 import * as React from "react";
 import { flushSync } from "react-dom";
-import { Tldraw, DefaultColorStyle, DefaultSizeStyle, type Editor, type TLStoreSnapshot, type TLGridProps, type TLDefaultColorStyle } from "tldraw";
-import "tldraw/tldraw.css";
 import { ChevronLeft, ChevronRight, Eraser, FilePlus, Grid2X2, Maximize2, Menu, Minimize2, MousePointer2, PenLine, Printer, Redo2, Undo2 } from "lucide-react";
-import { fetchInkScene, parseInkSidecarJson, saveInkScene, type InkBackgroundMode } from "@/lib/api/ink";
+import type { InkBackgroundMode } from "@/lib/api/ink";
 import { MusicStaff, MUSIC_PAPER_HEIGHT, MUSIC_PAPER_WIDTH } from "@/components/music-staff";
 import { logDrawEvent } from "@/lib/draw-mode-debug";
 import { registerReloadDrain } from "@/lib/reload-guard";
+import { InkEngineSurface } from "@/components/ink-engine-surface";
+import { inkDocumentsMatch, type InkColor, type InkDocument, type InkEngine, type InkScene } from "@/lib/ink-engine";
+import { DEFAULT_INK_ENGINE, type AvailableInkEngineId } from "@/lib/ink-engine-preference";
+import { inkSidecars } from "@/lib/ink-engine-sidecars";
 
 const AUTOSAVE_DELAY_MS = 1200;
 
@@ -26,6 +28,8 @@ export interface InkCanvasHandle {
 
 export interface InkCanvasProps {
   pagePath: string;
+  inkEngine?: AvailableInkEngineId;
+  handleRef?: React.Ref<InkCanvasHandle>;
   title?: string;
   onOpenSidebar?: () => void;
   onSaveStatusChange?: (status: "idle" | "saving" | "saved" | "error") => void;
@@ -46,95 +50,22 @@ export interface InkCanvasProps {
   onMusicPlayingChange?: (playing: boolean) => void;
 }
 
-// Custom grid component: renders graph-paper style lines that pan and scale with the camera.
-// Receives camera position (x, y), zoom (z), and base grid size (size) from TLDraw.
-function InkGridLines({ x, y, z, size }: TLGridProps) {
-  const id = React.useId();
-  const minorS = Math.max(size * z * 5, 1);  // minor grid cell — 5 grid units in screen px
-  const majorS = minorS * 5;                  // major grid cell — 25 grid units in screen px
-
-  // Compute pattern phase: positive modulo of camera offset in screen coordinates
-  const rawX = 0.5 + x * z;
-  const rawY = 0.5 + y * z;
-  const gxo = ((rawX % majorS) + majorS) % majorS;
-  const gyo = ((rawY % majorS) + majorS) % majorS;
-
-  return (
-    <svg
-      className="tl-grid"
-      version="1.1"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <defs>
-        {/* Minor grid: thin lines every 5 grid units */}
-        <pattern
-          id={`${id}-minor`}
-          width={minorS}
-          height={minorS}
-          patternUnits="userSpaceOnUse"
-          x={gxo}
-          y={gyo}
-        >
-          <path
-            d={`M ${minorS} 0 L 0 0 0 ${minorS}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="0.5"
-            opacity="0.15"
-          />
-        </pattern>
-        {/* Major grid: slightly bolder lines every 25 grid units */}
-        <pattern
-          id={`${id}-major`}
-          width={majorS}
-          height={majorS}
-          patternUnits="userSpaceOnUse"
-          x={gxo}
-          y={gyo}
-        >
-          <path
-            d={`M ${majorS} 0 L 0 0 0 ${majorS}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1"
-            opacity="0.28"
-          />
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill={`url(#${id}-minor)`} />
-      <rect width="100%" height="100%" fill={`url(#${id}-major)`} />
-    </svg>
-  );
-}
-
-// components object is stable (defined outside React) so it doesn't cause re-renders.
-const COMPONENTS_GRID = { PageMenu: null, Grid: InkGridLines } as const;
-const COMPONENTS_BLANK = { PageMenu: null } as const;
-const COMPONENTS_MUSIC = {
-  PageMenu: null,
-  MainMenu: null,
-  MenuPanel: null,
-  StylePanel: null,
-  Toolbar: null,
-  NavigationPanel: null,
-  QuickActions: null,
-  HelperButtons: null,
-} as const;
-
 const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(function InkCanvasInner(
-  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly = false, music = false, musicSiblings, musicPageIndex, onAddMusicPage, onNavigateMusicPage, musicPlaying = false, onMusicPlayingChange },
+  { pagePath, inkEngine = DEFAULT_INK_ENGINE, handleRef, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly = false, music = false, musicSiblings, musicPageIndex, onAddMusicPage, onNavigateMusicPage, musicPlaying = false, onMusicPlayingChange },
   ref
 ) {
+  const sidecar = inkSidecars[inkEngine].note;
   const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [snapshot, setSnapshot] = React.useState<TLStoreSnapshot | null | undefined>(undefined);
+  const [snapshot, setSnapshot] = React.useState<InkScene>(undefined);
   const [backgroundMode, setBackgroundMode] = React.useState<InkBackgroundMode>("blank");
   const backgroundModeRef = React.useRef<InkBackgroundMode>("blank");
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = React.useRef(false);
   const pendingRef = React.useRef(false);
-  const savedDocumentRef = React.useRef<TLStoreSnapshot["store"] | null>(null);
-  const editorRef = React.useRef<Editor | null>(null);
+  const savedBackgroundRef = React.useRef<InkBackgroundMode>("blank");
+  const backgroundSaveRef = React.useRef<Promise<void> | null>(null);
+  const savedDocumentRef = React.useRef<InkDocument | null>(null);
+  const editorRef = React.useRef<InkEngine | null>(null);
   const musicViewportRef = React.useRef<HTMLDivElement | null>(null);
   const musicInkRef = React.useRef<HTMLDivElement | null>(null);
   const [musicFitScale, setMusicFitScale] = React.useState(1);
@@ -145,20 +76,20 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   musicScaleRef.current = musicScale;
   const [musicFullscreen, setMusicFullscreen] = React.useState(false);
   const [musicTool, setMusicTool] = React.useState<"select" | "draw" | "eraser">("draw");
-  const [musicColor, setMusicColor] = React.useState<TLDefaultColorStyle>("black");
+  const [musicColor, setMusicColor] = React.useState<InkColor>("black");
   const [musicSize, setMusicSize] = React.useState<"s" | "m" | "l">("m");
 
   const changeMusicTool = (tool: "select" | "draw" | "eraser") => {
     setMusicTool(tool);
-    editorRef.current?.setCurrentTool(tool);
+    editorRef.current?.setTool(tool);
   };
-  const changeMusicColor = (color: TLDefaultColorStyle) => {
+  const changeMusicColor = (color: InkColor) => {
     setMusicColor(color);
-    editorRef.current?.setStyleForNextShapes(DefaultColorStyle, color);
+    editorRef.current?.setColor(color);
   };
   const changeMusicSize = (size: "s" | "m" | "l") => {
     setMusicSize(size);
-    editorRef.current?.setStyleForNextShapes(DefaultSizeStyle, size);
+    editorRef.current?.setSize(size);
   };
 
   React.useEffect(() => {
@@ -218,7 +149,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   }, [musicFullscreen, musicPlaying, onMusicPlayingChange]);
 
   React.useLayoutEffect(() => {
-    if (music) editorRef.current?.updateInstanceState({ isReadonly: readOnly || musicPlaying });
+    if (music) editorRef.current?.setReadOnly(readOnly || musicPlaying);
     if (musicInkRef.current) musicInkRef.current.inert = musicPlaying;
   }, [music, readOnly, musicPlaying]);
 
@@ -233,18 +164,18 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     setSnapshot(undefined);
 
     if (previewSidecarJson !== undefined) {
-      const { scene, backgroundMode: mode } = parseInkSidecarJson(previewSidecarJson);
-      setSnapshot((scene as TLStoreSnapshot | null) ?? null);
+      const { scene, backgroundMode: mode } = sidecar.parse(previewSidecarJson);
+      setSnapshot(scene ?? null);
       setBackgroundMode(mode);
       backgroundModeRef.current = mode;
       return;
     }
 
-    fetchInkScene(pagePath)
+    sidecar.load(pagePath)
       .then(({ scene, backgroundMode: mode }) => {
         if (!cancelled) {
           logDrawEvent("ink.scene-load", { path: pagePath, shapes: countDrawShapes(scene) });
-          setSnapshot((scene as TLStoreSnapshot | null) ?? null);
+          setSnapshot(scene ?? null);
           setBackgroundMode(mode);
           backgroundModeRef.current = mode;
         }
@@ -260,13 +191,13 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
         timerRef.current = null;
       }
     };
-  }, [pagePath, previewSidecarJson]);
+  }, [pagePath, previewSidecarJson, sidecar]);
 
   // Sync backgroundMode into TLDraw's isGridMode whenever it changes post-mount.
   React.useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.updateInstanceState({ isGridMode: backgroundMode === "grid" });
+    editor.setGridVisible(backgroundMode === "grid");
   }, [backgroundMode]);
 
   const flushSave = React.useCallback(async () => {
@@ -295,11 +226,13 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     onSaveStatusChange?.("saving");
     setSaveStatus("saving");
 
-    const snap = editor.getSnapshot();
+    const snap = editor.getScene();
+    const document = editor.getDocument();
     const mode = backgroundModeRef.current;
     try {
-      await saveInkScene(pagePath, snap, mode);
-      savedDocumentRef.current = snap.document.store;
+      await sidecar.save(pagePath, snap, mode);
+      savedDocumentRef.current = document;
+      savedBackgroundRef.current = mode;
       logDrawEvent("ink.save", { path: pagePath, trigger: "flush", shapes: countDrawShapes(snap), ok: true });
       onSaveStatusChange?.("saved");
       setSaveStatus("saved");
@@ -312,7 +245,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       savingRef.current = false;
       pendingRef.current = false;
     }
-  }, [onSaveStatusChange, pagePath]);
+  }, [onSaveStatusChange, pagePath, sidecar]);
 
   const hasUnsavedDocument = React.useCallback(() => {
     const editor = editorRef.current;
@@ -320,19 +253,23 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     if (!editor || !saved) return false;
     // Tldraw batches store listener notifications to animation frames. Inspect
     // the live immutable records before a navigation or reload can unmount them.
-    const document = editor.store.serialize("document");
-    const recordIds = Object.keys(document) as Array<keyof typeof document>;
-    return recordIds.length !== Object.keys(saved).length ||
-      recordIds.some((id) => document[id] !== saved[id]);
+    return !inkDocumentsMatch(editor.getDocument(), saved);
   }, []);
 
   const flushPending = React.useCallback(async () => {
-    while (editorRef.current && (savingRef.current || hasUnsavedDocument())) {
+    if (readOnly || previewSidecarJson !== undefined) return;
+    await backgroundSaveRef.current;
+    while (editorRef.current && (
+      savingRef.current || hasUnsavedDocument() || savedBackgroundRef.current !== backgroundModeRef.current
+    )) {
       await flushSave();
     }
-  }, [flushSave, hasUnsavedDocument]);
+  }, [flushSave, hasUnsavedDocument, previewSidecarJson, readOnly]);
 
-  React.useImperativeHandle(ref, () => ({ flush: flushSave, flushPending }), [flushSave, flushPending]);
+  const buildHandle = React.useCallback(() => ({ flush: flushSave, flushPending }), [flushSave, flushPending]);
+  React.useImperativeHandle(ref, buildHandle, [buildHandle]);
+  // next/dynamic does not forward refs. Keep the direct ref for static mounts.
+  React.useImperativeHandle(handleRef, buildHandle, [buildHandle]);
 
   const scheduleSave = React.useCallback(() => {
     if (readOnly) return;
@@ -353,11 +290,13 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       onSaveStatusChange?.("saving");
       setSaveStatus("saving");
 
-      const snap = editor.getSnapshot();
+      const snap = editor.getScene();
+      const document = editor.getDocument();
       const mode = backgroundModeRef.current;
-      saveInkScene(pagePath, snap, mode)
+      sidecar.save(pagePath, snap, mode)
         .then(() => {
-          savedDocumentRef.current = snap.document.store;
+          savedDocumentRef.current = document;
+          savedBackgroundRef.current = mode;
           logDrawEvent("ink.save", { path: pagePath, trigger: "autosave", shapes: countDrawShapes(snap), ok: true });
           onSaveStatusChange?.("saved");
           setSaveStatus("saved");
@@ -376,7 +315,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
           }
         });
     }, AUTOSAVE_DELAY_MS);
-  }, [onSaveStatusChange, pagePath, readOnly]);
+  }, [onSaveStatusChange, pagePath, readOnly, sidecar]);
 
   // SN-416: a PWA worker update reloads the page. Flush a debounced or
   // in-flight autosave first so the last strokes are not discarded.
@@ -399,43 +338,45 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    const snap = editor.getSnapshot();
-    saveInkScene(pagePath, snap, mode).catch(() => {/* silent — best-effort immediate save */});
-  }, [pagePath]);
+    const snap = editor.getScene();
+    const document = editor.getDocument();
+    backgroundSaveRef.current = sidecar.save(pagePath, snap, mode)
+      .then(() => {
+        savedDocumentRef.current = document;
+        savedBackgroundRef.current = mode;
+      })
+      .catch(() => { /* A pending-ink flush can retry the immediate save. */ });
+  }, [pagePath, sidecar]);
 
   const handleGridToggle = React.useCallback(() => {
     setBackgroundMode((prev) => {
       const next: InkBackgroundMode = prev === "blank" ? "grid" : "blank";
       backgroundModeRef.current = next;
       // Sync TLDraw's grid mode immediately so the visual updates before the async save.
-      editorRef.current?.updateInstanceState({ isGridMode: next === "grid" });
+      editorRef.current?.setGridVisible(next === "grid");
       saveNow(next);
       return next;
     });
   }, [saveNow]);
 
   const handleMount = React.useCallback(
-    (editor: Editor) => {
+    (editor: InkEngine) => {
       editorRef.current = editor;
       if (music) {
         editor.setCamera({ x: 0, y: 0, z: musicScaleRef.current });
-        editor.setCameraOptions({ isLocked: true, wheelBehavior: "none" });
+        editor.lockCamera();
         if (!readOnly) {
-          editor.setCurrentTool("draw");
-          editor.setStyleForNextShapes(DefaultColorStyle, "black");
-          editor.setStyleForNextShapes(DefaultSizeStyle, "m");
+          editor.setTool("draw");
+          editor.setColor("black");
+          editor.setSize("m");
         }
       }
-      editor.updateInstanceState({
-        isGridMode: backgroundModeRef.current === "grid",
-        isReadonly: readOnly || musicPlaying,
-      });
-      savedDocumentRef.current = editor.store.serialize("document");
+      editor.setGridVisible(backgroundModeRef.current === "grid");
+      editor.setReadOnly(readOnly || musicPlaying);
+      savedDocumentRef.current = editor.getDocument();
+      savedBackgroundRef.current = backgroundModeRef.current;
       // Listen only to user-originated document changes for autosave.
-      const cleanup = readOnly ? undefined : editor.store.listen(
-        scheduleSave,
-        { source: "user", scope: "document" }
-      );
+      const cleanup = readOnly ? undefined : editor.subscribe(scheduleSave);
       return () => {
         cleanup?.();
         if (editorRef.current === editor) editorRef.current = null;
@@ -467,7 +408,6 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     );
   }
 
-  const components = music ? COMPONENTS_MUSIC : backgroundMode === "grid" ? COMPONENTS_GRID : COMPONENTS_BLANK;
 
   const hasMusicSiblings = !!musicSiblings && musicSiblings.length > 1 && musicPageIndex !== undefined && musicPageIndex >= 0;
   const previousMusicPage = hasMusicSiblings ? musicSiblings[musicPageIndex - 1] : undefined;
@@ -529,7 +469,13 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
               <MusicStaff title={title} />
             </div>
             <div className="music-page__ink" ref={musicInkRef}>
-              {snapshot !== undefined && <Tldraw key={previewSidecarJson ?? pagePath} snapshot={snapshot ?? undefined} onMount={handleMount} components={components} colorScheme="light" />}
+              {snapshot !== undefined && <InkEngineSurface
+                key={previewSidecarJson ?? pagePath}
+                engine={inkEngine}
+                variant="music"
+                scene={snapshot ?? undefined}
+                onMount={handleMount}
+              />}
             </div>
           </div>
           {!readOnly && !musicPlaying && onAddMusicPage && (
@@ -574,11 +520,13 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
           before the parent height is established — which breaks toolbar breakpoint detection. */}
       <div className="relative flex-1">
         <div className="absolute inset-0">
-          <Tldraw
+          <InkEngineSurface
             key={previewSidecarJson ?? pagePath}
-            snapshot={snapshot ?? undefined}
+            engine={inkEngine}
+            variant="note"
+            scene={snapshot ?? undefined}
             onMount={handleMount}
-            components={components}
+            grid={backgroundMode === "grid"}
           />
         </div>
       </div>
@@ -694,13 +642,15 @@ function InkOverlayBar({
  * It is keyed by pagePath so the editor fully remounts on page switch.
  */
 export const InkCanvas = React.forwardRef<InkCanvasHandle, InkCanvasProps>(function InkCanvas(
-  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly, music, musicSiblings, musicPageIndex, onAddMusicPage, onNavigateMusicPage, musicPlaying, onMusicPlayingChange },
+  { pagePath, inkEngine, handleRef, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly, music, musicSiblings, musicPageIndex, onAddMusicPage, onNavigateMusicPage, musicPlaying, onMusicPlayingChange },
   ref
 ) {
   return (
     <InkCanvasInner
       key={previewSidecarJson ? `${pagePath}:preview` : pagePath}
       ref={ref}
+      handleRef={handleRef}
+      inkEngine={inkEngine}
       pagePath={pagePath}
       title={title}
       onOpenSidebar={onOpenSidebar}

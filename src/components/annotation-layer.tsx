@@ -1,24 +1,10 @@
 "use client";
 
 import * as React from "react";
-import {
-  Tldraw,
-  DefaultColorStyle,
-  DefaultSizeStyle,
-  DrawShapeUtil,
-  type Editor,
-  type TLDrawShape,
-  type TLStoreSnapshot,
-  type TLDefaultColorStyle,
-} from "tldraw";
-import "tldraw/tldraw.css";
-import {
-  parseAnnotationsSidecarJson,
-  saveAnnotationsScene,
-} from "@/lib/api/annotations";
 import { countAnnotationShapes, logAnnotationDebug } from "@/lib/annotation-debug";
 import {
-  computeDrawableBottomFromEditor,
+  computeDrawableBottomFromInkEngine,
+  drawableBottomFromStrokeBottom,
 } from "@/lib/annotation-extent";
 import {
   type RemapAnnotationResult,
@@ -26,75 +12,27 @@ import {
 import {
   autoGrowBottomMargin,
 } from "@/lib/page-frame";
-import { pageContentCache } from "@/lib/page-content-cache";
 import type { PageInkExport } from "@/lib/page-export";
 import { isWorkspaceZoomWheel } from "@/lib/editor-workspace-zoom";
 import { logDrawEvent } from "@/lib/draw-mode-debug";
 import { cn } from "@/lib/utils";
+import { InkEngineSurface } from "@/components/ink-engine-surface";
+import { inkDocumentsMatch, type InkColor, type InkEngine, type InkScene, type InkSize, type InkTool } from "@/lib/ink-engine";
+import { DEFAULT_INK_ENGINE, type AvailableInkEngineId } from "@/lib/ink-engine-preference";
+import { inkSidecars } from "@/lib/ink-engine-sidecars";
 
 const AUTOSAVE_DELAY_MS = 1200;
 export const ANNOTATION_HISTORY_THROTTLE_MS = 100;
 
-export type AnnotationTool = "draw" | "eraser" | "select";
-export type AnnotationStrokeSize = "s" | "m" | "l" | "xl";
-
-// SN-154: new annotation strokes are 25% thinner than tldraw's defaults.
-// The scale is stamped onto each newly created draw shape instead of being
-// applied globally at render time. Historical shapes have no marker and
-// therefore retain their original rendered weight when a saved page reopens.
-export const ANNOTATION_INK_STROKE_SCALE = 0.75;
-export const ANNOTATION_INK_STROKE_SCALE_META_KEY = "smartNotesInkStrokeScale";
-
-export class AnnotationDrawShapeUtil extends DrawShapeUtil {
-  constructor(editor: Editor) {
-    super(editor);
-    const base = this.options;
-    this.options = {
-      ...base,
-      getCustomDisplayValues: (editor, shape, theme, colorMode) => {
-        const custom = base.getCustomDisplayValues(editor, shape, theme, colorMode);
-        if (shape.meta[ANNOTATION_INK_STROKE_SCALE_META_KEY] !== ANNOTATION_INK_STROKE_SCALE) {
-          return custom;
-        }
-        const defaults = base.getDefaultDisplayValues(editor, shape, theme, colorMode);
-        return {
-          ...custom,
-          strokeWidth: defaults.strokeWidth * ANNOTATION_INK_STROKE_SCALE,
-        };
-      },
-    };
-  }
-
-  override onBeforeCreate(next: TLDrawShape): TLDrawShape {
-    return {
-      ...next,
-      meta: {
-        ...next.meta,
-        [ANNOTATION_INK_STROKE_SCALE_META_KEY]: ANNOTATION_INK_STROKE_SCALE,
-      },
-    };
-  }
-}
-
-const ANNOTATION_SHAPE_UTILS = [AnnotationDrawShapeUtil];
-
-export const ANNOTATION_INK_COLORS: { id: TLDefaultColorStyle; hex: string }[] = [
-  { id: "black", hex: "#1c1a17" },
-  { id: "blue", hex: "#2563eb" },
-  { id: "red", hex: "#dc2626" },
-  { id: "green", hex: "#16a34a" },
-  { id: "orange", hex: "#ea580c" },
-  { id: "violet", hex: "#7e22ce" },
-];
-
 export interface AnnotationLayerHandle {
   flush: () => Promise<void>;
-  setTool: (tool: AnnotationTool) => void;
+  flushPending: () => Promise<void>;
+  setTool: (tool: InkTool) => void;
   undo: () => void;
   redo: () => void;
-  setColor: (color: TLDefaultColorStyle) => void;
-  setStroke: (size: AnnotationStrokeSize) => void;
-  loadScene: (scene: TLStoreSnapshot | null) => void;
+  setColor: (color: InkColor) => void;
+  setStroke: (size: InkSize) => void;
+  loadScene: (scene: InkScene | null) => void;
   /**
    * Shift all page-space ink by `deltaY` after a prose reflow (SN-220 TOC).
    * Persists the remapped scene. Returns a refuse reason when unsafe.
@@ -109,21 +47,22 @@ export type AnnotationLayerMode = "edit" | "draw";
 
 export interface AnnotationLayerProps {
   pagePath: string;
+  inkEngine?: AvailableInkEngineId;
   mode: AnnotationLayerMode;
   /** Raw annotations sidecar JSON for version preview. */
   previewSidecarJson?: string;
   readOnly?: boolean;
   onSaveStatusChange?: (status: "idle" | "saving" | "saved" | "error") => void;
   onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void;
-  onSceneChange?: (scene: TLStoreSnapshot | null) => void;
+  onSceneChange?: (scene: InkScene | null) => void;
   /** Scroll offset of the editor pane — keeps page-space ink aligned while viewport-clipped. */
   scrollTop?: number;
   /** Active ink color from the draw toolbar — synced even before the imperative ref is ready. */
-  inkColor?: TLDefaultColorStyle;
+  inkColor?: InkColor;
   /** Active stroke size from the draw toolbar. */
-  inkStroke?: AnnotationStrokeSize;
+  inkStroke?: InkSize;
   /** Active ink tool from the draw toolbar. */
-  inkTool?: AnnotationTool;
+  inkTool?: InkTool;
   /** Visible scroll-pane height — sizes the Tldraw host to the viewport, not full document. */
   viewportHeight?: number;
   /** Full page frame height including drawable margin below text. */
@@ -145,66 +84,10 @@ export interface AnnotationLayerProps {
   className?: string;
 }
 
-const COMPONENTS_HIDDEN = {
-  Background: null,
-  SelectionBackground: null,
-  Grid: null,
-  PageMenu: null,
-  Toolbar: null,
-  StylePanel: null,
-  NavigationPanel: null,
-  Minimap: null,
-  HelpMenu: null,
-  MainMenu: null,
-  ActionsMenu: null,
-  ContextMenu: null,
-  QuickActions: null,
-  HelperButtons: null,
-  ZoomMenu: null,
-  TopPanel: null,
-  SharePanel: null,
-  MenuPanel: null,
-  RichTextToolbar: null,
-  ImageToolbar: null,
-  VideoToolbar: null,
-  KeyboardShortcutsDialog: null,
-  DebugPanel: null,
-  DebugMenu: null,
-  Dialogs: null,
-  Toasts: null,
-  A11y: null,
-  FollowingIndicator: null,
-} as const;
-
-function snapshotHasInk(snapshot: unknown): boolean {
-  const store = (snapshot as { document?: { store?: Record<string, unknown> } } | null)?.document
-    ?.store;
-  if (!store) return false;
-  return Object.values(store).some(
-    (record) =>
-      record &&
-      typeof record === "object" &&
-      "typeName" in record &&
-      (record as { typeName?: string }).typeName === "shape"
-  );
-}
-
-function currentPageShapeCount(editor: Editor): number {
-  const getShapes = (editor as Partial<Editor>).getCurrentPageShapesSorted;
-  return typeof getShapes === "function"
-    ? getShapes.call(editor).length
-    : countAnnotationShapes(editor.getSnapshot());
-}
-
-function currentToolId(editor: Editor): string | null {
-  const getTool = (editor as Partial<Editor>).getCurrentToolId;
-  return typeof getTool === "function" ? getTool.call(editor) : null;
-}
-
-function emitHistoryState(editor: Editor, onHistoryChange?: AnnotationLayerProps["onHistoryChange"]) {
+function emitHistoryState(editor: InkEngine, onHistoryChange?: AnnotationLayerProps["onHistoryChange"]) {
   onHistoryChange?.({
-    canUndo: editor.getCanUndo(),
-    canRedo: editor.getCanRedo(),
+    canUndo: editor.canUndo(),
+    canRedo: editor.canRedo(),
   });
 }
 
@@ -218,7 +101,7 @@ export function pageScrollTopFromContainer(scrollTop: number, workspaceZoom = 1)
 
 /** Page-space y at viewport top equals scrollTop (÷ zoom when workspace-scaled); Tldraw camera uses negated page coords. */
 export function syncAnnotationCamera(
-  editor: Editor,
+  editor: InkEngine,
   scrollTop: number,
   viewportEl?: HTMLElement | null,
   workspaceZoom = 1
@@ -226,7 +109,7 @@ export function syncAnnotationCamera(
   const pageTop = pageScrollTopFromContainer(scrollTop, workspaceZoom);
   editor.setCamera({ x: 0, y: -pageTop, z: 1 }, { immediate: true, force: true });
   if (viewportEl) {
-    editor.updateViewportScreenBounds(viewportEl);
+    editor.updateViewport(viewportEl);
   }
 }
 
@@ -278,7 +161,7 @@ export function decidePenAwareTouchGesture(params: {
 
 /** Throttle history callbacks during active strokes; flush immediately on stroke end. */
 export function createThrottledHistoryEmitter(
-  editor: Editor,
+  editor: InkEngine,
   onHistoryChange: AnnotationLayerProps["onHistoryChange"],
   throttleMs = ANNOTATION_HISTORY_THROTTLE_MS
 ) {
@@ -301,7 +184,7 @@ export function createThrottledHistoryEmitter(
   };
 
   const onDocumentChange = () => {
-    if (editor.inputs.isPointing) {
+    if (editor.isPointing()) {
       emitThrottled();
       return;
     }
@@ -316,29 +199,6 @@ export function createThrottledHistoryEmitter(
   } };
 }
 
-export function getAnnotationHistoryCommand(event: {
-  key: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  shiftKey: boolean;
-  altKey: boolean;
-}) {
-  if (!(event.ctrlKey || event.metaKey) || event.altKey) {
-    return null;
-  }
-
-  const key = event.key.toLowerCase();
-  if (key === "z") {
-    return event.shiftKey ? "redo" : "undo";
-  }
-
-  if (!event.metaKey && !event.shiftKey && key === "y") {
-    return "redo";
-  }
-
-  return null;
-}
-
 /**
  * Page-space ink layer for text pages. Always stays mounted for the active page
  * so Edit ↔ Draw toggles swap interactivity without remounting Tldraw.
@@ -347,6 +207,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
   function AnnotationLayer(
     {
       pagePath,
+      inkEngine = DEFAULT_INK_ENGINE,
       mode,
       previewSidecarJson,
       readOnly = false,
@@ -368,7 +229,8 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     },
     ref
   ) {
-    const hydratedSceneRef = React.useRef<TLStoreSnapshot | null>(null);
+    const sidecar = inkSidecars[inkEngine].annotation;
+    const hydratedSceneRef = React.useRef<InkScene | null>(null);
     const [sceneVersion, setSceneVersion] = React.useState(0);
     const [isHydrated, setIsHydrated] = React.useState(false);
     const [editorMounted, setEditorMounted] = React.useState(false);
@@ -376,16 +238,17 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const savingRef = React.useRef(false);
     const pendingRef = React.useRef(false);
-    const editorRef = React.useRef<Editor | null>(null);
+    const editorRef = React.useRef<InkEngine | null>(null);
     const hostRef = React.useRef<HTMLDivElement | null>(null);
-    const emptySnapshotRef = React.useRef<ReturnType<Editor["getSnapshot"]> | null>(null);
+    const emptySnapshotRef = React.useRef<InkScene | null>(null);
     const loadedPathRef = React.useRef<string | null>(null);
     const loadingStoreRef = React.useRef(false);
     const dirtyRef = React.useRef(false);
+    const ownerSaveRef = React.useRef<Promise<void> | null>(null);
     const hydratedPathRef = React.useRef<string | null>(null);
     const [loadedPath, setLoadedPath] = React.useState<string | null>(null);
-    const pendingInkColorRef = React.useRef<TLDefaultColorStyle>(inkColor);
-    const pendingInkStrokeRef = React.useRef<AnnotationStrokeSize>(inkStroke);
+    const pendingInkColorRef = React.useRef<InkColor>(inkColor);
+    const pendingInkStrokeRef = React.useRef<InkSize>(inkStroke);
     // Stylus-aware touch routing (SN-156). `penModeRef` latches true on the first
     // stylus contact of a draw-mode entry (see the reset effect below);
     // `penDownRef` tracks whether the stylus is currently touching the screen.
@@ -400,7 +263,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     const loadedPageIsCurrent = isHydrated && loadedPath === pagePath;
     const interactive = mode === "draw" && !readOnly && loadedPageIsCurrent;
 
-    const applyScene = React.useCallback((loaded: TLStoreSnapshot | null, forPath: string) => {
+    const applyScene = React.useCallback((loaded: InkScene | null, forPath: string) => {
       logAnnotationDebug("layer.apply-scene", {
         pagePath,
         forPath,
@@ -408,7 +271,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       });
       hydratedPathRef.current = forPath;
       hydratedSceneRef.current = loaded;
-      setHasDrawableContent(snapshotHasInk(loaded));
+      setHasDrawableContent(countAnnotationShapes(loaded) > 0);
       setIsHydrated(true);
       setSceneVersion((current) => current + 1);
       onSceneChange?.(loaded);
@@ -427,24 +290,24 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         return;
       }
 
-      const snap = editor.getSnapshot();
-      const drawableBottom = computeDrawableBottomFromEditor(editor, growthMarginRef.current);
+      const snap = editor.getScene();
+      const drawableBottom = computeDrawableBottomFromInkEngine(editor, growthMarginRef.current);
       logAnnotationDebug("layer.persist-owner", {
         pagePath,
         ownerPath,
         shapeCount: countAnnotationShapes(snap),
         drawableBottom,
       });
-      pageContentCache.setAnnotations(ownerPath, snap, drawableBottom);
-      void saveAnnotationsScene(ownerPath, snap, drawableBottom).catch(() => undefined);
+      sidecar.remember(ownerPath, snap, drawableBottom);
+      ownerSaveRef.current = sidecar.save(ownerPath, snap, drawableBottom).catch(() => undefined);
       if (drawableBottom != null) {
         onDrawableBottomChange?.(drawableBottom);
       }
       dirtyRef.current = false;
-    }, [onDrawableBottomChange, pagePath, readOnly]);
+    }, [onDrawableBottomChange, pagePath, readOnly, sidecar]);
 
     const loadSceneIntoStore = React.useCallback(
-      (targetPath: string, scene: TLStoreSnapshot | null) => {
+      (targetPath: string, scene: InkScene | null) => {
         const editor = editorRef.current;
         if (!editor) return;
 
@@ -466,9 +329,9 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         loadingStoreRef.current = true;
         try {
           if (scene) {
-            editor.loadSnapshot(scene);
+            editor.loadScene(scene);
           } else if (emptySnapshotRef.current) {
-            editor.loadSnapshot(emptySnapshotRef.current);
+            editor.loadScene(emptySnapshotRef.current);
           }
           // SN-153: `loadSnapshot` records the loaded scene as an undoable change;
           // tldraw's own file-open path always follows it with `clearHistory()`.
@@ -483,7 +346,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         loadedPathRef.current = targetPath;
         setLoadedPath(targetPath);
         dirtyRef.current = false;
-        setHasDrawableContent(snapshotHasInk(scene));
+        setHasDrawableContent(countAnnotationShapes(scene) > 0);
         emitHistoryState(editor, onHistoryChange);
         logAnnotationDebug("layer.load-store.done", {
           pagePath,
@@ -504,8 +367,8 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       const forPath = pagePath;
 
       if (previewSidecarJson !== undefined) {
-        const { scene, drawableBottom } = parseAnnotationsSidecarJson(previewSidecarJson);
-        const loaded = (scene as TLStoreSnapshot | null) ?? null;
+        const { scene, drawableBottom } = sidecar.parse(previewSidecarJson);
+        const loaded = (scene) ?? null;
         logAnnotationDebug("layer.hydrate.preview", {
           pagePath,
           shapeCount: countAnnotationShapes(loaded),
@@ -518,18 +381,18 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         return;
       }
 
-      const cached = pageContentCache.get(pagePath);
+      const cached = sidecar.getCached(pagePath);
       if (cached?.annotationsReady) {
         logAnnotationDebug("layer.hydrate.cache-hit", {
           pagePath,
           shapeCount: countAnnotationShapes(cached.annotationsScene),
         });
-        applyScene((cached.annotationsScene as TLStoreSnapshot | null) ?? null, forPath);
+        applyScene((cached.annotationsScene) ?? null, forPath);
         return;
       }
 
-      pageContentCache
-        .ensureAnnotations(pagePath)
+      sidecar
+        .load(pagePath)
         .then((payload) => {
           if (!cancelled) {
             logAnnotationDebug("layer.hydrate.fetch-done", {
@@ -540,7 +403,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
             if (payload.drawableBottom != null) {
               onDrawableBottomChange?.(payload.drawableBottom);
             }
-            applyScene((payload.scene as TLStoreSnapshot | null) ?? null, forPath);
+            applyScene((payload.scene) ?? null, forPath);
           }
         })
         .catch(() => {
@@ -558,7 +421,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
           timerRef.current = null;
         }
       };
-    }, [applyScene, onDrawableBottomChange, pagePath, previewSidecarJson]);
+    }, [applyScene, onDrawableBottomChange, pagePath, previewSidecarJson, sidecar]);
 
     const loadedSceneKeyRef = React.useRef<string | null>(null);
     const sceneKey = `${pagePath}:${previewSidecarJson ?? "live"}:${isHydrated ? "ready" : "pending"}:${sceneVersion}`;
@@ -572,15 +435,15 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     }, [editorMounted, isHydrated, loadSceneIntoStore, pagePath, sceneKey]);
 
     const loadScene = React.useCallback(
-      (scene: TLStoreSnapshot | null) => {
+      (scene: InkScene | null) => {
         logAnnotationDebug("layer.handle.load-scene", {
           pagePath,
           shapeCount: countAnnotationShapes(scene),
         });
         applyScene(scene, pagePath);
-        pageContentCache.setAnnotations(pagePath, scene);
+        sidecar.remember(pagePath, scene);
       },
-      [applyScene, pagePath]
+      [applyScene, pagePath, sidecar]
     );
 
     const flushSave = React.useCallback(async () => {
@@ -610,7 +473,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       savingRef.current = true;
       onSaveStatusChange?.("saving");
 
-      const snap = editor.getSnapshot();
+      const snap = editor.getScene();
       const ownerPath = loadedPathRef.current;
       if (!ownerPath) {
         logAnnotationDebug("layer.flush.skip-no-owner", { pagePath });
@@ -619,9 +482,9 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         pendingRef.current = false;
         return;
       }
-      const drawableBottom = computeDrawableBottomFromEditor(editor, growthMarginRef.current);
-      pageContentCache.setAnnotations(ownerPath, snap, drawableBottom);
-      setHasDrawableContent(snapshotHasInk(snap));
+      const drawableBottom = computeDrawableBottomFromInkEngine(editor, growthMarginRef.current);
+      sidecar.remember(ownerPath, snap, drawableBottom);
+      setHasDrawableContent(countAnnotationShapes(snap) > 0);
       logAnnotationDebug("layer.flush.save", {
         pagePath,
         ownerPath,
@@ -629,7 +492,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         drawableBottom,
       });
       try {
-        await saveAnnotationsScene(ownerPath, snap, drawableBottom);
+        await sidecar.save(ownerPath, snap, drawableBottom);
         if (drawableBottom != null) {
           onDrawableBottomChange?.(drawableBottom);
         }
@@ -642,10 +505,24 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         savingRef.current = false;
         pendingRef.current = false;
       }
-    }, [onDrawableBottomChange, onSaveStatusChange, pagePath, readOnly]);
+    }, [onDrawableBottomChange, onSaveStatusChange, pagePath, readOnly, sidecar]);
 
-    const setTool = React.useCallback((tool: AnnotationTool) => {
-      editorRef.current?.setCurrentTool(tool);
+    const flushPending = React.useCallback(async () => {
+      const editor = editorRef.current;
+      if (!editor || readOnly || !loadedPathRef.current) return;
+      await ownerSaveRef.current;
+      let document = editor.getDocument();
+      await flushSave();
+      while (editorRef.current === editor) {
+        const liveDocument = editor.getDocument();
+        if (inkDocumentsMatch(document, liveDocument)) return;
+        document = liveDocument;
+        await flushSave();
+      }
+    }, [flushSave, readOnly]);
+
+    const setTool = React.useCallback((tool: InkTool) => {
+      editorRef.current?.setTool(tool);
     }, []);
 
     const undo = React.useCallback(() => {
@@ -662,19 +539,19 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       emitHistoryState(editor, onHistoryChange);
     }, [onHistoryChange]);
 
-    const setColor = React.useCallback((color: TLDefaultColorStyle) => {
+    const setColor = React.useCallback((color: InkColor) => {
       pendingInkColorRef.current = color;
-      editorRef.current?.setStyleForNextShapes(DefaultColorStyle, color);
+      editorRef.current?.setColor(color);
     }, []);
 
-    const setStroke = React.useCallback((size: AnnotationStrokeSize) => {
+    const setStroke = React.useCallback((size: InkSize) => {
       pendingInkStrokeRef.current = size;
-      editorRef.current?.setStyleForNextShapes(DefaultSizeStyle, size);
+      editorRef.current?.setSize(size);
     }, []);
 
-    const applyPendingInkStyles = React.useCallback((editor: Editor) => {
-      editor.setStyleForNextShapes(DefaultColorStyle, pendingInkColorRef.current);
-      editor.setStyleForNextShapes(DefaultSizeStyle, pendingInkStrokeRef.current);
+    const applyPendingInkStyles = React.useCallback((editor: InkEngine) => {
+      editor.setColor(pendingInkColorRef.current);
+      editor.setSize(pendingInkStrokeRef.current);
     }, []);
 
     const printStateRef = React.useRef<{ scrollTop: number } | null>(null);
@@ -705,7 +582,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         savingRef.current = true;
         onSaveStatusChange?.("saving");
 
-        const snap = editor.getSnapshot();
+        const snap = editor.getScene();
         const ownerPath = loadedPathRef.current;
         if (!ownerPath) {
           logAnnotationDebug("layer.autosave.skip-no-owner", { pagePath });
@@ -718,17 +595,17 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         // to one page-length past the lowest stroke while the user is still
         // drawing — not only when they leave draw mode. This is the reliable
         // growth path; the pointerup handler below is just the faster trigger.
-        const drawableBottom = computeDrawableBottomFromEditor(editor, growthMarginRef.current);
-        pageContentCache.setAnnotations(ownerPath, snap, drawableBottom);
+        const drawableBottom = computeDrawableBottomFromInkEngine(editor, growthMarginRef.current);
+        sidecar.remember(ownerPath, snap, drawableBottom);
         logAnnotationDebug("layer.autosave.save", {
           pagePath,
           ownerPath,
           shapeCount: countAnnotationShapes(snap),
           drawableBottom,
         });
-        saveAnnotationsScene(ownerPath, snap, drawableBottom)
+        sidecar.save(ownerPath, snap, drawableBottom)
           .then(() => {
-            setHasDrawableContent(snapshotHasInk(snap));
+            setHasDrawableContent(countAnnotationShapes(snap) > 0);
             if (drawableBottom != null) {
               onDrawableBottomChange?.(drawableBottom);
             }
@@ -745,7 +622,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
             }
           });
       }, AUTOSAVE_DELAY_MS);
-    }, [interactive, onDrawableBottomChange, onSaveStatusChange, pagePath]);
+    }, [interactive, onDrawableBottomChange, onSaveStatusChange, pagePath, sidecar]);
 
     const applyVerticalRemap = React.useCallback(
       (deltaY: number): RemapAnnotationResult => {
@@ -765,112 +642,40 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         }
 
         if (deltaY === 0) {
-          const snap = editor.getSnapshot();
-          const drawableBottom = computeDrawableBottomFromEditor(
+          const snap = editor.getScene();
+          const drawableBottom = computeDrawableBottomFromInkEngine(
             editor,
             growthMarginRef.current
           );
           return { ok: true, scene: snap, drawableBottom };
         }
 
-        const shapeIds = [...editor.getCurrentPageShapeIds()];
-        if (shapeIds.length === 0) {
-          const snap = editor.getSnapshot();
-          const currentBottom = computeDrawableBottomFromEditor(
-            editor,
-            growthMarginRef.current
-          );
-          const nextBottom =
-            currentBottom != null ? Math.ceil(currentBottom + deltaY) : undefined;
-          if (nextBottom != null) {
-            onDrawableBottomChange?.(nextBottom);
-            pageContentCache.setAnnotations(pagePath, snap, nextBottom);
-          }
-          return { ok: true, scene: snap, drawableBottom: nextBottom };
-        }
-
-        const updates: Array<{
-          id: (typeof shapeIds)[number];
-          type: NonNullable<ReturnType<typeof editor.getShape>>["type"];
-          y: number;
-        }> = [];
-        for (const id of shapeIds) {
-          const shape = editor.getShape(id);
-          if (!shape || typeof shape.y !== "number" || !Number.isFinite(shape.y)) {
-            return {
-              ok: false,
-              reason: "Cannot adjust ink safely: a stroke is missing a valid page position.",
-            };
-          }
-          updates.push({ id, type: shape.type, y: shape.y + deltaY });
-        }
-
-        // Edit mode keeps the canvas readonly (line ~976), which drops
-        // programmatic shape writes on the floor. Lift it just for this
-        // reflow so the remap actually lands (SN-230).
-        const wasReadonly = Boolean(editor.getInstanceState().isReadonly);
-        try {
-          if (wasReadonly) editor.updateInstanceState({ isReadonly: false });
-          editor.updateShapes(updates);
-        } catch {
-          if (wasReadonly) editor.updateInstanceState({ isReadonly: true });
-          return {
-            ok: false,
-            reason: "Cannot adjust ink safely: ink positions could not be updated.",
-          };
-        }
-
-        // Never trust the write silently: a dropped update would leave ink
-        // misaligned with the prose it annotates.
-        const applied = updates.every((update) => {
-          const shape = editor.getShape(update.id);
-          return shape != null && Math.abs((shape.y as number) - update.y) < 0.5;
+        let drawableBottom: number | undefined;
+        const translated = editor.translateStrokesY(deltaY, (bottom) => {
+          drawableBottom = drawableBottomFromStrokeBottom(bottom, growthMarginRef.current);
+          return drawableBottom == null || drawableBottom >= 0;
         });
-        if (!applied) {
-          if (wasReadonly) editor.updateInstanceState({ isReadonly: true });
-          return {
-            ok: false,
-            reason: "Cannot adjust ink safely: ink positions could not be updated.",
-          };
-        }
+        if (!translated.ok) return translated;
 
-        const snap = editor.getSnapshot() as unknown as TLStoreSnapshot;
-        const drawableBottom = computeDrawableBottomFromEditor(
-          editor,
-          growthMarginRef.current
-        );
-        if (drawableBottom != null && drawableBottom < 0) {
-          editor.updateShapes(
-            updates.map((update) => ({
-              id: update.id,
-              type: update.type,
-              y: update.y - deltaY,
-            }))
-          );
-          if (wasReadonly) editor.updateInstanceState({ isReadonly: true });
-          return {
-            ok: false,
-            reason: "Cannot adjust ink safely: drawable extent would become invalid.",
-          };
-        }
+        const snap = editor.getScene();
+        if (!translated.count) return { ok: true, scene: snap };
 
-        if (wasReadonly) editor.updateInstanceState({ isReadonly: true });
         dirtyRef.current = true;
         onSceneChange?.(snap);
         if (drawableBottom != null) {
           onDrawableBottomChange?.(drawableBottom);
         }
-        pageContentCache.setAnnotations(pagePath, snap, drawableBottom);
+        sidecar.remember(pagePath, snap, drawableBottom);
         persistStoreToOwner();
         logAnnotationDebug("layer.vertical-remap", {
           pagePath,
           deltaY,
-          shapeCount: updates.length,
+          shapeCount: translated.count,
           drawableBottom,
         });
         return { ok: true, scene: snap, drawableBottom };
       },
-      [onDrawableBottomChange, onSceneChange, pagePath, persistStoreToOwner]
+      [onDrawableBottomChange, onSceneChange, pagePath, persistStoreToOwner, sidecar]
     );
 
     const [cameraScrollTop, setCameraScrollTop] = React.useState(0);
@@ -889,21 +694,12 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
     const exportInkOverlay = React.useCallback(async (): Promise<PageInkExport | null> => {
       const editor = editorRef.current;
-      if (!editor || !snapshotHasInk(editor.getSnapshot())) {
-        return null;
-      }
-
-      const shapeIds = editor.getCurrentPageShapesSorted().map((shape) => shape.id);
-      if (shapeIds.length === 0) {
+      if (!editor || countAnnotationShapes(editor.getScene()) === 0) {
         return null;
       }
 
       syncCameraFromContainer();
-      const result = await editor.getSvgString(shapeIds, {
-        background: false,
-        padding: 0,
-        preserveAspectRatio: "none",
-      });
+      const result = await editor.toSvg();
       syncCameraFromContainer();
 
       if (!result) {
@@ -929,7 +725,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       const host = hostRef.current;
       syncAnnotationCamera(editor, 0, host);
       if (host) {
-        editor.updateViewportScreenBounds(host);
+        editor.updateViewport(host);
       }
       setCameraScrollTop(0);
     }, [scrollContainerRef]);
@@ -950,6 +746,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     const buildHandle = React.useCallback(
       (): AnnotationLayerHandle => ({
         flush: flushSave,
+        flushPending,
         setTool,
         undo,
         redo,
@@ -964,6 +761,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       [
         applyVerticalRemap,
         exportInkOverlay,
+        flushPending,
         flushSave,
         loadScene,
         prepareForPrint,
@@ -983,7 +781,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     React.useImperativeHandle(handleRef, buildHandle, [buildHandle]);
 
     const handleMount = React.useCallback(
-      (editor: Editor) => {
+      (editor: InkEngine) => {
         editorRef.current = editor;
         logAnnotationDebug("layer.mount", { pagePath, interactive });
         logDrawEvent("layer.mount", {
@@ -995,24 +793,15 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
           touchActionApplied: interactive,
           ua: typeof navigator !== "undefined" ? navigator.userAgent : null,
         });
-        editor.updateInstanceState({ isReadonly: !interactive });
-        // inputMode overrides wheelBehavior even when set to "none"; keep null so
-        // workspace zoom (Ctrl/Cmd+scroll) stays on the page surface, not ink camera.
-        editor.user.updateUserPreferences({ inputMode: null });
-        editor.setCameraOptions({
-          isLocked: false,
-          wheelBehavior: "none",
-          zoomSpeed: 0,
-          panSpeed: 0,
-        });
-        emptySnapshotRef.current = editor.getSnapshot();
+        editor.setReadOnly(!interactive);
+        emptySnapshotRef.current = editor.getScene();
         const metrics = readAnnotationScrollMetrics(scrollContainerRef?.current, {
           scrollTop,
           viewportHeight,
         });
         syncAnnotationCamera(editor, metrics.scrollTop, hostRef.current, workspaceZoom);
         setCameraScrollTop(metrics.scrollTop);
-        editor.setCurrentTool("draw");
+        editor.setTool("draw");
         applyPendingInkStyles(editor);
         setEditorMounted(true);
         emitHistoryState(editor, onHistoryChange);
@@ -1053,7 +842,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       host.addEventListener("pointerdown", onPointerDown, { capture: true });
 
       const onWheel = (event: WheelEvent) => {
-        if (!interactive || editor.inputs.isPointing) return;
+        if (!interactive || editor.isPointing()) return;
         // Workspace zoom (Ctrl/Cmd+scroll / trackpad pinch) scales text+ink together.
         if (isWorkspaceZoomWheel(event)) return;
         event.preventDefault();
@@ -1136,7 +925,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
           action,
           penMode: penModeRef.current,
           penDown: penDownRef.current,
-          shapeCount: editorRef.current ? currentPageShapeCount(editorRef.current) : 0,
+          shapeCount: editorRef.current ? editorRef.current.getStrokeCount() : 0,
         });
         if (action === "draw") return; // lone finger, pen mode off: let Tldraw ink
         if (action === "ignore") {
@@ -1211,7 +1000,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     React.useEffect(() => {
       const editor = editorRef.current;
       if (!editor) return;
-      editor.updateInstanceState({ isReadonly: !interactive });
+      editor.setReadOnly(!interactive);
       logAnnotationDebug("layer.interactive-state", {
         pagePath,
         loadedPath,
@@ -1219,7 +1008,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         interactive,
       });
       if (interactive) {
-        editor.setCurrentTool(inkTool);
+        editor.setTool(inkTool);
         applyPendingInkStyles(editor);
       }
       logDrawEvent("layer.interactive-state", {
@@ -1229,8 +1018,8 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         interactive,
         mode,
         hasDrawableContent,
-        shapeCount: currentPageShapeCount(editor),
-        currentTool: currentToolId(editor),
+        shapeCount: editor.getStrokeCount(),
+        currentTool: editor.getTool(),
       });
     }, [applyPendingInkStyles, hasDrawableContent, inkTool, interactive, isHydrated, loadedPath, mode, pagePath]);
 
@@ -1240,7 +1029,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       const editor = editorRef.current;
       if (!editor || !editorMounted || !interactive) return;
       applyPendingInkStyles(editor);
-      editor.setCurrentTool(inkTool);
+      editor.setTool(inkTool);
     }, [applyPendingInkStyles, editorMounted, inkColor, inkStroke, inkTool, interactive]);
 
     React.useEffect(() => {
@@ -1257,7 +1046,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
         const editor = editorRef.current;
         if (!editor || !interactive || !onDrawableBottomChange) return;
-        const drawableBottom = computeDrawableBottomFromEditor(editor, growthMarginRef.current);
+        const drawableBottom = computeDrawableBottomFromInkEngine(editor, growthMarginRef.current);
         if (drawableBottom != null) {
           onDrawableBottomChange(drawableBottom);
         }
@@ -1267,7 +1056,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       host?.addEventListener("pointerup", flushStrokeEnd);
       host?.addEventListener("pointercancel", flushStrokeEnd);
 
-      const cleanupDocument = editor.store.listen(
+      const cleanupDocument = editor.subscribe(
         () => {
           if (loadingStoreRef.current) {
             logAnnotationDebug("layer.document-change.ignored-load", {
@@ -1278,38 +1067,37 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
           }
           setHasDrawableContent(true);
           dirtyRef.current = true;
-          onSceneChange?.(editor.getSnapshot() as unknown as TLStoreSnapshot);
+          onSceneChange?.(editor.getScene());
           logAnnotationDebug("layer.document-change.user", {
             pagePath,
             loadedPath: loadedPathRef.current,
             interactive,
-            pointing: editor.inputs.isPointing,
+            pointing: editor.isPointing(),
           });
           if (interactive) {
             scheduleSave();
           }
-          const shapeCount = currentPageShapeCount(editor);
-          if (!editor.inputs.isPointing || shapeCount !== debugShapeCountRef.current) {
+          const shapeCount = editor.getStrokeCount();
+          if (!editor.isPointing() || shapeCount !== debugShapeCountRef.current) {
             debugShapeCountRef.current = shapeCount;
             logDrawEvent("layer.document-change", {
               pagePath,
               loadedPath: loadedPathRef.current,
               interactive,
-              pointing: editor.inputs.isPointing,
+              pointing: editor.isPointing(),
               shapeCount,
             });
           }
-          if (editor.inputs.isPointing) {
+          if (editor.isPointing()) {
             strokeActive = true;
           }
           historyEmitter.onDocumentChange();
-        },
-        { source: "user", scope: "document" }
+        }
       );
 
-      const cleanupSession = editor.store.listen(
+      const cleanupSession = editor.subscribe(
         () => historyEmitter.emitNow(),
-        { scope: "session" }
+        "session"
       );
 
       return () => {
@@ -1343,10 +1131,6 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         window.setTimeout(() => {
           const editor = editorRef.current;
           const host = hostRef.current;
-          const paths = host?.querySelectorAll<SVGPathElement>('.tl-shape[data-shape-type="draw"] path');
-          const path = paths?.item(Math.max(0, (paths?.length ?? 1) - 1)) ?? null;
-          const style = path ? window.getComputedStyle(path) : null;
-          const pathBox = path?.getBoundingClientRect();
           const hostStyle = host ? window.getComputedStyle(host) : null;
           logDrawEvent(tag, {
             ...pointer,
@@ -1355,15 +1139,10 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
             interactive,
             mode,
             hasDrawableContent,
-            shapeCount: editor ? currentPageShapeCount(editor) : 0,
-            currentTool: editor ? currentToolId(editor) : null,
-            isPointing: editor?.inputs.isPointing ?? null,
-            pathCount: paths?.length ?? 0,
-            pathHasGeometry: Boolean(path?.getAttribute("d")),
-            pathWidth: pathBox ? Math.round(pathBox.width) : 0,
-            pathHeight: pathBox ? Math.round(pathBox.height) : 0,
-            pathFill: style?.fill ?? null,
-            pathStroke: style?.stroke ?? null,
+            shapeCount: editor ? editor.getStrokeCount() : 0,
+            currentTool: editor ? editor.getTool() : null,
+            isPointing: editor?.isPointing() ?? null,
+            ...editor?.inspectPaint(host),
             hostVisibility: hostStyle?.visibility ?? null,
             hostOpacity: hostStyle?.opacity ?? null,
           });
@@ -1402,20 +1181,15 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
             isPrimary: e.isPrimary,
             target: (e.target as HTMLElement)?.tagName,
             targetClass: (e.target as Element)?.getAttribute?.("class") ?? null,
-            shapeCount: editorRef.current ? currentPageShapeCount(editorRef.current) : 0,
-            currentTool: editorRef.current ? currentToolId(editorRef.current) : null,
+            shapeCount: editorRef.current ? editorRef.current.getStrokeCount() : 0,
+            currentTool: editorRef.current ? editorRef.current.getTool() : null,
           });
         }}
         onPointerUp={(event) => logCommittedPaintState("layer.pointerup", event)}
         onPointerCancel={(event) => logCommittedPaintState("layer.pointercancel", event)}
       >
         <div className="absolute inset-0">
-          <Tldraw
-            onMount={handleMount}
-            components={COMPONENTS_HIDDEN}
-            shapeUtils={ANNOTATION_SHAPE_UTILS}
-            hideUi
-          />
+          <InkEngineSurface engine={inkEngine} variant="annotation" onMount={handleMount} />
         </div>
       </div>
     );

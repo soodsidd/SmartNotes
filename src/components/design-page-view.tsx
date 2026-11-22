@@ -4,13 +4,10 @@ import { invokeInlineAi } from "@/lib/inline-ai";
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { Menu, Pen, Eye, Code2, FolderOpen, Link2, Download, Bold, Italic, Underline, List, ListOrdered, Undo2, Redo2, MessageSquare } from "lucide-react";
-import type {
-  AnnotationLayerHandle,
-  AnnotationStrokeSize,
-  AnnotationTool,
-} from "@/components/annotation-layer";
+import type { AnnotationLayerHandle } from "@/components/annotation-layer";
 import { AnnotationDrawToolbar } from "@/components/annotation-draw-toolbar";
-import type { TLDefaultColorStyle } from "tldraw";
+import type { InkColor, InkSize, InkTool } from "@/lib/ink-engine";
+import type { AvailableInkEngineId } from "@/lib/ink-engine-preference";
 import { buildDesignSrcDoc, isDesignFrameMessage, type DesignCommentRect } from "@/components/ui-render-view";
 import { CommentComposer } from "@/components/comment-layer";
 import { DesignCommentsPanel, type DesignCommentAnchor } from "@/components/design-comments-panel";
@@ -35,6 +32,8 @@ type DesignTab = "preview" | "source";
 
 export interface DesignPageViewProps {
   pagePath: string;
+  inkEngine?: AvailableInkEngineId;
+  inkHandleRef?: React.RefObject<AnnotationLayerHandle | null>;
   title: string;
   /** Raw HTML/CSS artifact body (draft.content) rendered verbatim in an isolated frame. */
   bodyHtml: string;
@@ -88,6 +87,8 @@ function pointRect(x: number, y: number): DOMRect {
  */
 export function DesignPageView({
   pagePath,
+  inkEngine,
+  inkHandleRef,
   title,
   bodyHtml,
   onOpenSidebar,
@@ -118,9 +119,9 @@ export function DesignPageView({
   const [exportError, setExportError] = React.useState<string | null>(null);
   const isEmptyArtifact = !body.trim();
   const sourceFileName = resolvedDiskPath?.split(/[\\/]/).filter(Boolean).at(-1);
-  const [inkTool, setInkTool] = React.useState<AnnotationTool>("draw");
-  const [inkColor, setInkColor] = React.useState<TLDefaultColorStyle>("black");
-  const [inkStroke, setInkStroke] = React.useState<AnnotationStrokeSize>("m");
+  const [inkTool, setInkTool] = React.useState<InkTool>("draw");
+  const [inkColor, setInkColor] = React.useState<InkColor>("black");
+  const [inkStroke, setInkStroke] = React.useState<InkSize>("m");
   const [inkHistory, setInkHistory] = React.useState({ canUndo: false, canRedo: false });
 
   const commentsEnabled = typeof onCommentsChange === "function" && !sourceMissing;
@@ -178,7 +179,8 @@ export function DesignPageView({
 
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
-  const annotationLayerRef = React.useRef<AnnotationLayerHandle | null>(null);
+  const localInkHandleRef = React.useRef<AnnotationLayerHandle | null>(null);
+  const annotationLayerRef = inkHandleRef ?? localInkHandleRef;
 
   const srcDoc = React.useMemo(() => buildDesignSrcDoc(previewBody, tokenCss, editable), [previewBody, tokenCss, editable]);
   const maxPages = readDesignMaxPages(body);
@@ -656,6 +658,8 @@ export function DesignPageView({
               >
                 <div className="relative h-full w-full">
                   <AnnotationLayer
+                    key={inkEngine}
+                    inkEngine={inkEngine}
                     handleRef={annotationLayerRef}
                     pagePath={pagePath}
                     mode={drawMode ? "draw" : "edit"}

@@ -144,13 +144,8 @@ import { MAIN_FLOW_DEFAULT_WIDTH, normalizeMainFlowWidth } from "@/lib/main-flow
 import { MainFlowWidthHandle } from "@/components/main-flow-width-handle";
 import { shouldOpenEditorContextMenu } from "@/lib/editor-context-menu";
 import { useSpellcheckEnabled } from "@/components/spellcheck-provider";
-import {
-  getAnnotationHistoryCommand,
-  type AnnotationLayerHandle,
-  type AnnotationStrokeSize,
-  type AnnotationTool,
-} from "@/components/annotation-layer";
-import type { TLDefaultColorStyle } from "tldraw";
+import type { AnnotationLayerHandle } from "@/components/annotation-layer";
+import { getInkHistoryCommand, type InkColor, type InkSize, type InkTool } from "@/lib/ink-engine";
 import dynamic from "next/dynamic";
 import { prefetchPdfiumWasm } from "@/lib/pdf-engine-prefetch";
 
@@ -206,12 +201,12 @@ interface RichTextEditorProps {
   /** Undo/redo availability from the annotation layer. */
   annotationHistory?: { canUndo: boolean; canRedo: boolean };
   annotationScene?: unknown | null;
-  inkTool?: AnnotationTool;
-  inkColor?: TLDefaultColorStyle;
-  inkStroke?: AnnotationStrokeSize;
-  onInkToolChange?: (tool: AnnotationTool) => void;
-  onInkColorChange?: (color: TLDefaultColorStyle) => void;
-  onInkStrokeChange?: (size: AnnotationStrokeSize) => void;
+  inkTool?: InkTool;
+  inkColor?: InkColor;
+  inkStroke?: InkSize;
+  onInkToolChange?: (tool: InkTool) => void;
+  onInkColorChange?: (color: InkColor) => void;
+  onInkStrokeChange?: (size: InkSize) => void;
   /** Note title for print header output. */
   pageTitle?: string;
   pageCreatedAt?: string | null;
@@ -1787,7 +1782,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
       const handleWindowKeyDown = (event: KeyboardEvent) => {
         if (event.defaultPrevented) return;
 
-        const command = getAnnotationHistoryCommand(event);
+        const command = getInkHistoryCommand(event);
         if (!command) return;
 
         const target = event.target;

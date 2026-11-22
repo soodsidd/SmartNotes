@@ -37,6 +37,8 @@ import {
   type JupyterProfileStatus,
 } from "@/lib/api/jupyter";
 import { triggerForceReload } from "@/lib/sw-update";
+import type { InkEngineId } from "@/lib/ink-engine";
+import { INK_ENGINE_OPTIONS, isInkEngineAvailable } from "@/lib/ink-engine-preference";
 import {
   DICTATION_SILENCE_DEFAULT_SECONDS,
   DICTATION_SILENCE_OPTIONS,
@@ -57,11 +59,15 @@ const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
 export function AppSettingsDialog({
   open,
   onOpenChange,
+  inkEngine,
+  onInkEngineChange,
   onVaultRestored,
   onTreeRefresh,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  inkEngine: InkEngineId;
+  onInkEngineChange: (engine: InkEngineId) => Promise<void>;
   onVaultRestored?: () => void | Promise<void>;
   onTreeRefresh?: (notebook?: PortableNotebookRecord) => void | Promise<void>;
 }) {
@@ -69,6 +75,21 @@ export function AppSettingsDialog({
   const { spellcheckEnabled, setSpellcheckEnabled } = useSpellcheck();
   const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = React.useState<SettingsTab>("general");
+  const [changingInkEngine, setChangingInkEngine] = React.useState(false);
+  const [inkEngineError, setInkEngineError] = React.useState<string | null>(null);
+  const inkEngineLabelId = React.useId();
+
+  async function selectInkEngine(engine: InkEngineId) {
+    setChangingInkEngine(true);
+    setInkEngineError(null);
+    try {
+      await onInkEngineChange(engine);
+    } catch {
+      setInkEngineError("Could not switch ink engines. The current engine is still active.");
+    } finally {
+      setChangingInkEngine(false);
+    }
+  }
   // SN-407: dictation auto-stop silence timeout (per device, localStorage).
   const [dictationSilenceSeconds, setDictationSilenceSeconds] = React.useState<number>(DICTATION_SILENCE_DEFAULT_SECONDS);
   React.useEffect(() => {
@@ -274,6 +295,26 @@ export function AppSettingsDialog({
               <p className="text-xs text-muted-foreground">
                 Browser spelling underlines in the text editor. Off does not change note content.
               </p>
+            </section>
+
+            <section aria-labelledby={inkEngineLabelId}>
+              <p id={inkEngineLabelId} className="mb-2 text-sm font-medium">Ink engine</p>
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby={inkEngineLabelId}>
+                {INK_ENGINE_OPTIONS.map(({ id, label }) => (
+                  <Button
+                    key={id}
+                    type="button"
+                    variant={inkEngine === id ? "secondary" : "outline"}
+                    aria-pressed={inkEngine === id}
+                    disabled={changingInkEngine || !isInkEngineAvailable(id)}
+                    onClick={() => void selectInkEngine(id)}
+                    className="min-h-11"
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              {inkEngineError && <p role="alert" className="mt-2 text-xs text-destructive">{inkEngineError}</p>}
             </section>
 
             <section data-testid="settings-dictation-silence">

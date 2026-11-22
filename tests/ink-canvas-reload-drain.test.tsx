@@ -33,6 +33,7 @@ function drawStroke(notify = true) {
 jest.mock("tldraw", () => {
   const ReactMock = jest.requireActual<typeof import("react")>("react");
   return {
+    DrawShapeUtil: class {},
     Tldraw: ({ onMount }: { onMount: (editor: unknown) => void }) => {
       ReactMock.useEffect(() => {
         onMount({

@@ -1,4 +1,4 @@
-import type { Editor } from "tldraw";
+import type { InkEngine } from "@/lib/ink-engine";
 import { AUTO_GROW_BOTTOM_MARGIN_PX } from "@/lib/page-frame";
 
 /** Sidecar / editor snapshots may be raw TLStoreSnapshot or TLEditorSnapshot wrapper. */
@@ -62,31 +62,23 @@ export function computeStrokeBottomFromSnapshot(snapshot: unknown): number | und
   return found ? maxBottom : undefined;
 }
 
-export function computeDrawableBottomFromEditor(
-  editor: Editor,
+export function drawableBottomFromStrokeBottom(
+  strokeBottom: number | undefined,
+  margin: number
+): number | undefined {
+  return strokeBottom == null ? undefined : Math.ceil(strokeBottom + margin);
+}
+
+export function computeDrawableBottomFromInkEngine(
+  engine: InkEngine,
   margin: number = AUTO_GROW_BOTTOM_MARGIN_PX
 ): number | undefined {
-  const shapeIds = [...editor.getCurrentPageShapeIds()];
-  if (shapeIds.length === 0) return undefined;
-
-  let maxBottom = 0;
-  let found = false;
-  for (const id of shapeIds) {
-    const bounds = editor.getShapePageBounds(id);
-    if (!bounds) continue;
-    found = true;
-    maxBottom = Math.max(maxBottom, bounds.maxY);
-  }
-
-  if (!found) return undefined;
-  return Math.ceil(maxBottom + margin);
+  return drawableBottomFromStrokeBottom(engine.getStrokeBottom(), margin);
 }
 
 export function computeDrawableBottomFromSnapshot(
   snapshot: unknown,
   margin: number = AUTO_GROW_BOTTOM_MARGIN_PX
 ): number | undefined {
-  const strokeBottom = computeStrokeBottomFromSnapshot(snapshot);
-  if (strokeBottom == null) return undefined;
-  return Math.ceil(strokeBottom + margin);
+  return drawableBottomFromStrokeBottom(computeStrokeBottomFromSnapshot(snapshot), margin);
 }

@@ -10,16 +10,18 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import {
   AnnotationLayer,
   ANNOTATION_HISTORY_THROTTLE_MS,
-  ANNOTATION_INK_STROKE_SCALE,
-  ANNOTATION_INK_STROKE_SCALE_META_KEY,
-  AnnotationDrawShapeUtil,
   createThrottledHistoryEmitter,
   decidePenAwareTouchGesture,
-  getAnnotationHistoryCommand,
   readAnnotationScrollMetrics,
   syncAnnotationCamera,
   twoFingerCentroidY,
 } from "@/components/annotation-layer";
+import {
+  ANNOTATION_INK_STROKE_SCALE,
+  ANNOTATION_INK_STROKE_SCALE_META_KEY,
+  AnnotationDrawShapeUtil,
+} from "@/components/tldraw-ink-adapter";
+import { getInkHistoryCommand, type InkEngine } from "@/lib/ink-engine";
 import { pageContentCache } from "@/lib/page-content-cache";
 
 const mockStoreListeners: Array<{
@@ -53,7 +55,8 @@ jest.mock("tldraw", () => ({
         user: { updateUserPreferences: jest.fn() },
         getCanUndo: jest.fn(() => false),
         getCanRedo: jest.fn(() => false),
-        getCurrentPageShapeIds: jest.fn(() => ["shape:draw-1"]),
+        getCurrentToolId: jest.fn(() => "draw"),
+        getCurrentPageShapeIds: jest.fn(() => new Set(["shape:draw-1"])),
         getShapePageBounds: jest.fn(() => ({ maxY: 1000 })),
         getSnapshot: jest.fn(() => ({
           document: {
@@ -158,7 +161,7 @@ const CACHED_RETURN_SCENE = {
 describe("syncAnnotationCamera", () => {
   it("maps scroll offset to negated camera y with force while locked", () => {
     const setCamera = jest.fn();
-    const editor = { setCamera } as unknown as import("tldraw").Editor;
+    const editor = { setCamera } as InkEngine;
 
     syncAnnotationCamera(editor, 480);
 
@@ -170,7 +173,7 @@ describe("syncAnnotationCamera", () => {
 
   it("divides scroll offset by workspace zoom when the frame is scaled", () => {
     const setCamera = jest.fn();
-    const editor = { setCamera } as unknown as import("tldraw").Editor;
+    const editor = { setCamera } as InkEngine;
 
     syncAnnotationCamera(editor, 300, undefined, 1.5);
 
@@ -276,10 +279,10 @@ describe("createThrottledHistoryEmitter", () => {
   it("throttles history updates during an active stroke", () => {
     const onHistoryChange = jest.fn();
     const editor = {
-      getCanUndo: jest.fn(() => true),
-      getCanRedo: jest.fn(() => false),
-      inputs: { isPointing: true },
-    } as unknown as import("tldraw").Editor;
+      canUndo: jest.fn(() => true),
+      canRedo: jest.fn(() => false),
+      isPointing: () => true,
+    } as InkEngine;
 
     const emitter = createThrottledHistoryEmitter(editor, onHistoryChange);
 
@@ -298,10 +301,10 @@ describe("createThrottledHistoryEmitter", () => {
   it("flushes history immediately when the stroke ends", () => {
     const onHistoryChange = jest.fn();
     const editor = {
-      getCanUndo: jest.fn(() => false),
-      getCanRedo: jest.fn(() => true),
-      inputs: { isPointing: false },
-    } as unknown as import("tldraw").Editor;
+      canUndo: jest.fn(() => false),
+      canRedo: jest.fn(() => true),
+      isPointing: () => false,
+    } as InkEngine;
 
     const emitter = createThrottledHistoryEmitter(editor, onHistoryChange);
 
@@ -312,10 +315,10 @@ describe("createThrottledHistoryEmitter", () => {
   });
 });
 
-describe("getAnnotationHistoryCommand", () => {
+describe("getInkHistoryCommand", () => {
   it("maps mod+z to undo", () => {
     expect(
-      getAnnotationHistoryCommand({
+      getInkHistoryCommand({
         key: "z",
         ctrlKey: true,
         metaKey: false,
@@ -327,7 +330,7 @@ describe("getAnnotationHistoryCommand", () => {
 
   it("maps mod+shift+z to redo", () => {
     expect(
-      getAnnotationHistoryCommand({
+      getInkHistoryCommand({
         key: "Z",
         ctrlKey: false,
         metaKey: true,
@@ -339,7 +342,7 @@ describe("getAnnotationHistoryCommand", () => {
 
   it("maps ctrl+y to redo on non-mac shortcuts", () => {
     expect(
-      getAnnotationHistoryCommand({
+      getInkHistoryCommand({
         key: "y",
         ctrlKey: true,
         metaKey: false,
@@ -351,7 +354,7 @@ describe("getAnnotationHistoryCommand", () => {
 
   it("ignores unrelated shortcuts", () => {
     expect(
-      getAnnotationHistoryCommand({
+      getInkHistoryCommand({
         key: "z",
         ctrlKey: false,
         metaKey: false,

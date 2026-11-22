@@ -98,7 +98,7 @@ import {
   writePaperNotesOpen,
   writePaperNotesWidth,
 } from "@/lib/paper-reading-shell";
-import type { AnnotationLayerHandle, AnnotationLayerProps, AnnotationStrokeSize, AnnotationTool } from "@/components/annotation-layer";
+import type { AnnotationLayerHandle, AnnotationLayerProps } from "@/components/annotation-layer";
 import type { InkCanvasHandle, InkCanvasProps } from "@/components/ink-canvas";
 import type { JupyterNotebookViewProps } from "@/components/jupyter-notebook-view";
 import { jupyterFrameHostClassName } from "@/lib/jupyter-browser-support";
@@ -171,7 +171,8 @@ import {
 } from "@/lib/companion-command-activity";
 import { normalizeJupyterWorkspacePath } from "@/lib/jupyter-focus";
 import { safeRandomUUID } from "@/lib/safe-random-uuid";
-import type { TLDefaultColorStyle } from "tldraw";
+import type { InkColor, InkEngineId, InkSize, InkTool } from "@/lib/ink-engine";
+import { changeInkEngine, DEFAULT_INK_ENGINE, readInkEngine, type AvailableInkEngineId } from "@/lib/ink-engine-preference";
 import dynamic from "next/dynamic";
 import { resolvePdfAttachmentTarget, type PdfAttachmentTarget } from "@/lib/pdf-attachment";
 import {
@@ -1277,8 +1278,18 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
   const ghostDismissTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const ghostFadeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const inkCanvasRef = React.useRef<InkCanvasHandle | null>(null);
+  const designInkRef = React.useRef<AnnotationLayerHandle | null>(null);
+  const [inkEngine, setInkEngine] = React.useState<AvailableInkEngineId>(DEFAULT_INK_ENGINE);
+  React.useEffect(() => setInkEngine(readInkEngine()), []);
   const spreadsheetPageRef = React.useRef<SpreadsheetPageHandle | null>(null);
   const annotationLayerRef = React.useRef<AnnotationLayerHandle | null>(null);
+  const handleInkEngineChange = React.useCallback(async (requested: InkEngineId) => {
+    const next = await changeInkEngine(inkEngine, requested, async () => {
+      const surface = inkCanvasRef.current ?? designInkRef.current ?? annotationLayerRef.current;
+      await surface?.flushPending();
+    });
+    setInkEngine(next);
+  }, [inkEngine]);
   const hydratingRef = React.useRef(false);
   const draftRef = React.useRef<PageDraft | null>(initialWorkspaceDraft);
   const activePagePathRef = React.useRef<string | null>(null);
@@ -4271,7 +4282,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
             void pageContentCache.ensureAnnotations(parentPagePath).then(({ scene }) => {
               if (activePagePathRef.current === parentPagePath) {
                 annotationLayerRef.current?.loadScene(
-                  (scene as import("tldraw").TLStoreSnapshot | null) ?? null
+                  scene ?? null
                 );
               }
             });
@@ -7684,6 +7695,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         <AppSettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
+          inkEngine={inkEngine}
+          onInkEngineChange={handleInkEngineChange}
           onVaultRestored={async () => {
             setPendingVaultReload(null);
             await loadTree();
@@ -8105,6 +8118,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
               ) : draft.noteType === "design" ? (
                 <DesignPageView
                   key={`${draft.path}:${designReloadNonce}`}
+                  inkEngine={inkEngine}
+                  inkHandleRef={designInkRef}
                   pagePath={draft.path}
                   title={draft.title}
                   bodyHtml={draft.content}
@@ -8148,8 +8163,9 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                 />
               ) : draft.noteType === "ink" || draft.noteType === "music" ? (
                 <InkCanvas
-                  key={`${draft.path}:${inkReloadNonce}:${activeVersionPreview?.versionId ?? "live"}`}
-                  ref={inkCanvasRef}
+                  key={`${draft.path}:${inkReloadNonce}:${activeVersionPreview?.versionId ?? "live"}:${inkEngine}`}
+                  inkEngine={inkEngine}
+                  handleRef={inkCanvasRef}
                   pagePath={draft.path}
                   title={draft.title}
                   music={draft.noteType === "music"}
@@ -8175,6 +8191,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                 draft={draft}
                 editorRef={editorRef}
                 annotationLayerRef={annotationLayerRef}
+                inkEngine={inkEngine}
                 readOnly={Boolean(activeVersionPreview)}
                 previewContent={activeVersionPreview?.content}
                 previewAnnotationsJson={activeVersionPreview?.annotationsContent ?? undefined}
@@ -11900,6 +11917,7 @@ function EditorPanel({
   draft,
   editorRef,
   annotationLayerRef,
+  inkEngine,
   readOnly = false,
   previewContent,
   previewAnnotationsJson,
@@ -11919,6 +11937,7 @@ function EditorPanel({
   draft: PageDraft;
   editorRef: React.RefObject<RichTextEditorHandle | null>;
   annotationLayerRef: React.RefObject<AnnotationLayerHandle | null>;
+  inkEngine: AvailableInkEngineId;
   readOnly?: boolean;
   previewContent?: string;
   previewAnnotationsJson?: string;
@@ -11946,9 +11965,9 @@ function EditorPanel({
   });
   const [annotationScene, setAnnotationScene] = React.useState<unknown | null>(null);
   const [drawableBottom, setDrawableBottom] = React.useState<number | undefined>(undefined);
-  const [inkTool, setInkTool] = React.useState<AnnotationTool>("draw");
-  const [inkColor, setInkColor] = React.useState<TLDefaultColorStyle>("black");
-  const [inkStroke, setInkStroke] = React.useState<AnnotationStrokeSize>("m");
+  const [inkTool, setInkTool] = React.useState<InkTool>("draw");
+  const [inkColor, setInkColor] = React.useState<InkColor>("black");
+  const [inkStroke, setInkStroke] = React.useState<InkSize>("m");
   const [localPdfReader, setLocalPdfReader] = React.useState<PdfAttachmentTarget | null>(null);
   const isDrawMode = annotationMode === "draw" && !readOnly;
   const panelRef = React.useRef<HTMLDivElement | null>(null);
@@ -12125,6 +12144,8 @@ function EditorPanel({
         onInkStrokeChange={setInkStroke}
         annotationOverlay={
           <AnnotationLayer
+            key={inkEngine}
+            inkEngine={inkEngine}
             handleRef={annotationLayerRef}
             pagePath={draft.path}
             mode={readOnly ? "edit" : annotationMode}

@@ -10,31 +10,26 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  ANNOTATION_INK_COLORS,
-  type AnnotationLayerHandle,
-  type AnnotationStrokeSize,
-  type AnnotationTool,
-} from "@/components/annotation-layer";
-import type { TLDefaultColorStyle } from "tldraw";
+import type { AnnotationLayerHandle } from "@/components/annotation-layer";
+import { INK_COLORS, type InkColor, type InkSize, type InkTool } from "@/lib/ink-engine";
 
 interface AnnotationDrawToolbarProps {
   layerRef: React.RefObject<AnnotationLayerHandle | null>;
-  activeTool: AnnotationTool;
-  activeColor: TLDefaultColorStyle;
-  activeStroke: AnnotationStrokeSize;
+  activeTool: InkTool;
+  activeColor: InkColor;
+  activeStroke: InkSize;
   canUndo: boolean;
   canRedo: boolean;
-  onToolChange: (tool: AnnotationTool) => void;
-  onColorChange: (color: TLDefaultColorStyle) => void;
-  onStrokeChange: (size: AnnotationStrokeSize) => void;
+  onToolChange: (tool: InkTool) => void;
+  onColorChange: (color: InkColor) => void;
+  onStrokeChange: (size: InkSize) => void;
   onExitDrawMode: () => void;
   variant?: "desktop" | "mobile";
 }
 
 // Bar-height indicators scaled down 25% from prior values (2/3/5/7) to match
 // newly authored thinner ink strokes (SN-154).
-const STROKE_SIZES: { id: AnnotationStrokeSize; label: string; bar: number }[] = [
+const STROKE_SIZES: { id: InkSize; label: string; bar: number }[] = [
   { id: "s", label: "Thin", bar: 1.5 },
   { id: "m", label: "Medium", bar: 2.25 },
   { id: "l", label: "Thick", bar: 3.75 },
@@ -169,7 +164,7 @@ export function AnnotationDrawToolbar({
 }: AnnotationDrawToolbarProps) {
   const isMobile = variant === "mobile";
 
-  function handleTool(tool: AnnotationTool) {
+  function handleTool(tool: InkTool) {
     layerRef.current?.setTool(tool);
     onToolChange(tool);
   }
@@ -248,7 +243,7 @@ export function AnnotationDrawToolbar({
 
   const colorGroup = (
     <div className="flex items-center gap-0.5">
-      {ANNOTATION_INK_COLORS.map((color) => (
+      {INK_COLORS.map((color) => (
         <button
           key={color.id}
           type="button"
@@ -305,7 +300,7 @@ export function AnnotationDrawToolbar({
   );
 
   if (isMobile) {
-    const activeColorHex = ANNOTATION_INK_COLORS.find((color) => color.id === activeColor)?.hex ?? "#000";
+    const activeColorHex = INK_COLORS.find((color) => color.id === activeColor)?.hex ?? "#000";
     const activeStrokeEntry = STROKE_SIZES.find((size) => size.id === activeStroke) ?? STROKE_SIZES[1];
 
     return (
@@ -314,11 +309,11 @@ export function AnnotationDrawToolbar({
         <InkToolbarSep />
         {historyGroup}
         <InkToolbarSep />
-        <MobileInkExpandSelector<TLDefaultColorStyle>
+        <MobileInkExpandSelector<InkColor>
           label="Ink color"
-          activeId={activeColor as TLDefaultColorStyle}
+          activeId={activeColor}
           testIdPrefix="ink-color"
-          options={ANNOTATION_INK_COLORS.map((color) => ({ id: color.id, label: `Ink color ${color.id}` }))}
+          options={INK_COLORS.map((color) => ({ id: color.id, label: `Ink color ${color.id}` }))}
           onSelect={(colorId) => {
             layerRef.current?.setColor(colorId);
             onColorChange(colorId);
@@ -330,7 +325,7 @@ export function AnnotationDrawToolbar({
             />
           )}
           renderOption={(option) => {
-            const hex = ANNOTATION_INK_COLORS.find((color) => color.id === option.id)?.hex ?? "#000";
+            const hex = INK_COLORS.find((color) => color.id === option.id)?.hex ?? "#000";
             return (
               <span
                 className="block size-4 rounded-full border border-border"
