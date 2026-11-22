@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { renderPageToPng } from "@/server/vault/page-render";
 import { toErrorResponse } from "@/server/vault/errors";
+import { parseInkEngine } from "@/server/vault/ink-sidecars";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await renderPageToPng({ pagePath: pagePath.trim() });
+    const result = await renderPageToPng({ pagePath: pagePath.trim(), inkEngine: parseInkEngine(searchParams.get("engine")) });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const response = toErrorResponse(error);

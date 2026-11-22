@@ -23,6 +23,7 @@ import {
 } from "@/components/tldraw-ink-adapter";
 import { getInkHistoryCommand, type InkEngine } from "@/lib/ink-engine";
 import { pageContentCache } from "@/lib/page-content-cache";
+import { drainBeforeReload } from "@/lib/reload-guard";
 
 const mockStoreListeners: Array<{
   callback: () => void;
@@ -33,6 +34,7 @@ const mockListen = jest.fn((callback: () => void, options?: { source?: string; s
   return jest.fn();
 });
 const mockIsPointing = { current: false };
+let mockDocument: Record<string, unknown> = {};
 const mockEditors: Array<{
   getSnapshot: jest.Mock;
   loadSnapshot: jest.Mock;
@@ -79,6 +81,7 @@ jest.mock("tldraw", () => ({
         },
         store: {
           listen: mockListen,
+          serialize: () => mockDocument,
         },
       };
       mockEditors.push(editor);
@@ -371,6 +374,7 @@ describe("AnnotationLayer mode toggle", () => {
     mockStoreListeners.length = 0;
     mockIsPointing.current = false;
     mockEditors.length = 0;
+    mockDocument = {};
     mockSaveAnnotationsScene.mockClear();
     pageContentCache.clear();
   });
@@ -698,6 +702,7 @@ describe("AnnotationLayer mode toggle", () => {
 
     // Simulate a completed user stroke by firing the document-change listener.
     await act(async () => {
+      mockDocument = { "shape:draw-1": INK_SCENE.document.store["shape:draw-1"] };
       for (const listener of mockStoreListeners) {
         if (listener.options?.source === "user" && listener.options?.scope === "document") {
           listener.callback();
@@ -719,6 +724,24 @@ describe("AnnotationLayer mode toggle", () => {
     );
     await waitFor(() => expect(onDrawableBottomChange).toHaveBeenCalledWith(1600), {
       timeout: 2500,
+    });
+  });
+
+  it("drains a live edit before the document listener or debounce runs", async () => {
+    render(React.createElement(AnnotationLayer, {
+      pagePath: "Notebook/Section/reload.html",
+      mode: "draw",
+    }));
+    await waitFor(() => expect(screen.getByTestId("annotation-layer"))
+      .toHaveAttribute("data-annotation-ready", "true"));
+    await act(async () => {
+      expect(await drainBeforeReload()).toEqual({ ok: true, errorMessage: null });
+      expect(mockSaveAnnotationsScene).not.toHaveBeenCalled();
+      mockDocument = { "shape:draw-1": INK_SCENE.document.store["shape:draw-1"] };
+      mockSaveAnnotationsScene.mockRejectedValueOnce(new Error("offline"));
+      expect(await drainBeforeReload()).toEqual({ ok: false, errorMessage: "Failed to save annotations." });
+      expect(await drainBeforeReload()).toEqual({ ok: true, errorMessage: null });
+      expect(mockSaveAnnotationsScene).toHaveBeenCalledTimes(2);
     });
   });
 

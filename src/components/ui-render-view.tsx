@@ -6,6 +6,7 @@ import { DESIGN_COMMENT_QUOTE_LIMIT } from "@/lib/comment-types";
 import * as React from "react";
 import dynamic from "next/dynamic";
 import type { AnnotationLayerHandle } from "@/components/annotation-layer";
+import type { InkEngineId } from "@/lib/ink-engine";
 
 const AnnotationLayer = dynamic(
   () => import("@/components/annotation-layer").then((module) => module.AnnotationLayer),
@@ -20,6 +21,7 @@ export interface UiRenderViewProps {
   /** Viewport width in CSS px so responsive media queries fire faithfully. */
   viewportWidth: number;
   annotationsScene: unknown;
+  inkEngine?: InkEngineId;
   drawableBottom?: number;
   /** Optional target-project token stylesheet injected into the frame <head>. */
   tokenCss?: string;
@@ -299,6 +301,7 @@ export function UiRenderView({
   bodyHtml,
   viewportWidth,
   annotationsScene,
+  inkEngine,
   drawableBottom,
   tokenCss,
 }: UiRenderViewProps) {
@@ -306,7 +309,7 @@ export function UiRenderView({
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
   const [frameReady, setFrameReady] = React.useState(false);
   const [inkReady, setInkReady] = React.useState(false);
-  const [frameHeight, setFrameHeight] = React.useState(900);
+  const [frameHeight, setFrameHeight] = React.useState(Math.max(drawableBottom ?? 0, 900));
 
   const srcDoc = React.useMemo(() => buildDesignSrcDoc(bodyHtml, tokenCss), [bodyHtml, tokenCss]);
   const previewJson = React.useMemo(
@@ -335,18 +338,6 @@ export function UiRenderView({
 
   const handleLoad = React.useCallback(() => {
     setFrameReady(true);
-  }, []);
-
-  // Capture must never hang on a missing signal. If the iframe onLoad or the
-  // ink overlay's onSceneChange does not fire (headless quirks, empty scene),
-  // force-measure and mark ready after a bounded grace period so renderUiToPng
-  // still produces a faithful capture instead of timing out.
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setFrameReady(true);
-      setInkReady(true);
-    }, 2500);
-    return () => window.clearTimeout(timer);
   }, []);
 
   const captureReady = frameReady && inkReady;
@@ -385,6 +376,8 @@ export function UiRenderView({
         <AnnotationLayer
           handleRef={annotationLayerRef}
           pagePath={pagePath}
+          inkEngine={inkEngine}
+          cameraTracksScroll={false}
           mode="edit"
           readOnly
           previewSidecarJson={previewJson}

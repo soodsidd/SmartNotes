@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import type { AnnotationLayerHandle } from "@/components/annotation-layer";
 import { computePageFrameHeight } from "@/lib/page-frame";
+import type { InkEngineId } from "@/lib/ink-engine";
 
 const AnnotationLayer = dynamic(
   () => import("@/components/annotation-layer").then((module) => module.AnnotationLayer),
@@ -16,6 +17,7 @@ export interface PageRenderViewProps {
   title: string;
   bodyHtml: string;
   annotationsScene: unknown;
+  inkEngine?: InkEngineId;
   drawableBottom?: number;
 }
 
@@ -24,6 +26,7 @@ export function PageRenderView({
   title,
   bodyHtml,
   annotationsScene,
+  inkEngine,
   drawableBottom,
 }: PageRenderViewProps) {
   const annotationLayerRef = React.useRef<AnnotationLayerHandle | null>(null);
@@ -62,6 +65,8 @@ export function PageRenderView({
             <AnnotationLayer
               handleRef={annotationLayerRef}
               pagePath={pagePath}
+              inkEngine={inkEngine}
+              cameraTracksScroll={false}
               mode="edit"
               readOnly
               previewSidecarJson={previewJson}

@@ -228,25 +228,10 @@ const AnnotationLayer = dynamic(
   { ssr: false }
 ) as React.ComponentType<AnnotationLayerProps>;
 
-const ImmersivePdfReader = dynamic(
+const ImmersivePdfReader = dynamic<import("@/components/immersive-pdf-reader").ImmersivePdfReaderProps>(
   () => import("@/components/immersive-pdf-reader"),
   { ssr: false }
-) as React.ComponentType<{
-  href: string;
-  fileName: string;
-  onClose: () => void;
-  open?: boolean;
-  companionOpen?: boolean;
-  companionAnswerReady?: boolean;
-  companionWorking?: boolean;
-  onToggleCompanion?: () => void;
-  onPageChange?: (page: number, pageCount?: number) => void;
-  insetRight?: number;
-  modal?: boolean;
-  notesPanel?: { open: boolean; onToggle: () => void };
-  onSaveAsPaper?: () => void;
-  recordDestinationPath?: string;
-}>;
+);
 import {
   getVersionsControlLabel,
   readTreeSidebarCollapsed,
@@ -950,6 +935,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
   // Embedded paper frames share the tab's sessionStorage; only the top shell restores a reader.
   // Restore after mount so SSR HTML and the first client render match (React #418/#422).
   const [pdfReaderState, setPdfReaderState] = React.useState(() => createRetainedPdfReaderState(null));
+  const pdfReaderInkFlushRef = React.useRef<(() => Promise<void>) | null>(null);
   React.useEffect(() => {
     if (paperInline) return;
     const restored = readActivePdfReaderSession();
@@ -1108,8 +1094,11 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     }
     const paperPath = target.paperPath ?? currentPaper;
     const next = paperPath ? { ...target, paperPath } : target;
-    writeActivePdfReaderSession(next);
-    setPdfReaderState((current) => openRetainedPdfReader(current, next));
+    void (async () => {
+      await pdfReaderInkFlushRef.current?.();
+      writeActivePdfReaderSession(next);
+      setPdfReaderState((current) => openRetainedPdfReader(current, next));
+    })().catch(() => toast.error("Save the PDF annotations before opening another document."));
   }, [paperInline]);
   // SN-281 paper reading shell: PDF | paper notes dock | Companion overlay.
   const paperShellPath = pdfReaderOpen ? pdfReader?.paperPath ?? null : null;
@@ -1130,6 +1119,12 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     overlayOpen: paperNotesOverlayOpen,
   });
   const closePdfReader = React.useCallback(async (): Promise<boolean> => {
+      try {
+        await pdfReaderInkFlushRef.current?.();
+      } catch {
+        toast.error("Save the PDF annotations before closing the reader.");
+        return false;
+      }
       const frame = paperFrameRef.current;
       if (frame?.contentWindow && liveFramesRef.current.has(frame.contentWindow)) {
         // Same save handshake as SN-279 inline frames: never discard dock edits.
@@ -1289,6 +1284,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     const next = await changeInkEngine(inkEngine, requested, async () => {
       const surface = inkCanvasRef.current ?? designInkRef.current ?? annotationLayerRef.current;
       await surface?.flushPending();
+      await pdfReaderInkFlushRef.current?.();
     });
     setInkEngine(next);
   }, [inkEngine]);
@@ -4881,6 +4877,18 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     [flushSave, updateDraft]
   );
 
+  const flushPageInk = React.useCallback(async () => {
+    if (versionPreviewRef.current) return true;
+    try {
+      const surface = inkCanvasRef.current ?? designInkRef.current ?? annotationLayerRef.current;
+      await surface?.flushPending();
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Save the ink before leaving this page.");
+      return false;
+    }
+  }, []);
+
   const openPage = React.useCallback(
     async (pagePath: string, sourceTree = tree) => {
       if (!(await flushInlinePapers())) {
@@ -4906,15 +4914,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         const saved = await flushSave();
         if (!saved) return;
       }
-      if ((leavingDraft?.noteType === "ink" || leavingDraft?.noteType === "music") && !versionPreviewRef.current) {
-        try {
-          await inkCanvasRef.current?.flushPending();
-        } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Save the ink before leaving this page.");
-          return;
-        }
-        if (activePagePathRef.current !== leavingPagePath) return;
-      }
+      if (!(await flushPageInk()) || activePagePathRef.current !== leavingPagePath) return;
 
       setVersionPreview(null);
       dismissGhostVersions();
@@ -4949,7 +4949,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         }
       })();
     },
-    [applySelection, dismissGhostVersions, flushSave, replaceTreePage, snapshotLeavingPage, tree]
+    [applySelection, dismissGhostVersions, flushPageInk, flushSave, replaceTreePage, snapshotLeavingPage, tree]
   );
 
   const rememberPaperReturnScroll = React.useCallback((referringPath: string | null | undefined) => {
@@ -5056,7 +5056,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     async (sectionPath: string) => {
       const leavingPagePath = activePagePathRef.current;
       const canLeave = await flushSave();
-      if (!canLeave) {
+      if (!canLeave || !(await flushPageInk())) {
         return;
       }
       if (leavingPagePath) {
@@ -5067,14 +5067,14 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       const selection = resolveSelection(tree, { sectionPath });
       applySelection(selection);
     },
-    [applySelection, dismissGhostVersions, flushSave, snapshotLeavingPage, tree]
+    [applySelection, dismissGhostVersions, flushPageInk, flushSave, snapshotLeavingPage, tree]
   );
 
   const selectNotebook = React.useCallback(
     async (notebookPath: string, sourceTree = tree, sectionOnly = false) => {
       const leavingPagePath = activePagePathRef.current;
       const canLeave = await flushSave();
-      if (!canLeave) {
+      if (!canLeave || !(await flushPageInk())) {
         return;
       }
       if (leavingPagePath) {
@@ -5085,19 +5085,19 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       const selection = resolveSelection(sourceTree, { notebookPath });
       applySelection(sectionOnly ? { ...selection, page: null } : selection);
     },
-    [applySelection, dismissGhostVersions, flushSave, snapshotLeavingPage, tree]
+    [applySelection, dismissGhostVersions, flushPageInk, flushSave, snapshotLeavingPage, tree]
   );
 
   const selectNotebookRoot = React.useCallback(
     async (notebookPath: string) => {
       const leavingPagePath = activePagePathRef.current;
-      if (!(await flushSave())) return;
+      if (!(await flushSave()) || !(await flushPageInk())) return;
       if (leavingPagePath) await snapshotLeavingPage(leavingPagePath);
       dismissGhostVersions();
       const notebook = tree.find((item) => item.path === notebookPath);
       if (notebook) applySelection({ notebook, section: null, page: notebook.pages[0] ?? null });
     },
-    [applySelection, dismissGhostVersions, flushSave, snapshotLeavingPage, tree]
+    [applySelection, dismissGhostVersions, flushPageInk, flushSave, snapshotLeavingPage, tree]
   );
 
   React.useEffect(() => {
@@ -8590,6 +8590,8 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       {pdfReader ? (
         <ImmersivePdfReader
           key={pdfReader.href}
+          inkEngine={inkEngine}
+          inkFlushRef={pdfReaderInkFlushRef}
           href={pdfReader.href}
           fileName={pdfReader.fileName}
           onClose={closePdfReader}
@@ -12064,7 +12066,7 @@ function EditorPanel({
         // The layer stays mounted (read-only) in edit mode, so the save completes.
         const layerRef = annotationLayerRef;
         if (layerRef && typeof layerRef !== "function" && layerRef.current) {
-          void layerRef.current.flush().catch(() => {
+          void layerRef.current.flushPending().catch(() => {
             // keep in-memory ink visible even if flush fails
           });
         }
@@ -12185,6 +12187,7 @@ function EditorPanel({
       {localPdfReader ? (
         <ImmersivePdfReader
           key={localPdfReader.href}
+          inkEngine={inkEngine}
           href={localPdfReader.href}
           fileName={localPdfReader.fileName}
           onClose={() => setLocalPdfReader(null)}

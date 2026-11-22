@@ -56,7 +56,7 @@ function SelectionToolbar({ engine, aboveTools }: { engine: SmartNotesInkEngine;
 
 export function SmartNotesInkSurface({ variant, scene, grid, onMount }: InkEngineSurfaceProps) {
   const [engine] = React.useState(() => new SmartNotesInkEngine(variant === "note"));
-  const [input] = React.useState(() => new InkPointerInput(engine));
+  const [input] = React.useState(() => new InkPointerInput(engine, variant === "annotation"));
   const svgRef = React.useRef<SVGSVGElement>(null);
   const mountRef = React.useRef({ onMount, scene });
   mountRef.current = { onMount, scene };
@@ -125,7 +125,7 @@ export function SmartNotesInkSurface({ variant, scene, grid, onMount }: InkEngin
           const [sample] = readSamples(event);
           if (!input.down(sample, event.shiftKey)) return;
           event.currentTarget.focus({ preventScroll: true });
-          event.currentTarget.setPointerCapture?.(event.pointerId);
+          if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture?.(event.pointerId);
         }}
         onPointerMove={(event) => input.move(readSamples(event))}
         onPointerUp={(event) => endPointer(event, false)}

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { readAnnotationsScene, saveAnnotationsScene } from "@/server/vault/pages";
 import { toErrorResponse, VaultError } from "@/server/vault/errors";
 import { parseInkEngine } from "@/server/vault/ink-sidecars";
+import { parsePdfInkPagePath } from "@/lib/pdf-annotations";
+import { readPdfInkPage, savePdfInkPage } from "@/server/vault/pdf-annotations";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +12,10 @@ export async function GET(request: Request) {
     const query = new URL(request.url).searchParams;
     const path = query.get("path");
     if (!path) throw new VaultError("INVALID_PATH", 'Query parameter "path" is required.');
-    const { scene, drawableBottom } = await readAnnotationsScene(path, parseInkEngine(query.get("engine")));
+    const engine = parseInkEngine(query.get("engine"));
+    const pdfPage = engine === "smart-notes" ? parsePdfInkPagePath(path) : null;
+    if (pdfPage) return NextResponse.json(await readPdfInkPage(pdfPage.pdfPath, pdfPage.page));
+    const { scene, drawableBottom } = await readAnnotationsScene(path, engine);
     return NextResponse.json({ scene, drawableBottom });
   } catch (error) {
     const response = toErrorResponse(error);
@@ -29,8 +34,14 @@ export async function PUT(request: Request) {
     if (!path) {
       throw new VaultError("INVALID_PATH", 'Body field "path" is required.');
     }
+    const selectedEngine = parseInkEngine(engine);
+    const pdfPage = selectedEngine === "smart-notes" ? parsePdfInkPagePath(path) : null;
+    if (pdfPage) {
+      await savePdfInkPage(pdfPage.pdfPath, pdfPage.page, scene ?? null);
+      return NextResponse.json({ ok: true });
+    }
     await saveAnnotationsScene(path, scene ?? null, {
-      engine: parseInkEngine(engine),
+      engine: selectedEngine,
       drawableBottom:
         typeof drawableBottom === "number" && Number.isFinite(drawableBottom)
           ? drawableBottom

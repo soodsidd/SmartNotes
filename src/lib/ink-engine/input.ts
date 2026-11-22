@@ -59,7 +59,10 @@ export class InkPointerInput {
   private panning = false;
   private touches = new Map<number, Point>();
 
-  constructor(private readonly engine: SmartNotesInkEngine) {}
+  constructor(
+    private readonly engine: SmartNotesInkEngine,
+    private readonly hostRoutesTouch = false
+  ) {}
 
   reset = () => {
     this.active = null;
@@ -89,7 +92,10 @@ export class InkPointerInput {
 
   down(sample: PointerSample, lasso = false): boolean {
     if (this.engine.isReadOnly()) return false;
-    if (sample.type === "touch") {
+    // AnnotationLayer can cancel a draft and consume the rest of its pointer
+    // stream when it takes over a scroll gesture.
+    if (this.hostRoutesTouch && !this.engine.isPointing()) this.active = null;
+    if (!this.hostRoutesTouch && sample.type === "touch") {
       const action = decidePenAwareTouchGesture({
         touchCount: this.touches.size + 1,
         penMode: this.penMode,

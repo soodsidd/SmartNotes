@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
 import { renderDesignToPdf } from "@/server/vault/page-render";
 import { toErrorResponse, VaultError } from "@/server/vault/errors";
+import { parseInkEngine } from "@/server/vault/ink-sidecars";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const input = await request.json() as { path?: unknown; bodyHtml?: unknown };
+    const input = await request.json() as { path?: unknown; bodyHtml?: unknown; engine?: unknown };
     if (typeof input.path !== "string" || !input.path.trim() || (input.bodyHtml !== undefined && typeof input.bodyHtml !== "string")) {
       throw new VaultError("INVALID_INPUT", "A design page path and optional HTML body are required.", 400);
     }
-    const result = await renderDesignToPdf(input.path, input.bodyHtml as string | undefined);
+    const result = await renderDesignToPdf(input.path, input.bodyHtml as string | undefined, parseInkEngine(input.engine));
     return new Response(new Uint8Array(result.pdf), {
       headers: {
         "Content-Type": "application/pdf",

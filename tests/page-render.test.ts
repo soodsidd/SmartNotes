@@ -108,6 +108,7 @@ describe("page_render vault tool", () => {
           path: SEED_PATH,
           scale: 3,
           fullPage: false,
+          engine: "smart-notes",
           outputName: "custom-render.png",
         },
       });
@@ -119,6 +120,7 @@ describe("page_render vault tool", () => {
         pagePath: SEED_PATH,
         scale: 3,
         fullPage: false,
+        inkEngine: "smart-notes",
         outputName: "custom-render.png",
       });
     });

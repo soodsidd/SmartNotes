@@ -17,10 +17,11 @@ import { isWorkspaceZoomWheel } from "@/lib/editor-workspace-zoom";
 import { logDrawEvent } from "@/lib/draw-mode-debug";
 import { cn } from "@/lib/utils";
 import { InkEngineSurface } from "@/components/ink-engine-surface";
-import { inkDocumentsMatch, type InkColor, type InkEngine, type InkScene, type InkSize, type InkTool } from "@/lib/ink-engine";
+import { inkDocumentsMatch, type InkColor, type InkDocument, type InkEngine, type InkScene, type InkSize, type InkTool } from "@/lib/ink-engine";
 import { DEFAULT_INK_ENGINE, type AvailableInkEngineId } from "@/lib/ink-engine-preference";
 import { inkSidecars } from "@/lib/ink-engine-sidecars";
 import { decidePenAwareTouchGesture } from "@/lib/pen-aware-touch";
+import { registerReloadDrain } from "@/lib/reload-guard";
 
 export { decidePenAwareTouchGesture, type PenAwareTouchAction } from "@/lib/pen-aware-touch";
 
@@ -74,6 +75,12 @@ export interface AnnotationLayerProps {
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
   /** Workspace zoom on the content frame (SN-113) — keeps camera + clip aligned when scaled. */
   workspaceZoom?: number;
+  /** A document-positioned host moves with its page and needs no scroll offset. */
+  cameraTracksScroll?: boolean;
+  /** Engine zoom for a host sized in screen pixels rather than CSS-scaled. */
+  cameraZoom?: number;
+  /** Virtualized page hosts can share one pen latch per Draw entry. */
+  penState?: { mode: boolean; down: boolean };
   /** Called when scroll metrics change from wheel passthrough or direct container sync. */
   onScrollMetricsChange?: (metrics: { scrollTop: number; viewportHeight: number }) => void;
   /** Called when ink near the drawable bottom should extend the page frame. */
@@ -107,10 +114,11 @@ export function syncAnnotationCamera(
   editor: InkEngine,
   scrollTop: number,
   viewportEl?: HTMLElement | null,
-  workspaceZoom = 1
+  workspaceZoom = 1,
+  cameraZoom = 1
 ) {
   const pageTop = pageScrollTopFromContainer(scrollTop, workspaceZoom);
-  editor.setCamera({ x: 0, y: -pageTop, z: 1 }, { immediate: true, force: true });
+  editor.setCamera({ x: 0, y: -pageTop, z: cameraZoom }, { immediate: true, force: true });
   if (viewportEl) {
     editor.updateViewport(viewportEl);
   }
@@ -199,6 +207,9 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       pageFrameHeight = 0,
       scrollContainerRef,
       workspaceZoom = 1,
+      cameraTracksScroll = true,
+      cameraZoom = 1,
+      penState,
       onScrollMetricsChange,
       onDrawableBottomChange,
       inkColor = "black",
@@ -216,24 +227,19 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     const [editorMounted, setEditorMounted] = React.useState(false);
     const [hasDrawableContent, setHasDrawableContent] = React.useState(false);
     const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-    const savingRef = React.useRef(false);
-    const pendingRef = React.useRef(false);
     const editorRef = React.useRef<InkEngine | null>(null);
     const hostRef = React.useRef<HTMLDivElement | null>(null);
     const emptySnapshotRef = React.useRef<InkScene | null>(null);
     const loadedPathRef = React.useRef<string | null>(null);
     const loadingStoreRef = React.useRef(false);
-    const dirtyRef = React.useRef(false);
-    const ownerSaveRef = React.useRef<Promise<void> | null>(null);
+    const savedDocumentRef = React.useRef<InkDocument | null>(null);
+    const saveInFlightRef = React.useRef<{ ownerPath: string; document: InkDocument; promise: Promise<void> } | null>(null);
     const hydratedPathRef = React.useRef<string | null>(null);
     const [loadedPath, setLoadedPath] = React.useState<string | null>(null);
     const pendingInkColorRef = React.useRef<InkColor>(inkColor);
     const pendingInkStrokeRef = React.useRef<InkSize>(inkStroke);
-    // Stylus-aware touch routing (SN-156). `penModeRef` latches true on the first
-    // stylus contact of a draw-mode entry (see the reset effect below);
-    // `penDownRef` tracks whether the stylus is currently touching the screen.
-    const penModeRef = React.useRef(false);
-    const penDownRef = React.useRef(false);
+    const localPenState = React.useRef({ mode: false, down: false });
+    const pen = penState ?? localPenState.current;
     const debugShapeCountRef = React.useRef(-1);
     // Viewport-scaled blank margin kept below the lowest stroke so the canvas
     // always extends past the last stroke. Read from a ref so save/flush
@@ -254,24 +260,29 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       setHasDrawableContent(countAnnotationShapes(loaded) > 0);
       setIsHydrated(true);
       setSceneVersion((current) => current + 1);
-      onSceneChange?.(loaded);
-    }, [onSceneChange, pagePath]);
+    }, [pagePath]);
 
-    const persistStoreToOwner = React.useCallback(() => {
+    const persistStoreToOwner = React.useCallback(async (force = false) => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
       const editor = editorRef.current;
       const ownerPath = loadedPathRef.current;
-      if (!editor || readOnly || !ownerPath) {
-        logAnnotationDebug("layer.persist-skip", {
-          pagePath,
-          ownerPath,
-          hasEditor: Boolean(editor),
-          readOnly,
-        });
-        return;
+      if (!editor || readOnly || !ownerPath) return;
+
+      const document = editor.getDocument();
+      const activeSave = saveInFlightRef.current;
+      if (activeSave?.ownerPath === ownerPath && inkDocumentsMatch(activeSave.document, document)) {
+        return activeSave.promise;
       }
+      const savedDocument = savedDocumentRef.current;
+      if (!force && !activeSave && savedDocument && inkDocumentsMatch(savedDocument, document)) return;
 
       const snap = editor.getScene();
-      const drawableBottom = computeDrawableBottomFromInkEngine(editor, growthMarginRef.current);
+      const drawableBottom = cameraTracksScroll
+        ? computeDrawableBottomFromInkEngine(editor, growthMarginRef.current)
+        : undefined;
       logAnnotationDebug("layer.persist-owner", {
         pagePath,
         ownerPath,
@@ -279,25 +290,45 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         drawableBottom,
       });
       sidecar.remember(ownerPath, snap, drawableBottom);
-      ownerSaveRef.current = sidecar.save(ownerPath, snap, drawableBottom).catch(() => undefined);
-      if (drawableBottom != null) {
+      if (drawableBottom != null && ownerPath === pagePath) {
         onDrawableBottomChange?.(drawableBottom);
       }
-      dirtyRef.current = false;
-    }, [onDrawableBottomChange, pagePath, readOnly, sidecar]);
+      onSaveStatusChange?.("saving");
+      // Snapshot synchronously, then serialize writes so an older autosave
+      // cannot land after a newer flush or remap.
+      const promise = (async () => {
+        await activeSave?.promise.catch(() => undefined);
+        try {
+          await sidecar.save(ownerPath, snap, drawableBottom);
+          if (loadedPathRef.current === ownerPath && editorRef.current === editor) {
+            savedDocumentRef.current = document;
+            onSaveStatusChange?.("saved");
+          }
+        } catch {
+          onSaveStatusChange?.("error");
+          throw new Error("Failed to save annotations.");
+        }
+      })();
+      saveInFlightRef.current = { ownerPath, document, promise };
+      try {
+        await promise;
+      } finally {
+        if (saveInFlightRef.current?.promise === promise) saveInFlightRef.current = null;
+      }
+    }, [cameraTracksScroll, onDrawableBottomChange, onSaveStatusChange, pagePath, readOnly, sidecar]);
 
     const loadSceneIntoStore = React.useCallback(
       (targetPath: string, scene: InkScene | null) => {
         const editor = editorRef.current;
         if (!editor) return;
 
-        if (dirtyRef.current && loadedPathRef.current && loadedPathRef.current !== targetPath) {
+        if (loadedPathRef.current && loadedPathRef.current !== targetPath) {
           logAnnotationDebug("layer.load.flush-dirty-owner", {
             pagePath,
             fromOwnerPath: loadedPathRef.current,
             targetPath,
           });
-          persistStoreToOwner();
+          void persistStoreToOwner().catch(() => undefined);
         }
 
         logAnnotationDebug("layer.load-store.start", {
@@ -325,8 +356,9 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
         loadedPathRef.current = targetPath;
         setLoadedPath(targetPath);
-        dirtyRef.current = false;
+        savedDocumentRef.current = editor.getDocument();
         setHasDrawableContent(countAnnotationShapes(scene) > 0);
+        onSceneChange?.(scene);
         emitHistoryState(editor, onHistoryChange);
         logAnnotationDebug("layer.load-store.done", {
           pagePath,
@@ -334,7 +366,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
           interactive: mode === "draw" && !readOnly && targetPath === pagePath,
         });
       },
-      [mode, onHistoryChange, pagePath, persistStoreToOwner, readOnly]
+      [mode, onHistoryChange, onSceneChange, pagePath, persistStoreToOwner, readOnly]
     );
 
     React.useEffect(() => {
@@ -427,80 +459,29 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       [applyScene, pagePath, sidecar]
     );
 
-    const flushSave = React.useCallback(async () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-
-      const editor = editorRef.current;
-      if (!editor || readOnly) {
-        return;
-      }
-
-      if (savingRef.current) {
-        await new Promise<void>((resolve) => {
-          const check = () => {
-            if (!savingRef.current) {
-              resolve();
-              return;
-            }
-            window.setTimeout(check, 50);
-          };
-          check();
-        });
-      }
-
-      savingRef.current = true;
-      onSaveStatusChange?.("saving");
-
-      const snap = editor.getScene();
-      const ownerPath = loadedPathRef.current;
-      if (!ownerPath) {
-        logAnnotationDebug("layer.flush.skip-no-owner", { pagePath });
-        onSaveStatusChange?.("idle");
-        savingRef.current = false;
-        pendingRef.current = false;
-        return;
-      }
-      const drawableBottom = computeDrawableBottomFromInkEngine(editor, growthMarginRef.current);
-      sidecar.remember(ownerPath, snap, drawableBottom);
-      setHasDrawableContent(countAnnotationShapes(snap) > 0);
-      logAnnotationDebug("layer.flush.save", {
-        pagePath,
-        ownerPath,
-        shapeCount: countAnnotationShapes(snap),
-        drawableBottom,
-      });
-      try {
-        await sidecar.save(ownerPath, snap, drawableBottom);
-        if (drawableBottom != null) {
-          onDrawableBottomChange?.(drawableBottom);
-        }
-        dirtyRef.current = false;
-        onSaveStatusChange?.("saved");
-      } catch {
-        onSaveStatusChange?.("error");
-        throw new Error("Failed to save annotations.");
-      } finally {
-        savingRef.current = false;
-        pendingRef.current = false;
-      }
-    }, [onDrawableBottomChange, onSaveStatusChange, pagePath, readOnly, sidecar]);
-
     const flushPending = React.useCallback(async () => {
       const editor = editorRef.current;
-      if (!editor || readOnly || !loadedPathRef.current) return;
-      await ownerSaveRef.current;
-      let document = editor.getDocument();
-      await flushSave();
-      while (editorRef.current === editor) {
-        const liveDocument = editor.getDocument();
-        if (inkDocumentsMatch(document, liveDocument)) return;
-        document = liveDocument;
-        await flushSave();
-      }
-    }, [flushSave, readOnly]);
+      const ownerPath = loadedPathRef.current;
+      if (!editor || readOnly || !ownerPath) return;
+      do {
+        const document = editor.getDocument();
+        await persistStoreToOwner();
+        if (inkDocumentsMatch(document, editor.getDocument())) return;
+      } while (editorRef.current === editor && loadedPathRef.current === ownerPath);
+    }, [persistStoreToOwner, readOnly]);
+
+    React.useEffect(() => {
+      if (readOnly) return;
+      return registerReloadDrain(flushPending);
+    }, [flushPending, readOnly]);
+
+    // PDF frames can be virtualized away as the user scrolls. Retain their
+    // pending snapshot before the engine is released, even without host navigation.
+    const flushOnUnmount = React.useRef(flushPending);
+    flushOnUnmount.current = flushPending;
+    React.useLayoutEffect(() => () => {
+      void flushOnUnmount.current().catch(() => undefined);
+    }, []);
 
     const setTool = React.useCallback((tool: InkTool) => {
       editorRef.current?.setTool(tool);
@@ -538,72 +519,11 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     const printStateRef = React.useRef<{ scrollTop: number } | null>(null);
 
     const scheduleSave = React.useCallback(() => {
-      if (!interactive) return;
-      logAnnotationDebug("layer.autosave.schedule", {
-        pagePath,
-        loadedPath: loadedPathRef.current,
-      });
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-      }
+      if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
-        timerRef.current = null;
-        const editor = editorRef.current;
-        if (!editor) return;
-
-        if (savingRef.current) {
-          logAnnotationDebug("layer.autosave.pending", {
-            pagePath,
-            loadedPath: loadedPathRef.current,
-          });
-          pendingRef.current = true;
-          return;
-        }
-
-        savingRef.current = true;
-        onSaveStatusChange?.("saving");
-
-        const snap = editor.getScene();
-        const ownerPath = loadedPathRef.current;
-        if (!ownerPath) {
-          logAnnotationDebug("layer.autosave.skip-no-owner", { pagePath });
-          savingRef.current = false;
-          pendingRef.current = false;
-          onSaveStatusChange?.("idle");
-          return;
-        }
-        // Recompute the drawable extent on every live save so the canvas grows
-        // to one page-length past the lowest stroke while the user is still
-        // drawing — not only when they leave draw mode. This is the reliable
-        // growth path; the pointerup handler below is just the faster trigger.
-        const drawableBottom = computeDrawableBottomFromInkEngine(editor, growthMarginRef.current);
-        sidecar.remember(ownerPath, snap, drawableBottom);
-        logAnnotationDebug("layer.autosave.save", {
-          pagePath,
-          ownerPath,
-          shapeCount: countAnnotationShapes(snap),
-          drawableBottom,
-        });
-        sidecar.save(ownerPath, snap, drawableBottom)
-          .then(() => {
-            setHasDrawableContent(countAnnotationShapes(snap) > 0);
-            if (drawableBottom != null) {
-              onDrawableBottomChange?.(drawableBottom);
-            }
-            dirtyRef.current = false;
-            onSaveStatusChange?.("saved");
-            setTimeout(() => onSaveStatusChange?.("idle"), 1200);
-          })
-          .catch(() => onSaveStatusChange?.("error"))
-          .finally(() => {
-            savingRef.current = false;
-            if (pendingRef.current) {
-              pendingRef.current = false;
-              scheduleSave();
-            }
-          });
+        void flushPending().catch(() => undefined);
       }, AUTOSAVE_DELAY_MS);
-    }, [interactive, onDrawableBottomChange, onSaveStatusChange, pagePath, sidecar]);
+    }, [flushPending]);
 
     const applyVerticalRemap = React.useCallback(
       (deltaY: number): RemapAnnotationResult => {
@@ -641,13 +561,11 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         const snap = editor.getScene();
         if (!translated.count) return { ok: true, scene: snap };
 
-        dirtyRef.current = true;
         onSceneChange?.(snap);
         if (drawableBottom != null) {
           onDrawableBottomChange?.(drawableBottom);
         }
-        sidecar.remember(pagePath, snap, drawableBottom);
-        persistStoreToOwner();
+        void persistStoreToOwner().catch(() => undefined);
         logAnnotationDebug("layer.vertical-remap", {
           pagePath,
           deltaY,
@@ -656,10 +574,15 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         });
         return { ok: true, scene: snap, drawableBottom };
       },
-      [onDrawableBottomChange, onSceneChange, pagePath, persistStoreToOwner, sidecar]
+      [onDrawableBottomChange, onSceneChange, pagePath, persistStoreToOwner]
     );
 
     const [cameraScrollTop, setCameraScrollTop] = React.useState(0);
+    const syncHostCamera = React.useCallback((editor: InkEngine, top: number) => {
+      const cameraTop = cameraTracksScroll ? top : 0;
+      syncAnnotationCamera(editor, cameraTop, hostRef.current, workspaceZoom, cameraZoom);
+      setCameraScrollTop(cameraTop);
+    }, [cameraTracksScroll, cameraZoom, workspaceZoom]);
 
     const syncCameraFromContainer = React.useCallback(() => {
       const editor = editorRef.current;
@@ -668,10 +591,9 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         scrollTop,
         viewportHeight,
       });
-      syncAnnotationCamera(editor, metrics.scrollTop, hostRef.current, workspaceZoom);
-      setCameraScrollTop(metrics.scrollTop);
+      syncHostCamera(editor, metrics.scrollTop);
       return metrics;
-    }, [scrollContainerRef, scrollTop, viewportHeight, workspaceZoom]);
+    }, [scrollContainerRef, scrollTop, syncHostCamera, viewportHeight]);
 
     const exportInkOverlay = React.useCallback(async (): Promise<PageInkExport | null> => {
       const editor = editorRef.current;
@@ -726,7 +648,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
     const buildHandle = React.useCallback(
       (): AnnotationLayerHandle => ({
-        flush: flushSave,
+        flush: () => persistStoreToOwner(true),
         flushPending,
         setTool,
         undo,
@@ -743,7 +665,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         applyVerticalRemap,
         exportInkOverlay,
         flushPending,
-        flushSave,
+        persistStoreToOwner,
         loadScene,
         prepareForPrint,
         redo,
@@ -780,14 +702,13 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
           scrollTop,
           viewportHeight,
         });
-        syncAnnotationCamera(editor, metrics.scrollTop, hostRef.current, workspaceZoom);
-        setCameraScrollTop(metrics.scrollTop);
+        syncHostCamera(editor, metrics.scrollTop);
         editor.setTool("draw");
         applyPendingInkStyles(editor);
         setEditorMounted(true);
         emitHistoryState(editor, onHistoryChange);
       },
-      [applyPendingInkStyles, interactive, onHistoryChange, scrollContainerRef, scrollTop, viewportHeight, workspaceZoom]
+      [applyPendingInkStyles, interactive, onHistoryChange, scrollContainerRef, scrollTop, syncHostCamera, viewportHeight, workspaceZoom]
     );
 
     React.useLayoutEffect(() => {
@@ -807,8 +728,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
       const syncFromScroll = () => {
         const metrics = readAnnotationScrollMetrics(container);
-        syncAnnotationCamera(editor, metrics.scrollTop, host, workspaceZoom);
-        setCameraScrollTop(metrics.scrollTop);
+        syncHostCamera(editor, metrics.scrollTop);
         publishMetrics(metrics);
       };
 
@@ -817,8 +737,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
       const onPointerDown = () => {
         const top = container.scrollTop;
-        syncAnnotationCamera(editor, top, host, workspaceZoom);
-        setCameraScrollTop(top);
+        syncHostCamera(editor, top);
       };
       host.addEventListener("pointerdown", onPointerDown, { capture: true });
 
@@ -831,23 +750,23 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         container.scrollTop += event.deltaY;
         syncFromScroll();
       };
-      container.addEventListener("wheel", onWheel, { capture: true, passive: false });
+      if (cameraTracksScroll) container.addEventListener("wheel", onWheel, { capture: true, passive: false });
 
       return () => {
         container.removeEventListener("scroll", syncFromScroll);
         host.removeEventListener("pointerdown", onPointerDown, { capture: true });
         container.removeEventListener("wheel", onWheel, { capture: true });
       };
-    }, [editorMounted, interactive, onScrollMetricsChange, scrollContainerRef, workspaceZoom]);
+    }, [cameraTracksScroll, editorMounted, interactive, onScrollMetricsChange, scrollContainerRef, syncHostCamera]);
 
     // Pen mode latches per draw-mode entry: reset each time draw mode is
     // (re)entered so a finger draws again until a stylus is next seen (SN-156).
     React.useEffect(() => {
-      if (interactive) {
-        penModeRef.current = false;
-        penDownRef.current = false;
+      if (interactive && !penState) {
+        pen.mode = false;
+        pen.down = false;
       }
-    }, [interactive]);
+    }, [interactive, pen, penState]);
 
     // Touch navigation + stylus-aware finger routing in draw mode (SN-156).
     // `touch-action: none` hands every touch to Tldraw for inking, and touch
@@ -879,34 +798,33 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         const editor = editorRef.current;
         if (!editor) return;
         const metrics = readAnnotationScrollMetrics(container);
-        syncAnnotationCamera(editor, metrics.scrollTop, host, workspaceZoom);
-        setCameraScrollTop(metrics.scrollTop);
+        syncHostCamera(editor, metrics.scrollTop);
         onScrollMetricsChange?.(metrics);
       };
 
       const onPenDown = (event: PointerEvent) => {
         if (event.pointerType !== "pen") return;
-        penModeRef.current = true;
-        penDownRef.current = true;
+        pen.mode = true;
+        pen.down = true;
       };
       const onPenUp = (event: PointerEvent) => {
         if (event.pointerType !== "pen") return;
-        penDownRef.current = false;
+        pen.down = false;
       };
 
       const onTouchStart = (event: TouchEvent) => {
         if (event.target instanceof Element && event.target.closest("[data-sn-ink-controls]")) return;
         const action = decidePenAwareTouchGesture({
           touchCount: event.touches.length,
-          penMode: penModeRef.current,
-          penDown: penDownRef.current,
+          penMode: pen.mode,
+          penDown: pen.down,
         });
         logDrawEvent("layer.touchstart", {
           pagePath,
           touchCount: event.touches.length,
           action,
-          penMode: penModeRef.current,
-          penDown: penDownRef.current,
+          penMode: pen.mode,
+          penDown: pen.down,
           shapeCount: editorRef.current ? editorRef.current.getStrokeCount() : 0,
         });
         if (action === "draw") return; // lone finger, pen mode off: let Tldraw ink
@@ -929,7 +847,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       };
 
       const onTouchMove = (event: TouchEvent) => {
-        if (penDownRef.current) return;
+        if (pen.down) return;
         if (!gesture.active) return;
         const anchorY = panAnchorY(event.touches);
         if (anchorY == null) return;
@@ -953,7 +871,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       // `pointerType === "pen"` and is never blocked.
       const blockPointerDuringGesture = (event: PointerEvent) => {
         if (event.target instanceof Element && event.target.closest("[data-sn-ink-controls]")) return;
-        if ((gesture.active || penDownRef.current) && event.pointerType === "touch") {
+        if ((gesture.active || pen.down) && event.pointerType === "touch") {
           event.stopPropagation();
         }
       };
@@ -979,7 +897,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         host.removeEventListener("pointerdown", blockPointerDuringGesture, { capture: true });
         host.removeEventListener("pointermove", blockPointerDuringGesture, { capture: true });
       };
-    }, [editorMounted, interactive, onScrollMetricsChange, scrollContainerRef, workspaceZoom]);
+    }, [editorMounted, interactive, onScrollMetricsChange, pen, scrollContainerRef, syncHostCamera]);
 
     React.useEffect(() => {
       const editor = editorRef.current;
@@ -1049,8 +967,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
             });
             return;
           }
-          setHasDrawableContent(true);
-          dirtyRef.current = true;
+          setHasDrawableContent(editor.getStrokeCount() > 0);
           onSceneChange?.(editor.getScene());
           logAnnotationDebug("layer.document-change.user", {
             pagePath,
@@ -1102,7 +1019,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       scheduleSave,
     ]);
 
-    const isVisible = mode === "draw" || hasDrawableContent;
+    const isVisible = mode === "draw" || (loadedPageIsCurrent && hasDrawableContent);
 
     const logCommittedPaintState = React.useCallback(
       (tag: "layer.pointerup" | "layer.pointercancel", event: React.PointerEvent<HTMLDivElement>) => {
@@ -1140,7 +1057,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         ref={hostRef}
         data-testid="annotation-layer"
         data-annotation-mode={mode}
-        data-annotation-ready={isHydrated ? "true" : "false"}
+        data-annotation-ready={loadedPageIsCurrent ? "true" : "false"}
         data-annotation-loaded-path={loadedPath ?? ""}
         data-annotation-visible={isVisible ? "true" : "false"}
         data-annotation-camera-scroll-top={String(cameraScrollTop)}

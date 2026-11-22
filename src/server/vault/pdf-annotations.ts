@@ -17,6 +17,8 @@ import {
   serializePdfAnnotationSidecar,
   type PdfAnnotationSidecar,
 } from "@/lib/pdf-annotations";
+import { isSmartNotesInkScene } from "@/lib/ink-engine/scene";
+import { SMART_NOTES_ANNOTATIONS_SUFFIX, validateInkScene } from "./ink-sidecars";
 
 async function renameFileAtomically(src: string, dest: string) {
   const maxAttempts = 5;
@@ -124,6 +126,29 @@ export async function savePdfAnnotations(
   }
   await writeAtomically(sidecarAbsolutePath, serializePdfAnnotationSidecar(sidecar));
   return sidecar;
+}
+
+export async function readPdfInkPage(pdfPath: string, page: number): Promise<{ scene: unknown }> {
+  const { absolutePath } = await resolvePdfAssetFile(pdfPath);
+  try {
+    const { scene } = JSON.parse(await fs.readFile(`${absolutePath}.page-${page}${SMART_NOTES_ANNOTATIONS_SUFFIX}`, "utf8"));
+    validateInkScene(scene, "smart-notes");
+    return { scene: scene ?? null };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return { scene: null };
+    throw error;
+  }
+}
+
+export async function savePdfInkPage(pdfPath: string, page: number, scene: unknown): Promise<void> {
+  validateInkScene(scene, "smart-notes");
+  const { absolutePath } = await resolvePdfAssetFile(pdfPath);
+  const target = `${absolutePath}.page-${page}${SMART_NOTES_ANNOTATIONS_SUFFIX}`;
+  if (isSmartNotesInkScene(scene) && scene.strokes.length) {
+    await writeAtomically(target, JSON.stringify({ scene }));
+  } else {
+    await fs.rm(target, { force: true });
+  }
 }
 
 /** SHA-256 of the PDF bytes — used to prove annotate+save never mutates the file. */

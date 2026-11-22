@@ -116,6 +116,7 @@ import {
   ViewportPluginPackage,
   Viewport,
   useViewportCapability,
+  useViewportElement,
   useViewportPlugin,
 } from "@embedpdf/plugin-viewport/react";
 import {
@@ -158,7 +159,7 @@ import {
   useHistoryCapability,
 } from "@embedpdf/plugin-history/react";
 import {
-  AnnotationLayer,
+  AnnotationLayer as EmbedPdfAnnotationLayer,
   AnnotationPluginPackage,
   useAnnotation,
   useAnnotationCapability,
@@ -185,6 +186,10 @@ import {
   type PdfReaderZoom,
 } from "@/lib/pdf-reader-prefs";
 import { useTheme } from "@/components/theme-provider";
+import { AnnotationLayer, type AnnotationLayerHandle } from "@/components/annotation-layer";
+import { INK_COLORS, type InkColor, type InkSize } from "@/lib/ink-engine";
+import { DEFAULT_INK_ENGINE, readInkEngine, type AvailableInkEngineId } from "@/lib/ink-engine-preference";
+import { registerReloadDrain } from "@/lib/reload-guard";
 import { fmtBytes } from "@/lib/pdf-fetch-utils";
 import { prefetchPdfiumWasm } from "@/lib/pdf-engine-prefetch";
 import {
@@ -201,6 +206,8 @@ import {
 } from "@/lib/pdf-font-fallback";
 import {
   filterUserAuthoredAnnotationItems,
+  pdfInkPagePath,
+  type PdfAnnotationTransferItem,
   vaultHrefToPdfPath,
 } from "@/lib/pdf-annotations";
 import {
@@ -470,6 +477,8 @@ export interface ImmersivePdfReaderProps {
   onSaveAsPaper?: () => void;
   /** Frozen default destination for this reading session. */
   recordDestinationPath?: string;
+  inkEngine?: AvailableInkEngineId;
+  inkFlushRef?: React.Ref<() => Promise<void>>;
 }
 
 export interface PaperNotesToggle {
@@ -481,6 +490,55 @@ export interface PaperNotesToggle {
 const PaperNotesToggleContext = React.createContext<PaperNotesToggle | null>(null);
 const SaveAsPaperContext = React.createContext<(() => void) | null>(null);
 const PdfRecordDestinationContext = React.createContext<string | null>(null);
+const PdfInkContext = React.createContext<{
+  engine: AvailableInkEngineId;
+  flushRef: React.Ref<() => Promise<void>>;
+}>({ engine: DEFAULT_INK_ENGINE, flushRef: null });
+
+function PdfPageInk({
+  path, pageIndex, zoom, drawing, tool, color, size, penState, handles, onHistoryChange, onActivate,
+}: {
+  path: string;
+  pageIndex: number;
+  zoom: number;
+  drawing: boolean;
+  tool: "draw" | "eraser";
+  color: InkColor;
+  size: InkSize;
+  penState: { mode: boolean; down: boolean };
+  handles: Map<number, AnnotationLayerHandle>;
+  onHistoryChange: (pageIndex: number, state: { canUndo: boolean; canRedo: boolean }) => void;
+  onActivate: (pageIndex: number) => void;
+}) {
+  const viewport = useViewportElement();
+  const bindHandle = React.useCallback((handle: AnnotationLayerHandle | null) => {
+    if (handle) handles.set(pageIndex, handle);
+    else handles.delete(pageIndex);
+  }, [handles, pageIndex]);
+  const reportHistory = React.useCallback((history: { canUndo: boolean; canRedo: boolean }) => {
+    onHistoryChange(pageIndex, history);
+  }, [onHistoryChange, pageIndex]);
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[6] overflow-hidden" onPointerDownCapture={() => onActivate(pageIndex)}>
+      <AnnotationLayer
+        handleRef={bindHandle}
+        pagePath={pdfInkPagePath(path, pageIndex)}
+        inkEngine="smart-notes"
+        cameraTracksScroll={false}
+        cameraZoom={zoom}
+        scrollContainerRef={viewport ?? undefined}
+        penState={penState}
+        mode={drawing ? "draw" : "edit"}
+        inkTool={tool}
+        inkColor={color}
+        inkStroke={size}
+        onHistoryChange={reportHistory}
+        className={drawing ? "pointer-events-auto" : undefined}
+      />
+    </div>
+  );
+}
 
 /** Phone / tablet: prefer cheaper WASM paint (DPR 1, smaller tiles, buffer 1). */
 function isCoarsePointerClient(): boolean {
@@ -568,7 +626,15 @@ export default function ImmersivePdfReader({
   notesPanel,
   onSaveAsPaper,
   recordDestinationPath,
+  inkEngine,
+  inkFlushRef,
 }: ImmersivePdfReaderProps): React.ReactElement | null {
+  const [deviceInkEngine] = React.useState(readInkEngine);
+  const localInkFlushRef = React.useRef<(() => Promise<void>) | null>(null);
+  const pdfInk = React.useMemo(() => ({
+    engine: inkEngine ?? deviceInkEngine,
+    flushRef: inkFlushRef ?? localInkFlushRef,
+  }), [deviceInkEngine, inkEngine, inkFlushRef]);
   const { engine, isLoading, error, fontsReady } = usePdfiumEngineWhenFontsReady();
   // Run PDFium on the main thread (SN-148). Worker blob: origin cannot fetch
   // /pdfium.wasm. Fonts are preloaded then handed via fontLoader (sync XHR to
@@ -604,7 +670,7 @@ export default function ImmersivePdfReader({
   // Read remembered state once, at open time.
   const initialPrefs = React.useMemo<PdfReaderPrefs>(
     () => readPdfReaderPrefs(href),
-    [href]
+    [href, pdfInk.engine]
   );
 
   // Lock body scroll only while the retained reader is visible.
@@ -728,8 +794,11 @@ export default function ImmersivePdfReader({
   const readerRootRef = React.useRef<HTMLDivElement>(null);
   const performanceMode = usePdfPerformanceMode(readerRootRef, open);
   const closeReader = React.useCallback(() => {
-    performanceMode.disable();
-    onClose();
+    void (async () => {
+      await localInkFlushRef.current?.();
+      performanceMode.disable();
+      onClose();
+    })().catch(() => undefined);
   }, [onClose, performanceMode.disable]);
   const restoreFocusRef = React.useRef<HTMLElement | null>(null);
   const wasOpenRef = React.useRef(false);
@@ -776,6 +845,7 @@ export default function ImmersivePdfReader({
       <PaperNotesToggleContext.Provider value={open ? notesPanel ?? null : null}>
       <SaveAsPaperContext.Provider value={open && !notesPanel ? onSaveAsPaper ?? null : null}>
       <PdfRecordDestinationContext.Provider value={recordDestinationPath ?? null}>
+      <PdfInkContext.Provider value={pdfInk}>
       {error || pdfFetchError ? (
         <ReaderMessage
           title={title}
@@ -794,7 +864,7 @@ export default function ImmersivePdfReader({
         />
       ) : (
         <PdfEmbedSession
-          key={`${href}:${engineEpoch}`}
+          key={`${href}:${engineEpoch}:${pdfInk.engine}`}
           engine={engine}
           masterBuffer={masterBuffer}
           href={href}
@@ -812,6 +882,7 @@ export default function ImmersivePdfReader({
           onPerformanceModeChange={performanceMode.setEnabled}
         />
       )}
+      </PdfInkContext.Provider>
       </PdfRecordDestinationContext.Provider>
       </SaveAsPaperContext.Provider>
       </PaperNotesToggleContext.Provider>
@@ -1532,6 +1603,8 @@ function ReaderSurface({
   const notesPanel = React.useContext(PaperNotesToggleContext);
   const onSaveAsPaper = React.useContext(SaveAsPaperContext);
   const recordDestinationPath = React.useContext(PdfRecordDestinationContext);
+  const { engine: inkEngine, flushRef: inkFlushRef } = React.useContext(PdfInkContext);
+  const smartInk = inkEngine === "smart-notes";
   const pdfPath = React.useMemo(() => vaultHrefToPdfPath(href), [href]);
   const { state: scrollState, provides: scroll } = useScroll(documentId);
   const { provides: scrollCap } = useScrollCapability();
@@ -1683,6 +1756,20 @@ function ReaderSurface({
     canUndo: false,
     canRedo: false,
   });
+  const [inkColor, setInkColor] = React.useState<InkColor>("black");
+  const [inkSize, setInkSize] = React.useState<InkSize>("m");
+  const [inkHistory, setInkHistory] = React.useState<Record<number, typeof historyState>>({});
+  const [activeInkPage, setActiveInkPage] = React.useState<number | null>(null);
+  const inkHandles = React.useRef(new Map<number, AnnotationLayerHandle>()).current;
+  const penState = React.useRef({ mode: false, down: false }).current;
+  const handleInkHistory = React.useCallback((pageIndex: number, state: typeof historyState) => {
+    setInkHistory((current) => {
+      const previous = current[pageIndex];
+      if (previous?.canUndo === state.canUndo && previous.canRedo === state.canRedo) return current;
+      return { ...current, [pageIndex]: state };
+    });
+  }, []);
+  const smartDraw = smartInk && annotateMode && (activeTool === "ink" || activeTool === "eraser");
 
   // Performance mode starts immersive: hide the reader bar. Leaving restores
   // it. Center-page taps still toggle chrome while performance mode stays on.
@@ -1691,6 +1778,9 @@ function ReaderSurface({
   }, [performanceMode]);
 
   const pendingItemsRef = React.useRef<unknown[] | null>(null);
+  const legacyInkRef = React.useRef<PdfAnnotationTransferItem[]>([]);
+  const exportRef = React.useRef<Promise<void> | null>(null);
+  const saveInFlightRef = React.useRef<Promise<void> | null>(null);
   const importedRef = React.useRef(false);
   const saveTimerRef = React.useRef<number | null>(null);
   // EmbedPDF may recreate the annotation scope object on state ticks. Keep a
@@ -1997,17 +2087,24 @@ function ReaderSurface({
   }, [openId]);
 
   const flushSave = React.useCallback(async () => {
+    if (saveInFlightRef.current) await saveInFlightRef.current;
     if (!pdfPath || !pendingItemsRef.current) return;
     const items = pendingItemsRef.current;
     pendingItemsRef.current = null;
     setSaveState("saving");
     try {
-      await savePdfAnnotations(pdfPath, items);
+      const save = savePdfAnnotations(pdfPath, items).then(() => undefined);
+      saveInFlightRef.current = save;
+      await save;
       setSaveError(null);
       setSaveState("saved");
     } catch (error) {
+      pendingItemsRef.current ??= items;
       setSaveError(error instanceof Error ? error.message : "Annotation save failed");
       setSaveState("idle");
+      throw error;
+    } finally {
+      saveInFlightRef.current = null;
     }
   }, [pdfPath]);
 
@@ -2018,7 +2115,7 @@ function ReaderSurface({
         window.clearTimeout(saveTimerRef.current);
       }
       saveTimerRef.current = window.setTimeout(() => {
-        void flushSave();
+        void flushSave().catch(() => undefined);
       }, SAVE_DEBOUNCE_MS);
     },
     [flushSave]
@@ -2026,22 +2123,32 @@ function ReaderSurface({
 
   const exportAndSave = React.useCallback(() => {
     if (!annotation || !pdfPath || !importedRef.current) return;
-    annotation.exportAnnotations().wait(
-      (items) => {
+    const exporting = annotation.exportAnnotations().toPromise()
+      .then((items) => {
+        if (exportRef.current !== exporting) return;
         // exportAnnotations() dumps the whole store including native PDF
         // annotations (links etc.) — persisting those bloats the sidecar and
         // re-importing them freezes large books (SN-151).
-        scheduleSave(
-          filterUserAuthoredAnnotationItems(
-            Array.isArray(items) ? (items as unknown[]) : []
-          )
-        );
-      },
-      () => {
+        const authored = filterUserAuthoredAnnotationItems(items);
+        scheduleSave(smartInk
+          ? [...legacyInkRef.current, ...authored.filter(({ annotation }) => annotation.type !== PdfAnnotationSubtype.INK)]
+          : authored);
+      }).catch(() => {
         setSaveError("Could not export annotations");
-      }
-    );
-  }, [annotation, pdfPath, scheduleSave]);
+      });
+    exportRef.current = exporting;
+  }, [annotation, pdfPath, scheduleSave, smartInk]);
+
+  const flushAnnotations = React.useCallback(async () => {
+    await Promise.all(Array.from(inkHandles.values(), (handle) => handle.flushPending()));
+    do {
+      await exportRef.current;
+      await flushSave();
+    } while (pendingItemsRef.current);
+  }, [flushSave, inkHandles]);
+
+  React.useImperativeHandle(inkFlushRef, () => flushAnnotations, [flushAnnotations]);
+  React.useEffect(() => registerReloadDrain(flushAnnotations), [flushAnnotations]);
 
   // Reset import state only when the PDF target changes — not when EmbedPDF
   // replaces the annotation capability object identity.
@@ -2077,6 +2184,12 @@ function ReaderSurface({
       try {
         const sidecar = await fetchPdfAnnotations(pdfPath);
         if (cancelled) return;
+        legacyInkRef.current = smartInk
+          ? sidecar.items.filter(({ annotation }) => annotation.type === PdfAnnotationSubtype.INK)
+          : [];
+        const items = smartInk
+          ? sidecar.items.filter(({ annotation }) => annotation.type !== PdfAnnotationSubtype.INK)
+          : sidecar.items;
         await new Promise<void>((resolve) => {
           if (typeof requestAnimationFrame === "function") {
             requestAnimationFrame(() => resolve());
@@ -2090,11 +2203,11 @@ function ReaderSurface({
         // Import in slices with event-loop yields so even a huge sidecar can
         // never freeze scrolling/tiling in a single main-thread task (SN-151).
         const IMPORT_SLICE = 200;
-        for (let start = 0; start < sidecar.items.length; start += IMPORT_SLICE) {
+        for (let start = 0; start < items.length; start += IMPORT_SLICE) {
           if (cancelled) return;
-          const slice = sidecar.items.slice(start, start + IMPORT_SLICE);
+          const slice = items.slice(start, start + IMPORT_SLICE);
           annotationRef.current?.importAnnotations(slice as never[]);
-          if (start + IMPORT_SLICE < sidecar.items.length) {
+          if (start + IMPORT_SLICE < items.length) {
             await new Promise<void>((resolve) => setTimeout(resolve, 0));
           }
         }
@@ -2112,7 +2225,7 @@ function ReaderSurface({
     return () => {
       cancelled = true;
     };
-  }, [annotation, pdfPath, documentId, firstPaintAt]);
+  }, [annotation, pdfPath, documentId, firstPaintAt, smartInk]);
 
   // Persist on annotation create/update/delete after import.
   React.useEffect(() => {
@@ -2137,38 +2250,55 @@ function ReaderSurface({
         window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
-      void flushSave();
+      void flushAnnotations().catch(() => undefined);
     };
-  }, [flushSave]);
+  }, [flushAnnotations]);
+
+  const historyPageIndex = activeInkPage ?? currentPage - 1;
+  const usesInkHistory = smartInk && activeTool !== "highlight";
+  const toolbarHistory = usesInkHistory
+    ? (inkHandles.has(historyPageIndex) ? inkHistory[historyPageIndex] : undefined)
+    : historyState;
 
   const undoAnnotation = React.useCallback(() => {
+    if (usesInkHistory) {
+      inkHandles.get(historyPageIndex)?.undo();
+      return;
+    }
     if (!historyState.canUndo) return;
     history?.forDocument(documentId).undo("annotations");
     annotation?.deselectAnnotation();
     window.setTimeout(exportAndSave, 0);
-  }, [history, documentId, annotation, exportAndSave, historyState.canUndo]);
+  }, [history, documentId, annotation, exportAndSave, historyState.canUndo, historyPageIndex, inkHandles, usesInkHistory]);
 
   const redoAnnotation = React.useCallback(() => {
+    if (usesInkHistory) {
+      inkHandles.get(historyPageIndex)?.redo();
+      return;
+    }
     if (!historyState.canRedo) return;
     history?.forDocument(documentId).redo("annotations");
     annotation?.deselectAnnotation();
     window.setTimeout(exportAndSave, 0);
-  }, [history, documentId, annotation, exportAndSave, historyState.canRedo]);
+  }, [history, documentId, annotation, exportAndSave, historyState.canRedo, historyPageIndex, inkHandles, usesInkHistory]);
 
   const leaveAnnotate = React.useCallback(() => {
-    setAnnotateMode(false);
-    setActiveTool("pan");
-    annotation?.setActiveTool(null);
-    annotation?.deselectAnnotation();
-    void flushSave();
-  }, [annotation, flushSave]);
+    void flushAnnotations().then(() => {
+      setAnnotateMode(false);
+      setActiveTool("pan");
+      annotation?.setActiveTool(null);
+      annotation?.deselectAnnotation();
+    }).catch(() => undefined);
+  }, [annotation, flushAnnotations]);
 
   const enterAnnotate = React.useCallback(() => {
     if (!annotationsReady || !pdfPath) return;
+    penState.mode = false;
+    penState.down = false;
     setSearchOpen(false);
     setAnnotateMode(true);
     setControlsVisible(true);
-  }, [annotationsReady, pdfPath]);
+  }, [annotationsReady, pdfPath, penState]);
 
   // SN-336: Record area (explicit crop) and Record page. Clips are rendered by
   // PDFium from the document itself — never a screenshot of the viewport — so
@@ -2319,7 +2449,7 @@ function ReaderSurface({
     if (!annotation) return;
     if (annotateMode && annotationsReady) {
       annotation.setActiveTool(
-        activeTool === "pan" || activeTool === "eraser" ? null : activeTool
+        activeTool === "pan" || activeTool === "eraser" || smartDraw ? null : activeTool
       );
       if (activeTool === "pan" || activeTool === "eraser") {
         annotation.deselectAnnotation();
@@ -2328,7 +2458,7 @@ function ReaderSurface({
     } else {
       annotation.setActiveTool(null);
     }
-  }, [annotation, annotateMode, activeTool, annotationsReady]);
+  }, [annotation, annotateMode, activeTool, annotationsReady, smartDraw]);
 
   // ZoomPlugin gates Viewport children on document open and only releases the
   // gate inside requestZoom(). Its resize recalc path only auto-releases for
@@ -3257,8 +3387,10 @@ function ReaderSurface({
                 aria-label={label}
                 aria-pressed={isActive}
                 onClick={() => {
-                  setActiveTool(toolId);
-                  annotation?.deselectAnnotation();
+                  void flushAnnotations().then(() => {
+                    setActiveTool(toolId);
+                    annotation?.deselectAnnotation();
+                  }).catch(() => undefined);
                 }}
               >
                 <Icon className="size-4" aria-hidden="true" />
@@ -3266,6 +3398,21 @@ function ReaderSurface({
               </button>
             );
           })}
+          {smartDraw && activeTool === "ink" ? (
+            <>
+              <select className="pdf-reader__annotate-tool" aria-label="Ink color"
+                value={inkColor} onChange={(event) => setInkColor(event.target.value as InkColor)}>
+                {INK_COLORS.map(({ id }) => <option key={id} value={id}>{id}</option>)}
+              </select>
+              <select className="pdf-reader__annotate-tool" aria-label="Ink size"
+                value={inkSize} onChange={(event) => setInkSize(event.target.value as InkSize)}>
+                <option value="s">Thin</option>
+                <option value="m">Medium</option>
+                <option value="l">Thick</option>
+                <option value="xl">Extra thick</option>
+              </select>
+            </>
+          ) : null}
           <span className="pdf-reader__annotate-divider" aria-hidden="true" />
           <button
             type="button"
@@ -3273,7 +3420,7 @@ function ReaderSurface({
             data-testid="pdf-reader-annotation-undo"
             aria-label="Undo annotation"
             title="Undo annotation"
-            disabled={!historyState.canUndo}
+            disabled={!toolbarHistory?.canUndo}
             onClick={undoAnnotation}
           >
             <Undo2 className="size-4" aria-hidden="true" />
@@ -3284,7 +3431,7 @@ function ReaderSurface({
             data-testid="pdf-reader-annotation-redo"
             aria-label="Redo annotation"
             title="Redo annotation"
-            disabled={!historyState.canRedo}
+            disabled={!toolbarHistory?.canRedo}
             onClick={redoAnnotation}
           >
             <Redo2 className="size-4" aria-hidden="true" />
@@ -3446,7 +3593,7 @@ function ReaderSurface({
           onPointerCancelCapture={cancelTapTurn}
           onClick={toggleControls}
         >
-        <ZoomGestureWrapper documentId={documentId} className="pdf-reader__zoomwrap">
+        <ZoomGestureWrapper documentId={documentId} className="pdf-reader__zoomwrap" enablePinch={!smartDraw}>
           <ResilientScroller
             documentId={documentId}
             renderPage={({ width, height, pageIndex }) => {
@@ -3499,7 +3646,7 @@ function ReaderSurface({
                       </div>
                     ) : null}
                   />
-                  <AnnotationLayer
+                  <EmbedPdfAnnotationLayer
                     documentId={documentId}
                     pageIndex={pageIndex}
                     selectionMenu={
@@ -3513,7 +3660,7 @@ function ReaderSurface({
                       pointerEvents: annotationPointerEvents,
                     }}
                   />
-                  {annotateMode && activeTool === "eraser" ? (
+                  {!smartInk && annotateMode && activeTool === "eraser" ? (
                     <div
                       className="pdf-reader__eraser-surface"
                       data-testid="pdf-reader-eraser-surface"
@@ -3566,15 +3713,32 @@ function ReaderSurface({
               // the same page pointer provider. Keep it mounted in read/pan
               // mode; capture filtering above leaves touch navigation native.
               return (
-                <PagePointerProvider
-                  documentId={documentId}
-                  pageIndex={pageIndex}
-                  style={{ width, height, position: "relative" }}
-                  onPointerDownCapture={preserveFingerNavigation}
-                  onPointerMoveCapture={preserveFingerNavigation}
-                >
-                  {pageLayers}
-                </PagePointerProvider>
+                <div style={{ width, height, position: "relative" }}>
+                  <PagePointerProvider
+                    documentId={documentId}
+                    pageIndex={pageIndex}
+                    style={{ width, height, position: "relative" }}
+                    onPointerDownCapture={preserveFingerNavigation}
+                    onPointerMoveCapture={preserveFingerNavigation}
+                  >
+                    {pageLayers}
+                  </PagePointerProvider>
+                  {smartInk && pdfPath ? (
+                    <PdfPageInk
+                      path={pdfPath}
+                      pageIndex={pageIndex}
+                      zoom={zoomState.currentZoomLevel || 1}
+                      drawing={active && smartDraw && annotationsReady}
+                      tool={activeTool === "eraser" ? "eraser" : "draw"}
+                      color={inkColor}
+                      size={inkSize}
+                      penState={penState}
+                      handles={inkHandles}
+                      onHistoryChange={handleInkHistory}
+                      onActivate={setActiveInkPage}
+                    />
+                  ) : null}
+                </div>
               );
             }}
           />

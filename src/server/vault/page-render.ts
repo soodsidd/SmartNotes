@@ -5,16 +5,20 @@ import {
 } from "@/server/render-server-url";
 import { uploadPageAsset } from "@/server/vault/assets";
 import { VaultError } from "@/server/vault/errors";
-import { readPage } from "@/server/vault/pages";
+import { readAnnotationsScene, readPage } from "@/server/vault/pages";
 import { resolveVaultPath } from "@/server/vault/paths";
 import { issueRenderToken } from "@/server/vault/page-render-token";
 import { A4_HEIGHT_PX, A4_WIDTH_PX, DESIGN_CONTENT_HEIGHT_EXPRESSION, measureDesignPages } from "@/lib/design-pagination";
+import type { InkEngineId } from "@/lib/ink-engine";
+import { isSmartNotesInkScene } from "@/lib/ink-engine/scene";
+import { svgForStrokes } from "@/lib/ink-engine/geometry";
 
 export interface PageRenderOptions {
   pagePath: string;
   scale?: number;
   fullPage?: boolean;
   outputName?: string;
+  inkEngine?: InkEngineId;
   /**
    * Chromium viewport width in CSS px (SN-167). Drives responsive media queries
    * for raw-HTML design renders. Defaults to the desktop preset.
@@ -96,7 +100,7 @@ export async function renderPageToPng(options: PageRenderOptions): Promise<PageR
   const baseUrl = resolveRenderServerBaseUrl();
   const publicBaseUrl = resolvePublicServerBaseUrl();
   const token = issueRenderToken(pagePath);
-  const renderUrl = `${baseUrl}/render/page?path=${encodeURIComponent(pagePath)}&token=${token}`;
+  const renderUrl = `${baseUrl}/render/page?path=${encodeURIComponent(pagePath)}&token=${token}&engine=${options.inkEngine ?? "tldraw"}`;
   const devRuntime = isDevRuntime();
   // Preview inspect runs `npm run dev` with HMR websockets — `networkidle` never
   // settles. First `/render/page` compile in dev can exceed 45s on cold start.
@@ -292,7 +296,7 @@ export async function renderUiToPng(options: UiRenderOptions): Promise<PageRende
   const baseUrl = resolveRenderServerBaseUrl();
   const publicBaseUrl = resolvePublicServerBaseUrl();
   const token = issueRenderToken(page.path);
-  const renderUrl = `${baseUrl}/render/ui?path=${encodeURIComponent(page.path)}&token=${token}&viewportWidth=${viewportWidth}`;
+  const renderUrl = `${baseUrl}/render/ui?path=${encodeURIComponent(page.path)}&token=${token}&viewportWidth=${viewportWidth}&engine=${options.inkEngine ?? "tldraw"}`;
   const devRuntime = isDevRuntime();
   const navigationTimeout = devRuntime ? 120_000 : 60_000;
   const readyTimeout = devRuntime ? 90_000 : 45_000;
@@ -372,7 +376,7 @@ export async function renderUiToPng(options: UiRenderOptions): Promise<PageRende
 }
 
 /** Print a raw design artifact at the same A4 width used by Preview guides. */
-export async function renderDesignToPdf(pagePath: string, bodyHtml?: string): Promise<{ pdf: Buffer; pages: number }> {
+export async function renderDesignToPdf(pagePath: string, bodyHtml?: string, inkEngine: InkEngineId = "tldraw"): Promise<{ pdf: Buffer; pages: number }> {
   const source = await readPage(pagePath);
   if (source.metadata.note_type !== "design") {
     throw new VaultError("INVALID_INPUT", "PDF export requires a design page.", 400);
@@ -381,6 +385,10 @@ export async function renderDesignToPdf(pagePath: string, bodyHtml?: string): Pr
   if (typeof html !== "string" || html.length > 15_000_000) {
     throw new VaultError("INVALID_INPUT", "Design HTML must be at most 15 MB.", 400);
   }
+  const { scene, drawableBottom } = inkEngine === "smart-notes"
+    ? await readAnnotationsScene(source.path, inkEngine)
+    : { scene: null, drawableBottom: undefined };
+  const ink = isSmartNotesInkScene(scene) ? svgForStrokes(scene.strokes) : null;
   const baseUrl = resolveRenderServerBaseUrl();
   const base = `<base href="${baseUrl}/"><style>@page{size:A4;margin:0!important}</style>`;
   const documentHtml = /<\/head>/i.test(html)
@@ -397,7 +405,16 @@ export async function renderDesignToPdf(pagePath: string, bodyHtml?: string): Pr
     await page.emulateMedia({ media: "screen" });
     await page.setContent(documentHtml, { waitUntil: "load", timeout: 60_000 });
     await page.evaluate(() => document.fonts.ready);
-    const height = await page.evaluate<number>(DESIGN_CONTENT_HEIGHT_EXPRESSION);
+    if (ink) {
+      await page.evaluate(({ svg, bottom }) => {
+        const overlay = document.createElement("div");
+        overlay.style.cssText = "position:absolute;inset:0 auto auto 0;width:0;overflow:visible;pointer-events:none";
+        overlay.style.height = `${bottom ?? 0}px`;
+        overlay.innerHTML = svg;
+        document.documentElement.append(overlay);
+      }, { svg: ink.svg, bottom: drawableBottom });
+    }
+    const height = Math.max(await page.evaluate<number>(DESIGN_CONTENT_HEIGHT_EXPRESSION), drawableBottom ?? 0);
     const pages = measureDesignPages(height).pages;
     // Page box in CSS px matches A4_HEIGHT_PX so geometric breaks align with guide Y.
     const pdf = await page.pdf({

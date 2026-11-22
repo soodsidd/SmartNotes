@@ -3,6 +3,7 @@ import { UiRenderView } from "@/components/ui-render-view";
 import { resolveUiViewportWidth } from "@/server/vault/page-render";
 import { verifyRenderToken } from "@/server/vault/page-render-token";
 import { readAnnotationsScene, readPage } from "@/server/vault/pages";
+import { isInkEngineAvailable, DEFAULT_INK_ENGINE } from "@/lib/ink-engine-preference";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function RenderUiPage({
   searchParams,
 }: {
-  searchParams: { path?: string; token?: string; viewportWidth?: string };
+  searchParams: { path?: string; token?: string; viewportWidth?: string; engine?: string };
 }) {
   const pagePath = searchParams.path?.trim();
   const token = searchParams.token?.trim();
@@ -30,7 +31,8 @@ export default async function RenderUiPage({
   const viewportWidth = resolveUiViewportWidth(
     searchParams.viewportWidth ? Number.parseInt(searchParams.viewportWidth, 10) : undefined
   );
-  const { scene, drawableBottom } = await readAnnotationsScene(pagePath);
+  const inkEngine = isInkEngineAvailable(searchParams.engine) ? searchParams.engine : DEFAULT_INK_ENGINE;
+  const { scene, drawableBottom } = await readAnnotationsScene(pagePath, inkEngine);
 
   return (
     <UiRenderView
@@ -38,6 +40,7 @@ export default async function RenderUiPage({
       title={page.title}
       bodyHtml={page.body}
       viewportWidth={viewportWidth}
+      inkEngine={inkEngine}
       annotationsScene={scene}
       drawableBottom={drawableBottom}
     />

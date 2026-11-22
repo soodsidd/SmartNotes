@@ -72,6 +72,18 @@ export function pdfAnnotationSidecarPath(pdfPath: string): string {
   return `${normalized}.annotations.json`;
 }
 
+/** Stable AnnotationLayer owner for a PDF sheet, with a one-based page number. */
+export function pdfInkPagePath(pdfPath: string, pageIndex: number): string {
+  return `${pdfPath}#page=${pageIndex + 1}`;
+}
+
+export function parsePdfInkPagePath(path: string) {
+  const match = /^(.*\.pdf)#page=([1-9]\d*)$/i.exec(path);
+  if (!match) return null;
+  const page = Number(match[2]);
+  return Number.isSafeInteger(page) ? { pdfPath: match[1], page } : null;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

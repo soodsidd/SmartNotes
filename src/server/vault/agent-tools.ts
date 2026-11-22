@@ -581,6 +581,7 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
       path: { type: "string", required: true, description: "Vault-relative page path." },
       scale: { type: "number", description: "Device scale factor (default 2 for retina)." },
       fullPage: { type: "boolean", description: "Capture full scrollable page (default true)." },
+      engine: { type: "string", description: 'Ink sidecar to render: "tldraw" (default) or "smart-notes".' },
       outputName: {
         type: "string",
         description: 'PNG filename in page .assets/ (default "page-render-latest.png").',
@@ -642,6 +643,7 @@ export const VAULT_TOOL_DEFINITIONS: VaultToolDefinition[] = [
       path: { type: "string", required: true, description: "Vault-relative design page path." },
       viewport: { type: "string", description: 'Named preset "desktop" (1280) or "mobile" (390). Defaults to desktop.' },
       viewportWidth: { type: "number", description: "Explicit viewport width in CSS px (240–4096); overrides the preset." },
+      engine: { type: "string", description: 'Ink sidecar to render: "tldraw" (default) or "smart-notes".' },
       scale: { type: "number", description: "Device scale factor (default 2 for retina)." },
       outputName: { type: "string", description: 'PNG filename in page .assets/ (default "ui-render-<viewport>-latest.png").' },
     },

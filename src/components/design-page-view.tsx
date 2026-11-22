@@ -109,6 +109,8 @@ export function DesignPageView({
   const [tab, setTab] = React.useState<DesignTab>("preview");
   const [drawMode, setDrawMode] = React.useState(false);
   const [frameHeight, setFrameHeight] = React.useState(900);
+  const [drawableBottom, setDrawableBottom] = React.useState(0);
+  const drawFrameHeight = Math.max(frameHeight, drawableBottom);
   const [viewportHeight, setViewportHeight] = React.useState(900);
   const [body, setBody] = React.useState(bodyHtml);
   const bodyRef = React.useRef(bodyHtml);
@@ -307,12 +309,7 @@ export function DesignPageView({
     iframeRef.current?.contentWindow?.postMessage({ source: "smart-notes-design-frame", kind: "comment-rects-request", items }, "*");
   }, [pinTargetsKey, frameHeight, pageMeasurement, tab, commentsEnabled]);
 
-  React.useEffect(() => {
-    const ref = annotationLayerRef;
-    return () => {
-      void ref.current?.flush().catch(() => undefined);
-    };
-  }, [pagePath]);
+  React.useLayoutEffect(() => setDrawableBottom(0), [pagePath, inkEngine]);
 
   const enterDrawMode = React.useCallback(() => {
     setInkTool("draw");
@@ -322,9 +319,9 @@ export function DesignPageView({
 
   const exitDrawMode = React.useCallback(async () => {
     try {
-      await annotationLayerRef.current?.flush();
+      await annotationLayerRef.current?.flushPending();
     } catch {
-      // keep in-memory ink visible even if flush fails
+      return;
     }
     setDrawMode(false);
   }, []);
@@ -343,9 +340,9 @@ export function DesignPageView({
       if (next === tab) return;
       if (tab === "preview" && drawMode) {
         try {
-          await annotationLayerRef.current?.flush();
+          await annotationLayerRef.current?.flushPending();
         } catch {
-          // keep in-memory ink visible even if flush fails
+          return;
         }
         setDrawMode(false);
       }
@@ -372,10 +369,11 @@ export function DesignPageView({
     setExporting(true);
     setExportError(null);
     try {
+      await annotationLayerRef.current?.flushPending();
       const response = await fetch("/api/design/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: pagePath, bodyHtml: bodyRef.current }),
+        body: JSON.stringify({ path: pagePath, bodyHtml: bodyRef.current, engine: inkEngine }),
       });
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
@@ -394,7 +392,7 @@ export function DesignPageView({
     } finally {
       setExporting(false);
     }
-  }, [pagePath, title]);
+  }, [inkEngine, pagePath, title]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="design-page-view">
@@ -623,7 +621,7 @@ export function DesignPageView({
         </div>
       ) : (
         <div ref={scrollRef} data-testid="design-scroll" className="relative min-h-0 min-w-0 flex-1 overflow-auto">
-          <div style={{ position: "relative", width: pageLayout ? `${A4_WIDTH_PX}px` : "100%", height: `${frameHeight}px`, margin: pageLayout ? "0 auto" : undefined }}>
+          <div style={{ position: "relative", width: pageLayout ? `${A4_WIDTH_PX}px` : "100%", height: `${drawFrameHeight}px`, margin: pageLayout ? "0 auto" : undefined }}>
             <iframe
               ref={iframeRef}
               title={title.trim() || "Design page"}
@@ -665,7 +663,8 @@ export function DesignPageView({
                     mode={drawMode ? "draw" : "edit"}
                     scrollContainerRef={scrollRef}
                     viewportHeight={viewportHeight}
-                    pageFrameHeight={frameHeight}
+                    pageFrameHeight={drawFrameHeight}
+                    onDrawableBottomChange={setDrawableBottom}
                     onSaveStatusChange={onSaveStatusChange}
                     onHistoryChange={setInkHistory}
                     inkTool={inkTool}

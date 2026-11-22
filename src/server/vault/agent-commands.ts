@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { VaultError } from "./errors";
+import { parseInkEngine } from "./ink-sidecars";
 import { parseFrontmatterDocument, serializeFrontmatterDocument } from "./frontmatter";
 import {
   createNotebook,
@@ -938,7 +939,7 @@ async function runPageCommand(action: string, args: Record<string, unknown>): Pr
       const scale = optionalNumber(args.scale) ?? 2;
       const fullPage = optionalBoolean(args.fullPage) ?? true;
       const outputName = optionalString(args.outputName) || "page-render-latest.png";
-      const render = await renderPageToPng({ pagePath, scale, fullPage, outputName });
+      const render = await renderPageToPng({ pagePath, scale, fullPage, outputName, inkEngine: parseInkEngine(args.engine) });
       return {
         ok: true,
         group: "page",
@@ -1130,6 +1131,7 @@ async function runDesignCommand(action: string, args: Record<string, unknown>): 
         pagePath: page.path,
         scale: optionalNumber(args.scale) ?? 2,
         viewport,
+        inkEngine: parseInkEngine(args.engine),
         outputName: optionalString(args.outputName) || undefined,
       });
       return { ok: true, group: "design", action, data: render };
