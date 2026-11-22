@@ -21,7 +21,7 @@ export type FrontmatterData = Record<string, FrontmatterValue>;
  *               explicitly attached JSON tables (SN-182).
  * - `spreadsheet` — Syncfusion workbook stored in a sibling native JSON sidecar.
  */
-export type NoteType = "text" | "ink" | "jupyter" | "log" | "design" | "app" | "spreadsheet";
+export type NoteType = "text" | "ink" | "music" | "jupyter" | "log" | "design" | "app" | "spreadsheet";
 
 export interface VaultPageSummary {
   id: string;

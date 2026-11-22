@@ -16,6 +16,7 @@ import {
   LoaderCircle,
   Menu,
   MoreHorizontal,
+  Music2,
   NotebookPen,
   PanelLeft,
   PanelLeftClose,
@@ -4151,7 +4152,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     if (leavingDraft?.path === pagePath && leavingDraft.noteType === "jupyter") {
       return;
     }
-    if (leavingDraft?.path === pagePath && leavingDraft.noteType === "ink") {
+    if (leavingDraft?.path === pagePath && (leavingDraft.noteType === "ink" || leavingDraft.noteType === "music")) {
       try {
         await inkCanvasRef.current?.flush();
       } catch {
@@ -5064,7 +5065,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       event.preventDefault();
       void (async () => {
         await flushSave();
-        if (draftRef.current?.noteType === "ink") {
+        if (draftRef.current?.noteType === "ink" || draftRef.current?.noteType === "music") {
           try {
             await inkCanvasRef.current?.flush();
           } catch {
@@ -5701,7 +5702,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
   const handleCreatePage = React.useCallback(async (target: CreatePageTarget, noteType?: CreatePagePayload["noteType"]) => {
     if (!(await flushSave())) return;
     try {
-      const title = noteType === "jupyter" ? "Untitled notebook" : noteType === "log" ? "Untitled log" : noteType === "design" ? "Untitled design" : noteType === "spreadsheet" ? "Untitled spreadsheet" : "Untitled page";
+      const title = noteType === "jupyter" ? "Untitled notebook" : noteType === "log" ? "Untitled log" : noteType === "design" ? "Untitled design" : noteType === "spreadsheet" ? "Untitled spreadsheet" : noteType === "music" ? "Untitled music page" : "Untitled page";
       const page = await createVaultPage({ sectionPath: target.sectionPath, notebookPath: target.notebookPath, title, noteType, parentId: target.parentId ?? null });
       setExpandedNotebooks((current) => new Set([...current, page.notebookPath]));
       if (page.sectionPath) setExpandedSections((current) => new Set([...current, page.sectionPath!]));
@@ -5722,6 +5723,10 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
 
   const handleCreateJupyterDialog = React.useCallback((target: CreatePageTarget) => {
     void handleCreatePage(target, "jupyter");
+  }, [handleCreatePage]);
+
+  const handleCreateMusicDialog = React.useCallback((target: CreatePageTarget) => {
+    void handleCreatePage(target, "music");
   }, [handleCreatePage]);
 
   const handleCreateLogDialog = React.useCallback((target: CreatePageTarget) => {
@@ -5995,7 +6000,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         setAppReloadRequestNonce((nonce) => nonce + 1);
         return;
       }
-      if (currentDraft.noteType === "ink") {
+      if (currentDraft.noteType === "ink" || currentDraft.noteType === "music") {
         // Ink scenes are owned by the canvas; remount re-fetches the sidecar.
         const saved = await flushSave();
         if (!saved) {
@@ -7691,6 +7696,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                   onArchiveNotebook={handleArchiveNotebook}
                   onUnarchiveNotebook={handleUnarchiveNotebook}
                   onCreatePage={handleCreatePageDialog}
+                  onCreateMusicPage={handleCreateMusicDialog}
                   onCreateJupyterNotebook={handleCreateJupyterDialog}
                   onCreateLogPage={handleCreateLogDialog}
                   onCreateDesignPage={handleCreateDesignDialog}
@@ -7818,6 +7824,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                     onArchiveNotebook={handleArchiveNotebook}
                     onUnarchiveNotebook={handleUnarchiveNotebook}
                     onCreatePage={handleCreatePageDialog}
+                    onCreateMusicPage={handleCreateMusicDialog}
                     onCreateJupyterNotebook={handleCreateJupyterDialog}
                     onCreateLogPage={handleCreateLogDialog}
                     onCreateDesignPage={handleCreateDesignDialog}
@@ -7888,6 +7895,9 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
               }}
               onCreatePage={() => {
                 if (activeCreateTarget) handleCreatePageDialog(activeCreateTarget);
+              }}
+              onCreateMusicPage={() => {
+                if (activeCreateTarget) handleCreateMusicDialog(activeCreateTarget);
               }}
               onCreateJupyterPage={() => {
                 if (activeCreateTarget) handleCreateJupyterDialog(activeCreateTarget);
@@ -8021,12 +8031,13 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                     else setSaveState("idle");
                   }}
                 />
-              ) : draft.noteType === "ink" ? (
+              ) : draft.noteType === "ink" || draft.noteType === "music" ? (
                 <InkCanvas
                   key={`${draft.path}:${inkReloadNonce}:${activeVersionPreview?.versionId ?? "live"}`}
                   ref={inkCanvasRef}
                   pagePath={draft.path}
                   title={draft.title}
+                  music={draft.noteType === "music"}
                   readOnly={Boolean(activeVersionPreview)}
                   previewSidecarJson={activeVersionPreview?.content}
                   onOpenSidebar={() => setSidebarOpen(true)}
@@ -8290,6 +8301,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                 onArchiveNotebook={handleArchiveNotebook}
                 onUnarchiveNotebook={handleUnarchiveNotebook}
                 onCreatePage={handleCreatePageDialog}
+                onCreateMusicPage={handleCreateMusicDialog}
                 onCreateJupyterNotebook={handleCreateJupyterDialog}
                 onCreateLogPage={handleCreateLogDialog}
                 onCreateDesignPage={handleCreateDesignDialog}
@@ -8384,6 +8396,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                   onArchiveNotebook={handleArchiveNotebook}
                   onUnarchiveNotebook={handleUnarchiveNotebook}
                   onCreatePage={handleCreatePageDialog}
+                  onCreateMusicPage={handleCreateMusicDialog}
                   onCreateJupyterNotebook={handleCreateJupyterDialog}
                   onCreateLogPage={handleCreateLogDialog}
                   onCreateDesignPage={handleCreateDesignDialog}
@@ -8823,6 +8836,7 @@ function TopBar({
   onCreateNotebook,
   onCreateSection,
   onCreatePage,
+  onCreateMusicPage,
   onCreateJupyterPage,
   onCreateDesignPage,
   onCreateSpreadsheetPage,
@@ -8858,6 +8872,7 @@ function TopBar({
   onCreateNotebook: () => void;
   onCreateSection: () => void;
   onCreatePage: () => void;
+  onCreateMusicPage: () => void;
   onCreateJupyterPage: () => void;
   onCreateDesignPage: () => void;
   onCreateSpreadsheetPage: () => void;
@@ -9113,6 +9128,9 @@ function TopBar({
             <DropdownMenuItem onClick={onCreatePage} disabled={!canCreatePage}>
               New page
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={onCreateMusicPage} disabled={!canCreatePage} data-testid="create-music-menu-item">
+              New music page
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={onCreateJupyterPage} disabled={!canCreatePage}>
               New Jupyter notebook
             </DropdownMenuItem>
@@ -9355,6 +9373,7 @@ export const Sidebar = React.memo(function Sidebar({
   onCloseNotebook,
   onOpenNotebook,
   onCreatePage,
+  onCreateMusicPage,
   onCreateJupyterNotebook,
   onCreateLogPage,
   onCreateDesignPage,
@@ -9449,6 +9468,7 @@ export const Sidebar = React.memo(function Sidebar({
   onCloseNotebook: (path: string) => void;
   onOpenNotebook: (path: string) => void;
   onCreatePage: (target: CreatePageTarget) => void;
+  onCreateMusicPage: (target: CreatePageTarget) => void;
   onCreateJupyterNotebook: (target: CreatePageTarget) => void;
   onCreateLogPage: (target: CreatePageTarget) => void;
   onCreateDesignPage: (target: CreatePageTarget) => void;
@@ -9697,6 +9717,9 @@ export const Sidebar = React.memo(function Sidebar({
         <DropdownMenuItem onClick={() => onCreatePage(rootTarget)} data-testid={`notebook-create-page-${notebook.path}`}>
           New page
         </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreateMusicPage(rootTarget)} data-testid={`notebook-create-music-${notebook.path}`}>
+          New music page
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onCreateJupyterNotebook(rootTarget)} data-testid={`notebook-create-jupyter-${notebook.path}`}>
           New Jupyter notebook
         </DropdownMenuItem>
@@ -9746,6 +9769,9 @@ export const Sidebar = React.memo(function Sidebar({
       <>
         <DropdownMenuItem onClick={() => onCreatePage(target)}>
           New page
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreateMusicPage(target)} data-testid={`section-create-music-${section.path}`}>
+          New music page
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onCreateJupyterNotebook(target)} data-testid={`section-create-jupyter-${section.path}`}>
           New Jupyter notebook
@@ -10247,6 +10273,7 @@ export const Sidebar = React.memo(function Sidebar({
                       const nestingState = getPageNestingActionState(nestingLookup, node.page.path);
                       const active = node.page.path === activePagePath;
                       const isInkPage = node.page.noteType === "ink";
+                      const isMusicPage = node.page.noteType === "music";
                       const isJupyterPage = node.page.noteType === "jupyter";
                       const isLogPage = node.page.noteType === "log";
                       const isDesignPage = node.page.noteType === "design";
@@ -10440,6 +10467,8 @@ export const Sidebar = React.memo(function Sidebar({
                               <AppWindow className="size-3 shrink-0 text-accent" aria-label="App page" />
                             ) : isSpreadsheetPage ? (
                               <Table2 className="size-3 shrink-0 text-chart-2" aria-label="Spreadsheet page" />
+                            ) : isMusicPage ? (
+                              <Music2 className="size-3 shrink-0 text-accent" aria-label="Music page" />
                             ) : isInkPage ? (
                               <PenLine className="size-3 shrink-0 text-indigo-400" aria-hidden />
                             ) : (
@@ -10786,6 +10815,7 @@ export const Sidebar = React.memo(function Sidebar({
                                 const nestingState = getPageNestingActionState(nestingLookup, node.page.path);
                                 const active = node.page.path === activePagePath;
                                 const isInkPage = node.page.noteType === "ink";
+                                const isMusicPage = node.page.noteType === "music";
                                 const isJupyterPage = node.page.noteType === "jupyter";
                                 const isLogPage = node.page.noteType === "log";
                                 const isDesignPage = node.page.noteType === "design";
@@ -10990,6 +11020,8 @@ export const Sidebar = React.memo(function Sidebar({
                                         <AppWindow className="size-3 shrink-0 text-accent" aria-label="App page" />
                                       ) : isSpreadsheetPage ? (
                                         <Table2 className="size-3 shrink-0 text-chart-2" aria-label="Spreadsheet page" />
+                                      ) : isMusicPage ? (
+                                        <Music2 className="size-3 shrink-0 text-accent" aria-label="Music page" />
                                       ) : isInkPage ? (
                                         <PenLine className="size-3 shrink-0 text-indigo-400" aria-hidden />
                                       ) : (

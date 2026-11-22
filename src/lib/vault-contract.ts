@@ -1,5 +1,5 @@
 /** Kind of a vault page. Keep in sync with `src/server/vault/types.ts`. */
-export type NoteType = "text" | "ink" | "jupyter" | "log" | "design" | "app" | "spreadsheet";
+export type NoteType = "text" | "ink" | "music" | "jupyter" | "log" | "design" | "app" | "spreadsheet";
 
 export interface VaultPage {
   paperReference?: { id: string; canonicalPath: string; parentPath: string; missing: boolean };

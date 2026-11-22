@@ -819,6 +819,25 @@
       "whenToRun": "Pre-merge when touching the related feature area."
     },
     {
+      "id": "e2e-sn-415-music-page",
+      "name": "Music page ink and print",
+      "description": "Playwright tablet-width music paper, ink reload, full screen, and print",
+      "appType": "browser",
+      "command": "npm run test:e2e -- e2e/sn-415-music-page.spec.ts --project=desktop",
+      "timeoutMs": 300000,
+      "enabled": true,
+      "tags": ["e2e", "browser", "music", "ink", "targeted"],
+      "feature": "music",
+      "testType": "e2e",
+      "suite": "targeted",
+      "risk": "medium",
+      "cost": "slow",
+      "lifecycle": "pre-merge",
+      "sourceFiles": [{ "path": "e2e/sn-415-music-page.spec.ts" }],
+      "intent": "Music staff remains aligned with saved ink on screen and in print.",
+      "whenToRun": "Pre-merge when changing music paper or ink rendering."
+    },
+    {
       "id": "e2e-sn-26-ink-note",
       "name": "Sn 26 Ink Note (desktop)",
       "description": "Playwright desktop: e2e/sn-26-ink-note.spec.ts",

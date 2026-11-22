@@ -145,6 +145,7 @@ function asNullableString(value: unknown) {
 /** Map the raw `note_type` frontmatter value to a known NoteType (defaults to text). */
 function noteTypeFromMetadata(value: FrontmatterValue | undefined): NoteType {
   if (value === "ink") return "ink";
+  if (value === "music") return "music";
   if (value === "jupyter") return "jupyter";
   if (value === "log") return "log";
   if (value === "design") return "design";
@@ -154,7 +155,7 @@ function noteTypeFromMetadata(value: FrontmatterValue | undefined): NoteType {
 }
 
 function versionedNoteType(metadata: FrontmatterData): "text" | "ink" | "spreadsheet" {
-  if (metadata.note_type === "ink") return "ink";
+  if (metadata.note_type === "ink" || metadata.note_type === "music") return "ink";
   if (metadata.note_type === "spreadsheet") return "spreadsheet";
   return "text";
 }

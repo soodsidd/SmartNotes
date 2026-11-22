@@ -44,6 +44,8 @@ export async function POST(request: Request) {
     const noteType =
       body.noteType === "ink"
         ? "ink"
+        : body.noteType === "music"
+          ? "music"
         : body.noteType === "jupyter"
           ? "jupyter"
           : body.noteType === "log"

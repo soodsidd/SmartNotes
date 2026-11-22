@@ -1,5 +1,20 @@
 # Smart Notes Design System
 
+## Music paper (SN-415)
+
+The ink-only music page uses the existing `--background`, `--surface`,
+`--muted`, `--border`, `--foreground`, `--muted-foreground`, `--secondary`,
+`--ring`, and `--radius-md` tokens for its shell and controls. The header uses
+the established 14px title, 12px status, 8px gap, and 44px touch targets.
+The fixed dock uses the existing `--surface`, `--border`, `--accent`,
+`--accent-foreground`, `--destructive`, `--shadow-popover`, and 44px touch
+controls. The fixed A4 paper is 794 × 1123 CSS pixels at 96 dpi and scales as a unit
+on narrow viewports. Its staff artwork follows the approved sheet music
+mockup: five grand-staff systems 194px apart, 12px line spacing, `#9ea5aa`
+staff lines, `#33383b` brace, and `#323638` clefs. Those fixed values belong
+to the printable paper artwork, not app chrome; no new app theme tokens were
+added. Keyboard focus uses the existing `--ring` token.
+
 ## Dictation mic (SN-406)
 
 The dictation mic (`src/styles/dictation.css`) appears in the Companion

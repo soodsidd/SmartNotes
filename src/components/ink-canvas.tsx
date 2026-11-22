@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Tldraw, type Editor, type TLStoreSnapshot, type TLGridProps } from "tldraw";
+import { Tldraw, DefaultColorStyle, DefaultSizeStyle, type Editor, type TLStoreSnapshot, type TLGridProps, type TLDefaultColorStyle } from "tldraw";
 import "tldraw/tldraw.css";
-import { Grid2X2, Menu, PenLine } from "lucide-react";
+import { Eraser, Grid2X2, Maximize2, Menu, Minimize2, MousePointer2, PenLine, Printer, Redo2, Undo2 } from "lucide-react";
 import { fetchInkScene, parseInkSidecarJson, saveInkScene, type InkBackgroundMode } from "@/lib/api/ink";
+import { MusicStaff, MUSIC_PAPER_HEIGHT, MUSIC_PAPER_WIDTH } from "@/components/music-staff";
 
 const AUTOSAVE_DELAY_MS = 1200;
 
@@ -21,6 +22,7 @@ export interface InkCanvasProps {
   previewSidecarJson?: string;
   /** View-only mode — no autosave or drawing tools. */
   readOnly?: boolean;
+  music?: boolean;
 }
 
 // Custom grid component: renders graph-paper style lines that pan and scale with the camera.
@@ -88,9 +90,19 @@ function InkGridLines({ x, y, z, size }: TLGridProps) {
 // components object is stable (defined outside React) so it doesn't cause re-renders.
 const COMPONENTS_GRID = { PageMenu: null, Grid: InkGridLines } as const;
 const COMPONENTS_BLANK = { PageMenu: null } as const;
+const COMPONENTS_MUSIC = {
+  PageMenu: null,
+  MainMenu: null,
+  MenuPanel: null,
+  StylePanel: null,
+  Toolbar: null,
+  NavigationPanel: null,
+  QuickActions: null,
+  HelperButtons: null,
+} as const;
 
 const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(function InkCanvasInner(
-  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly = false },
+  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly = false, music = false },
   ref
 ) {
   const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -101,6 +113,44 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   const savingRef = React.useRef(false);
   const pendingRef = React.useRef(false);
   const editorRef = React.useRef<Editor | null>(null);
+  const musicViewportRef = React.useRef<HTMLDivElement | null>(null);
+  const [musicScale, setMusicScale] = React.useState(1);
+  const [musicFullscreen, setMusicFullscreen] = React.useState(false);
+  const [musicTool, setMusicTool] = React.useState<"select" | "draw" | "eraser">("draw");
+  const [musicColor, setMusicColor] = React.useState<TLDefaultColorStyle>("black");
+  const [musicSize, setMusicSize] = React.useState<"s" | "m" | "l">("m");
+
+  const changeMusicTool = (tool: "select" | "draw" | "eraser") => {
+    setMusicTool(tool);
+    editorRef.current?.setCurrentTool(tool);
+  };
+  const changeMusicColor = (color: TLDefaultColorStyle) => {
+    setMusicColor(color);
+    editorRef.current?.setStyleForNextShapes(DefaultColorStyle, color);
+  };
+  const changeMusicSize = (size: "s" | "m" | "l") => {
+    setMusicSize(size);
+    editorRef.current?.setStyleForNextShapes(DefaultSizeStyle, size);
+  };
+
+  React.useEffect(() => {
+    if (!music || !musicViewportRef.current) return;
+    const viewport = musicViewportRef.current;
+    const update = () => setMusicScale(Math.min(1, viewport.clientWidth / MUSIC_PAPER_WIDTH));
+    const observer = new ResizeObserver(update);
+    observer.observe(viewport);
+    update();
+    return () => observer.disconnect();
+  }, [music, musicFullscreen, snapshot]);
+
+  React.useEffect(() => {
+    if (!musicFullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMusicFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [musicFullscreen]);
 
   // Keep ref in sync with state so scheduleSave always captures the latest value.
   React.useEffect(() => {
@@ -261,6 +311,15 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   const handleMount = React.useCallback(
     (editor: Editor) => {
       editorRef.current = editor;
+      if (music) {
+        editor.setCamera({ x: 0, y: 0, z: 1 });
+        editor.setCameraOptions({ isLocked: true, wheelBehavior: "none" });
+        if (!readOnly) {
+          editor.setCurrentTool("draw");
+          editor.setStyleForNextShapes(DefaultColorStyle, "black");
+          editor.setStyleForNextShapes(DefaultSizeStyle, "m");
+        }
+      }
       editor.updateInstanceState({
         isGridMode: backgroundModeRef.current === "grid",
         isReadonly: readOnly,
@@ -275,7 +334,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       );
       return cleanup;
     },
-    [readOnly, scheduleSave]
+    [music, readOnly, scheduleSave]
   );
 
   const saveLabel =
@@ -292,7 +351,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
           saveLabel={saveLabel}
           backgroundMode={backgroundMode}
           onOpenSidebar={onOpenSidebar}
-          onGridToggle={readOnly ? undefined : handleGridToggle}
+          onGridToggle={readOnly || music ? undefined : handleGridToggle}
         />
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           Loading canvas…
@@ -301,7 +360,45 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     );
   }
 
-  const components = backgroundMode === "grid" ? COMPONENTS_GRID : COMPONENTS_BLANK;
+  const components = music ? COMPONENTS_MUSIC : backgroundMode === "grid" ? COMPONENTS_GRID : COMPONENTS_BLANK;
+
+  if (music) {
+    return (
+      <div className={`music-page ${musicFullscreen ? "music-page--fullscreen" : ""}`} data-testid="music-page">
+        <div className="music-page__bar" data-print-chrome="true">
+          <button type="button" onClick={onOpenSidebar} aria-label="Open sidebar"><Menu className="size-4" /></button>
+          <span className="music-page__name">{title || "Untitled music page"}</span>
+          {saveLabel && <span className="music-page__status">{saveLabel}</span>}
+          <button type="button" onClick={() => setMusicFullscreen((value) => !value)} aria-label={musicFullscreen ? "Exit full screen" : "Full screen"} data-testid="music-fullscreen-toggle">
+            {musicFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          </button>
+          <button type="button" onClick={() => { void flushSave().then(() => window.print()); }} aria-label="Print music page" data-testid="music-print"><Printer className="size-4" /></button>
+        </div>
+        <div className="music-page__viewport" ref={musicViewportRef}>
+          <div className="music-page__scaled" style={{ width: MUSIC_PAPER_WIDTH * musicScale, height: MUSIC_PAPER_HEIGHT * musicScale }}>
+            <div className="music-page__paper" style={{ transform: `scale(${musicScale})` }}>
+              <MusicStaff title={title} />
+              <div className="music-page__ink">
+                <Tldraw key={previewSidecarJson ?? pagePath} snapshot={snapshot ?? undefined} onMount={handleMount} components={components} />
+              </div>
+            </div>
+          </div>
+        </div>
+        {!readOnly && <div className="music-page__dock" role="toolbar" aria-label="Music ink tools" data-print-chrome="true">
+          <button type="button" aria-label="Select" aria-pressed={musicTool === "select"} onClick={() => changeMusicTool("select")}><MousePointer2 className="size-4" /></button>
+          <button type="button" aria-label="Pen" aria-pressed={musicTool === "draw"} onClick={() => changeMusicTool("draw")}><PenLine className="size-4" /></button>
+          <button type="button" aria-label="Eraser" aria-pressed={musicTool === "eraser"} onClick={() => changeMusicTool("eraser")}><Eraser className="size-4" /></button>
+          <span className="music-page__dock-separator" />
+          {(["black", "blue", "red"] as const).map((color) => <button type="button" key={color} aria-label={`${color} ink`} aria-pressed={musicColor === color} onClick={() => changeMusicColor(color)}><span className={`music-page__color music-page__color--${color}`} /></button>)}
+          <select aria-label="Pen thickness" value={musicSize} onChange={(event) => changeMusicSize(event.target.value as "s" | "m" | "l")}>
+            <option value="s">Thin</option><option value="m">Medium</option><option value="l">Thick</option>
+          </select>
+          <button type="button" aria-label="Undo" onClick={() => editorRef.current?.undo()}><Undo2 className="size-4" /></button>
+          <button type="button" aria-label="Redo" onClick={() => editorRef.current?.redo()}><Redo2 className="size-4" /></button>
+        </div>}
+      </div>
+    );
+  }
 
   return (
     <div className="ink-canvas-host relative flex h-full w-full flex-col">
@@ -393,7 +490,7 @@ function InkOverlayBar({
  * It is keyed by pagePath so the editor fully remounts on page switch.
  */
 export const InkCanvas = React.forwardRef<InkCanvasHandle, InkCanvasProps>(function InkCanvas(
-  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly },
+  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly, music },
   ref
 ) {
   return (
@@ -406,6 +503,7 @@ export const InkCanvas = React.forwardRef<InkCanvasHandle, InkCanvasProps>(funct
       onSaveStatusChange={onSaveStatusChange}
       previewSidecarJson={previewSidecarJson}
       readOnly={readOnly}
+      music={music}
     />
   );
 });

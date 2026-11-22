@@ -109,7 +109,7 @@ export interface AiDocumentTextAttachment {
 export interface SmartNotesOperatingContextInput {
   title: string;
   path: string;
-  noteType?: "text" | "ink" | "jupyter" | "log" | "design" | "app" | "spreadsheet";
+  noteType?: "text" | "ink" | "music" | "jupyter" | "log" | "design" | "app" | "spreadsheet";
   vaultRoot?: string | null;
   /** Real absolute OS path (portable-aware). Prefer over vaultRoot+path joins. */
   resolvedDiskPath?: string | null;

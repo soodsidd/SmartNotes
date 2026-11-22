@@ -95,7 +95,7 @@ export async function savePage(path: string, title: string, body: string) {
 export async function createPage(
   target: { sectionPath?: string | null; notebookPath?: string | null },
   title: string,
-  noteType?: "text" | "ink" | "jupyter" | "log" | "design" | "app" | "spreadsheet",
+  noteType?: "text" | "ink" | "music" | "jupyter" | "log" | "design" | "app" | "spreadsheet",
   parentId?: string | null
 ) {
   const response = await vaultWriteFetch("/api/page", {
