@@ -3119,7 +3119,7 @@ mark {
 .music-page__status { margin-left: auto; font-size: .75rem; color: var(--muted-foreground); }
 .music-page__name + button { margin-left: auto; }
 .music-page__viewport { flex: 1; min-height: 0; overflow: auto; padding: 1rem .5rem; background: var(--muted); }
-.music-page__scaled { margin: 0 auto; }
+.music-page__scaled { position: relative; margin: 0 auto; }
 .music-page__paper { position: relative; width: 794px; height: 1123px; transform-origin: top left; background: #fff; color: #323638; box-shadow: 0 0 0 1px var(--border); }
 .music-staff { position: absolute; inset: 0; pointer-events: none; }
 .music-staff__title { position: absolute; top: 60px; left: 104px; right: 70px; padding-bottom: .5rem; border-bottom: 1px solid #d4d6d8; font-size: 1rem; color: #171b1d; }

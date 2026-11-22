@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { flushSync } from "react-dom";
 import { Tldraw, DefaultColorStyle, DefaultSizeStyle, type Editor, type TLStoreSnapshot, type TLGridProps, type TLDefaultColorStyle } from "tldraw";
 import "tldraw/tldraw.css";
 import { Eraser, Grid2X2, Maximize2, Menu, Minimize2, MousePointer2, PenLine, Printer, Redo2, Undo2 } from "lucide-react";
@@ -114,7 +115,12 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   const pendingRef = React.useRef(false);
   const editorRef = React.useRef<Editor | null>(null);
   const musicViewportRef = React.useRef<HTMLDivElement | null>(null);
-  const [musicScale, setMusicScale] = React.useState(1);
+  const [musicFitScale, setMusicFitScale] = React.useState(1);
+  const [musicPrinting, setMusicPrinting] = React.useState(false);
+  // Print always lays the paper out at 1:1 A4, whatever the on-screen fit is.
+  const musicScale = musicPrinting ? 1 : musicFitScale;
+  const musicScaleRef = React.useRef(musicScale);
+  musicScaleRef.current = musicScale;
   const [musicFullscreen, setMusicFullscreen] = React.useState(false);
   const [musicTool, setMusicTool] = React.useState<"select" | "draw" | "eraser">("draw");
   const [musicColor, setMusicColor] = React.useState<TLDefaultColorStyle>("black");
@@ -136,12 +142,38 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   React.useEffect(() => {
     if (!music || !musicViewportRef.current) return;
     const viewport = musicViewportRef.current;
-    const update = () => setMusicScale(Math.min(1, viewport.clientWidth / MUSIC_PAPER_WIDTH));
+    const update = () => setMusicFitScale(Math.min(1, viewport.clientWidth / MUSIC_PAPER_WIDTH));
     const observer = new ResizeObserver(update);
     observer.observe(viewport);
     update();
     return () => observer.disconnect();
   }, [music, musicFullscreen, snapshot]);
+
+  React.useEffect(() => {
+    if (!music) return;
+    // flushSync so the 1:1 layout and camera are committed before the browser snapshots the print.
+    const setPrinting = (value: boolean) => flushSync(() => setMusicPrinting(value));
+    const onBeforePrint = () => setPrinting(true);
+    const onAfterPrint = () => setPrinting(false);
+    const query = window.matchMedia?.("print");
+    const onQueryChange = (event: MediaQueryListEvent) => setPrinting(event.matches);
+    window.addEventListener("beforeprint", onBeforePrint);
+    window.addEventListener("afterprint", onAfterPrint);
+    query?.addEventListener?.("change", onQueryChange);
+    return () => {
+      window.removeEventListener("beforeprint", onBeforePrint);
+      window.removeEventListener("afterprint", onAfterPrint);
+      query?.removeEventListener?.("change", onQueryChange);
+    };
+  }, [music]);
+
+  // The ink layer is never CSS-transformed (tldraw maps pointers from its untransformed
+  // bounding box), so the paper scale is applied as camera zoom instead. That keeps
+  // stored stroke coordinates in 1:1 paper space at every viewport width.
+  React.useEffect(() => {
+    if (!music) return;
+    editorRef.current?.setCamera({ x: 0, y: 0, z: musicScale }, { force: true });
+  }, [music, musicScale]);
 
   React.useEffect(() => {
     if (!musicFullscreen) return;
@@ -312,7 +344,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     (editor: Editor) => {
       editorRef.current = editor;
       if (music) {
-        editor.setCamera({ x: 0, y: 0, z: 1 });
+        editor.setCamera({ x: 0, y: 0, z: musicScaleRef.current });
         editor.setCameraOptions({ isLocked: true, wheelBehavior: "none" });
         if (!readOnly) {
           editor.setCurrentTool("draw");
@@ -378,9 +410,9 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
           <div className="music-page__scaled" style={{ width: MUSIC_PAPER_WIDTH * musicScale, height: MUSIC_PAPER_HEIGHT * musicScale }}>
             <div className="music-page__paper" style={{ transform: `scale(${musicScale})` }}>
               <MusicStaff title={title} />
-              <div className="music-page__ink">
-                <Tldraw key={previewSidecarJson ?? pagePath} snapshot={snapshot ?? undefined} onMount={handleMount} components={components} />
-              </div>
+            </div>
+            <div className="music-page__ink">
+              <Tldraw key={previewSidecarJson ?? pagePath} snapshot={snapshot ?? undefined} onMount={handleMount} components={components} />
             </div>
           </div>
         </div>

@@ -47,3 +47,41 @@ test("music page keeps ink aligned through reload, full screen, and print", asyn
   await page.screenshot({ path: path.join(evidence, "print-staff-ink.png"), fullPage: true });
   await page.pdf({ path: path.join(evidence, "music-page.pdf"), format: "A4", printBackground: true });
 });
+
+test("music page stores ink in paper coordinates when the paper is scaled down", async ({ page }) => {
+  test.setTimeout(120_000);
+  await fs.mkdir(evidence, { recursive: true });
+  await page.setViewportSize({ width: 600, height: 900 });
+  const title = `sn415-narrow-${Date.now()}`;
+  const response = await page.request.post("/api/page", {
+    data: { notebookPath: "Personal Notebook", sectionPath: "Personal Notebook/Quick Notes", title, noteType: "music" },
+  });
+  expect(response.status()).toBe(201);
+  const { page: created } = await response.json() as { page: { path: string } };
+
+  await page.goto(`/?page=${encodeURIComponent(created.path)}`);
+  const music = page.getByTestId("music-page");
+  await expect(music).toBeVisible({ timeout: 20000 });
+  await expect(music.locator(".tl-canvas")).toBeVisible({ timeout: 15000 });
+  const paper = music.locator(".music-page__paper");
+  const box = (await paper.boundingBox())!;
+  expect(box.width).toBeLessThan(794 - 50);
+
+  // Start the stroke at a known fraction of the visible paper.
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.3, { steps: 12 });
+  await page.mouse.up();
+
+  let origin: { x: number; y: number } | null = null;
+  await expect.poll(async () => {
+    const ink = await page.request.get(`/api/ink?path=${encodeURIComponent(created.path)}`);
+    const data = await ink.json() as { scene?: { document?: { store?: Record<string, { typeName?: string; x: number; y: number }> } } };
+    const shape = Object.values(data.scene?.document?.store ?? {}).find((record) => record.typeName === "shape");
+    origin = shape ? { x: shape.x, y: shape.y } : null;
+    return Boolean(origin);
+  }, { timeout: 10000 }).toBe(true);
+  expect(Math.abs(origin!.x - 794 * 0.5)).toBeLessThan(12);
+  expect(Math.abs(origin!.y - 1123 * 0.3)).toBeLessThan(12);
+  await page.screenshot({ path: path.join(evidence, "narrow-scaled-ink.png") });
+});
