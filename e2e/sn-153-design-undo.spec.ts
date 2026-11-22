@@ -1,7 +1,9 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import fs from "node:fs/promises";
+import { annotationSuffix, readAnnotationSidecar, useAnnotationInkEngine } from "./annotation-ink-parity";
 import path from "node:path";
 import { ensureNotebookTreeVisible } from "./helpers";
+
+useAnnotationInkEngine();
 
 // SN-153 (post-SN-167 integration): design pages mount AnnotationLayer through
 // next/dynamic, which drops a forwarded `ref` — so the draw toolbar's undo/redo
@@ -33,19 +35,9 @@ async function createDesignPage(
 }
 
 async function sidecarShapeCount(title: string): Promise<number> {
-  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${title}.annotations.json`);
-  try {
-    const raw = await fs.readFile(sidecarPath, "utf8");
-    const payload = JSON.parse(raw) as {
-      scene?: { document?: { store?: Record<string, { typeName?: string }> } };
-    };
-    const store = payload.scene?.document?.store ?? {};
-    return Object.values(store).filter((r) => r?.typeName === "shape").length;
-  } catch {
-    return -1;
-  }
+  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${title}${annotationSuffix}`);
+  return (await readAnnotationSidecar(sidecarPath)).strokes.length;
 }
-
 test("SN-153 desktop: undo reverses an ink stroke on a design page (handleRef reaches the layer)", async ({
   page,
   request,

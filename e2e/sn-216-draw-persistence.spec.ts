@@ -1,7 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
+import { annotationSuffix, readAnnotationSidecar, smartInk, renderedStrokeSelector, strokePathSelector, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { closeNotebookTreeSheet } from "./helpers";
+
+useAnnotationInkEngine();
 
 const VAULT = path.resolve(__dirname, "..", ".e2e-vault");
 const SECTION_PATH = "Personal Notebook/Quick Notes";
@@ -163,18 +166,10 @@ async function drawPenStrokeWithPalm(
 }
 
 async function readDrawShapeCount(sidecarPath: string): Promise<number> {
-  const source = await fs.readFile(sidecarPath, "utf8").catch(() => "");
-  if (!source) return 0;
-  const sidecar = JSON.parse(source) as {
-    scene?: { document?: { store?: Record<string, { typeName?: string; type?: string }> } };
-  };
-  return Object.values(sidecar.scene?.document?.store ?? {}).filter(
-    (record) => record.typeName === "shape" && record.type === "draw"
-  ).length;
+  return (await readAnnotationSidecar(sidecarPath)).strokes.length;
 }
-
 async function expectCommittedStrokePainted(layer: import("@playwright/test").Locator) {
-  const path = layer.locator('.tl-shape[data-shape-type="draw"] path').last();
+  const path = layer.locator(strokePathSelector).last();
   await expect(path).toBeVisible();
   await expect
     .poll(async () => {
@@ -196,10 +191,11 @@ test("SN-216: a new stroke stays rendered through autosave and reopen", async ({
   page,
   request,
 }, testInfo) => {
+  if (smartInk) test.setTimeout(120_000);
   const stamp = String(Date.now());
   const title = `sn216-${stamp}-draw-persistence`;
   const pagePath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${title}.html`);
-  const sidecarPath = pagePath.replace(/\.html$/, ".annotations.json");
+  const sidecarPath = pagePath.replace(/\.html$/, annotationSuffix);
   const mobile = testInfo.project.name === "mobile";
 
   try {
@@ -218,7 +214,7 @@ test("SN-216: a new stroke stays rendered through autosave and reopen", async ({
     const box = await layer.boundingBox();
     expect(box).not.toBeNull();
 
-    const renderedStroke = layer.locator('.tl-shape[data-shape-type="draw"]');
+    const renderedStroke = layer.locator(renderedStrokeSelector);
     await expect(renderedStroke).toHaveCount(0);
     await drawStroke(page, box!, mobile);
 
@@ -237,7 +233,7 @@ test("SN-216: a new stroke stays rendered through autosave and reopen", async ({
     await expect
       .poll(() => readDrawShapeCount(sidecarPath), { timeout: 10_000 })
       .toBe(expectedShapeCount);
-    await page.waitForTimeout(1_800);
+    await page.waitForTimeout(smartInk ? 30_000 : 1_800);
     await expect(renderedStroke).toHaveCount(expectedShapeCount);
     await expectCommittedStrokePainted(layer);
 
@@ -253,7 +249,7 @@ test("SN-216: a new stroke stays rendered through autosave and reopen", async ({
     await expect(reopenedLayer).toHaveAttribute("data-annotation-ready", "true", {
       timeout: 20_000,
     });
-    await expect(reopenedLayer.locator('.tl-shape[data-shape-type="draw"]')).toHaveCount(
+    await expect(reopenedLayer.locator(renderedStrokeSelector)).toHaveCount(
       expectedShapeCount
     );
     await expectCommittedStrokePainted(reopenedLayer);
@@ -268,7 +264,7 @@ test("SN-416: installed PWA fetches the current shell despite a stale cached lau
   page,
   request,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "Installed mobile PWA delivery path");
+  test.skip(smartInk || testInfo.project.name !== "mobile", "Engine-independent PWA delivery path");
   await useInstalledPwaPath(page);
 
   const { buildId } = await (await request.get("/api/version")).json() as { buildId: string };
@@ -293,7 +289,7 @@ for (const noteType of ["ink", "music"] as const) test(`SN-416: installed PWA ke
   page,
   request,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "Installed mobile PWA ink canvas");
+  test.skip(smartInk || testInfo.project.name !== "mobile", "Standalone ink and music are outside annotation parity");
   test.setTimeout(120_000);
   const title = `sn416-${Date.now()}-pwa-${noteType}`;
   const created = await request.post("/api/page", {
@@ -334,7 +330,7 @@ for (const noteType of ["ink", "music"] as const) test(`SN-416: installed PWA ke
     expect(box).not.toBeNull();
     await drawStroke(page, box!, true);
     const layer = page.locator(host);
-    await expect(layer.locator('.tl-shape[data-shape-type="draw"]')).toHaveCount(1);
+    await expect(layer.locator(renderedStrokeSelector)).toHaveCount(1);
     await expectCommittedStrokePainted(layer);
     await expect.poll(persistedShapeCount, { timeout: 10_000 }).toBe(1);
     await page.waitForTimeout(3_000);

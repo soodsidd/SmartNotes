@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { annotationSuffix, readAnnotationSidecar, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -6,8 +7,9 @@ import {
   submitCreatePageDialog,
 } from "./helpers";
 
+useAnnotationInkEngine();
+
 const VAULT = path.resolve(__dirname, "..", ".e2e-vault");
-const EVIDENCE_DIR = path.resolve(__dirname, "evidence", "SN-38");
 const SECTION_PATH = "Personal Notebook/Quick Notes";
 
 test.describe.configure({ mode: "serial" });
@@ -22,7 +24,7 @@ async function cleanupArtifacts(stamp: string) {
         const base = path.join(sectionDir, e);
         return Promise.all([
           fs.rm(base, { force: true }),
-          fs.rm(base.replace(/\.html$/, ".annotations.json"), { force: true }),
+          fs.rm(base.replace(/\.html$/, annotationSuffix), { force: true }),
         ]);
       })
   );
@@ -41,6 +43,7 @@ async function createTextPage(page: Page, title: string) {
 async function drawStrokeOnAnnotationLayer(page: Page) {
   const layer = page.getByTestId("annotation-layer");
   await expect(layer).toBeVisible();
+  await expect(layer).toHaveAttribute("data-annotation-ready", "true");
 
   const penTool = page.getByTestId("ink-tool-pen");
   if (await penTool.count()) {
@@ -61,28 +64,12 @@ async function drawStrokeOnAnnotationLayer(page: Page) {
   await page.mouse.up();
 }
 
-async function waitForAnnotationSave(page: Page) {
-  await page.waitForResponse(
-    (r) => r.url().includes("/api/annotations") && r.request().method() === "PUT" && r.status() === 200
-  );
-}
 
 async function readAnnotationShapeColors(sidecarPath: string) {
-  const raw = await fs.readFile(sidecarPath, "utf8");
-  const payload = JSON.parse(raw) as {
-    scene?: { document?: { store?: Record<string, { typeName?: string; props?: { color?: string } }> } };
-  };
-  const store = payload.scene?.document?.store ?? {};
-  return Object.values(store)
-    .filter((record) => record?.typeName === "shape")
-    .map((record) => record.props?.color)
-    .filter((color): color is string => typeof color === "string")
-    .sort();
+  return (await readAnnotationSidecar(sidecarPath)).strokes.map(({ color }) => color).sort();
 }
-
 test("SN-38 desktop evidence: edit overlay and draw toolbar", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Desktop evidence only");
-  await fs.mkdir(EVIDENCE_DIR, { recursive: true });
   const stamp = String(Date.now());
   const noteTitle = `sn38-${stamp}-annotations`;
   await cleanupArtifacts(stamp);
@@ -95,21 +82,20 @@ test("SN-38 desktop evidence: edit overlay and draw toolbar", async ({ page }, t
   await expect(page.getByTestId("ink-format-bar")).toBeVisible();
   await expect(page.getByTestId("ink-tool-pen")).toBeVisible();
   await expect(page.locator(".ProseMirror")).toBeVisible();
-  await page.screenshot({ path: path.join(EVIDENCE_DIR, "desktop-draw-mode.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("desktop-draw-mode.png"), fullPage: true });
 
   await page.getByTestId("ink-exit-draw").click();
   await expect(page.getByTestId("format-bar")).toBeVisible();
   await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-mode", "edit");
-  await page.screenshot({ path: path.join(EVIDENCE_DIR, "desktop-edit-overlay.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("desktop-edit-overlay.png"), fullPage: true });
 
   await page.getByTestId("toolbar-annotate").click();
   await expect(page.getByTestId("ink-format-bar")).toBeVisible();
-  await page.screenshot({ path: path.join(EVIDENCE_DIR, "desktop-toolbar-swap.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("desktop-toolbar-swap.png"), fullPage: true });
 });
 
 test("SN-38 mobile evidence: draw mode toolbar", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "Mobile evidence only");
-  await fs.mkdir(EVIDENCE_DIR, { recursive: true });
   const stamp = String(Date.now());
   const noteTitle = `sn38-${stamp}-mobile`;
   await cleanupArtifacts(stamp);
@@ -123,11 +109,11 @@ test("SN-38 mobile evidence: draw mode toolbar", async ({ page }, testInfo) => {
   await expect(page.getByTestId("ink-format-bar-mobile")).toBeVisible();
   await expect(page.getByTestId("ink-tool-pen-mobile")).toBeVisible();
   await expect(page.locator(".ProseMirror")).toBeVisible();
-  await page.screenshot({ path: path.join(EVIDENCE_DIR, "mobile-draw-mode.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("mobile-draw-mode.png"), fullPage: true });
 
   await page.getByTestId("ink-exit-draw-mobile").click();
   await expect(page.getByTestId("format-bar-mobile")).toBeVisible();
-  await page.screenshot({ path: path.join(EVIDENCE_DIR, "mobile-edit-overlay.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("mobile-edit-overlay.png"), fullPage: true });
 });
 
 test("SN-38 desktop: ink color picker updates active swatch and stroke color", async ({ page }, testInfo) => {
@@ -167,7 +153,7 @@ test("SN-38 desktop: ink color picker updates active swatch and stroke color", a
     { timeout: 15000 }
   );
 
-  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}.annotations.json`);
+  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}${annotationSuffix}`);
   await expect.poll(async () => readAnnotationShapeColors(sidecarPath)).toEqual(["red"]);
 });
 
@@ -196,23 +182,8 @@ test("SN-38 desktop: ink stays visible in edit mode and persists to sidecar", as
   await expect(layer).toHaveAttribute("data-annotation-visible", "true");
 
   const sectionDir = path.join(VAULT, "Personal Notebook", "Quick Notes");
-  const sidecarPath = path.join(sectionDir, `${noteTitle}.annotations.json`);
-  await expect.poll(async () => {
-    try {
-      const raw = await fs.readFile(sidecarPath, "utf8");
-      const payload = JSON.parse(raw) as { scene?: { document?: { store?: Record<string, unknown> } } };
-      const store = payload.scene?.document?.store ?? {};
-      return Object.values(store).some(
-        (record) =>
-          record &&
-          typeof record === "object" &&
-          "typeName" in record &&
-          (record as { typeName?: string }).typeName === "shape"
-      );
-    } catch {
-      return false;
-    }
-  }).toBe(true);
+  const sidecarPath = path.join(sectionDir, `${noteTitle}${annotationSuffix}`);
+  await expect.poll(async () => (await readAnnotationSidecar(sidecarPath)).strokes.length).toBe(1);
 
   await page.reload();
   await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 15000 });
@@ -230,7 +201,7 @@ test("SN-51 desktop: draw mode keyboard undo and redo persist in order", async (
   await createTextPage(page, noteTitle);
 
   const sectionDir = path.join(VAULT, "Personal Notebook", "Quick Notes");
-  const sidecarPath = path.join(sectionDir, `${noteTitle}.annotations.json`);
+  const sidecarPath = path.join(sectionDir, `${noteTitle}${annotationSuffix}`);
 
   await page.getByTestId("toolbar-annotate").click();
   await expect(page.getByTestId("ink-format-bar")).toBeVisible();
@@ -243,7 +214,6 @@ test("SN-51 desktop: draw mode keyboard undo and redo persist in order", async (
 
   await page.keyboard.press("Control+Z");
   await page.getByTestId("ink-exit-draw").click();
-  await waitForAnnotationSave(page);
   await expect
     .poll(async () => readAnnotationShapeColors(sidecarPath))
     .toEqual(["black", "red"]);
@@ -251,7 +221,6 @@ test("SN-51 desktop: draw mode keyboard undo and redo persist in order", async (
   await page.getByTestId("toolbar-annotate").click();
   await page.keyboard.press("Control+Z");
   await page.getByTestId("ink-exit-draw").click();
-  await waitForAnnotationSave(page);
   await expect
     .poll(async () => readAnnotationShapeColors(sidecarPath))
     .toEqual(["black"]);
@@ -259,7 +228,6 @@ test("SN-51 desktop: draw mode keyboard undo and redo persist in order", async (
   await page.getByTestId("toolbar-annotate").click();
   await page.keyboard.press("Control+Shift+Z");
   await page.getByTestId("ink-exit-draw").click();
-  await waitForAnnotationSave(page);
   await expect
     .poll(async () => readAnnotationShapeColors(sidecarPath))
     .toEqual(["black", "red"]);

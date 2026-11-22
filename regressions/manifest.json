@@ -974,12 +974,13 @@
     {
       "id": "e2e-sn-38-annotations",
       "name": "Sn 38 Annotations (desktop)",
-      "description": "Playwright desktop: e2e/sn-38-annotations.spec.ts",
+      "description": "Playwright desktop/mobile, both ink engines, covering annotation tools, persistence, and Text and Design undo.",
       "appType": "browser",
-      "command": "npm run test:e2e -- e2e/sn-38-annotations.spec.ts --project=desktop",
-      "timeoutMs": 300000,
-      "enabled": false,
+      "command": "node scripts/test-annotation-ink-parity.mjs e2e/sn-38-annotations.spec.ts e2e/sn-153-undo.spec.ts e2e/sn-153-design-undo.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
+      "timeoutMs": 900000,
+      "enabled": true,
       "tags": [
+        "annotation-ink-parity",
         "e2e",
         "browser",
         "desktop",
@@ -995,7 +996,9 @@
       "sourceFiles": [
         {
           "path": "e2e/sn-38-annotations.spec.ts"
-        }
+        },
+        { "path": "e2e/sn-153-undo.spec.ts" },
+        { "path": "e2e/sn-153-design-undo.spec.ts" }
       ],
       "intent": "Guards behavior introduced or fixed in historical work (sn-38-annotations.spec.ts).",
       "whenToRun": "Pre-merge when touching the related feature area."
@@ -1061,12 +1064,13 @@
     {
       "id": "e2e-sn-40-draw-scroll",
       "name": "Sn 40 Draw Scroll (desktop)",
-      "description": "Playwright desktop: e2e/sn-40-draw-scroll.spec.ts",
+      "description": "Playwright desktop/mobile, both ink engines, covering page-space alignment, drawable margin, workspace zoom, and finger and stylus routing.",
       "appType": "browser",
-      "command": "npm run test:e2e -- e2e/sn-40-draw-scroll.spec.ts --project=desktop",
-      "timeoutMs": 300000,
-      "enabled": false,
+      "command": "node scripts/test-annotation-ink-parity.mjs e2e/sn-40-draw-scroll.spec.ts e2e/sn-123-draw-margin.spec.ts e2e/sn-156-two-finger-scroll.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
+      "timeoutMs": 900000,
+      "enabled": true,
       "tags": [
+        "annotation-ink-parity",
         "e2e",
         "browser",
         "desktop",
@@ -1082,7 +1086,9 @@
       "sourceFiles": [
         {
           "path": "e2e/sn-40-draw-scroll.spec.ts"
-        }
+        },
+        { "path": "e2e/sn-123-draw-margin.spec.ts" },
+        { "path": "e2e/sn-156-two-finger-scroll.spec.ts" }
       ],
       "intent": "Guards behavior introduced or fixed in historical work (sn-40-draw-scroll.spec.ts).",
       "whenToRun": "Pre-merge when touching the related feature area."
@@ -1213,10 +1219,11 @@
       "name": "SN-136 PDF annotation walkthrough",
       "description": "Playwright desktop/mobile researcher journey: e2e/sn-136-visual-walkthrough.spec.ts",
       "appType": "browser",
-      "command": "npm run test:e2e -- e2e/sn-136-visual-walkthrough.spec.ts",
-      "timeoutMs": 600000,
+      "command": "node scripts/test-annotation-ink-parity.mjs e2e/sn-136-visual-walkthrough.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
+      "timeoutMs": 900000,
       "enabled": true,
       "tags": [
+        "annotation-ink-parity",
         "e2e",
         "browser",
         "desktop",
@@ -1500,10 +1507,11 @@
       "name": "SN-154 New Stroke Weight Compatibility (desktop)",
       "description": "Playwright desktop: e2e/sn-154-new-stroke-weight.spec.ts",
       "appType": "browser",
-      "command": "npm run test:e2e -- e2e/sn-154-new-stroke-weight.spec.ts --project=desktop",
-      "timeoutMs": 180000,
+      "command": "node scripts/test-annotation-ink-parity.mjs e2e/sn-154-new-stroke-weight.spec.ts --project=desktop --workers=1 --retries=0",
+      "timeoutMs": 600000,
       "enabled": true,
       "tags": [
+        "annotation-ink-parity",
         "e2e",
         "browser",
         "desktop",
@@ -1576,10 +1584,11 @@
       "whenToRun": "Pre-merge when changing draw-mode loading, Tldraw integration, annotation reconciliation, autosave, PWA delivery, or production startup.",
       "failureMeaning": "Desktop or touch/stylus users may draw a stroke that disappears from the canvas or is lost on reopen.",
       "appType": "browser",
-      "command": "npm run test:e2e -- e2e/sn-216-draw-persistence.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
-      "timeoutMs": 300000,
+      "command": "node scripts/test-annotation-ink-parity.mjs e2e/sn-216-draw-persistence.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
+      "timeoutMs": 900000,
       "enabled": true,
       "tags": [
+        "annotation-ink-parity",
         "e2e",
         "browser",
         "desktop",
@@ -2384,8 +2393,9 @@
       "appType": "node",
       "command": "npm test -- tests/annotation-layer.test.ts",
       "timeoutMs": 120000,
-      "enabled": false,
+      "enabled": true,
       "tags": [
+        "annotation-ink-parity",
         "unit",
         "node",
         "annotations",
@@ -2412,8 +2422,9 @@
       "appType": "node",
       "command": "npm test -- tests/annotations-integration.test.ts",
       "timeoutMs": 120000,
-      "enabled": false,
+      "enabled": true,
       "tags": [
+        "annotation-ink-parity",
         "unit",
         "node",
         "annotations",
@@ -2440,8 +2451,9 @@
       "appType": "node",
       "command": "npm test -- tests/mobile-draw-runtime-contract.test.ts",
       "timeoutMs": 120000,
-      "enabled": false,
+      "enabled": true,
       "tags": [
+        "annotation-ink-parity",
         "unit",
         "node",
         "annotations",

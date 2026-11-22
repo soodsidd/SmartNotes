@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
+import { annotationSuffix, readAnnotationSidecar, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
+
+useAnnotationInkEngine();
 
 const VAULT = path.resolve(__dirname, "..", ".e2e-vault");
 const SECTION_PATH = "Personal Notebook/Quick Notes";
@@ -15,7 +18,7 @@ async function cleanupArtifacts(stamp: string) {
         const base = path.join(sectionDir, e);
         return Promise.all([
           fs.rm(base, { force: true }),
-          fs.rm(base.replace(/\.html$/, ".annotations.json"), { force: true }),
+          fs.rm(base.replace(/\.html$/, annotationSuffix), { force: true }),
         ]);
       })
   );
@@ -93,16 +96,8 @@ async function drawHorizontalStroke(page: Page, yFraction: number) {
 }
 
 async function readShapePageYs(sidecarPath: string): Promise<number[]> {
-  const raw = await fs.readFile(sidecarPath, "utf8");
-  const payload = JSON.parse(raw) as {
-    scene?: { document?: { store?: Record<string, { typeName?: string; y?: number }> } };
-  };
-  const store = payload.scene?.document?.store ?? {};
-  return Object.values(store)
-    .filter((r) => r?.typeName === "shape" && typeof r.y === "number")
-    .map((r) => r.y as number);
+  return (await readAnnotationSidecar(sidecarPath)).strokes.flatMap(({ y }) => y === undefined ? [] : [y]);
 }
-
 test.describe.configure({ mode: "serial" });
 
 test("SN-40 desktop: draw after scroll aligns ink to viewport, not page top", async ({ page, request }, testInfo) => {
@@ -147,7 +142,7 @@ test("SN-40 desktop: draw after scroll aligns ink to viewport, not page top", as
     })
     .toBeGreaterThan(400);
 
-  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}.annotations.json`);
+  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}${annotationSuffix}`);
   const saveResponse = page.waitForResponse(
     (r) => r.url().includes("/api/annotations") && r.request().method() === "PUT" && r.status() === 200,
     { timeout: 20000 }

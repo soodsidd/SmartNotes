@@ -1,7 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
+import { annotationSuffix, readAnnotationSidecar, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ensureNotebookTreeVisible, closeNotebookTreeSheet } from "./helpers";
+
+useAnnotationInkEngine();
 
 const VAULT = path.resolve(__dirname, "..", ".e2e-vault");
 const SECTION_PATH = "Personal Notebook/Quick Notes";
@@ -16,7 +19,7 @@ async function cleanupArtifacts(stamp: string) {
         const base = path.join(sectionDir, e);
         return Promise.all([
           fs.rm(base, { force: true }),
-          fs.rm(base.replace(/\.html$/, ".annotations.json"), { force: true }),
+          fs.rm(base.replace(/\.html$/, annotationSuffix), { force: true }),
         ]);
       })
   );
@@ -130,15 +133,8 @@ async function tapStylus(page: Page) {
 }
 
 async function readShapeCount(sidecarPath: string): Promise<number> {
-  const raw = await fs.readFile(sidecarPath, "utf8").catch(() => "");
-  if (!raw) return 0;
-  const payload = JSON.parse(raw) as {
-    scene?: { document?: { store?: Record<string, { typeName?: string }> } };
-  };
-  const store = payload.scene?.document?.store ?? {};
-  return Object.values(store).filter((r) => r?.typeName === "shape").length;
+  return (await readAnnotationSidecar(sidecarPath)).strokes.length;
 }
-
 test("SN-156 tablet: two-finger swipe scrolls the page in draw mode without inking", async ({
   page,
   request,
@@ -146,7 +142,7 @@ test("SN-156 tablet: two-finger swipe scrolls the page in draw mode without inki
   test.skip(testInfo.project.name !== "mobile", "Touch/tablet workflow only");
   const stamp = String(Date.now());
   const noteTitle = `sn156-${stamp}-scroll`;
-  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}.annotations.json`);
+  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}${annotationSuffix}`);
   await cleanupArtifacts(stamp);
 
   await seedLongPage(request, noteTitle);
@@ -185,9 +181,6 @@ test("SN-156 tablet: two-finger swipe scrolls the page in draw mode without inki
   const layerBox = await layer.boundingBox();
   await oneFingerDraw(page, layerBox!);
   await page.getByTestId("ink-exit-draw-mobile").click();
-  await page.waitForResponse(
-    (r) => r.url().includes("/api/annotations") && r.request().method() === "PUT" && r.status() === 200
-  );
   await expect.poll(async () => readShapeCount(sidecarPath), { timeout: 10000 }).toBeGreaterThan(0);
 
   await cleanupArtifacts(stamp);
@@ -200,7 +193,7 @@ test("SN-156 tablet: after a stylus is seen, a single finger pans instead of ink
   test.skip(testInfo.project.name !== "mobile", "Touch/tablet workflow only");
   const stamp = String(Date.now());
   const noteTitle = `sn156-${stamp}-penmode`;
-  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}.annotations.json`);
+  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}${annotationSuffix}`);
   await cleanupArtifacts(stamp);
 
   await seedLongPage(request, noteTitle);

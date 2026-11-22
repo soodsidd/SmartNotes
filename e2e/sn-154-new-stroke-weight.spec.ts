@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
+import { annotationSuffix, smartInk, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
+
+useAnnotationInkEngine();
 
 const VAULT = path.resolve(__dirname, "..", ".e2e-vault");
 const SECTION_PATH = "Personal Notebook/Quick Notes";
@@ -31,7 +34,7 @@ async function cleanupArtifacts(stamp: string) {
         const base = path.join(sectionDir, entry);
         return Promise.all([
           fs.rm(base, { force: true }),
-          fs.rm(base.replace(/\.html$/, ".annotations.json"), { force: true }),
+          fs.rm(base.replace(/\.html$/, annotationSuffix), { force: true }),
         ]);
       })
   );
@@ -91,6 +94,7 @@ test("SN-154 desktop: only newly drawn strokes receive the thinner weight marker
   page,
   request,
 }, testInfo) => {
+  test.skip(smartInk, "The legacy weight marker belongs to tldraw records");
   test.skip(testInfo.project.name !== "desktop", "Desktop draw workflow only");
   const stamp = String(Date.now());
   const noteTitle = `sn154-${stamp}-stroke-weight`;
@@ -98,7 +102,7 @@ test("SN-154 desktop: only newly drawn strokes receive the thinner weight marker
     VAULT,
     "Personal Notebook",
     "Quick Notes",
-    `${noteTitle}.annotations.json`
+    `${noteTitle}${annotationSuffix}`
   );
   await cleanupArtifacts(stamp);
 
@@ -165,4 +169,32 @@ test("SN-154 desktop: only newly drawn strokes receive the thinner weight marker
   expect(newlyDrawn?.meta?.[STROKE_SCALE_META_KEY]).toBe(0.75);
 
   await cleanupArtifacts(stamp);
+});
+
+test("Smart Notes renders the chosen stroke weight and preserves the geometry on reload", async ({ page, request }, testInfo) => {
+  test.skip(!smartInk || testInfo.project.name !== "desktop", "Smart Notes desktop geometry");
+  const title = `sn154-${Date.now()}-smart-weight`;
+  await seedTextPage(request, title);
+  await page.goto("/");
+  await openSeededPage(page, title);
+  await page.getByTestId("toolbar-annotate").click();
+  const layer = page.getByTestId("annotation-layer");
+  await expect(layer).toHaveAttribute("data-annotation-ready", "true");
+  await page.getByTestId("ink-stroke-s").click();
+  await drawStroke(page, 0.35);
+  await page.getByTestId("ink-stroke-xl").click();
+  await drawStroke(page, 0.55);
+  const strokes = layer.locator("[data-sn-ink-stroke]");
+  await expect(strokes).toHaveCount(2);
+  const geometry = await strokes.evaluateAll((paths) => paths.map((path) => (path as SVGPathElement).getAttribute("d")));
+  const heights = await strokes.evaluateAll((paths) => paths.map((path) => (path as SVGPathElement).getBBox().height));
+  expect(heights[1]).toBeGreaterThan(heights[0] + 1);
+  const saved = page.waitForResponse((response) =>
+    response.url().includes("/api/annotations") && response.request().method() === "PUT" && response.ok());
+  await page.getByTestId("ink-exit-draw").click();
+  await saved;
+  await page.reload();
+  await openSeededPage(page, title);
+  await expect(strokes).toHaveCount(2);
+  expect(await strokes.evaluateAll((paths) => paths.map((path) => path.getAttribute("d")))).toEqual(geometry);
 });

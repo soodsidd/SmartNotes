@@ -21,7 +21,10 @@ export default defineConfig({
   // mid-suite and time out later editor/tree tests.
   // SN-168 uses a separate `.e2e-portable-vault-sn168` root and restores the
   // registry in afterAll, so it may run in-suite without PDF pollution.
-  testIgnore: ['**/sn-135-*.spec.ts', '**/sn-136-*.spec.ts', '**/sn-151-*.spec.ts', '**/sn-334-*.spec.ts', '**/sn-336-*.spec.ts'],
+  testIgnore: [
+    '**/sn-135-*.spec.ts', '**/sn-151-*.spec.ts', '**/sn-334-*.spec.ts', '**/sn-336-*.spec.ts',
+    ...(process.env.SMART_NOTES_E2E_INK_ENGINE ? [] : ['**/sn-136-*.spec.ts']),
+  ],
   timeout: 60_000,
   fullyParallel: false,
   workers: 1,

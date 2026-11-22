@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
+import { annotationSuffix, readAnnotationSidecar, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
+
+useAnnotationInkEngine();
 
 const VAULT = path.resolve(__dirname, "..", ".e2e-vault");
 const SECTION_PATH = "Personal Notebook/Quick Notes";
@@ -15,7 +18,7 @@ async function cleanupArtifacts(stamp: string) {
         const base = path.join(sectionDir, e);
         return Promise.all([
           fs.rm(base, { force: true }),
-          fs.rm(base.replace(/\.html$/, ".annotations.json"), { force: true }),
+          fs.rm(base.replace(/\.html$/, annotationSuffix), { force: true }),
         ]);
       })
   );
@@ -59,20 +62,13 @@ async function drawStroke(page: Page) {
 }
 
 async function readShapeCount(sidecarPath: string): Promise<number> {
-  const raw = await fs.readFile(sidecarPath, "utf8").catch(() => "");
-  if (!raw) return 0;
-  const payload = JSON.parse(raw) as {
-    scene?: { document?: { store?: Record<string, { typeName?: string }> } };
-  };
-  const store = payload.scene?.document?.store ?? {};
-  return Object.values(store).filter((r) => r?.typeName === "shape").length;
+  return (await readAnnotationSidecar(sidecarPath)).strokes.length;
 }
-
 test("SN-153 desktop: draw enables undo and undo removes the last stroke", async ({ page, request }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Desktop workflow only");
   const stamp = String(Date.now());
   const noteTitle = `sn153-${stamp}-undo`;
-  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}.annotations.json`);
+  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}${annotationSuffix}`);
   await cleanupArtifacts(stamp);
 
   await seedTextPage(request, noteTitle);
@@ -109,9 +105,6 @@ test("SN-153 desktop: draw enables undo and undo removes the last stroke", async
   await page.keyboard.press("Control+Shift+Z");
 
   await page.getByTestId("ink-exit-draw").click();
-  await page.waitForResponse(
-    (r) => r.url().includes("/api/annotations") && r.request().method() === "PUT" && r.status() === 200
-  );
   // Drew 2, undo (button) -> 1, undo (Ctrl+Z) -> 0, redo (Ctrl+Shift+Z) -> 1.
   await expect.poll(async () => readShapeCount(sidecarPath), { timeout: 10000 }).toBe(1);
 

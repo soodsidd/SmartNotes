@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
+import { smartInk, useAnnotationInkEngine } from "./annotation-ink-parity";
 import path from "node:path";
 import fs from "node:fs";
+
+useAnnotationInkEngine();
 
 /**
  * SN-136 visual walkthrough: drives the full researcher journey with real
@@ -11,9 +14,6 @@ import fs from "node:fs";
  */
 
 const PDF_FIXTURE = path.resolve(__dirname, "fixtures/catalogue-final.pdf");
-const SHOT_DIR = path.resolve(__dirname, "../evidence/sn-136-walkthrough");
-
-fs.mkdirSync(SHOT_DIR, { recursive: true });
 
 test.beforeEach(() => test.setTimeout(300_000));
 
@@ -115,12 +115,18 @@ async function sidecarItems(page: Page, vaultPath: string): Promise<
 
 test("full annotation journey with step screenshots (SN-136)", async ({ page }, testInfo) => {
   const proj = testInfo.project.name;
+  const inkCount = async (vaultPath: string) => {
+    if (!smartInk) return (await sidecarItems(page, vaultPath)).filter(({ annotation }) => annotation?.type === 15).length;
+    const response = await page.request.get(`/api/annotations?engine=smart-notes&path=${encodeURIComponent(`${vaultPath}#page=1`)}`);
+    expect(response.ok()).toBe(true);
+    return (await response.json()).scene?.strokes?.length ?? 0;
+  };
   let step = 0;
   const shot = async (name: string) => {
     step += 1;
     await page.waitForTimeout(250);
     await page.screenshot({
-      path: path.join(SHOT_DIR, `${String(step).padStart(2, "0")}-${name}-${proj}.png`),
+      path: testInfo.outputPath(`${String(step).padStart(2, "0")}-${name}-${proj}.png`),
     });
   };
 
@@ -237,6 +243,8 @@ test("full annotation journey with step screenshots (SN-136)", async ({ page }, 
   // 7. Ink: draw a stroke with pen/mouse input.
   await annotateToggle.click();
   await page.getByTestId("pdf-reader-tool-ink").click();
+  const inkLayer = page.locator(".pdf-reader__page-frame").first().locator("..").locator("..").getByTestId("annotation-layer");
+  if (smartInk) await expect(inkLayer).toHaveAttribute("data-annotation-ready", "true");
   const inkBox = await frame.boundingBox();
   const inkStart = {
     x: inkBox!.x + inkBox!.width * 0.25,
@@ -248,25 +256,35 @@ test("full annotation journey with step screenshots (SN-136)", async ({ page }, 
   await page.mouse.move(inkStart.x + 220, inkStart.y + 20, { steps: 10 });
   await page.mouse.up();
   await expect
-    .poll(async () => (await sidecarItems(page, target.vaultPath)).length, {
+    .poll(() => inkCount(target.vaultPath), {
       timeout: 10000,
     })
-    .toBe(2);
+    .toBe(1);
+  if (smartInk) {
+    const stroke = inkLayer.locator("[data-sn-ink-stroke]");
+    await expect(stroke).toBeVisible();
+    await page.keyboard.press("Control+Z");
+    await expect(stroke).toHaveCount(0);
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(stroke).toBeVisible();
+  }
   await shot("ink-stroke-drawn");
 
   // 8. Eraser scrubs the stroke away directly.
   await page.getByTestId("pdf-reader-tool-eraser").click();
-  await expect(page.getByTestId("pdf-reader-eraser-surface").first()).toBeVisible();
+  if (smartInk) await expect(inkLayer).toHaveAttribute("data-annotation-mode", "draw");
+  else await expect(page.getByTestId("pdf-reader-eraser-surface").first()).toBeVisible();
   await page.mouse.move(inkStart.x, inkStart.y);
   await page.mouse.down();
   await page.mouse.move(inkStart.x + 120, inkStart.y - 30, { steps: 14 });
   await page.mouse.move(inkStart.x + 220, inkStart.y + 20, { steps: 14 });
   await page.mouse.up();
   await expect
-    .poll(async () => (await sidecarItems(page, target.vaultPath)).length, {
+    .poll(() => inkCount(target.vaultPath), {
       timeout: 10000,
     })
-    .toBe(1);
+    .toBe(0);
+  expect(await sidecarItems(page, target.vaultPath)).toHaveLength(1);
   await shot("ink-erased");
 
   // 9. Done → back to reading; highlight (with comment) survives.

@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
+import { annotationSuffix, readAnnotationSidecar, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
+
+useAnnotationInkEngine();
 
 const VAULT = path.resolve(__dirname, "..", ".e2e-vault");
 const SECTION_PATH = "Personal Notebook/Quick Notes";
@@ -17,7 +20,7 @@ async function cleanupArtifacts(stamp: string) {
         const base = path.join(sectionDir, e);
         return Promise.all([
           fs.rm(base, { force: true }),
-          fs.rm(base.replace(/\.html$/, ".annotations.json"), { force: true }),
+          fs.rm(base.replace(/\.html$/, annotationSuffix), { force: true }),
         ]);
       })
   );
@@ -83,22 +86,14 @@ async function drawHorizontalStroke(page: Page, yFraction: number) {
 }
 
 async function readSidecarMetrics(sidecarPath: string) {
-  const raw = await fs.readFile(sidecarPath, "utf8");
-  const payload = JSON.parse(raw) as {
-    drawableBottom?: number;
-    scene?: { document?: { store?: Record<string, { typeName?: string; y?: number }> } };
-  };
-  const store = payload.scene?.document?.store ?? {};
-  const shapeYs = Object.values(store)
-    .filter((r) => r?.typeName === "shape" && typeof r.y === "number")
-    .map((r) => r.y as number);
+  const { drawableBottom, strokes } = await readAnnotationSidecar(sidecarPath);
+  const strokeYs = strokes.flatMap(({ y }) => y === undefined ? [] : [y]);
   return {
-    drawableBottom: payload.drawableBottom,
-    minShapeY: shapeYs.length ? Math.min(...shapeYs) : null,
-    shapeCount: shapeYs.length,
+    drawableBottom,
+    minShapeY: strokeYs.length ? Math.min(...strokeYs) : null,
+    shapeCount: strokes.length,
   };
 }
-
 test("SN-123 desktop: short page offers scrollable margin below text", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Desktop workflow only");
   const stamp = String(Date.now());
@@ -119,7 +114,7 @@ test("SN-123 desktop: draw in margin below text persists and extends canvas", as
   const title = `sn123-${stamp}-margin-draw`;
   await cleanupArtifacts(stamp);
   const { pagePath } = await createShortPageViaApi(page, title);
-  const sidecarPath = path.join(VAULT, ...pagePath.split("/").slice(0, -1), `${title}.annotations.json`);
+  const sidecarPath = path.join(VAULT, ...pagePath.split("/").slice(0, -1), `${title}${annotationSuffix}`);
 
   const beforeScroll = await getFrameMetrics(page);
   const targetScroll = Math.min(
@@ -181,7 +176,7 @@ test("SN-123 desktop: workspace zoom in draw mode keeps ink layer usable", async
   const title = `sn123-${stamp}-zoom-draw`;
   await cleanupArtifacts(stamp);
   const { pagePath } = await createShortPageViaApi(page, title);
-  const sidecarPath = path.join(VAULT, ...pagePath.split("/").slice(0, -1), `${title}.annotations.json`);
+  const sidecarPath = path.join(VAULT, ...pagePath.split("/").slice(0, -1), `${title}${annotationSuffix}`);
 
   await page.getByTestId("toolbar-annotate").click();
   await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-mode", "draw");
