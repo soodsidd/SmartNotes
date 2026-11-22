@@ -5420,6 +5420,21 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     [loadTree]
   );
 
+  const handleConvertPageType = React.useCallback(async (pagePath: string, noteType: "text" | "music") => {
+    if (activePagePathRef.current === pagePath && !(await flushSave())) return;
+    try {
+      const response = await vaultWriteFetch("/api/page", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "convertType", path: pagePath, noteType }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response, "Failed to convert page."));
+      await loadTree({ pagePath: activePagePathRef.current ?? pagePath }, { skipCache: true });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to convert page.");
+    }
+  }, [flushSave, loadTree]);
+
   // SN-297: rule / grid lines live in page frontmatter. Optimistic local
   // update, then flush any pending autosave before the metadata PATCH so the
   // server's read-modify-write never races an in-flight body PUT.
@@ -7664,6 +7679,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                   onOpenPage={handleSidebarOpenPage}
                   onNestPage={handleSidebarNestPage}
                   onSetPageKeyNote={handleSidebarSetPageKeyNote}
+                  onConvertPageType={handleConvertPageType}
                   onReorderPages={handleSidebarReorderPages}
                   onApplyPageDrop={handleSidebarApplyPageDrop}
                   onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
@@ -7792,6 +7808,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                     onOpenPage={handleSidebarOpenPage}
                     onNestPage={handleSidebarNestPage}
                     onSetPageKeyNote={handleSidebarSetPageKeyNote}
+                    onConvertPageType={handleConvertPageType}
                     onReorderPages={handleSidebarReorderPages}
                     onApplyPageDrop={handleSidebarApplyPageDrop}
                     onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
@@ -8269,6 +8286,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                 onOpenPage={(path) => { handleSidebarOpenPage(path); setSidebarOpen(false); }}
                 onNestPage={handleSidebarNestPage}
                 onSetPageKeyNote={handleSidebarSetPageKeyNote}
+                onConvertPageType={handleConvertPageType}
                 onReorderPages={handleSidebarReorderPages}
                 onApplyPageDrop={handleSidebarApplyPageDrop}
                 onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
@@ -8364,6 +8382,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                   onOpenPage={(path) => { handleSidebarOpenPage(path); setSidebarOpen(false); }}
                   onNestPage={handleSidebarNestPage}
                   onSetPageKeyNote={handleSidebarSetPageKeyNote}
+                  onConvertPageType={handleConvertPageType}
                   onReorderPages={handleSidebarReorderPages}
                   onApplyPageDrop={handleSidebarApplyPageDrop}
                   onCrossContainerPageDrop={handleSidebarCrossContainerPageDrop}
@@ -9357,6 +9376,7 @@ export const Sidebar = React.memo(function Sidebar({
   onOpenPage,
   onNestPage,
   onSetPageKeyNote,
+  onConvertPageType,
   onReorderPages,
   onApplyPageDrop,
   onCrossContainerPageDrop,
@@ -9441,6 +9461,7 @@ export const Sidebar = React.memo(function Sidebar({
   onOpenPage: (pagePath: string) => void;
   onNestPage: (pagePath: string, parentId: string | null) => Promise<void>;
   onSetPageKeyNote: (pagePath: string, keyNote: boolean, role?: "recipe" | "notebook_instructions") => Promise<void>;
+  onConvertPageType: (pagePath: string, noteType: "text" | "music") => Promise<void>;
   onReorderPages: (sectionPath: string, orderedIds: string[]) => Promise<void>;
   onApplyPageDrop: (
     sectionPath: string,
@@ -9848,6 +9869,7 @@ export const Sidebar = React.memo(function Sidebar({
         <div className={cn("flex items-center justify-between gap-1 px-1", compactDesktop ? "mb-2" : "mb-3")}>
           <div className="min-w-0 flex-1">
             {scopedCreateTarget ? (
+              <div className="flex min-w-0 items-center">
               <Button
                 type="button"
                 size="sm"
@@ -9860,6 +9882,20 @@ export const Sidebar = React.memo(function Sidebar({
                 <Plus className={cn("shrink-0", compactDesktop ? "size-3.5" : "size-4")} />
                 <span className="text-sm font-normal">Add Page</span>
               </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger type="button" className={cn("inline-flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", compactDesktop ? "size-9" : "size-11")} aria-label="Choose page type" data-testid="page-pane-add-type">
+                  <ChevronDown className="size-3.5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => void onDirectCreatePage(scopedCreateTarget)}>Text page</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onCreateMusicPage(scopedCreateTarget)}>Music page</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onCreateJupyterNotebook(scopedCreateTarget)}>Jupyter notebook</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onCreateLogPage(scopedCreateTarget)}>Log page</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onCreateDesignPage(scopedCreateTarget)}>Design page</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onCreateSpreadsheetPage(scopedCreateTarget)}>Spreadsheet</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground">No notebook selected</p>
             )}
@@ -10617,6 +10653,12 @@ export const Sidebar = React.memo(function Sidebar({
                                 </DropdownMenuItem>
                               </>}
 
+                              {(node.page.noteType === "text" || node.page.noteType === "music") && (
+                                <DropdownMenuItem data-testid={`page-convert-${node.page.path}`} onClick={() => void onConvertPageType(node.page.path, node.page.noteType === "music" ? "text" : "music")}>
+                                  Convert to {node.page.noteType === "music" ? "text" : "music"} page
+                                </DropdownMenuItem>
+                              )}
+
                               <DropdownMenuItem onClick={() => onRenamePage(node.page.path, node.page.title)}>
                                 Rename
                               </DropdownMenuItem>
@@ -11175,6 +11217,12 @@ export const Sidebar = React.memo(function Sidebar({
                                           </DropdownMenuItem>
                                         </>}
 
+                                        {(node.page.noteType === "text" || node.page.noteType === "music") && (
+                                          <DropdownMenuItem data-testid={`page-convert-${node.page.path}`} onClick={() => void onConvertPageType(node.page.path, node.page.noteType === "music" ? "text" : "music")}>
+                                            Convert to {node.page.noteType === "music" ? "text" : "music"} page
+                                          </DropdownMenuItem>
+                                        )}
+
                                         <DropdownMenuItem onClick={() => onRenamePage(node.page.path, node.page.title)}>
                                           Rename
                                         </DropdownMenuItem>
@@ -11582,6 +11630,13 @@ export const Sidebar = React.memo(function Sidebar({
               {pageContextMenu.notebookInstructions ? "Unset notebook instructions" : "Use as notebook instructions"}
             </button>
           </>}
+          {(pageContextMenu.noteType === "text" || pageContextMenu.noteType === "music") && (
+            <button type="button" role="menuitem" className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+              data-testid={`page-context-convert-${pageContextMenu.pagePath}`}
+              onClick={() => { setPageContextMenu(null); void onConvertPageType(pageContextMenu.pagePath, pageContextMenu.noteType === "music" ? "text" : "music"); }}>
+              Convert to {pageContextMenu.noteType === "music" ? "text" : "music"} page
+            </button>
+          )}
           <button
             type="button"
             className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"

@@ -151,7 +151,11 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   React.useEffect(() => {
     if (!music || !musicViewportRef.current) return;
     const viewport = musicViewportRef.current;
-    const update = () => setMusicFitScale(Math.min(1, viewport.clientWidth / MUSIC_PAPER_WIDTH));
+    const update = () => {
+      // A temporarily hidden PWA viewport can report zero width while its
+      // sheet or browser chrome settles. Keep the last usable paper scale.
+      if (viewport.clientWidth > 0) setMusicFitScale(Math.min(1, viewport.clientWidth / MUSIC_PAPER_WIDTH));
+    };
     const observer = new ResizeObserver(update);
     observer.observe(viewport);
     update();
@@ -439,7 +443,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
               <MusicStaff title={title} />
             </div>
             <div className="music-page__ink">
-              <Tldraw key={previewSidecarJson ?? pagePath} snapshot={snapshot ?? undefined} onMount={handleMount} components={components} />
+              <Tldraw key={previewSidecarJson ?? pagePath} snapshot={snapshot ?? undefined} onMount={handleMount} components={components} colorScheme="light" />
             </div>
           </div>
         </div>

@@ -3120,13 +3120,13 @@ mark {
 .music-page__name + button { margin-left: auto; }
 .music-page__viewport { flex: 1; min-height: 0; overflow: auto; padding: 1rem .5rem; background: var(--muted); }
 .music-page__scaled { position: relative; margin: 0 auto; }
-.music-page__paper { position: relative; width: 794px; height: 1123px; transform-origin: top left; background: #fff; color: #323638; box-shadow: 0 0 0 1px var(--border); }
+.music-page__paper { position: relative; z-index: 0; width: 794px; height: 1123px; transform-origin: top left; background: #fff; color: #323638; box-shadow: 0 0 0 1px var(--border); }
 .music-staff { position: absolute; inset: 0; pointer-events: none; }
 .music-staff__title { position: absolute; top: 60px; left: 104px; right: 70px; padding-bottom: .5rem; border-bottom: 1px solid #d4d6d8; font-size: 1rem; color: #171b1d; }
 .music-staff__line { stroke: #9ea5aa; stroke-width: .8; }
 .music-staff__brace { stroke: #33383b; stroke-width: 1.3; fill: none; }
 .music-staff__clef { font-family: 'Segoe UI Symbol', 'Noto Music', 'DejaVu Sans', serif; fill: #323638; }
-.music-page__ink { position: absolute; inset: 0; }
+.music-page__ink { position: absolute; inset: 0; z-index: 1; isolation: isolate; }
 .music-page__ink .tl-background { opacity: 0; }
 .music-page__dock { position: fixed; left: 50%; bottom: 1rem; z-index: 40; display: flex; align-items: center; gap: .25rem; max-width: calc(100vw - 1rem); overflow-x: auto; transform: translateX(-50%); padding: .25rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-popover); }
 .music-page__dock button { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: var(--radius-sm); color: var(--foreground); }
