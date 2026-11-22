@@ -1797,6 +1797,29 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     [tree]
   );
 
+  /** SN-417: ordered sibling music pages for the active page (same container + same parentId + music type). */
+  const activeMusicSiblings = React.useMemo<Array<{ path: string; title: string }> | undefined>(() => {
+    if (!draft || draft.noteType !== "music") return undefined;
+    let containerPages: VaultPage[] = [];
+    for (const nb of tree) {
+      if (draft.sectionPath) {
+        const sec = nb.sections.find((s) => s.path === draft.sectionPath);
+        if (sec) { containerPages = sec.pages; break; }
+      } else if (nb.path === draft.notebookPath) {
+        containerPages = nb.pages;
+        break;
+      }
+    }
+    return containerPages
+      .filter((p) => p.noteType === "music" && p.parentId === draft.parentId)
+      .map((p) => ({ path: p.path, title: p.title }));
+  }, [draft, tree]);
+
+  const activeMusicPageIndex = React.useMemo(
+    () => (activeMusicSiblings && draft ? activeMusicSiblings.findIndex((p) => p.path === draft.path) : undefined),
+    [activeMusicSiblings, draft]
+  );
+
   const companionSubtreeRootPath = React.useMemo(
     () => (draft?.path ? resolveSubtreeRootPath(draft.path, allPages) : null),
     [draft?.path, allPages]
@@ -5744,6 +5767,66 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     void handleCreatePage(target, "music");
   }, [handleCreatePage]);
 
+  /** SN-417: create the next page in a song immediately after the current music page. */
+  const handleCreateMusicContinuation = React.useCallback(async () => {
+    const currentDraft = draftRef.current;
+    if (!currentDraft || currentDraft.noteType !== "music") return;
+    if (!(await flushSave())) return;
+
+    // Find sibling music pages to determine the next page number.
+    const containerPages = (() => {
+      for (const nb of treeRef.current) {
+        if (currentDraft.sectionPath) {
+          const sec = nb.sections.find((s) => s.path === currentDraft.sectionPath);
+          if (sec) return sec.pages;
+        } else if (nb.path === currentDraft.notebookPath) {
+          return nb.pages;
+        }
+      }
+      return [] as typeof tree[0]["pages"];
+    })();
+
+    const musicSiblingCount = containerPages.filter(
+      (p) => p.noteType === "music" && p.parentId === currentDraft.parentId
+    ).length;
+
+    // Strip any "(page N)" suffix from the base title, then append the next page number.
+    const baseTitle = currentDraft.title.replace(/ \(page \d+\)$/, "");
+    const newTitle = `${baseTitle} (page ${musicSiblingCount + 1})`;
+
+    try {
+      const newPage = await createVaultPage({
+        sectionPath: currentDraft.sectionPath,
+        notebookPath: currentDraft.notebookPath,
+        title: newTitle,
+        noteType: "music",
+        parentId: currentDraft.parentId,
+      });
+
+      // Reorder: insert the new page immediately after the current page in the container.
+      const containerPath = currentDraft.sectionPath ?? currentDraft.notebookPath;
+      if (containerPath) {
+        const currentOrder = containerPages.map((p) => p.path);
+        const currentIndex = currentOrder.indexOf(currentDraft.path);
+        if (currentIndex !== -1) {
+          const newOrder = [
+            ...currentOrder.slice(0, currentIndex + 1),
+            newPage.path,
+            ...currentOrder.slice(currentIndex + 1),
+          ];
+          await reorderVaultSectionPages(containerPath, newOrder);
+        }
+      }
+
+      setExpandedNotebooks((current) => new Set([...current, newPage.notebookPath]));
+      if (newPage.sectionPath) setExpandedSections((current) => new Set([...current, newPage.sectionPath!]));
+      if (currentDraft.parentId) setExpandedPages((current) => new Set([...current, currentDraft.parentId!]));
+      await loadTree({ pagePath: newPage.path });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add continuation page.");
+    }
+  }, [flushSave, loadTree]);
+
   const handleCreateLogDialog = React.useCallback((target: CreatePageTarget) => {
     void handleCreatePage(target, "log");
   }, [handleCreatePage]);
@@ -8058,6 +8141,10 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
                   readOnly={Boolean(activeVersionPreview)}
                   previewSidecarJson={activeVersionPreview?.content}
                   onOpenSidebar={() => setSidebarOpen(true)}
+                  musicSiblings={draft.noteType === "music" ? activeMusicSiblings : undefined}
+                  musicPageIndex={draft.noteType === "music" ? activeMusicPageIndex : undefined}
+                  onAddMusicPage={draft.noteType === "music" && !activeVersionPreview ? handleCreateMusicContinuation : undefined}
+                  onNavigateMusicPage={draft.noteType === "music" && !activeVersionPreview ? (pagePath) => { void openPage(pagePath); } : undefined}
                   onSaveStatusChange={(status) => {
                     if (activeVersionPreview) return;
                     if (status === "saving") setSaveState("saving");

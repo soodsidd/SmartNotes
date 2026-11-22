@@ -4,7 +4,7 @@ import * as React from "react";
 import { flushSync } from "react-dom";
 import { Tldraw, DefaultColorStyle, DefaultSizeStyle, type Editor, type TLStoreSnapshot, type TLGridProps, type TLDefaultColorStyle } from "tldraw";
 import "tldraw/tldraw.css";
-import { Eraser, Grid2X2, Maximize2, Menu, Minimize2, MousePointer2, PenLine, Printer, Redo2, Undo2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eraser, FilePlus, Grid2X2, Maximize2, Menu, Minimize2, MousePointer2, PenLine, Printer, Redo2, Undo2 } from "lucide-react";
 import { fetchInkScene, parseInkSidecarJson, saveInkScene, type InkBackgroundMode } from "@/lib/api/ink";
 import { MusicStaff, MUSIC_PAPER_HEIGHT, MUSIC_PAPER_WIDTH } from "@/components/music-staff";
 import { logDrawEvent } from "@/lib/draw-mode-debug";
@@ -33,6 +33,14 @@ export interface InkCanvasProps {
   /** View-only mode — no autosave or drawing tools. */
   readOnly?: boolean;
   music?: boolean;
+  /** SN-417: ordered list of sibling music pages in this song (including the current page). */
+  musicSiblings?: Array<{ path: string; title: string }>;
+  /** SN-417: 0-based index of this page in musicSiblings. */
+  musicPageIndex?: number;
+  /** SN-417: create the next page in this song immediately after the current one. */
+  onAddMusicPage?: () => void;
+  /** SN-417: navigate to another page in this song. */
+  onNavigateMusicPage?: (pagePath: string) => void;
 }
 
 // Custom grid component: renders graph-paper style lines that pan and scale with the camera.
@@ -112,7 +120,7 @@ const COMPONENTS_MUSIC = {
 } as const;
 
 const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(function InkCanvasInner(
-  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly = false, music = false },
+  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly = false, music = false, musicSiblings, musicPageIndex, onAddMusicPage, onNavigateMusicPage },
   ref
 ) {
   const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -425,13 +433,37 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
 
   const components = music ? COMPONENTS_MUSIC : backgroundMode === "grid" ? COMPONENTS_GRID : COMPONENTS_BLANK;
 
+  const hasMusicSiblings = musicSiblings && musicSiblings.length > 1 && musicPageIndex !== undefined;
+
   if (music) {
     return (
       <div className={`music-page ${musicFullscreen ? "music-page--fullscreen" : ""}`} data-testid="music-page">
         <div className="music-page__bar" data-print-chrome="true">
           <button type="button" onClick={onOpenSidebar} aria-label="Open sidebar"><Menu className="size-4" /></button>
+          {hasMusicSiblings && (
+            <button
+              type="button"
+              aria-label="Previous page"
+              data-testid="music-prev-page"
+              disabled={musicPageIndex === 0}
+              onClick={() => { if (musicPageIndex! > 0) onNavigateMusicPage?.(musicSiblings![musicPageIndex! - 1].path); }}
+            ><ChevronLeft className="size-4" /></button>
+          )}
           <span className="music-page__name">{title || "Untitled music page"}</span>
+          <span className="music-page__spacer" />
           {saveLabel && <span className="music-page__status">{saveLabel}</span>}
+          {hasMusicSiblings && (
+            <span className="music-page__page-indicator" aria-label={`Page ${musicPageIndex! + 1} of ${musicSiblings!.length}`}>{musicPageIndex! + 1}/{musicSiblings!.length}</span>
+          )}
+          {hasMusicSiblings && (
+            <button
+              type="button"
+              aria-label="Next page"
+              data-testid="music-next-page"
+              disabled={musicPageIndex === musicSiblings!.length - 1}
+              onClick={() => { if (musicPageIndex! < musicSiblings!.length - 1) onNavigateMusicPage?.(musicSiblings![musicPageIndex! + 1].path); }}
+            ><ChevronRight className="size-4" /></button>
+          )}
           <button type="button" onClick={() => setMusicFullscreen((value) => !value)} aria-label={musicFullscreen ? "Exit full screen" : "Full screen"} data-testid="music-fullscreen-toggle">
             {musicFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
           </button>
@@ -446,6 +478,14 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
               <Tldraw key={previewSidecarJson ?? pagePath} snapshot={snapshot ?? undefined} onMount={handleMount} components={components} colorScheme="light" />
             </div>
           </div>
+          {!readOnly && onAddMusicPage && (
+            <div className="music-page__add-row" data-print-chrome="true">
+              <button type="button" className="music-page__add-btn" onClick={onAddMusicPage} aria-label="Add next page" data-testid="music-add-page">
+                <FilePlus className="size-4" aria-hidden />
+                Add next page
+              </button>
+            </div>
+          )}
         </div>
         {!readOnly && <div className="music-page__dock" role="toolbar" aria-label="Music ink tools" data-print-chrome="true">
           <button type="button" aria-label="Select" aria-pressed={musicTool === "select"} onClick={() => changeMusicTool("select")}><MousePointer2 className="size-4" /></button>
@@ -553,7 +593,7 @@ function InkOverlayBar({
  * It is keyed by pagePath so the editor fully remounts on page switch.
  */
 export const InkCanvas = React.forwardRef<InkCanvasHandle, InkCanvasProps>(function InkCanvas(
-  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly, music },
+  { pagePath, title, onOpenSidebar, onSaveStatusChange, previewSidecarJson, readOnly, music, musicSiblings, musicPageIndex, onAddMusicPage, onNavigateMusicPage },
   ref
 ) {
   return (
@@ -567,6 +607,10 @@ export const InkCanvas = React.forwardRef<InkCanvasHandle, InkCanvasProps>(funct
       previewSidecarJson={previewSidecarJson}
       readOnly={readOnly}
       music={music}
+      musicSiblings={musicSiblings}
+      musicPageIndex={musicPageIndex}
+      onAddMusicPage={onAddMusicPage}
+      onNavigateMusicPage={onNavigateMusicPage}
     />
   );
 });
