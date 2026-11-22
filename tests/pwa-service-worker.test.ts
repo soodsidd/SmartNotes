@@ -48,11 +48,19 @@ describe("service worker shell caching", () => {
     expect(serviceWorker).not.toContain("event.respondWith(networkFirst(request, STATIC_CACHE))");
   });
 
-  it("serves cached navigations before the network for repeat PWA launches", () => {
+  it("serves current navigation HTML before a cached PWA shell, with offline fallback", () => {
     const serviceWorker = fs.readFileSync(serviceWorkerPath, "utf8");
+    const template = fs.readFileSync(templatePath, "utf8");
 
-    expect(serviceWorker).toContain('request.mode === "navigate"');
-    expect(serviceWorker).toContain("return cachedResponse || networkResponse");
+    for (const source of [serviceWorker, template]) {
+      const navigation = source.slice(source.indexOf('if (request.mode === "navigate")'));
+      expect(navigation).toContain("caches.open(APP_SHELL_CACHE)");
+      expect(navigation).toContain("fetch(request)");
+      expect(navigation).toContain(".catch(() => cache.match(request)");
+      expect(navigation).toContain('cachedResponse || cache.match("/")');
+      expect(navigation.indexOf("fetch(request)"))
+        .toBeLessThan(navigation.indexOf("cache.match(request)"));
+    }
   });
 
   it("clones navigation responses before caching so the body is not drained twice", () => {

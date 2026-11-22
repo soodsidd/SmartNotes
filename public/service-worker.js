@@ -1,5 +1,5 @@
-/* Smart Notes service worker — BUILD_ID: E5ubLkhQOJ3frSi-JaIiu */
-const BUILD_ID = "E5ubLkhQOJ3frSi-JaIiu";
+/* Smart Notes service worker — BUILD_ID: BJae1VgzsXTpB5OeHn8Nh */
+const BUILD_ID = "BJae1VgzsXTpB5OeHn8Nh";
 const APP_SHELL_CACHE = `smart-notes-app-shell-${BUILD_ID}`;
 const STATIC_CACHE = `smart-notes-static-${BUILD_ID}`;
 const VAULT_PDF_CACHE_PREFIX = "smart-notes-vault-pdfs-";
@@ -148,23 +148,21 @@ self.addEventListener("fetch", (event) => {
     event.waitUntil(checkForBuildUpdate());
     event.respondWith(
       caches.open(APP_SHELL_CACHE).then((cache) =>
-        cache.match(request).then((cachedResponse) => {
-          const networkResponse = fetch(request)
-            .then((response) => {
-              if (response && response.status === 200) {
-                const forRequest = response.clone();
-                cache.put(request, forRequest);
-                if (requestUrl.pathname === "/") {
-                  const forRoot = response.clone();
-                  cache.put("/", forRoot);
-                }
+        fetch(request)
+          .then((response) => {
+            if (response && response.status === 200) {
+              const forRequest = response.clone();
+              cache.put(request, forRequest);
+              if (requestUrl.pathname === "/") {
+                const forRoot = response.clone();
+                cache.put("/", forRoot);
               }
-              return response;
-            })
-            .catch(() => cachedResponse);
-
-          return cachedResponse || networkResponse;
-        })
+            }
+            return response;
+          })
+          .catch(() => cache.match(request).then((cachedResponse) =>
+            cachedResponse || cache.match("/")
+          ))
       )
     );
     return;
