@@ -587,8 +587,11 @@ function MusicPageTurns({ previous, next, onNavigate }: { previous?: string; nex
       onPointerCancel={(event) => {
         if (pointer.current?.id === event.pointerId) pointer.current.cancelled = true;
       }}
-      onPointerLeave={() => {
-        if (pointer.current) pointer.current.cancelled = true;
+      onPointerLeave={(event) => {
+        // Touch sends pointerleave before its synthesized click, even for a valid tap.
+        if (event.pointerType === "mouse" && event.buttons !== 0 && pointer.current) {
+          pointer.current.cancelled = true;
+        }
       }}
     >
       <button type="button" disabled={!previous} onClick={(event) => {
