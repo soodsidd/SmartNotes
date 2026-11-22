@@ -3128,7 +3128,7 @@ mark {
 .music-staff__clef { font-family: 'Segoe UI Symbol', 'Noto Music', 'DejaVu Sans', serif; fill: #323638; }
 .music-page__ink { position: absolute; inset: 0; }
 .music-page__ink .tl-background { opacity: 0; }
-.music-page__dock { position: fixed; left: 50%; bottom: 1rem; z-index: 60; display: flex; align-items: center; gap: .25rem; max-width: calc(100vw - 1rem); overflow-x: auto; transform: translateX(-50%); padding: .25rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-popover); }
+.music-page__dock { position: fixed; left: 50%; bottom: 1rem; z-index: 40; display: flex; align-items: center; gap: .25rem; max-width: calc(100vw - 1rem); overflow-x: auto; transform: translateX(-50%); padding: .25rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-popover); }
 .music-page__dock button { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: var(--radius-sm); color: var(--foreground); }
 .music-page__dock button:hover { background: var(--secondary); }
 .music-page__dock button[aria-pressed="true"] { background: var(--accent); color: var(--accent-foreground); }
