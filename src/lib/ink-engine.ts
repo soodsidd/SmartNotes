@@ -45,7 +45,7 @@ export interface InkEngine {
     deltaY: number,
     acceptBottom: (bottom: number | undefined) => boolean
   ): { ok: true; count: number } | { ok: false; reason: string };
-  toSvg(): Promise<{ svg: string; width: number; height: number } | null>;
+  toSvg(strokeIds?: readonly string[]): Promise<{ svg: string; width: number; height: number } | null>;
   inspectPaint(host: HTMLElement | null): {
     pathCount: number;
     pathHasGeometry: boolean;

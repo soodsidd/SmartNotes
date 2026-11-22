@@ -20,6 +20,9 @@ import { InkEngineSurface } from "@/components/ink-engine-surface";
 import { inkDocumentsMatch, type InkColor, type InkEngine, type InkScene, type InkSize, type InkTool } from "@/lib/ink-engine";
 import { DEFAULT_INK_ENGINE, type AvailableInkEngineId } from "@/lib/ink-engine-preference";
 import { inkSidecars } from "@/lib/ink-engine-sidecars";
+import { decidePenAwareTouchGesture } from "@/lib/pen-aware-touch";
+
+export { decidePenAwareTouchGesture, type PenAwareTouchAction } from "@/lib/pen-aware-touch";
 
 const AUTOSAVE_DELAY_MS = 1200;
 export const ANNOTATION_HISTORY_THROTTLE_MS = 100;
@@ -134,29 +137,6 @@ export function readAnnotationScrollMetrics(
 export function twoFingerCentroidY(touches: ArrayLike<{ clientY: number }>): number | null {
   if (touches.length < 2) return null;
   return (touches[0].clientY + touches[1].clientY) / 2;
-}
-
-export type PenAwareTouchAction = "draw" | "pan" | "ignore";
-
-/**
- * Resolves what a touch contact should do in draw mode given stylus state
- * (SN-156 stylus gesture model, Android-tablet primary):
- * - While the stylus is in contact, every touch is rejected — a resting palm
- *   neither inks nor scrolls (palm rejection).
- * - Two touches always navigate (scroll / pinch-zoom).
- * - A lone touch draws only while "pen mode" is off; once a stylus has been
- *   seen this draw-mode entry, a lone finger pans instead of drawing.
- */
-export function decidePenAwareTouchGesture(params: {
-  touchCount: number;
-  penMode: boolean;
-  penDown: boolean;
-}): PenAwareTouchAction {
-  const { touchCount, penMode, penDown } = params;
-  if (penDown) return "ignore";
-  if (touchCount >= 2) return "pan";
-  if (touchCount === 1) return penMode ? "pan" : "draw";
-  return "ignore";
 }
 
 /** Throttle history callbacks during active strokes; flush immediately on stroke end. */
