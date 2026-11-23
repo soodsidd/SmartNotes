@@ -40,6 +40,7 @@ let mockDocument: Record<string, unknown> = {};
 const mockEditors: Array<{
   getSnapshot: jest.Mock;
   loadSnapshot: jest.Mock;
+  setCamera: jest.Mock;
 }> = [];
 
 jest.mock("tldraw", () => ({
@@ -420,6 +421,50 @@ describe("AnnotationLayer mode toggle", () => {
     mockDocument = {};
     mockSaveAnnotationsScene.mockClear();
     pageContentCache.clear();
+  });
+
+  it("tracks the measured sticky clip offset during scroll and after the page height changes", async () => {
+    function Harness({ pageFrameHeight }: { pageFrameHeight: number }) {
+      const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+      return React.createElement(
+        "div",
+        { ref: scrollContainerRef, "data-testid": "draw-scroll" },
+        React.createElement(
+          "div",
+          { "data-print-ink-overlay": true },
+          React.createElement(
+            "div",
+            { "data-print-ink-clip": true },
+            React.createElement(AnnotationLayer, {
+              pagePath: "Notebook/Section/page.html",
+              mode: "draw",
+              workspaceZoom: 1.5,
+              pageFrameHeight,
+              scrollContainerRef,
+            })
+          )
+        )
+      );
+    }
+
+    const { rerender } = render(React.createElement(Harness, { pageFrameHeight: 1_200 }));
+    const layer = await screen.findByTestId("annotation-layer");
+    await waitFor(() => expect(layer).toHaveAttribute("data-annotation-ready", "true"));
+    const container = screen.getByTestId("draw-scroll");
+    const clip = layer.closest("[data-print-ink-clip]")!;
+    const overlay = clip.parentElement!;
+    jest.spyOn(overlay, "getBoundingClientRect").mockReturnValue(new DOMRect(0, -360, 400, 1_800));
+    const clipBounds = jest.spyOn(clip, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 90, 400, 600));
+
+    container.scrollTop = 360;
+    fireEvent.scroll(container);
+    // A 450px displacement on screen is 300px in the scaled page's coordinates.
+    expect(mockEditors.at(-1)?.setCamera).toHaveBeenLastCalledWith({ x: 0, y: -300, z: 1 }, { immediate: true, force: true });
+
+    clipBounds.mockReturnValue(new DOMRect(0, 0, 400, 600));
+    rerender(React.createElement(Harness, { pageFrameHeight: 1_140 }));
+    expect(container.scrollTop).toBe(360);
+    expect(mockEditors.at(-1)?.setCamera).toHaveBeenLastCalledWith({ x: 0, y: -240, z: 1 }, { immediate: true, force: true });
   });
 
   it("routes a finger to two-axis scrolling after pen contact and rebases when a second finger lifts", async () => {

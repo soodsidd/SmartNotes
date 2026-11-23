@@ -115,15 +115,25 @@ export function pageScrollTopFromContainer(scrollTop: number, workspaceZoom = 1)
   return scrollTop / workspaceZoom;
 }
 
-/** Page-space y at viewport top equals scrollTop (÷ zoom when workspace-scaled); Tldraw camera uses negated page coords. */
+function readAnnotationClipOffset(host: HTMLElement | null, scrollTop: number): number {
+  const clip = host?.closest("[data-print-ink-clip]");
+  const overlay = clip?.parentElement;
+  if (!clip || !overlay?.hasAttribute("data-print-ink-overlay")) return scrollTop;
+
+  // Sticky positioning is resolved before the editor's CSS transform. Measure
+  // how far the clip actually moved inside the page, including at the scroll limits.
+  return clip.getBoundingClientRect().top - overlay.getBoundingClientRect().top;
+}
+
+/** Convert the rendered clip displacement to page space and negate it for the camera. */
 export function syncAnnotationCamera(
   editor: InkEngine,
-  scrollTop: number,
+  clipOffset: number,
   viewportEl?: HTMLElement | null,
   workspaceZoom = 1,
   cameraZoom = 1
 ) {
-  const pageTop = pageScrollTopFromContainer(scrollTop, workspaceZoom);
+  const pageTop = pageScrollTopFromContainer(clipOffset, workspaceZoom);
   editor.setCamera({ x: 0, y: -pageTop, z: cameraZoom }, { immediate: true, force: true });
   if (viewportEl) {
     editor.updateViewport(viewportEl);
@@ -602,8 +612,9 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
     const [cameraScrollTop, setCameraScrollTop] = React.useState(0);
     const syncHostCamera = React.useCallback((editor: InkEngine, top: number) => {
-      const cameraTop = cameraTracksScroll ? top : 0;
-      syncAnnotationCamera(editor, cameraTop, hostRef.current, workspaceZoom, cameraZoom);
+      const host = hostRef.current;
+      const cameraTop = cameraTracksScroll ? readAnnotationClipOffset(host, top) : 0;
+      syncAnnotationCamera(editor, cameraTop, host, workspaceZoom, cameraZoom);
       setCameraScrollTop(cameraTop);
     }, [cameraTracksScroll, cameraZoom, workspaceZoom]);
 
@@ -737,7 +748,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     React.useLayoutEffect(() => {
       if (!editorMounted) return;
       syncCameraFromContainer();
-    }, [editorMounted, interactive, mode, syncCameraFromContainer, workspaceZoom]);
+    }, [editorMounted, interactive, mode, pageFrameHeight, syncCameraFromContainer, workspaceZoom]);
 
     React.useEffect(() => {
       const editor = editorRef.current;
