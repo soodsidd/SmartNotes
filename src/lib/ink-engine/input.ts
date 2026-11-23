@@ -43,12 +43,63 @@ export function pointerSamples(event: PointerEvent, bounds: { left: number; top:
   }));
 }
 
-function touchAnchor(touches: ReadonlyMap<number, Point>) {
-  const [a, b] = touches.values();
-  if (!b) return { center: a, distance: 0 };
-  return {
-    center: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as Point,
-    distance: Math.hypot(a[0] - b[0], a[1] - b[1]),
+/** SN-tablet-pinch: a target shape narrow enough for both SVGSVGElement and
+ * unit-test doubles, read with native TouchEvent.touches instead of
+ * reconstructed per-pointer state (see attachPinchGesture). */
+type PinchTouchPoint = { clientX: number; clientY: number };
+type PinchTouchEvent = { touches: ArrayLike<PinchTouchPoint> };
+export type PinchTarget = {
+  addEventListener(type: string, listener: (event: PinchTouchEvent) => void, options?: { passive?: boolean }): void;
+  removeEventListener(type: string, listener: (event: PinchTouchEvent) => void): void;
+  getBoundingClientRect(): { left: number; top: number };
+};
+
+/**
+ * SN-tablet-pinch: tldraw drives two-finger pan/zoom off native
+ * touchstart/touchmove's `event.touches` — an atomic snapshot of every
+ * active finger delivered on a single event (see
+ * @tldraw/editor's useGestureEvents). InkPointerInput previously
+ * reconstructed the second finger's position from a Map updated across two
+ * independent PointerEvent streams; on tablets where multi-touch pointer
+ * delivery is uneven between fingers, that starved the distance-ratio math
+ * pinch-zoom needs (pan still looked fine since it only needs a rough
+ * average). This mirrors tldraw's approach instead of Pointer Events for
+ * the two-finger camera gesture specifically; single-finger draw/erase/
+ * select stays on InkPointerInput/Pointer Events.
+ */
+export function attachPinchGesture(target: PinchTarget, engine: SmartNotesInkEngine): () => void {
+  let anchor: Point | null = null;
+  let distance = 1;
+  const read = (t0: PinchTouchPoint, t1: PinchTouchPoint) => {
+    const rect = target.getBoundingClientRect();
+    const origin: Point = [(t0.clientX + t1.clientX) / 2 - rect.left, (t0.clientY + t1.clientY) / 2 - rect.top];
+    return { origin, dist: Math.max(Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY), 1) };
+  };
+  const start = (event: PinchTouchEvent) => {
+    if (event.touches.length !== 2) return;
+    const { origin, dist } = read(event.touches[0], event.touches[1]);
+    anchor = origin;
+    distance = dist;
+  };
+  const move = (event: PinchTouchEvent) => {
+    if (event.touches.length < 2 || !anchor || !engine.canNavigate()) return;
+    const { origin, dist } = read(event.touches[0], event.touches[1]);
+    engine.setCamera(reanchorCamera(engine.getCamera(), anchor, origin, dist / distance));
+    anchor = origin;
+    distance = dist;
+  };
+  const end = (event: PinchTouchEvent) => {
+    if (event.touches.length < 2) anchor = null;
+  };
+  target.addEventListener("touchstart", start, { passive: false });
+  target.addEventListener("touchmove", move, { passive: false });
+  target.addEventListener("touchend", end);
+  target.addEventListener("touchcancel", end);
+  return () => {
+    target.removeEventListener("touchstart", start);
+    target.removeEventListener("touchmove", move);
+    target.removeEventListener("touchend", end);
+    target.removeEventListener("touchcancel", end);
   };
 }
 
@@ -130,12 +181,16 @@ export class InkPointerInput {
     const last = samples[samples.length - 1];
     if (!last || this.engine.isReadOnly()) return;
     if (last.type === "touch" && this.touches.has(last.id)) {
-      const before = touchAnchor(this.touches);
+      const before = this.touches.get(last.id)!;
       this.touches.set(last.id, last.position);
-      if (this.panning && this.active?.type !== "pen" && this.engine.canNavigate()) {
-        const after = touchAnchor(this.touches);
-        const scale = before.distance && after.distance ? after.distance / before.distance : 1;
-        this.engine.setCamera(reanchorCamera(this.engine.getCamera(), before.center, after.center, scale));
+      // SN-tablet-pinch: two-finger pan/zoom now reads native
+      // TouchEvent.touches (attachPinchGesture) rather than this per-pointer
+      // Map, since independent PointerEvent streams proved unreliable for
+      // simultaneous multi-touch on tablets. A single already-panning finger
+      // (e.g. navigating after a pen latch, SN-156) only has one stream to
+      // track and stays correct here.
+      if (this.panning && this.touches.size === 1 && this.active?.type !== "pen" && this.engine.canNavigate()) {
+        this.engine.setCamera(reanchorCamera(this.engine.getCamera(), before, last.position, 1));
       }
     }
     if (this.active?.id === last.id) {

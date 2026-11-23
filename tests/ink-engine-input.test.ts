@@ -1,5 +1,13 @@
 import { SmartNotesInkEngine } from "@/lib/ink-engine/engine";
-import { InkPointerInput, pageToScreen, pointerSamples, screenToPage, type PointerSample } from "@/lib/ink-engine/input";
+import {
+  attachPinchGesture,
+  InkPointerInput,
+  pageToScreen,
+  pointerSamples,
+  screenToPage,
+  type PinchTarget,
+  type PointerSample,
+} from "@/lib/ink-engine/input";
 
 const sample = (id: number, type: string, x: number, y: number, pressure = 0.5, time = 0): PointerSample =>
   ({ id, type, position: [x, y], pressure, time });
@@ -57,23 +65,52 @@ describe("Smart Notes pointer input and camera", () => {
     expect(engine.getStrokeCount()).toBe(4);
   });
 
-  it("pans and pinches around the gesture centroid and never commits the first finger's partial stroke", () => {
+  it("cancels the first finger's partial stroke once a second finger touches down, and keeps panning with the last finger remaining", () => {
+    // SN-tablet-pinch: two-finger pan/zoom math moved to attachPinchGesture
+    // (native TouchEvent.touches, tested below) since independent
+    // PointerEvent streams proved unreliable for simultaneous multi-touch on
+    // tablets. While both fingers are down, InkPointerInput itself must not
+    // move the camera (no update on the two moves below) - but once a second
+    // finger lifts, the one remaining finger has only a single stream to
+    // track and correctly keeps panning via Pointer Events, same as before.
     const engine = new SmartNotesInkEngine(true);
     const input = new InkPointerInput(engine);
     input.down(sample(1, "touch", 0, 0));
     input.down(sample(2, "touch", 100, 0));
     input.move([sample(2, "touch", 200, 0)]);
-    expect(engine.getCamera()).toEqual({ x: 0, y: 0, z: 2 });
     input.move([sample(1, "touch", 0, 20)]);
-    input.move([sample(2, "touch", 200, 20)]);
-    expect(engine.getCamera().z).toBeCloseTo(2);
-    expect(pageToScreen([50, 0], engine.getCamera())[1]).toBeCloseTo(20);
+    expect(engine.getCamera()).toEqual({ x: 0, y: 0, z: 1 });
     input.up(sample(2, "touch", 200, 20));
     input.move([sample(1, "touch", 20, 40)]);
     input.up(sample(1, "touch", 20, 40));
-    expect(pageToScreen([50, 0], engine.getCamera())[1]).toBeCloseTo(40);
+    expect(engine.getCamera()).toEqual({ x: 20, y: 20, z: 1 });
     expect(engine.getStrokeCount()).toBe(0);
     expect(engine.canUndo()).toBe(false);
+  });
+
+  it("attachPinchGesture pans and zooms the camera from native touch events, independent of pointer tracking", () => {
+    // SN-tablet-pinch regression: on tablets, two independent PointerEvent
+    // streams (one per finger) can deliver unevenly, starving the distance
+    // ratio pinch-zoom needs even though pan (a rough average) still looked
+    // fine. This exercises the same math (reanchorCamera) but driven purely
+    // by touchstart/touchmove's `touches` snapshot, like tldraw does.
+    const engine = new SmartNotesInkEngine(true);
+    type Listener = (event: { touches: { clientX: number; clientY: number }[] }) => void;
+    const listeners = new Map<string, Listener>();
+    const target: PinchTarget = {
+      addEventListener: (type, listener) => listeners.set(type, listener as Listener),
+      removeEventListener: (type) => listeners.delete(type),
+      getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    };
+    const detach = attachPinchGesture(target, engine);
+    listeners.get("touchstart")!({ touches: [{ clientX: 0, clientY: 0 }, { clientX: 100, clientY: 0 }] });
+    listeners.get("touchmove")!({ touches: [{ clientX: 0, clientY: 0 }, { clientX: 200, clientY: 0 }] });
+    expect(engine.getCamera()).toEqual({ x: 0, y: 0, z: 2 });
+    listeners.get("touchmove")!({ touches: [{ clientX: 0, clientY: 20 }, { clientX: 200, clientY: 20 }] });
+    expect(engine.getCamera().z).toBeCloseTo(2);
+    expect(pageToScreen([50, 0], engine.getCamera())[1]).toBeCloseTo(20);
+    detach();
+    expect(listeners.size).toBe(0);
   });
 
   it("wheel-pans, zooms at the cursor and respects the host camera lock", () => {

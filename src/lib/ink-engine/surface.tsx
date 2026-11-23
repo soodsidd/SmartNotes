@@ -8,7 +8,7 @@ import { logDrawEvent } from "@/lib/draw-mode-debug";
 import { getInkHistoryCommand } from "@/lib/ink-engine";
 import { SmartNotesInkEngine } from "./engine";
 import { polygonPath, strokeGeometry } from "./geometry";
-import { InkPointerInput, pageToScreen, pointerSamples } from "./input";
+import { attachPinchGesture, InkPointerInput, pageToScreen, pointerSamples } from "./input";
 
 function readSamples(event: React.PointerEvent<SVGSVGElement>) {
   const svg = event.currentTarget;
@@ -99,6 +99,15 @@ export function SmartNotesInkSurface({ variant, scene, grid, onMount }: InkEngin
     svg.addEventListener("wheel", handleWheel, { passive: false });
     return () => svg.removeEventListener("wheel", handleWheel);
   }, [input, variant]);
+
+  // SN-tablet-pinch: two-finger pan/zoom reads native TouchEvent.touches
+  // (like tldraw's useGestureEvents) instead of Pointer Events, which
+  // proved unreliable for simultaneous multi-touch on tablet hardware.
+  React.useEffect(() => {
+    const svg = svgRef.current;
+    if (variant !== "note" || !svg) return;
+    return attachPinchGesture(svg, engine);
+  }, [engine, variant]);
 
   function endPointer(event: React.PointerEvent<SVGSVGElement>, cancelled: boolean) {
     const samples = readSamples(event);
