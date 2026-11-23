@@ -55,7 +55,7 @@ describe('SN-399 Codex stdio MCP bridge', () => {
     });
   }
 
-  it('lists scoped host-page tools, returns bridge JSON, and refuses unbound or mismatched capability calls', async () => {
+  it('lists scoped host-page tools, returns bridge JSON, refuses unbound tools, and binds the session capability', async () => {
     expect((await request('initialize')).result.serverInfo.name).toBe('smart_notes_companion');
     const tools = (await request('tools/list')).result.tools;
     const listed = tools.map((tool: any) => tool.name);
@@ -71,16 +71,42 @@ describe('SN-399 Codex stdio MCP bridge', () => {
 
     const deniedVault = await request('tools/call', { name: 'page_children', arguments: { workspace: capability, path: 'x' } });
     expect(JSON.parse(deniedVault.result.content[0].text).code).toBe('TOOL_NOT_ALLOWED');
-    const deniedHostCapability = await request('tools/call', { name: 'page_children', arguments: { workspace: `dwc_${'b'.repeat(43)}`, path: 'x' } });
-    expect(JSON.parse(deniedHostCapability.result.content[0].text).code).toBe('WORKSPACE_CAPABILITY_MISMATCH');
-    const deniedCapability = await request('tools/call', { name: 'workspace_source_list', arguments: { workspace: `dwc_${'b'.repeat(43)}` } });
-    expect(JSON.parse(deniedCapability.result.content[0].text).code).toBe('WORKSPACE_CAPABILITY_MISMATCH');
     expect(invoked).toHaveLength(0);
 
     const accepted = await request('tools/call', { name: 'workspace_source_list', arguments: { workspace: capability } });
     expect(accepted.result.isError).toBe(false);
     expect(JSON.parse(accepted.result.content[0].text)).toMatchObject({ ok: true, tool: 'workspace_source_list', result: { value: 'bridge response' } });
     expect(invoked).toEqual([{ tool: 'workspace_source_list', args: { workspace: capability } }]);
+
+    // A model that miscopies or omits the long token still acts only on the
+    // workspace this MCP process is bound to (the failure seen in production).
+    invoked.length = 0;
+    const miscopied = await request('tools/call', { name: 'workspace_source_list', arguments: { workspace: `dwc_${'a'.repeat(31)}` } });
+    expect(miscopied.result.isError).toBe(false);
+    const omitted = await request('tools/call', { name: 'workspace_source_list', arguments: {} });
+    expect(omitted.result.isError).toBe(false);
+    expect(invoked).toEqual([
+      { tool: 'workspace_source_list', args: { workspace: capability } },
+      { tool: 'workspace_source_list', args: { workspace: capability } },
+    ]);
+  });
+
+  it('still refuses a capability the bridge watcher is not bound to', async () => {
+    // The watcher, not this transport, is the authority: an MCP process launched
+    // with a different capability than its bridge folder is still rejected.
+    lines.close();
+    proc.kill();
+    const other = `dwc_${'b'.repeat(43)}`;
+    proc = spawn(process.execPath, [script, root, other], { stdio: ['pipe', 'pipe', 'pipe'] });
+    lines = readline.createInterface({ input: proc.stdout });
+    lines.on('line', line => {
+      const response = JSON.parse(line);
+      pending.get(response.id)?.(response);
+      pending.delete(response.id);
+    });
+    const denied = await request('tools/call', { name: 'workspace_source_list', arguments: { workspace: other } });
+    expect(JSON.parse(denied.result.content[0].text).code).toBe('WORKSPACE_CAPABILITY_MISMATCH');
+    expect(invoked).toHaveLength(0);
   });
 });
 

@@ -74,7 +74,11 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function callBridge(tool, args) {
   if (!allowedTools.has(tool)) return { ok: false, code: 'TOOL_NOT_ALLOWED' };
   if (!args || typeof args !== 'object' || Array.isArray(args)) return { ok: false, code: 'INVALID_INPUT' };
-  if (capability && args.workspace !== capability) return { ok: false, code: 'WORKSPACE_CAPABILITY_MISMATCH' };
+  // This process is launched bound to exactly one capability and one bridge
+  // folder, and the bridge watcher still authorizes only that capability. Bind
+  // the call here so a model never has to transcribe the 43-character token;
+  // miscopied tokens otherwise fail every Deep Work tool call.
+  if (capability) args = { ...args, workspace: capability };
   const id = crypto.randomUUID();
   const request = path.join(requestsDir, `${id}.json`);
   const response = path.join(responsesDir, `${id}.json`);

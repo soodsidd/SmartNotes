@@ -38,6 +38,20 @@ const { createTraceLogger } = require('./trace-log');
 const { createCommandTracker } = require('./command-activity');
 const { createProviderCatalog } = require('./provider-catalog');
 
+// On Windows providers are launched through a cmd.exe shim (shell: true), so a
+// plain proc.kill() ends only the shell and leaves the provider CLI running in
+// the background after Stop. Kill the whole tree instead.
+function killProcessTree(proc) {
+  if (!proc || proc.pid === undefined) return;
+  if (process.platform === 'win32') {
+    try {
+      execSync(`taskkill /PID ${Number(proc.pid)} /T /F`, { windowsHide: true, stdio: 'ignore' });
+      return;
+    } catch { /* already exited; fall back to the direct child */ }
+  }
+  try { proc.kill(); } catch {}
+}
+
 function normalizePinnedCompanionModels(value) {
   if (!Array.isArray(value)) return [];
   const pins = [];
@@ -1686,7 +1700,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       // Don't wait the full idle window for a turn we know is dead.
       job.status = 'failed';
       if (job.proc) {
-        try { job.proc.kill(); } catch {}
+        killProcessTree(job.proc);
       }
       emitProviderError(chatId, provider, message, {
         source: 'stderr',
@@ -1764,7 +1778,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
       mode: 'live',
     });
     if (job.proc) {
-      try { job.proc.kill(); } catch {}
+      killProcessTree(job.proc);
     }
     job.status = 'cancelled';
     emitStatus(chatId, message, { provider: job.provider || '', kind: 'cancelled', code: 'cancelled' });
@@ -2155,7 +2169,7 @@ function createChatModule(httpServer, io, userConfig = {}) {
         idleKillTimer = setTimeout(() => {
           if (job.status !== 'running') return;
           job.status = 'failed';
-          try { proc.kill(); } catch {}
+          killProcessTree(proc);
           emitProviderError(chatId, provider, `No output for ${Math.round(runtime.idleKillMs / 1000)}s — request timed out`, {
             kind: 'timeout',
             code: 'idle_timeout',
@@ -3107,4 +3121,5 @@ module.exports = {
   buildCompanionProviderEnv,
   writeClaudeSystemPromptFile,
   removeClaudeSystemPromptFile,
+  killProcessTree,
 };
