@@ -1,13 +1,20 @@
 import { test, expect } from "@playwright/test";
-import fs from "node:fs/promises";
-import path from "node:path";
+import {
+  readNoteInk,
+  renderedStrokeSelector,
+  setInkEnginePreference,
+  standaloneCanvasSelector,
+  strokePathSelector,
+  useAnnotationInkEngine,
+} from "./annotation-ink-parity";
 
-const evidence = path.resolve(__dirname, "evidence", "SN-415");
+useAnnotationInkEngine();
 
 test("SN-418: large touch targets flip pages in fullscreen Play mode and keep fresh ink", async ({ browser, baseURL }) => {
   test.setTimeout(120_000);
   const context = await browser.newContext({ baseURL, viewport: { width: 768, height: 1024 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
+  await setInkEnginePreference(page);
   const paths: string[] = [];
   try {
     const response = await context.request.post("/api/page", {
@@ -35,14 +42,14 @@ test("SN-418: large touch targets flip pages in fullscreen Play mode and keep fr
       await expect(music.getByLabel(`Page ${pageNumber} of ${pageNumber}`)).toBeVisible();
     }
 
-    const canvas = music.locator(".tl-canvas");
+    const canvas = music.locator(standaloneCanvasSelector);
     await expect(canvas).toBeVisible();
     const paper = (await canvas.boundingBox())!;
     await page.mouse.move(paper.x + paper.width / 3, paper.y + paper.height / 3);
     await page.mouse.down();
     await page.mouse.move(paper.x + paper.width / 2, paper.y + paper.height / 3, { steps: 6 });
     await page.mouse.up();
-    const ink = music.locator('.tl-shape[data-shape-type="draw"]');
+    const ink = music.locator(renderedStrokeSelector);
     await expect(ink).toHaveCount(1);
 
     await enterPlay.tap();
@@ -83,9 +90,8 @@ test("SN-418: large touch targets flip pages in fullscreen Play mode and keep fr
   }
 });
 
-test("music page keeps ink aligned through reload, full screen, and print", async ({ page }) => {
+test("music page keeps ink aligned through reload, full screen, and print", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
-  await fs.mkdir(evidence, { recursive: true });
   await page.setViewportSize({ width: 1024, height: 768 });
   const title = `sn415-melody-${Date.now()}`;
   const response = await page.request.post("/api/page", {
@@ -102,7 +108,7 @@ test("music page keeps ink aligned through reload, full screen, and print", asyn
   await expect(music.locator(".music-staff__line")).toHaveCount(50);
   await music.getByRole("button", { name: "Full screen" }).click();
   await expect(music).toHaveClass(/music-page--fullscreen/);
-  await expect(music.locator(".tl-canvas")).toBeVisible({ timeout: 15000 });
+  await expect(music.locator(standaloneCanvasSelector)).toBeVisible({ timeout: 15000 });
 
   const paper = music.locator(".music-page__paper");
   const box = await paper.boundingBox();
@@ -112,24 +118,30 @@ test("music page keeps ink aligned through reload, full screen, and print", asyn
   await page.mouse.down();
   await page.mouse.move(box!.x + box!.width * 0.48, box!.y + box!.height * 0.22, { steps: 16 });
   await page.mouse.up();
-  await expect.poll(async () => {
-    const ink = await page.request.get(`/api/ink?path=${encodeURIComponent(created.path)}`);
-    const data = await ink.json() as { scene?: { document?: { store?: Record<string, unknown> } } };
-    return Object.keys(data.scene?.document?.store ?? {}).filter((key) => key.startsWith("shape:")).length;
-  }, { timeout: 10000 }).toBeGreaterThan(0);
-  await page.screenshot({ path: path.join(evidence, "tablet-fullscreen-ink.png") });
+  await expect.poll(async () => (await readNoteInk(page.request, created.path)).origins.length).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath("tablet-fullscreen-ink.png") });
 
   await page.reload();
   await expect(page.getByTestId("music-page")).toBeVisible({ timeout: 20000 });
-  await expect(page.locator(".music-page__ink .tl-shape").first()).toBeVisible({ timeout: 15000 });
+  const ink = music.locator(strokePathSelector).last();
+  await expect(ink).toBeVisible({ timeout: 15000 });
   await page.emulateMedia({ media: "print" });
-  await page.screenshot({ path: path.join(evidence, "print-staff-ink.png"), fullPage: true });
-  await page.pdf({ path: path.join(evidence, "music-page.pdf"), format: "A4", printBackground: true });
+  await expect(music.getByLabel("Grand staff music paper")).toBeVisible();
+  await expect(music.locator(".music-staff__line")).toHaveCount(50);
+  await expect(ink).toBeVisible();
+  await expect.poll(async () => (await paper.boundingBox())?.width).toBeCloseTo(794, 0);
+  await expect.poll(async () => {
+    const printPaper = (await paper.boundingBox())!;
+    const printInk = (await ink.boundingBox())!;
+    return Math.hypot(printInk.x - printPaper.x - 794 * 0.32, printInk.y - printPaper.y - 1123 * 0.22);
+  }).toBeLessThan(8);
+  await page.screenshot({ path: testInfo.outputPath("print-staff-ink.png"), fullPage: true });
+  await page.pdf({ path: testInfo.outputPath("music-page.pdf"), format: "A4", printBackground: true });
+  await page.request.delete(`/api/page?path=${encodeURIComponent(created.path)}`);
 });
 
-test("music page stores ink in paper coordinates when the paper is scaled down", async ({ page }) => {
+test("music page stores ink in paper coordinates when the paper is scaled down", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
-  await fs.mkdir(evidence, { recursive: true });
   await page.setViewportSize({ width: 600, height: 900 });
   const title = `sn415-narrow-${Date.now()}`;
   const response = await page.request.post("/api/page", {
@@ -141,7 +153,7 @@ test("music page stores ink in paper coordinates when the paper is scaled down",
   await page.goto(`/?page=${encodeURIComponent(created.path)}`);
   const music = page.getByTestId("music-page");
   await expect(music).toBeVisible({ timeout: 20000 });
-  await expect(music.locator(".tl-canvas")).toBeVisible({ timeout: 15000 });
+  await expect(music.locator(standaloneCanvasSelector)).toBeVisible({ timeout: 15000 });
   const paper = music.locator(".music-page__paper");
   const box = (await paper.boundingBox())!;
   expect(box.width).toBeLessThan(794 - 50);
@@ -152,23 +164,23 @@ test("music page stores ink in paper coordinates when the paper is scaled down",
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.3, { steps: 12 });
   await page.mouse.up();
 
-  let origin: { x: number; y: number } | null = null;
-  await expect.poll(async () => {
-    const ink = await page.request.get(`/api/ink?path=${encodeURIComponent(created.path)}`);
-    const data = await ink.json() as { scene?: { document?: { store?: Record<string, { typeName?: string; x: number; y: number }> } } };
-    const shape = Object.values(data.scene?.document?.store ?? {}).find((record) => record.typeName === "shape");
-    origin = shape ? { x: shape.x, y: shape.y } : null;
-    return Boolean(origin);
-  }, { timeout: 10000 }).toBe(true);
-  expect(Math.abs(origin!.x - 794 * 0.5)).toBeLessThan(12);
-  expect(Math.abs(origin!.y - 1123 * 0.3)).toBeLessThan(12);
-  await page.screenshot({ path: path.join(evidence, "narrow-scaled-ink.png") });
+  await expect.poll(async () => (await readNoteInk(page.request, created.path)).origins.length).toBe(1);
+  const { origins: [origin] } = await readNoteInk(page.request, created.path);
+  expect(Math.abs(origin.x - 794 * 0.5)).toBeLessThan(12);
+  expect(Math.abs(origin.y - 1123 * 0.3)).toBeLessThan(12);
+  const ink = music.locator(renderedStrokeSelector);
+  const beforeZoom = await ink.boundingBox();
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -120);
+  await page.keyboard.up("Control");
+  await expect.poll(() => ink.boundingBox()).toEqual(beforeZoom);
+  await page.screenshot({ path: testInfo.outputPath("narrow-scaled-ink.png") });
+  await page.request.delete(`/api/page?path=${encodeURIComponent(created.path)}`);
 });
 
 test("sidebar page-pane blank menu and page right-click menu create music pages", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "desktop two-pane sidebar menus");
   test.setTimeout(120_000);
-  await fs.mkdir(evidence, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   const title = `sn415-parent-${Date.now()}`;
   const response = await page.request.post("/api/page", {
@@ -186,7 +198,7 @@ test("sidebar page-pane blank menu and page right-click menu create music pages"
   await row.click({ button: "right" });
   const pageMenu = page.getByTestId(`page-context-menu-${parent.path}`);
   await expect(pageMenu).toBeVisible();
-  await page.screenshot({ path: path.join(evidence, "page-context-menu-music.png") });
+  await page.screenshot({ path: testInfo.outputPath("page-context-menu-music.png") });
   const createChild = page.waitForResponse((r) => r.url().includes("/api/page") && r.request().method() === "POST" && r.status() === 201);
   await pageMenu.getByTestId(`page-context-create-music-${parent.path}`).click();
   const child = await createChild;
@@ -200,7 +212,7 @@ test("sidebar page-pane blank menu and page right-click menu create music pages"
   const blankMenu = page.getByTestId("sidebar-blank-context-menu");
   await expect(blankMenu).toHaveAttribute("data-pane", "page-tree");
   await expect(blankMenu.getByTestId("blank-menu-new-music")).toBeEnabled();
-  await page.screenshot({ path: path.join(evidence, "blank-context-menu-music.png") });
+  await page.screenshot({ path: testInfo.outputPath("blank-context-menu-music.png") });
   const createBlank = page.waitForResponse((r) => r.url().includes("/api/page") && r.request().method() === "POST" && r.status() === 201);
   await blankMenu.getByTestId("blank-menu-new-music").click();
   const blank = await createBlank;
@@ -210,7 +222,6 @@ test("sidebar page-pane blank menu and page right-click menu create music pages"
 
 test("SN-417: continuation page is added immediately after current, prev/next navigates, and ink persists independently after reload", async ({ page }) => {
   test.setTimeout(180_000);
-  await fs.mkdir(evidence, { recursive: true });
   await page.setViewportSize({ width: 1280, height: 900 });
 
   // Create the first music page.
@@ -251,28 +262,20 @@ test("SN-417: continuation page is added immediately after current, prev/next na
   await expect(nextBtn).toBeDisabled();
 
   // Draw a stroke on page 2.
-  await expect(music.locator(".tl-canvas")).toBeVisible({ timeout: 15_000 });
+  await expect(music.locator(standaloneCanvasSelector)).toBeVisible({ timeout: 15_000 });
   const paperBox2 = (await music.locator(".music-page__paper").boundingBox())!;
   await page.mouse.move(paperBox2.x + paperBox2.width * 0.4, paperBox2.y + paperBox2.height * 0.5);
   await page.mouse.down();
   await page.mouse.move(paperBox2.x + paperBox2.width * 0.6, paperBox2.y + paperBox2.height * 0.5, { steps: 12 });
   await page.mouse.up();
-  await expect.poll(async () => {
-    const ink = await page.request.get(`/api/ink?path=${encodeURIComponent(page2.path)}`);
-    const data = await ink.json() as { scene?: { document?: { store?: Record<string, unknown> } } };
-    return Object.keys(data.scene?.document?.store ?? {}).filter((k) => k.startsWith("shape:")).length;
-  }, { timeout: 10_000 }).toBeGreaterThan(0);
-
-  // Navigate back to page 1 via Prev button.
+  // Turn the page while the committed stroke is still in the autosave debounce.
   await prevBtn.click();
   await expect(page.getByTestId("music-page")).toBeVisible({ timeout: 15_000 });
   await expect(page.locator(".music-page__name")).toHaveText(title, { timeout: 10_000 });
 
   // Verify page 1's ink sidecar has no shapes (ink is independent).
-  const ink1 = await page.request.get(`/api/ink?path=${encodeURIComponent(page1.path)}`);
-  const data1 = await ink1.json() as { scene?: { document?: { store?: Record<string, unknown> } } };
-  const page1Shapes = Object.keys(data1.scene?.document?.store ?? {}).filter((k) => k.startsWith("shape:")).length;
-  expect(page1Shapes).toBe(0);
+  expect((await readNoteInk(page.request, page1.path)).origins).toHaveLength(0);
+  expect((await readNoteInk(page.request, page2.path)).origins).toHaveLength(1);
 
   // Page 1 shows no Prev button and an enabled Next button.
   const prevOnPage1 = music.getByTestId("music-prev-page");
@@ -283,7 +286,7 @@ test("SN-417: continuation page is added immediately after current, prev/next na
   // After reload, page 2 ink persists.
   await page.goto(`/?page=${encodeURIComponent(page2.path)}`);
   await expect(page.getByTestId("music-page")).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator(".music-page__ink .tl-shape").first()).toBeVisible({ timeout: 15_000 });
+  await expect(music.locator(renderedStrokeSelector)).toBeVisible({ timeout: 15_000 });
 
   // Clean up.
   await page.request.delete(`/api/page?path=${encodeURIComponent(page2.path)}`);

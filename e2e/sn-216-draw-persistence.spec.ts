@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { annotationSuffix, readAnnotationSidecar, smartInk, renderedStrokeSelector, strokePathSelector, useAnnotationInkEngine } from "./annotation-ink-parity";
+import { annotationSuffix, readAnnotationSidecar, readNoteInk, smartInk, renderedStrokeSelector, standaloneCanvasSelector, strokePathSelector, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { closeNotebookTreeSheet } from "./helpers";
@@ -257,7 +257,9 @@ test("SN-416: installed PWA fetches the current shell despite a stale cached lau
   test.skip(smartInk || testInfo.project.name !== "mobile", "Engine-independent PWA delivery path");
   await useInstalledPwaPath(page);
 
-  const { buildId } = await (await request.get("/api/version")).json() as { buildId: string };
+  const script = await (await request.get("/service-worker.js")).text();
+  const buildId = script.match(/const BUILD_ID = "([^"]+)"/)?.[1];
+  expect(buildId).toBeTruthy();
   const staleMarker = "sn416-stale-cached-shell";
   const cachedMarker = await page.evaluate(async ({ buildId, staleMarker }) => {
     const cache = await caches.open(`smart-notes-app-shell-${buildId}`);
@@ -279,8 +281,8 @@ for (const noteType of ["ink", "music"] as const) test(`SN-416: installed PWA ke
   page,
   request,
 }, testInfo) => {
-  test.skip(smartInk || testInfo.project.name !== "mobile", "Standalone ink and music are outside annotation parity");
-  test.setTimeout(120_000);
+  test.skip(testInfo.project.name !== "mobile", "Installed PWA touch workflow");
+  test.setTimeout(150_000);
   const title = `sn416-${Date.now()}-pwa-${noteType}`;
   const created = await request.post("/api/page", {
     data: { sectionPath: SECTION_PATH, title, noteType },
@@ -288,43 +290,66 @@ for (const noteType of ["ink", "music"] as const) test(`SN-416: installed PWA ke
   expect(created.status()).toBe(201);
   const { page: inkPage } = await created.json() as { page: { path: string } };
   const inkPath = inkPage.path;
-  const persistedShapeCount = async () => {
-    const response = await request.get(`/api/ink?path=${encodeURIComponent(inkPath)}`);
-    expect(response.ok()).toBe(true);
-    const { scene } = await response.json() as {
-      scene: { document?: { store?: Record<string, { typeName?: string; type?: string }> } } | null;
-    };
-    return Object.values(scene?.document?.store ?? {}).filter(
-      (record) => record.typeName === "shape" && record.type === "draw"
-    ).length;
-  };
+  const persistedShapeCount = async () => (await readNoteInk(request, inkPath)).origins.length;
+
+  // A new worker claims the controlled page while the ink PUT is still held.
+  // The dev harness exercises reopen too, but only production drains and reloads on a claim.
+  const verifyWorkerSwap = process.env.SMART_NOTES_E2E_WORKER_SWAP === "1";
+  let releaseWrite = () => {};
 
   try {
-    await useInstalledPwaPath(page);
-    if (noteType === "music") {
-      await page.goto("/?source=pwa&page=" + encodeURIComponent(inkPath));
-    } else {
-      await selectPage(page, title);
-    }
+    await useInstalledPwaPath(page, inkPath);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
     const host = noteType === "music" ? ".music-page__ink" : ".ink-canvas-host";
     await expect(page.getByTestId(noteType === "music" ? "music-page" : "ink-overlay-bar")).toBeVisible({ timeout: 20_000 });
-    const canvas = page.locator(`${host} .tl-canvas`);
+    const layer = page.locator(host);
+    const canvas = layer.locator(standaloneCanvasSelector);
     await expect(canvas).toBeVisible({ timeout: 20_000 });
-    await expect(canvas).toHaveCSS("content-visibility", "visible");
     if (noteType === "music") {
-      await expect(page.locator(`${host} .tl-container`)).toHaveClass(/tl-theme__light/);
-      await expect(page.locator(host)).toHaveCSS("z-index", "1");
+      if (!smartInk) await expect(layer.locator(".tl-container")).toHaveClass(/tl-theme__light/);
+      await expect(layer).toHaveCSS("z-index", "1");
     }
-    if (noteType === "ink") await page.getByRole("button", { name: /^Draw —/ }).click();
+    if (!smartInk) {
+      await expect(canvas).toHaveCSS("content-visibility", "visible");
+      if (noteType === "ink") await page.getByRole("button", { name: /^Draw —/ }).click();
+    }
+    const getNavigation = () => page.evaluate(() => performance.timeOrigin);
+    const firstNavigation = await getNavigation();
+    let heldWrite: Promise<void> | undefined;
+    if (verifyWorkerSwap) {
+      const allowWrite = new Promise<void>((resolve) => { releaseWrite = resolve; });
+      let markWriteHeld!: () => void;
+      heldWrite = new Promise<void>((resolve) => { markWriteHeld = resolve; });
+      await page.route("**/api/ink", async (route) => {
+        markWriteHeld();
+        await allowWrite;
+        await route.continue();
+      });
+    }
     const box = await canvas.boundingBox();
     expect(box).not.toBeNull();
     await drawStroke(page, box!, true);
-    const layer = page.locator(host);
     await expect(layer.locator(renderedStrokeSelector)).toHaveCount(1);
     await expectCommittedStrokePainted(layer);
+    if (heldWrite) {
+      const workerUrl = `/service-worker.js?sn425-update=${Date.now()}`;
+      await page.evaluate(async (url) => { await navigator.serviceWorker.register(url, { scope: "/" }); }, workerUrl);
+      await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller?.scriptURL)).toContain(workerUrl);
+      await heldWrite;
+      expect(await getNavigation()).toBe(firstNavigation);
+      expect(await persistedShapeCount()).toBe(0);
+      releaseWrite();
+      await expect.poll(async () => {
+        try { return await getNavigation(); } catch { return firstNavigation; }
+      }).not.toBe(firstNavigation);
+      await expectCommittedStrokePainted(layer);
+    }
     await expect.poll(persistedShapeCount, { timeout: 10_000 }).toBe(1);
-    await page.waitForTimeout(3_000);
+    const https = new URL(page.url()).protocol === "https:";
+    await page.waitForTimeout(https ? 30_000 : 3_000);
     await expectCommittedStrokePainted(layer);
+    if (https) await page.screenshot({ path: testInfo.outputPath(`${noteType}-after-30s.png`) });
     const viewport = page.viewportSize()!;
     await page.setViewportSize({ width: viewport.width, height: viewport.height - 80 });
     await expectCommittedStrokePainted(layer);
@@ -343,7 +368,10 @@ for (const noteType of ["ink", "music"] as const) test(`SN-416: installed PWA ke
     await page.waitForTimeout(3_000);
     await expectCommittedStrokePainted(page.locator(host));
     await expect.poll(persistedShapeCount).toBe(1);
+    if (https) await page.screenshot({ path: testInfo.outputPath(`${noteType}-after-reload.png`) });
+    expect(pageErrors).toEqual([]);
   } finally {
+    releaseWrite();
     await request.delete(`/api/page?path=${encodeURIComponent(inkPath)}`);
   }
 });

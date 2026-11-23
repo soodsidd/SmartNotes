@@ -870,8 +870,8 @@
       "name": "Music page ink, print, and multi-page song",
       "description": "Playwright: music paper, ink reload, full screen, print, 1:1 stroke coordinates on scaled paper, sidebar menus, page-type controls, and SN-417 continuation — Add next page creates a sibling with correct order, Prev/Next navigation works, ink persists independently on each page after reload",
       "appType": "browser",
-      "command": "npm run test:e2e -- e2e/sn-415-music-page.spec.ts --project=desktop",
-      "timeoutMs": 360000,
+      "command": "node scripts/test-annotation-ink-parity.mjs e2e/sn-415-music-page.spec.ts --project=desktop --workers=1 --retries=0",
+      "timeoutMs": 600000,
       "enabled": true,
       "tags": ["e2e", "browser", "music", "ink", "targeted"],
       "feature": "music",
@@ -886,12 +886,12 @@
     },
     {
       "id": "e2e-sn-26-ink-note",
-      "name": "Sn 26 Ink Note (desktop)",
-      "description": "Playwright desktop: e2e/sn-26-ink-note.spec.ts",
+      "name": "Ink Note tools, camera, grid and save parity",
+      "description": "Playwright desktop and mobile: both Ink Note engines save ink and grids independently. Smart Notes also exercises its stroke tools, wheel and touch camera, and mobile color and size menus.",
       "appType": "browser",
-      "command": "npm run test:e2e -- e2e/sn-26-ink-note.spec.ts --project=desktop",
-      "timeoutMs": 300000,
-      "enabled": false,
+      "command": "node scripts/test-annotation-ink-parity.mjs e2e/sn-26-ink-note.spec.ts --project=desktop --project=mobile --workers=1 --retries=0",
+      "timeoutMs": 600000,
+      "enabled": true,
       "tags": [
         "e2e",
         "browser",
@@ -910,7 +910,7 @@
           "path": "e2e/sn-26-ink-note.spec.ts"
         }
       ],
-      "intent": "Guards behavior introduced or fixed in historical work (sn-26-ink-note.spec.ts).",
+      "intent": "Guards Ink Note editing and engine-specific persistence, and checks that the Smart Notes grid follows wheel and touch camera movements.",
       "whenToRun": "Pre-merge when touching the related feature area."
     },
     {
@@ -1579,7 +1579,7 @@
     {
       "id": "e2e-sn-216-draw-persistence",
       "name": "SN-216/SN-416 draw strokes and installed PWA shell stay durable",
-      "description": "Playwright desktop/mobile: text-page finger and stylus-with-palm strokes retain painted geometry and persistence; a controlled mobile PWA launch rejects stale cached HTML and keeps an ink-page touch stroke through navigation and reload.",
+      "description": "Playwright desktop/mobile on both engines. Ink Note and Music touch strokes stay painted through installed-PWA reopen. The production preview can also hold a write across a real worker claim (SMART_NOTES_E2E_WORKER_SWAP=1). HTTPS previews check paint after 30 seconds.",
       "intent": "Catches disappearing committed ink strokes and stale installed-PWA navigation shells.",
       "whenToRun": "Pre-merge when changing draw-mode loading, Tldraw integration, annotation reconciliation, autosave, PWA delivery, or production startup.",
       "failureMeaning": "Desktop or touch/stylus users may draw a stroke that disappears from the canvas or is lost on reopen.",
@@ -3363,7 +3363,7 @@
       "appType": "node",
       "command": "npm test -- tests/ink-background-toggle.test.ts",
       "timeoutMs": 120000,
-      "enabled": false,
+      "enabled": true,
       "tags": [
         "unit",
         "node",
@@ -3391,7 +3391,7 @@
       "appType": "node",
       "command": "npm test -- tests/ink-note-integration.test.ts",
       "timeoutMs": 120000,
-      "enabled": false,
+      "enabled": true,
       "tags": [
         "unit",
         "node",
