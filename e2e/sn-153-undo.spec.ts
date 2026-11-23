@@ -40,15 +40,6 @@ async function seedTextPage(
   return created.page.path;
 }
 
-async function openSeededPage(page: Page, title: string) {
-  const asideVisible = await page.locator("aside").first().isVisible();
-  if (!asideVisible) {
-    await page.getByTestId("open-sidebar-btn").click();
-  }
-  await page.getByTestId("tree").getByText(title, { exact: true }).first().click();
-  await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 15000 });
-}
-
 async function drawStroke(page: Page) {
   const layer = page.getByTestId("annotation-layer");
   const box = await layer.boundingBox();
@@ -71,10 +62,9 @@ test("SN-153 desktop: draw enables undo and undo removes the last stroke", async
   const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}${annotationSuffix}`);
   await cleanupArtifacts(stamp);
 
-  await seedTextPage(request, noteTitle);
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await openSeededPage(page, noteTitle);
+  const pagePath = await seedTextPage(request, noteTitle);
+  await page.goto(`/?page=${encodeURIComponent(pagePath)}`);
+  await expect(page.locator(".ProseMirror")).toContainText("SN-153 undo probe.");
 
   await page.getByTestId("toolbar-annotate").click();
   await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-mode", "draw");

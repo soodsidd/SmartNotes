@@ -271,7 +271,9 @@ test("full annotation journey with step screenshots (SN-136)", async ({ page }, 
   await shot("ink-stroke-drawn");
 
   // 8. Eraser scrubs the stroke away directly.
-  await page.getByTestId("pdf-reader-tool-eraser").click();
+  const eraser = page.getByTestId("pdf-reader-tool-eraser");
+  await eraser.click();
+  await expect(eraser).toHaveAttribute("aria-pressed", "true");
   if (smartInk) await expect(inkLayer).toHaveAttribute("data-annotation-mode", "draw");
   else await expect(page.getByTestId("pdf-reader-eraser-surface").first()).toBeVisible();
   await page.mouse.move(inkStart.x, inkStart.y);

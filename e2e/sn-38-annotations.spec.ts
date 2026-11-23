@@ -2,10 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { annotationSuffix, readAnnotationSidecar, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  openSectionContextMenu,
-  submitCreatePageDialog,
-} from "./helpers";
+import { apiCreatePage } from "./helpers";
 
 useAnnotationInkEngine();
 
@@ -30,14 +27,17 @@ async function cleanupArtifacts(stamp: string) {
   );
 }
 
-async function createTextPage(page: Page, title: string) {
-  const asideVisible = await page.locator("aside").first().isVisible();
-  if (!asideVisible) {
-    await page.getByTestId("open-sidebar-btn").click();
-  }
-  await openSectionContextMenu(page, SECTION_PATH);
-  await page.getByRole("menuitem", { name: "New page" }).click();
-  await submitCreatePageDialog(page, title);
+async function openTextFixture(page: Page, title: string) {
+  const created = await apiCreatePage(page.request, {
+    notebookPath: "Personal Notebook",
+    sectionPath: SECTION_PATH,
+    title,
+  });
+  await page.goto(`/?page=${encodeURIComponent(created.path)}`);
+  await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 20000 });
+  await expect(page.getByTestId("annotation-layer")).toHaveAttribute(
+    "data-annotation-loaded-path", created.path, { timeout: 20000 }
+  );
 }
 
 async function drawStrokeOnAnnotationLayer(page: Page) {
@@ -74,9 +74,7 @@ test("SN-38 desktop evidence: edit overlay and draw toolbar", async ({ page }, t
   const noteTitle = `sn38-${stamp}-annotations`;
   await cleanupArtifacts(stamp);
 
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await createTextPage(page, noteTitle);
+  await openTextFixture(page, noteTitle);
 
   await page.getByTestId("toolbar-annotate").click();
   await expect(page.getByTestId("ink-format-bar")).toBeVisible();
@@ -100,10 +98,7 @@ test("SN-38 mobile evidence: draw mode toolbar", async ({ page }, testInfo) => {
   const noteTitle = `sn38-${stamp}-mobile`;
   await cleanupArtifacts(stamp);
 
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await createTextPage(page, noteTitle);
-  await page.keyboard.press("Escape");
+  await openTextFixture(page, noteTitle);
 
   await page.getByTestId("toolbar-annotate-mobile").click();
   await expect(page.getByTestId("ink-format-bar-mobile")).toBeVisible();
@@ -122,9 +117,7 @@ test("SN-38 desktop: ink color picker updates active swatch and stroke color", a
   const noteTitle = `sn38-${stamp}-color`;
   await cleanupArtifacts(stamp);
 
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 20000 });
-  await createTextPage(page, noteTitle);
+  await openTextFixture(page, noteTitle);
 
   await page.getByTestId("toolbar-annotate").click();
   await expect(page.getByTestId("ink-format-bar")).toBeVisible();
@@ -163,9 +156,7 @@ test("SN-38 desktop: ink stays visible in edit mode and persists to sidecar", as
   const noteTitle = `sn38-${stamp}-persist`;
   await cleanupArtifacts(stamp);
 
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await createTextPage(page, noteTitle);
+  await openTextFixture(page, noteTitle);
 
   await page.getByTestId("toolbar-annotate").click();
   await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-mode", "draw");
@@ -196,9 +187,7 @@ test("SN-51 desktop: draw mode keyboard undo and redo persist in order", async (
   const noteTitle = `sn51-${stamp}-undo`;
   await cleanupArtifacts(stamp);
 
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await createTextPage(page, noteTitle);
+  await openTextFixture(page, noteTitle);
 
   const sectionDir = path.join(VAULT, "Personal Notebook", "Quick Notes");
   const sidecarPath = path.join(sectionDir, `${noteTitle}${annotationSuffix}`);
@@ -239,9 +228,7 @@ test("SN-38 desktop: draw mode keeps live editor in the same frame", async ({ pa
   const noteTitle = `sn38-${stamp}-overlay`;
   await cleanupArtifacts(stamp);
 
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await createTextPage(page, noteTitle);
+  await openTextFixture(page, noteTitle);
 
   await page.getByTestId("editor-surface").locator(".ProseMirror").click();
   await page.keyboard.type(" Overlay check body text.");

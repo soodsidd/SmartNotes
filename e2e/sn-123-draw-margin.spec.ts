@@ -42,9 +42,7 @@ async function createShortPageViaApi(page: Page, title: string) {
   });
   expect(writeResponse.ok()).toBeTruthy();
 
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 20000 });
-  await page.getByTestId("tree").getByText(title).first().click();
+  await page.goto(`/?page=${encodeURIComponent(pagePath)}`);
   await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 20000 });
   await expect(page.locator(".ProseMirror")).toContainText("Short note for margin ink");
   return { pagePath, title };

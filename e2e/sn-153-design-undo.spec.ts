@@ -1,7 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { annotationSuffix, readAnnotationSidecar, useAnnotationInkEngine } from "./annotation-ink-parity";
 import path from "node:path";
-import { ensureNotebookTreeVisible } from "./helpers";
 
 useAnnotationInkEngine();
 
@@ -51,14 +50,8 @@ test("SN-153 desktop: undo reverses an ink stroke on a design page (handleRef re
     "body{margin:0;font-family:sans-serif}.hero{height:1400px;background:linear-gradient(#eef,#fff);padding:40px}",
     "</style></head><body><section class=\"hero\"><h1 data-testid=\"art-hero\">Undo target</h1></section></body></html>",
   ].join("");
-  await createDesignPage(request, title, body);
-
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 20000 });
-  const tree = await ensureNotebookTreeVisible(page);
-  const row = tree.getByText(title, { exact: true }).first();
-  await expect(row).toBeVisible({ timeout: 15000 });
-  await row.click();
+  const pagePath = await createDesignPage(request, title, body);
+  await page.goto(`/?page=${encodeURIComponent(pagePath)}`);
 
   await expect(page.getByTestId("design-page-frame")).toBeVisible({ timeout: 20000 });
 

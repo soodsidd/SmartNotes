@@ -2,7 +2,6 @@ import { test, expect, type Page } from "@playwright/test";
 import { annotationSuffix, readAnnotationSidecar, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ensureNotebookTreeVisible, closeNotebookTreeSheet } from "./helpers";
 
 useAnnotationInkEngine();
 
@@ -45,11 +44,10 @@ async function seedLongPage(
   return created.page.path;
 }
 
-async function openSeededPage(page: Page, title: string) {
-  const tree = await ensureNotebookTreeVisible(page);
-  await tree.getByText(title, { exact: true }).first().click();
+async function openSeededPage(page: Page, pagePath: string) {
+  await page.goto(`/?page=${encodeURIComponent(pagePath)}`);
   await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 15000 });
-  await closeNotebookTreeSheet(page);
+  await expect(page.locator(".ProseMirror")).toContainText("Paragraph 120");
 }
 
 /** Dispatch a raw two-finger vertical swipe via CDP so both touch and pointer
@@ -145,10 +143,8 @@ test("SN-156 tablet: two-finger swipe scrolls the page in draw mode without inki
   const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}${annotationSuffix}`);
   await cleanupArtifacts(stamp);
 
-  await seedLongPage(request, noteTitle);
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await openSeededPage(page, noteTitle);
+  const pagePath = await seedLongPage(request, noteTitle);
+  await openSeededPage(page, pagePath);
 
   await page.getByTestId("toolbar-annotate-mobile").click();
   await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-mode", "draw");
@@ -196,10 +192,8 @@ test("SN-156 tablet: after a stylus is seen, a single finger pans instead of ink
   const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}${annotationSuffix}`);
   await cleanupArtifacts(stamp);
 
-  await seedLongPage(request, noteTitle);
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await openSeededPage(page, noteTitle);
+  const pagePath = await seedLongPage(request, noteTitle);
+  await openSeededPage(page, pagePath);
 
   await page.getByTestId("toolbar-annotate-mobile").click();
   await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-mode", "draw");

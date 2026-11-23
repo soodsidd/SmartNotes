@@ -57,15 +57,13 @@ async function seedTextPage(
     },
   });
   expect(put.ok()).toBeTruthy();
+  return created.page.path;
 }
 
-async function openSeededPage(page: Page, title: string) {
-  const asideVisible = await page.locator("aside").first().isVisible();
-  if (!asideVisible) {
-    await page.getByTestId("open-sidebar-btn").click();
-  }
-  await page.getByTestId("tree").getByText(title, { exact: true }).first().click();
+async function openSeededPage(page: Page, pagePath: string) {
+  await page.goto(`/?page=${encodeURIComponent(pagePath)}`);
   await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 15000 });
+  await expect(page.locator(".ProseMirror")).toContainText("SN-154 new-strokes-only weight probe.");
 }
 
 async function drawStroke(page: Page, yFraction: number) {
@@ -106,10 +104,8 @@ test("SN-154 desktop: only newly drawn strokes receive the thinner weight marker
   );
   await cleanupArtifacts(stamp);
 
-  await seedTextPage(request, noteTitle);
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await openSeededPage(page, noteTitle);
+  const pagePath = await seedTextPage(request, noteTitle);
+  await openSeededPage(page, pagePath);
 
   await page.getByTestId("toolbar-annotate").click();
   await expect(page.getByTestId("annotation-layer")).toHaveAttribute(
@@ -140,8 +136,7 @@ test("SN-154 desktop: only newly drawn strokes receive the thinner weight marker
   await fs.writeFile(sidecarPath, `${JSON.stringify(historicalSidecar, null, 2)}\n`, "utf8");
 
   await page.reload();
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await openSeededPage(page, noteTitle);
+  await expect(page.getByTestId("annotated-editor-panel")).toBeVisible();
   await page.getByTestId("toolbar-annotate").click();
   await expect(page.getByTestId("annotation-layer")).toHaveAttribute(
     "data-annotation-ready",
@@ -174,9 +169,8 @@ test("SN-154 desktop: only newly drawn strokes receive the thinner weight marker
 test("Smart Notes renders the chosen stroke weight and preserves the geometry on reload", async ({ page, request }, testInfo) => {
   test.skip(!smartInk || testInfo.project.name !== "desktop", "Smart Notes desktop geometry");
   const title = `sn154-${Date.now()}-smart-weight`;
-  await seedTextPage(request, title);
-  await page.goto("/");
-  await openSeededPage(page, title);
+  const pagePath = await seedTextPage(request, title);
+  await openSeededPage(page, pagePath);
   await page.getByTestId("toolbar-annotate").click();
   const layer = page.getByTestId("annotation-layer");
   await expect(layer).toHaveAttribute("data-annotation-ready", "true");
@@ -194,7 +188,6 @@ test("Smart Notes renders the chosen stroke weight and preserves the geometry on
   await page.getByTestId("ink-exit-draw").click();
   await saved;
   await page.reload();
-  await openSeededPage(page, title);
   await expect(strokes).toHaveCount(2);
   expect(await strokes.evaluateAll((paths) => paths.map((path) => path.getAttribute("d")))).toEqual(geometry);
 });

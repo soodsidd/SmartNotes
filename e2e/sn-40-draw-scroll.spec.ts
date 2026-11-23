@@ -50,12 +50,8 @@ async function seedLongTextPage(
   return created.page.path;
 }
 
-async function openSeededPage(page: Page, title: string) {
-  const asideVisible = await page.locator("aside").first().isVisible();
-  if (!asideVisible) {
-    await page.getByTestId("open-sidebar-btn").click();
-  }
-  await page.getByTestId("tree").getByText(title, { exact: true }).first().click();
+async function openSeededPage(page: Page, pagePath: string) {
+  await page.goto(`/?page=${encodeURIComponent(pagePath)}`);
   await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 15000 });
   await expect(page.locator(".ProseMirror")).toContainText("Paragraph 100", { timeout: 15000 });
 }
@@ -107,11 +103,8 @@ test("SN-40 desktop: draw after scroll aligns ink to viewport, not page top", as
   await cleanupArtifacts(stamp);
 
   // Seed via API before the browser attaches so autosave cannot overwrite the body.
-  await seedLongTextPage(request, noteTitle);
-
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await openSeededPage(page, noteTitle);
+  const pagePath = await seedLongTextPage(request, noteTitle);
+  await openSeededPage(page, pagePath);
 
   const targetScroll = await page.evaluate(() => {
     const el = document.querySelector(".editor-scroll-area") as HTMLElement | null;
@@ -169,10 +162,8 @@ test("SN-40 desktop: wheel scroll works while in draw mode", async ({ page, requ
   const noteTitle = `sn40-${stamp}-wheel`;
   await cleanupArtifacts(stamp);
 
-  await seedLongTextPage(request, noteTitle);
-  await page.goto("/");
-  await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 15000 });
-  await openSeededPage(page, noteTitle);
+  const pagePath = await seedLongTextPage(request, noteTitle);
+  await openSeededPage(page, pagePath);
 
   await page.getByTestId("toolbar-annotate").click();
   await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-mode", "draw");
