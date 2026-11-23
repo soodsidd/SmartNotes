@@ -1,7 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
-import { annotationSuffix, readAnnotationSidecar, useAnnotationInkEngine } from "./annotation-ink-parity";
+import { annotationSuffix, readAnnotationSidecar, smartInk, useAnnotationInkEngine } from "./annotation-ink-parity";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { PNG } from "pngjs";
 import { apiCreatePage } from "./helpers";
 
 useAnnotationInkEngine();
@@ -255,4 +256,49 @@ test("SN-38 desktop: draw mode keeps live editor in the same frame", async ({ pa
   // Live editor stays visible inside the frame.
   expect(frameBox!.x).toBeLessThanOrEqual(editorBox!.x + 2);
   expect(frameBox!.y).toBeLessThanOrEqual(editorBox!.y + 2);
+});
+
+test("SN-424: read-only captures paint Smart Notes ink below the page content", async ({ request }, testInfo) => {
+  test.skip(!smartInk || testInfo.project.name !== "desktop", "Smart Notes capture routes");
+  test.setTimeout(240_000);
+
+  for (const noteType of ["text", "design"] as const) {
+    const created = await request.post("/api/page", {
+      data: { sectionPath: SECTION_PATH, title: `SN-424 ${noteType} capture ${Date.now()}`, noteType },
+    });
+    expect(created.ok(), await created.text()).toBe(true);
+    const { page: fixture } = await created.json() as { page: { path: string } };
+    const saved = await request.put("/api/annotations", {
+      data: {
+        path: fixture.path,
+        engine: "smart-notes",
+        drawableBottom: 2000,
+        scene: {
+          version: 2,
+          strokes: [{
+            id: "deep-red-ink", points: [[120, 1320, 0.75], [220, 1340, 0.75]],
+            color: "red", size: "xl", createdAt: 1,
+          }],
+        },
+      },
+    });
+    expect(saved.ok(), await saved.text()).toBe(true);
+
+    const capture = noteType === "text"
+      ? await request.get(`/api/agent/render?engine=smart-notes&path=${encodeURIComponent(fixture.path)}`, { timeout: 100_000 })
+      : await request.post("/api/agent/vault", {
+          data: { tool: "ui_render", args: { path: fixture.path, engine: "smart-notes" } },
+          timeout: 100_000,
+        });
+    expect(capture.ok(), await capture.text()).toBe(true);
+    const payload = await capture.json();
+    const render = noteType === "text" ? payload : payload.result.data;
+    const image = await request.get(render.vaultUrl);
+    expect(image.ok()).toBe(true);
+    const png = PNG.sync.read(await image.body());
+    const bottomHalf = png.data.subarray(Math.floor(png.height / 2) * png.width * 4);
+    expect(bottomHalf.some((red, index) =>
+      index % 4 === 0 && red > 175 && bottomHalf[index + 1] < 75 && bottomHalf[index + 2] < 75
+    ), `${noteType} capture should include the red stroke below the content`).toBe(true);
+  }
 });

@@ -4206,7 +4206,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     }
     if (leavingDraft?.path === pagePath && leavingDraft.noteType === "text") {
       try {
-        await annotationLayerRef.current?.flush();
+        await annotationLayerRef.current?.flushPending();
       } catch {
         // snapshot still attempts with last saved annotations sidecar
       }
@@ -4889,12 +4889,17 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
     }
   }, []);
 
+  // The mobile pane can drill into a section and open a page while that
+  // section is still saving. Only the latest navigation may apply a selection.
+  const navigationRequestRef = React.useRef(0);
   const openPage = React.useCallback(
     async (pagePath: string, sourceTree = tree) => {
+      const navigationRequest = ++navigationRequestRef.current;
       if (!(await flushInlinePapers())) {
         toast.error("Save the open paper notes before leaving this page.");
         return;
       }
+      if (navigationRequest !== navigationRequestRef.current) return;
       if (pagePath === activePagePathRef.current) {
         setVersionPreview(null);
         return;
@@ -4914,7 +4919,10 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
         const saved = await flushSave();
         if (!saved) return;
       }
-      if (!(await flushPageInk()) || activePagePathRef.current !== leavingPagePath) return;
+      if (!(await flushPageInk()) ||
+        navigationRequest !== navigationRequestRef.current ||
+        activePagePathRef.current !== leavingPagePath
+      ) return;
 
       setVersionPreview(null);
       dismissGhostVersions();
@@ -4940,6 +4948,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
           }
           await snapshotLeavingPage(leavingPagePath);
         } catch (error) {
+          if (navigationRequest !== navigationRequestRef.current) return;
           setSaveState("error");
           setSaveError(error instanceof Error ? error.message : "Save failed.");
           const previousSelection = resolveSelection(tree, { pagePath: leavingPagePath });
@@ -5054,6 +5063,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
 
   const selectSection = React.useCallback(
     async (sectionPath: string) => {
+      const navigationRequest = ++navigationRequestRef.current;
       const leavingPagePath = activePagePathRef.current;
       const canLeave = await flushSave();
       if (!canLeave || !(await flushPageInk())) {
@@ -5062,6 +5072,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       if (leavingPagePath) {
         await snapshotLeavingPage(leavingPagePath);
       }
+      if (navigationRequest !== navigationRequestRef.current) return;
       dismissGhostVersions();
 
       const selection = resolveSelection(tree, { sectionPath });
@@ -5072,6 +5083,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
 
   const selectNotebook = React.useCallback(
     async (notebookPath: string, sourceTree = tree, sectionOnly = false) => {
+      const navigationRequest = ++navigationRequestRef.current;
       const leavingPagePath = activePagePathRef.current;
       const canLeave = await flushSave();
       if (!canLeave || !(await flushPageInk())) {
@@ -5080,6 +5092,7 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
       if (leavingPagePath) {
         await snapshotLeavingPage(leavingPagePath);
       }
+      if (navigationRequest !== navigationRequestRef.current) return;
       dismissGhostVersions();
 
       const selection = resolveSelection(sourceTree, { notebookPath });
@@ -5090,9 +5103,11 @@ export function ReliableNotebookShell({ initialVault, initialClosedNotebooks = [
 
   const selectNotebookRoot = React.useCallback(
     async (notebookPath: string) => {
+      const navigationRequest = ++navigationRequestRef.current;
       const leavingPagePath = activePagePathRef.current;
       if (!(await flushSave()) || !(await flushPageInk())) return;
       if (leavingPagePath) await snapshotLeavingPage(leavingPagePath);
+      if (navigationRequest !== navigationRequestRef.current) return;
       dismissGhostVersions();
       const notebook = tree.find((item) => item.path === notebookPath);
       if (notebook) applySelection({ notebook, section: null, page: notebook.pages[0] ?? null });

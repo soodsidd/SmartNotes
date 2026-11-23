@@ -1971,7 +1971,7 @@ The sidebar uses a music icon. Text page lines and rich-text export remain text-
 **Lifecycle.** Rename, move, and delete carry each annotation sidecar with the page. Legacy page-leave snapshots pair HTML and tldraw annotations by millisecond timestamp.
 **Shared annotation hosts (SN-424).** The active engine draws on text and design pages, and Smart Notes ink uses the same layer on PDF sheets. Text and design pages keep the scrolling camera and grow the drawing margin from the lowest stroke. Each PDF sheet supplies its zoom to a page-local camera and shares the reader’s pen latch. Smart Notes PDF strokes are saved to `<pdf>.page-N.sn-annotations.json`. EmbedPDF continues to store its own ink, highlights, and comments in `<pdf>.annotations.json`.
 
-**Save ordering (SN-424).** The layer snapshots the live document and queues writes by engine and owner path. This ordering survives PDF sheets leaving and re-entering the viewport. Navigation and engine switches wait for pending ink. Text pages start the flush before returning to Edit mode so text selection can resume immediately. The service-worker reload drain waits for active layers and any writes still running from unmounted layers.
+**Save ordering (SN-424).** The layer snapshots the live document and queues writes by engine and owner path. This ordering survives PDF sheets leaving and re-entering the viewport. Navigation and engine switches wait for pending ink. A new page selection takes priority if an older section save finishes later. Text pages start the flush before returning to Edit mode so text selection can resume immediately. The service-worker reload drain waits for active layers and any writes still running from unmounted layers.
 
 
 ### Lessons Learned
