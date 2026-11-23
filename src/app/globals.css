@@ -64,6 +64,16 @@ body {
   overscroll-behavior: none;
 }
 
+/* Smart Notes ink engine (SN-423) canvas: same Android Chrome PWA standalone
+   cascade fix as the Tldraw surfaces above, applied to its own SVG surface
+   instead of Tldraw's DOM classes, so two-finger pan/pinch isn't claimed by
+   an ancestor's touch-action: auto before the canvas sees the gesture. */
+.ink-canvas-host .sn-ink-canvas,
+.music-page__ink .sn-ink-canvas {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
 a {
   color: inherit;
   text-decoration: none;

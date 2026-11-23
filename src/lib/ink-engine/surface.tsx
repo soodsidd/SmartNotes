@@ -116,7 +116,7 @@ export function SmartNotesInkSurface({ variant, scene, grid, onMount }: InkEngin
     <div className={`absolute inset-0 ${variant === "note" ? "bg-background" : ""}`} data-testid="smart-notes-ink-surface">
       <svg
         ref={svgRef}
-        className="absolute inset-0 block size-full"
+        className="sn-ink-canvas absolute inset-0 block size-full"
         aria-label="Smart Notes ink canvas"
         role={readOnly ? "img" : "application"}
         tabIndex={readOnly ? undefined : 0}
