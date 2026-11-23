@@ -12,6 +12,22 @@ import { INK_COLORS, inkDocumentsMatch, type InkColor, type InkDocument, type In
 import { DEFAULT_INK_ENGINE, type AvailableInkEngineId } from "@/lib/ink-engine-preference";
 import { inkSidecars } from "@/lib/ink-engine-sidecars";
 import { countSmartNotesStrokes } from "@/lib/ink-engine/scene";
+import { clampEditorZoom, EDITOR_ZOOM_DEFAULT } from "@/lib/editor-workspace-zoom";
+
+/**
+ * SN-tablet-pinch: keep a scroll container's content anchored under a
+ * two-finger gesture while `ratio` rescales it (1 = pure pan, matching
+ * ink-engine/input.ts's reanchorCamera but for scrollLeft/scrollTop instead
+ * of a camera transform, since the music paper+ink pair is scaled via plain
+ * CSS width/height, not an ink camera).
+ */
+function reanchorScroll(viewport: HTMLElement, before: readonly [number, number], after: readonly [number, number], ratio: number) {
+  const rect = viewport.getBoundingClientRect();
+  const contentX = viewport.scrollLeft + (before[0] - rect.left);
+  const contentY = viewport.scrollTop + (before[1] - rect.top);
+  viewport.scrollLeft = contentX * ratio - (after[0] - rect.left);
+  viewport.scrollTop = contentY * ratio - (after[1] - rect.top);
+}
 
 const AUTOSAVE_DELAY_MS = 1200;
 
@@ -72,8 +88,15 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   const musicInkRef = React.useRef<HTMLDivElement | null>(null);
   const [musicFitScale, setMusicFitScale] = React.useState(1);
   const [musicPrinting, setMusicPrinting] = React.useState(false);
+  // SN-tablet-pinch: a tablet has no scroll bar and no Ctrl+wheel, so a music
+  // page (taller than one screen, auto-fit to width) had no way to see more
+  // of it or zoom in on touch. This is a user-driven multiplier on top of the
+  // auto-fit scale, independent of musicFitScale, reset per page/mode.
+  const [musicUserZoom, setMusicUserZoom] = React.useState(EDITOR_ZOOM_DEFAULT);
+  const musicUserZoomRef = React.useRef(musicUserZoom);
+  musicUserZoomRef.current = musicUserZoom;
   // Print always lays the paper out at 1:1 A4, whatever the on-screen fit is.
-  const musicScale = musicPrinting ? 1 : musicFitScale;
+  const musicScale = musicPrinting ? 1 : musicFitScale * musicUserZoom;
   const musicScaleRef = React.useRef(musicScale);
   musicScaleRef.current = musicScale;
   const [musicFullscreen, setMusicFullscreen] = React.useState(false);
@@ -140,6 +163,74 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     if (!music) return;
     editorRef.current?.setCamera({ x: 0, y: 0, z: musicScale }, { force: true });
   }, [music, musicScale]);
+
+  // SN-tablet-pinch: a mode switch or a new page gets a fresh fit, not a
+  // carried-over zoom from whatever the owner was looking at before.
+  React.useEffect(() => {
+    setMusicUserZoom(EDITOR_ZOOM_DEFAULT);
+  }, [pagePath, musicFullscreen, musicPlaying]);
+
+  // SN-tablet-pinch: two-finger pan/zoom for the music page. Unlike Ink Notes
+  // (src/lib/ink-engine/input.ts's attachPinchGesture), this never touches
+  // the ink camera - camera.z must stay pinned to musicScale (see the effect
+  // above) so strokes keep lining up with the staff, which is CSS-scaled by
+  // the same musicScale rather than by the ink camera. Instead this scales
+  // musicUserZoom (feeding musicScale, so staff + ink grow together) and
+  // scrolls .music-page__viewport to keep the pinch anchor stationary, the
+  // same reanchor technique input.ts uses for the ink camera.
+  React.useEffect(() => {
+    if (!music) return;
+    const viewport = musicViewportRef.current;
+    if (!viewport) return;
+    let anchor: [number, number] | null = null;
+    let distance = 1;
+    let zoomAtStart = 1;
+    const read = (t0: Touch, t1: Touch): { origin: [number, number]; dist: number } => ({
+      origin: [(t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2],
+      dist: Math.max(Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY), 1),
+    });
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 2) return;
+      const { origin, dist } = read(event.touches[0], event.touches[1]);
+      anchor = origin;
+      distance = dist;
+      zoomAtStart = musicUserZoomRef.current;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (event.touches.length < 2 || !anchor) return;
+      event.preventDefault();
+      const { origin, dist } = read(event.touches[0], event.touches[1]);
+      const nextZoom = clampEditorZoom(zoomAtStart * (dist / distance));
+      const appliedRatio = nextZoom / musicUserZoomRef.current;
+      musicUserZoomRef.current = nextZoom;
+      // flushSync: .music-page__scaled's width/height (and the staff's CSS
+      // scale) must have already repainted at nextZoom before scrollLeft/Top
+      // are set below, or the browser clamps them to the box's old, smaller
+      // scrollable extent and the anchor point drifts.
+      flushSync(() => setMusicUserZoom(nextZoom));
+      reanchorScroll(viewport, anchor, origin, appliedRatio);
+      anchor = origin;
+      distance = dist;
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length < 2) anchor = null;
+    };
+    viewport.addEventListener("touchstart", onTouchStart, { passive: false });
+    viewport.addEventListener("touchmove", onTouchMove, { passive: false });
+    viewport.addEventListener("touchend", onTouchEnd);
+    viewport.addEventListener("touchcancel", onTouchEnd);
+    return () => {
+      viewport.removeEventListener("touchstart", onTouchStart);
+      viewport.removeEventListener("touchmove", onTouchMove);
+      viewport.removeEventListener("touchend", onTouchEnd);
+      viewport.removeEventListener("touchcancel", onTouchEnd);
+    };
+    // snapshot: .music-page__viewport doesn't exist in the DOM yet on the
+    // first render (the component returns a loading placeholder until the
+    // scene loads), so musicViewportRef.current is still null the one time
+    // an effect keyed on `music` alone would run. Re-run once the real
+    // branch (and the ref) mounts, matching the ResizeObserver effect above.
+  }, [music, snapshot]);
 
   React.useEffect(() => {
     if (!musicFullscreen && !musicPlaying) return;

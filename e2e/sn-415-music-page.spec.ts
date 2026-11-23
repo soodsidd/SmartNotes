@@ -90,6 +90,66 @@ test("SN-418: large touch targets flip pages in fullscreen Play mode and keep fr
   }
 });
 
+test("SN-tablet-pinch: two-finger pinch zooms and pans a music page on tablet", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 768, height: 1024 });
+  const response = await page.request.post("/api/page", {
+    data: { sectionPath: "Personal Notebook/Quick Notes", title: `sn-tablet-pinch-music-${Date.now()}`, noteType: "music" },
+  });
+  expect(response.status()).toBe(201);
+  const { page: created } = await response.json() as { page: { path: string } };
+  try {
+    await page.goto(`/?page=${encodeURIComponent(created.path)}`);
+    const music = page.getByTestId("music-page");
+    const canvas = music.locator(standaloneCanvasSelector);
+    await expect(canvas).toBeVisible();
+    const paper = music.locator(".music-page__paper");
+    const viewport = music.locator(".music-page__viewport");
+    const paperScale = async () => Number((await paper.getAttribute("style"))?.match(/scale\(([\d.]+)\)/)?.[1]);
+    const before = await paperScale();
+
+    const box = (await canvas.boundingBox())!;
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const touch = await page.context().newCDPSession(page);
+    // Pinch apart, centered on the canvas: musicUserZoom should grow, scaling
+    // the staff (.music-page__paper's CSS transform) and the ink camera
+    // together via the shared musicScale (see ink-canvas.tsx).
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ id: 1, x: cx - 40, y: cy }, { id: 2, x: cx + 40, y: cy }],
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ id: 1, x: cx - 100, y: cy }, { id: 2, x: cx + 100, y: cy }],
+    });
+    await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect.poll(paperScale).toBeGreaterThan(before);
+    const afterZoom = await paperScale();
+
+    // Two fingers dragging straight up (without changing their separation)
+    // should pan .music-page__viewport's scroll position - the only way to
+    // see the rest of a multi-system page on a tablet with no scroll bar.
+    const scrollBefore = await viewport.evaluate((el) => el.scrollTop);
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ id: 1, x: cx - 100, y: cy + 150 }, { id: 2, x: cx + 100, y: cy + 150 }],
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ id: 1, x: cx - 100, y: cy }, { id: 2, x: cx + 100, y: cy }],
+    });
+    await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await touch.detach();
+    const scrollAfter = await viewport.evaluate((el) => el.scrollTop);
+    expect(scrollAfter).toBeGreaterThan(scrollBefore);
+    // The pan gesture didn't also change the finger separation, so zoom holds.
+    expect(await paperScale()).toBeCloseTo(afterZoom, 5);
+  } finally {
+    await page.request.delete(`/api/page?path=${encodeURIComponent(created.path)}`);
+  }
+});
+
 test("music page keeps ink aligned through reload, full screen, and print", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1024, height: 768 });
