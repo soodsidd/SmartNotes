@@ -79,6 +79,34 @@ async function twoFingerSwipe(
   await session.detach();
 }
 
+/** Dispatch a raw two-finger pinch (horizontal separation change) via CDP,
+ * the same mechanism real tablet pinch-zoom hardware drives. */
+async function twoFingerPinch(
+  page: Page,
+  box: { x: number; y: number; width: number; height: number },
+  startHalfWidth: number,
+  endHalfWidth: number,
+  steps: number
+) {
+  const session = await page.context().newCDPSession(page);
+  const cx = box.x + box.width * 0.5;
+  const cy = box.y + box.height * 0.5;
+  const point = (px: number, py: number) => ({ x: Math.round(px), y: Math.round(py) });
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [point(cx - startHalfWidth, cy), point(cx + startHalfWidth, cy)],
+  });
+  for (let i = 1; i <= steps; i++) {
+    const half = startHalfWidth + ((endHalfWidth - startHalfWidth) * i) / steps;
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [point(cx - half, cy), point(cx + half, cy)],
+    });
+  }
+  await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await session.detach();
+}
+
 /** Single-finger diagonal drag — should ink a stroke like a stylus. */
 async function oneFingerDraw(
   page: Page,
@@ -224,6 +252,48 @@ test("SN-156 tablet: after a stylus is seen, a single finger pans instead of ink
     .toBeGreaterThan(scrollTopBefore + 50);
 
   // AC: lone finger in pen mode leaves no ink.
+  expect(await readShapeCount(sidecarPath)).toBe(0);
+
+  await cleanupArtifacts(stamp);
+});
+
+test("SN-tablet-pinch: two-finger pinch zooms the editor workspace in draw mode without inking", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "Touch/tablet workflow only");
+  const stamp = String(Date.now());
+  const noteTitle = `sn156-${stamp}-pinchzoom`;
+  const sidecarPath = path.join(VAULT, "Personal Notebook", "Quick Notes", `${noteTitle}${annotationSuffix}`);
+  await cleanupArtifacts(stamp);
+
+  const pagePath = await seedLongPage(request, noteTitle);
+  await openSeededPage(page, pagePath);
+
+  await page.getByTestId("toolbar-annotate-mobile").click();
+  await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-mode", "draw");
+  await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-ready", "true", {
+    timeout: 20000,
+  });
+
+  const layer = page.getByTestId("annotation-layer");
+  const box = await layer.boundingBox();
+  expect(box).not.toBeNull();
+  const frame = page.getByTestId("editor-content-frame");
+  await expect(frame).not.toHaveAttribute("data-editor-zoom");
+
+  // Separation goes 80px -> 200px over several incremental steps (a real
+  // continuous pinch, not one jump - a single jump can't catch the
+  // compounding-against-a-stale-base jitter bug this mirrors from the
+  // Music-page fix).
+  await twoFingerPinch(page, box!, 40, 100, 6);
+
+  await expect.poll(async () => frame.getAttribute("data-editor-zoom")).not.toBeNull();
+  const zoom = Number(await frame.getAttribute("data-editor-zoom"));
+  // 80px -> 200px is a 2.5x ratio, clamped to the shared editor-zoom max (2x).
+  expect(zoom).toBeGreaterThan(1.8);
+
+  // AC: a two-finger gesture must never leave ink behind, same as plain pan.
   expect(await readShapeCount(sidecarPath)).toBe(0);
 
   await cleanupArtifacts(stamp);

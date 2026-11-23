@@ -15,6 +15,7 @@ import {
   readAnnotationScrollMetrics,
   syncAnnotationCamera,
   twoFingerCentroidY,
+  twoFingerDistance,
 } from "@/components/annotation-layer";
 import {
   ANNOTATION_INK_STROKE_SCALE,
@@ -207,6 +208,47 @@ describe("twoFingerCentroidY (SN-156)", () => {
     const moved = twoFingerCentroidY([{ clientY: 300 }, { clientY: 400 }])!; // 350
     // Fingers moved up 100px -> content scrolls down 100px.
     expect(start - moved).toBe(100);
+  });
+});
+
+describe("twoFingerDistance (SN-67/SN-tablet-pinch)", () => {
+  it("returns null for zero or one active touch", () => {
+    expect(twoFingerDistance([])).toBeNull();
+    expect(twoFingerDistance([{ clientX: 0, clientY: 0 }])).toBeNull();
+  });
+
+  it("measures separation between the first two touches, ignoring extras", () => {
+    expect(twoFingerDistance([{ clientX: 0, clientY: 0 }, { clientX: 100, clientY: 0 }])).toBe(100);
+    expect(
+      twoFingerDistance([{ clientX: 0, clientY: 0 }, { clientX: 100, clientY: 0 }, { clientX: 999, clientY: 999 }])
+    ).toBe(100);
+  });
+
+  it("compounding successive ratios onto the current zoom (not a fixed start) tracks a continuous pinch", () => {
+    // SN-tablet-pinch jitter: applying each frame's incremental ratio against
+    // a *fixed* gesture-start zoom instead of the already-updated current
+    // zoom barely moved the result, because small per-frame ratios don't
+    // compound when multiplied against a stale absolute base. The correct,
+    // self-consistent pattern (mirrored by both ink-canvas.tsx's Music fix
+    // and annotation-layer.tsx's onWorkspacePinchZoom) reassigns the
+    // reference distance every frame AND applies the ratio to the current
+    // zoom each time.
+    const steps = [
+      [0, 100],   // distance 100 (gesture start)
+      [-10, 110], // distance 120
+      [-20, 120], // distance 140
+      [-30, 130], // distance 160
+      [-40, 140], // distance 180
+      [-50, 150], // distance 200 - overall 100 -> 200, a 2x ratio
+    ] as const;
+    let distance = twoFingerDistance([{ clientX: steps[0][0], clientY: 0 }, { clientX: steps[0][1], clientY: 0 }])!;
+    let zoom = 1;
+    for (const [x0, x1] of steps.slice(1)) {
+      const dist = twoFingerDistance([{ clientX: x0, clientY: 0 }, { clientX: x1, clientY: 0 }])!;
+      zoom *= dist / distance;
+      distance = dist;
+    }
+    expect(zoom).toBeCloseTo(2, 5);
   });
 });
 

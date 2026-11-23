@@ -116,6 +116,7 @@ import {
   adjustEditorZoomFromWheel,
   applyScrollPan,
   applyWorkspacePan,
+  clampEditorZoom,
   EDITOR_PAN_DEFAULT,
   EDITOR_ZOOM_DEFAULT,
   editorZoomSpacerStyle,
@@ -465,6 +466,15 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
     const linkInputRef = React.useRef<HTMLInputElement>(null);
     const [workspaceZoom, setWorkspaceZoom] = React.useState(EDITOR_ZOOM_DEFAULT);
     const [workspacePan, setWorkspacePan] = React.useState(EDITOR_PAN_DEFAULT);
+    // SN-tablet-pinch (SN-67): must be referentially stable - it sits in
+    // AnnotationLayer's touch-gesture effect dependency array, and an inline
+    // arrow function recreated every render would tear down and reattach
+    // those listeners (resetting their in-progress gesture state) on every
+    // unrelated re-render, not just a real zoom change. That regressed even
+    // the existing two-finger-pan behavior when this was inline.
+    const handleWorkspacePinchZoom = React.useCallback((ratio: number) => {
+      setWorkspaceZoom((current) => clampEditorZoom(current * ratio));
+    }, []);
     // Sticky ink clip lives inside the CSS-scaled content frame; divide by zoom so
     // the on-screen clip height matches the scroll viewport (avoids draw-mode clipping).
     const inkViewportClipHeight =
@@ -3109,6 +3119,7 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                                   viewportHeight: number;
                                 }) => void;
                                 onDrawableBottomChange?: (value: number) => void;
+                                onWorkspacePinchZoom?: (ratio: number) => void;
                               }>,
                               {
                                 scrollTop,
@@ -3118,6 +3129,9 @@ export const RichTextEditor = React.forwardRef<RichTextEditorHandle, RichTextEdi
                                 scrollContainerRef: scrollAreaRef,
                                 onScrollMetricsChange: syncViewportMetrics,
                                 onDrawableBottomChange,
+                                // SN-tablet-pinch (SN-67): two-finger pinch in Draw
+                                // mode was pan-only - zoom scaling was left undone.
+                                onWorkspacePinchZoom: handleWorkspacePinchZoom,
                               }
                             )
                           : annotationOverlay}

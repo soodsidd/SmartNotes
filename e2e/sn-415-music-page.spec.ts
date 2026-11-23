@@ -112,20 +112,28 @@ test("SN-tablet-pinch: two-finger pinch zooms and pans a music page on tablet", 
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
     const touch = await page.context().newCDPSession(page);
-    // Pinch apart, centered on the canvas: musicUserZoom should grow, scaling
-    // the staff (.music-page__paper's CSS transform) and the ink camera
-    // together via the shared musicScale (see ink-canvas.tsx).
+    // Pinch apart, centered on the canvas, over several incremental touchmove
+    // steps (a real continuous drag, not one jump) - musicUserZoom should
+    // compound those steps up to roughly the overall separation ratio.
+    // A single jump can't catch a frame-to-frame-ratio-against-a-stale-base
+    // bug (SN-tablet-pinch jitter): it only shows up across multiple moves.
     await touch.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [{ id: 1, x: cx - 40, y: cy }, { id: 2, x: cx + 40, y: cy }],
     });
-    await touch.send("Input.dispatchTouchEvent", {
-      type: "touchMove",
-      touchPoints: [{ id: 1, x: cx - 100, y: cy }, { id: 2, x: cx + 100, y: cy }],
-    });
+    for (const half of [50, 60, 70, 80, 90, 100]) {
+      await touch.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ id: 1, x: cx - half, y: cy }, { id: 2, x: cx + half, y: cy }],
+      });
+    }
     await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     await expect.poll(paperScale).toBeGreaterThan(before);
     const afterZoom = await paperScale();
+    // Overall separation went 80px -> 200px, a 2.5x ratio (clamped to the
+    // shared editor-zoom max of 2x): the compounded steps should land near
+    // that, not jitter back toward the starting scale.
+    expect(afterZoom / before).toBeGreaterThan(1.8);
 
     // Two fingers dragging straight up (without changing their separation)
     // should pan .music-page__viewport's scroll position - the only way to

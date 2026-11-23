@@ -83,6 +83,12 @@ export interface AnnotationLayerProps {
   penState?: { mode: boolean; down: boolean };
   /** Called when scroll metrics change from wheel passthrough or direct container sync. */
   onScrollMetricsChange?: (metrics: { scrollTop: number; viewportHeight: number }) => void;
+  /**
+   * SN-tablet-pinch (SN-67): a two-finger touch gesture in Draw mode already
+   * pans via scrollTop (below); this reports the incremental finger-
+   * separation ratio each move so the host can also scale workspaceZoom.
+   */
+  onWorkspacePinchZoom?: (ratio: number) => void;
   /** Called when ink near the drawable bottom should extend the page frame. */
   onDrawableBottomChange?: (value: number) => void;
   /**
@@ -145,6 +151,12 @@ export function readAnnotationScrollMetrics(
 export function twoFingerCentroidY(touches: ArrayLike<{ clientY: number }>): number | null {
   if (touches.length < 2) return null;
   return (touches[0].clientY + touches[1].clientY) / 2;
+}
+
+/** Separation between the first two active touches; null when fewer than two. */
+export function twoFingerDistance(touches: ArrayLike<{ clientX: number; clientY: number }>): number | null {
+  if (touches.length < 2) return null;
+  return Math.max(Math.hypot(touches[1].clientX - touches[0].clientX, touches[1].clientY - touches[0].clientY), 1);
 }
 
 /** Throttle history callbacks during active strokes; flush immediately on stroke end. */
@@ -211,6 +223,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       cameraZoom = 1,
       penState,
       onScrollMetricsChange,
+      onWorkspacePinchZoom,
       onDrawableBottomChange,
       inkColor = "black",
       inkStroke = "m",
@@ -240,6 +253,14 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     const pendingInkStrokeRef = React.useRef<InkSize>(inkStroke);
     const localPenState = React.useRef({ mode: false, down: false });
     const pen = penState ?? localPenState.current;
+    // SN-tablet-pinch: syncHostCamera (and so the touch-gesture effect below,
+    // which depends on it) legitimately re-identifies whenever workspaceZoom
+    // actually changes - which a real pinch does, every frame. A gesture
+    // object declared fresh inside that effect would get wiped mid-pinch by
+    // its own teardown/reattach, silently truncating the compounded zoom
+    // ratio (observed: a 2.5x finger-separation pinch only reached 1.25x).
+    // Keeping it in a ref declared outside the effect survives that churn.
+    const gestureRef = React.useRef({ active: false, startAnchorY: 0, startScrollTop: 0, distance: 0 });
     const debugShapeCountRef = React.useRef(-1);
     // Viewport-scaled blank margin kept below the lowest stroke so the canvas
     // always extends past the last stroke. Read from a ref so save/flush
@@ -763,10 +784,17 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
     // Pen mode latches per draw-mode entry: reset each time draw mode is
     // (re)entered so a finger draws again until a stylus is next seen (SN-156).
+    // Also clears any in-progress pan/pinch gesture from a prior draw-mode
+    // session - gestureRef now survives the touch effect's own
+    // teardown/reattach (SN-tablet-pinch), so it needs this explicit reset.
     React.useEffect(() => {
       if (interactive && !penState) {
         pen.mode = false;
         pen.down = false;
+      }
+      if (interactive) {
+        gestureRef.current.active = false;
+        gestureRef.current.distance = 0;
       }
     }, [interactive, pen, penState]);
 
@@ -778,16 +806,16 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     // Gesture model (Android tablet primary): a stylus always inks. "Pen mode"
     // latches on the first stylus contact of a draw-mode entry; while it is off
     // a lone finger draws (as before), and once it is on a lone finger pans
-    // instead. Two fingers always navigate (centroid delta → `scrollTop`;
-    // pinch-zoom scaling itself is left to SN-67). While the stylus is actually
-    // touching, every touch is rejected, so a resting palm neither inks nor
-    // scrolls.
+    // instead. Two fingers always navigate (centroid delta → `scrollTop`, plus
+    // finger-separation ratio → onWorkspacePinchZoom, SN-67/SN-tablet-pinch).
+    // While the stylus is actually touching, every touch is rejected, so a
+    // resting palm neither inks nor scrolls.
     React.useEffect(() => {
       const container = scrollContainerRef?.current;
       const host = hostRef.current;
       if (!container || !host || !editorMounted || !interactive) return;
 
-      const gesture = { active: false, startAnchorY: 0, startScrollTop: 0 };
+      const gesture = gestureRef.current;
 
       // Pan anchor: two-finger centroid, else the lone touch's Y.
       const panAnchorY = (touches: TouchList): number | null => {
@@ -844,6 +872,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         gesture.active = true;
         gesture.startAnchorY = anchorY;
         gesture.startScrollTop = container.scrollTop;
+        gesture.distance = twoFingerDistance(event.touches) ?? 0;
         event.preventDefault();
         event.stopPropagation();
       };
@@ -857,6 +886,16 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         event.stopPropagation();
         container.scrollTop = gesture.startScrollTop + (gesture.startAnchorY - anchorY);
         syncFromScroll();
+        if (event.touches.length >= 2) {
+          const dist = twoFingerDistance(event.touches);
+          // Reassign gesture.distance every move and let the host apply the
+          // ratio to *its* current zoom (not a fixed gesture-start zoom) -
+          // the same fixed-base-vs-reassigned-reference mismatch produced
+          // the Music-page in-place jitter (ink-canvas.tsx) when it compared
+          // a per-frame ratio against an absolute start value instead.
+          if (dist != null && gesture.distance > 0) onWorkspacePinchZoom?.(dist / gesture.distance);
+          if (dist != null) gesture.distance = dist;
+        }
       };
 
       // Hold the gesture until every finger lifts, so degrading from two touches
@@ -899,7 +938,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         host.removeEventListener("pointerdown", blockPointerDuringGesture, { capture: true });
         host.removeEventListener("pointermove", blockPointerDuringGesture, { capture: true });
       };
-    }, [editorMounted, interactive, onScrollMetricsChange, pen, scrollContainerRef, syncHostCamera]);
+    }, [editorMounted, interactive, onScrollMetricsChange, onWorkspacePinchZoom, pen, scrollContainerRef, syncHostCamera]);
 
     React.useEffect(() => {
       const editor = editorRef.current;

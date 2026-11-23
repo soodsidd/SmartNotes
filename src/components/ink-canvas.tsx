@@ -184,7 +184,6 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     if (!viewport) return;
     let anchor: [number, number] | null = null;
     let distance = 1;
-    let zoomAtStart = 1;
     const read = (t0: Touch, t1: Touch): { origin: [number, number]; dist: number } => ({
       origin: [(t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2],
       dist: Math.max(Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY), 1),
@@ -194,13 +193,17 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
       const { origin, dist } = read(event.touches[0], event.touches[1]);
       anchor = origin;
       distance = dist;
-      zoomAtStart = musicUserZoomRef.current;
     };
     const onTouchMove = (event: TouchEvent) => {
       if (event.touches.length < 2 || !anchor) return;
       event.preventDefault();
       const { origin, dist } = read(event.touches[0], event.touches[1]);
-      const nextZoom = clampEditorZoom(zoomAtStart * (dist / distance));
+      // Compound each frame's ratio onto the *current* zoom (like
+      // reanchorCamera does for camera.z), not a fixed gesture-start zoom
+      // divided by a reassigned `distance` - that hybrid is what produced
+      // the in-place jitter: each frame applied a tiny frame-to-frame ratio
+      // against a stale absolute base instead of the already-updated zoom.
+      const nextZoom = clampEditorZoom(musicUserZoomRef.current * (dist / distance));
       const appliedRatio = nextZoom / musicUserZoomRef.current;
       musicUserZoomRef.current = nextZoom;
       // flushSync: .music-page__scaled's width/height (and the staff's CSS
