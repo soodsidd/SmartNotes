@@ -46,12 +46,16 @@ describe("PDF reader night mode invert scoping (SN-225)", () => {
     expect(bitmapBlock?.[0]).toBeTruthy();
     expect(bitmapBlock?.[0]).toContain("<RenderLayer");
     expect(bitmapBlock?.[0]).toContain("<TilingLayer");
+    // The app's own Smart Notes AnnotationLayer (SN-422+) is imported under
+    // the same name elsewhere in this file (see PdfPageInk); the EmbedPDF SDK
+    // highlight layer is aliased to EmbedPdfAnnotationLayer to disambiguate.
     expect(bitmapBlock?.[0]).not.toContain("<AnnotationLayer");
+    expect(bitmapBlock?.[0]).not.toContain("<EmbedPdfAnnotationLayer");
     expect(bitmapBlock?.[0]).not.toContain("<SearchLayer");
     expect(bitmapBlock?.[0]).not.toContain("<SelectionLayer");
 
     expect(reader).toMatch(
-      /className="pdf-reader__page-bitmap"[\s\S]*?<\/div>\s*<SearchLayer[\s\S]*?<SelectionLayer[\s\S]*?<AnnotationLayer/
+      /className="pdf-reader__page-bitmap"[\s\S]*?<\/div>\s*<SearchLayer[\s\S]*?<SelectionLayer[\s\S]*?<EmbedPdfAnnotationLayer/
     );
   });
 

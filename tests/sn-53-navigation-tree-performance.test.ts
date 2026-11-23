@@ -38,6 +38,10 @@ describe("SN-53 navigation tree performance wiring", () => {
     expect(editorPanelBlock).toContain("editorRef.current?.swapContent(swapPlan.html);");
     // Only the opening tag — later siblings (e.g. ImmersivePdfReader) may use key=.
     expect(editorPanelBlock).not.toMatch(/<RichTextEditor\b[^>]*\bkey=\{/);
-    expect(editorPanelBlock).not.toMatch(/<AnnotationLayer\b[^>]*\bkey=\{/);
+    // AnnotationLayer may key on the engine toggle (SN-422) so switching
+    // engines remounts cleanly, but must never key on page identity --
+    // that would remount (and refetch) on every page navigation.
+    expect(editorPanelBlock).not.toMatch(/<AnnotationLayer\b[^>]*\bkey=\{(pagePath|draft\.path)\}/);
+    expect(editorPanelBlock).toMatch(/<AnnotationLayer\b[^>]*\bkey=\{inkEngine\}/);
   });
 });

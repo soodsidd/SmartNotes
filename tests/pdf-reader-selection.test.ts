@@ -19,10 +19,15 @@ describe("PDF read-mode text selection (SN-193)", () => {
       "createPluginRegistration(SelectionPluginPackage)"
     );
     expect(READER_SOURCE).toMatch(
-      /const pageLayers = \([\s\S]*?<SelectionLayer[\s\S]*?\);\s*[\s\S]*?return \(\s*<PagePointerProvider/
+      /const pageLayers = \([\s\S]*?<SelectionLayer[\s\S]*?\);\s*[\s\S]*?return \(\s*<div[^>]*>\s*<PagePointerProvider/
     );
     expect(READER_SOURCE).toMatch(
       /<PagePointerProvider[\s\S]*?>\s*\{pageLayers\}\s*<\/PagePointerProvider>/
+    );
+    // The Smart Notes ink layer (SN-424/425, PdfPageInk) mounts as a sibling
+    // outside PagePointerProvider, not inside pageLayers.
+    expect(READER_SOURCE).toMatch(
+      /<\/PagePointerProvider>\s*\{smartInk[\s\S]*?<PdfPageInk/
     );
     expect(READER_SOURCE).not.toContain("needsPointerProvider");
   });
@@ -63,8 +68,11 @@ describe("PDF read-mode text selection (SN-193)", () => {
   });
 
   test("keeps annotation hit areas above selection for read-mode comment taps", () => {
+    // EmbedPDF's own highlight layer is aliased to EmbedPdfAnnotationLayer so
+    // it does not collide with the app's Smart Notes AnnotationLayer (SN-422+),
+    // which is also used inside this reader (see PdfPageInk).
     expect(READER_SOURCE).toMatch(
-      /<SelectionLayer[\s\S]*?<AnnotationLayer[\s\S]*?pointerEvents: annotationPointerEvents/
+      /<SelectionLayer[\s\S]*?<EmbedPdfAnnotationLayer[\s\S]*?pointerEvents: annotationPointerEvents/
     );
     expect(READER_SOURCE).toContain(
       'annotateMode && activeTool === "eraser" ? "none" : "auto"'
@@ -132,7 +140,7 @@ describe("PDF read-mode text selection (SN-193)", () => {
 describe("PDF selection menu actions (SN-334)", () => {
   test("offers Highlight, Record and Ask Companion from the floating selection menu", () => {
     expect(READER_SOURCE).toMatch(
-      /<SelectionLayer[\s\S]*?<PdfPassageMenu[\s\S]*?above=\{Boolean\(placement\?\.suggestTop\)\}[\s\S]*?<PdfPassageActions[\s\S]*?onHighlight=\{highlightSelection\}[\s\S]*?highlightDisabled=\{!annotationsReady\}[\s\S]*?recordSelection\(pageIndex, true\)[\s\S]*?onAsk=[\s\S]*?askPdf\(pageIndex[\s\S]*?<AnnotationLayer/
+      /<SelectionLayer[\s\S]*?<PdfPassageMenu[\s\S]*?above=\{Boolean\(placement\?\.suggestTop\)\}[\s\S]*?<PdfPassageActions[\s\S]*?onHighlight=\{highlightSelection\}[\s\S]*?highlightDisabled=\{!annotationsReady\}[\s\S]*?recordSelection\(pageIndex, true\)[\s\S]*?onAsk=[\s\S]*?askPdf\(pageIndex[\s\S]*?<EmbedPdfAnnotationLayer/
     );
   });
 
