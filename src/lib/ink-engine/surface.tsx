@@ -19,6 +19,7 @@ function NoteToolbar({ engine, mobile }: { engine: SmartNotesInkEngine; mobile?:
   return (
     <AnnotationDrawToolbar
       variant={mobile ? "mobile" : "desktop"}
+      mobileMenuPlacement="above"
       activeTool={engine.getTool()}
       activeColor={engine.getColor()}
       activeStroke={engine.getSize()}
@@ -165,13 +166,13 @@ export function SmartNotesInkSurface({ variant, scene, grid, onMount }: InkEngin
             return (
               <g key={stroke.id} transform={active && offset ? `translate(${offset[0]} ${offset[1]})` : undefined}>
                 <path data-sn-ink-stroke={stroke.id} d={path} fill={fill} />
-                {active && <rect x={bounds.left - 2} y={bounds.top - 2} width={bounds.right - bounds.left + 4}
+                {active && <rect data-print-chrome="true" x={bounds.left - 2} y={bounds.top - 2} width={bounds.right - bounds.left + 4}
                   height={bounds.bottom - bounds.top + 4} fill="none" stroke="var(--primary)" vectorEffect="non-scaling-stroke" />}
               </g>
             );
           })}
           {draftGeometry && <path d={draftGeometry.path} fill={draftGeometry.fill} />}
-          {region && region.length > 1 && <path d={polygonPath(region)} fill="none" stroke="var(--primary)"
+          {region && region.length > 1 && <path data-print-chrome="true" d={polygonPath(region)} fill="none" stroke="var(--primary)"
             strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />}
         </g>
       </svg>

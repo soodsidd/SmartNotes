@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 jest.mock("tldraw/tldraw.css", () => ({}));
 jest.mock("tldraw", () => ({
+  DrawShapeUtil: class {},
   Tldraw: () => <div data-testid="mock-ink-surface" />,
 }));
 jest.mock("@/lib/api/ink", () => ({
@@ -18,11 +19,11 @@ beforeAll(() => {
   global.ResizeObserver = class { observe() {} disconnect() {} unobserve() {} };
 });
 
-it("shows fixed staff paper and toggles full screen with button and Escape", async () => {
-  render(<InkCanvas pagePath="Notebook/Section/Melody.html" title="Melody" music />);
+it.each(["tldraw", "smart-notes"] as const)("shows fixed staff paper and toggles full screen with %s", async (inkEngine) => {
+  render(<InkCanvas pagePath="Notebook/Section/Melody.html" title="Melody" music inkEngine={inkEngine} />);
   await waitFor(() => expect(screen.getByTestId("music-page")).toBeInTheDocument());
   expect(screen.getByLabelText("Grand staff music paper")).toBeInTheDocument();
-  expect(screen.getByTestId("mock-ink-surface")).toBeInTheDocument();
+  expect(screen.getByTestId(inkEngine === "tldraw" ? "mock-ink-surface" : "smart-notes-ink-surface")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
   expect(screen.getByTestId("music-page")).toHaveClass("music-page--fullscreen");
   fireEvent.keyDown(window, { key: "Escape" });

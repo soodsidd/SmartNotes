@@ -27,6 +27,7 @@ interface AnnotationDrawToolbarProps {
   onRedo?: () => void;
   onExitDrawMode?: () => void;
   variant?: "desktop" | "mobile";
+  mobileMenuPlacement?: "above" | "below";
 }
 
 // Bar-height indicators scaled down 25% from prior values (2/3/5/7) to match
@@ -82,6 +83,7 @@ function MobileInkExpandSelector<T extends string>({
   onSelect,
   renderTrigger,
   renderOption,
+  placement,
 }: {
   label: string;
   activeId: T;
@@ -90,6 +92,7 @@ function MobileInkExpandSelector<T extends string>({
   onSelect: (id: T) => void;
   renderTrigger: (activeId: T) => React.ReactNode;
   renderOption: (option: { id: T; label: string }, active: boolean) => React.ReactNode;
+  placement: "above" | "below";
 }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement>(null);
@@ -121,7 +124,10 @@ function MobileInkExpandSelector<T extends string>({
       </button>
       {open ? (
         <div
-          className="absolute left-1/2 top-full z-20 mt-1 flex -translate-x-1/2 flex-col gap-0.5 rounded-md border border-border bg-background p-1 shadow-md"
+          className={cn(
+            "absolute left-1/2 z-20 flex -translate-x-1/2 flex-col gap-0.5 rounded-md border border-border bg-background p-1 shadow-md",
+            placement === "above" ? "bottom-full mb-1" : "top-full mt-1"
+          )}
           data-testid={`${testIdPrefix}-menu-mobile`}
         >
           {options.map((option) => (
@@ -165,6 +171,7 @@ export function AnnotationDrawToolbar({
   onRedo,
   onExitDrawMode,
   variant = "desktop",
+  mobileMenuPlacement = "below",
 }: AnnotationDrawToolbarProps) {
   const isMobile = variant === "mobile";
 
@@ -317,6 +324,7 @@ export function AnnotationDrawToolbar({
         <InkToolbarSep />
         <MobileInkExpandSelector<InkColor>
           label="Ink color"
+          placement={mobileMenuPlacement}
           activeId={activeColor}
           testIdPrefix="ink-color"
           options={INK_COLORS.map((color) => ({ id: color.id, label: `Ink color ${color.id}` }))}
@@ -342,6 +350,7 @@ export function AnnotationDrawToolbar({
         />
         <MobileInkExpandSelector
           label="Stroke width"
+          placement={mobileMenuPlacement}
           activeId={activeStroke}
           testIdPrefix="ink-stroke"
           options={STROKE_SIZES.map((size) => ({ id: size.id, label: size.label }))}

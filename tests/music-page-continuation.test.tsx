@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 jest.mock("tldraw/tldraw.css", () => ({}));
 jest.mock("tldraw", () => ({
+  DrawShapeUtil: class {},
   Tldraw: () => <div data-testid="mock-ink-surface" />,
 }));
 jest.mock("@/lib/api/ink", () => ({
