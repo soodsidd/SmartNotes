@@ -12108,7 +12108,7 @@ function EditorPanel({
     displayedPathRef.current = draft.path;
 
     if (previousPath && previousPath !== draft.path) {
-      void annotationLayerRef.current?.flush().catch(() => undefined);
+      void annotationLayerRef.current?.flushPending().catch(() => undefined);
     }
 
     const swapPlan = planPageSwap(draft, pageContentCache.get(draft.path), previewContent);

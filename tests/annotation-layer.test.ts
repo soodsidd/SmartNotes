@@ -22,6 +22,7 @@ import {
   AnnotationDrawShapeUtil,
 } from "@/components/tldraw-ink-adapter";
 import { getInkHistoryCommand, type InkEngine } from "@/lib/ink-engine";
+import { inkSidecars } from "@/lib/ink-engine-sidecars";
 import { pageContentCache } from "@/lib/page-content-cache";
 import { drainBeforeReload } from "@/lib/reload-guard";
 
@@ -517,7 +518,8 @@ describe("AnnotationLayer mode toggle", () => {
     expect(mockSaveAnnotationsScene).toHaveBeenCalledWith(
       "Notebook/Section/a.html",
       expect.objectContaining({ document: expect.any(Object) }),
-      expect.any(Number)
+      expect.any(Number),
+      "tldraw"
     );
 
     await act(async () => {
@@ -717,7 +719,8 @@ describe("AnnotationLayer mode toggle", () => {
         expect(mockSaveAnnotationsScene).toHaveBeenCalledWith(
           "Notebook/Section/draw.html",
           expect.objectContaining({ document: expect.any(Object) }),
-          1600
+          1600,
+          "tldraw"
         );
       },
       { timeout: 2500 }
@@ -743,6 +746,31 @@ describe("AnnotationLayer mode toggle", () => {
       expect(await drainBeforeReload()).toEqual({ ok: true, errorMessage: null });
       expect(mockSaveAnnotationsScene).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("keeps a PDF sheet's final write ordered across remounts and a reload drain", async () => {
+    const owner = "Notebook/Section/uploads/paper.pdf#page=1";
+    const sidecar = inkSidecars["smart-notes"].annotation;
+    const oldScene = { version: 2, strokes: [] };
+    const newScene = { version: 2, strokes: [{ id: "recent-stroke" }] };
+    let finishOldWrite!: () => void;
+    mockSaveAnnotationsScene.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finishOldWrite = resolve; })
+    );
+
+    const first = sidecar.save(owner, oldScene);
+    const second = sidecar.save(owner, newScene);
+    const draining = drainBeforeReload();
+    await Promise.resolve();
+    expect(mockSaveAnnotationsScene.mock.calls).toEqual([[owner, oldScene, undefined, "smart-notes"]]);
+
+    finishOldWrite();
+    await Promise.all([first, second]);
+    expect(await draining).toEqual({ ok: true, errorMessage: null });
+    expect(mockSaveAnnotationsScene.mock.calls).toEqual([
+      [owner, oldScene, undefined, "smart-notes"],
+      [owner, newScene, undefined, "smart-notes"],
+    ]);
   });
 
 });

@@ -277,7 +277,10 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         return activeSave.promise;
       }
       const savedDocument = savedDocumentRef.current;
-      if (!force && !activeSave && savedDocument && inkDocumentsMatch(savedDocument, document)) return;
+      if (!force && !activeSave && savedDocument && inkDocumentsMatch(savedDocument, document)) {
+        await sidecar.flushWrites((path) => path === ownerPath);
+        return;
+      }
 
       const snap = editor.getScene();
       const drawableBottom = cameraTracksScroll
@@ -294,10 +297,9 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         onDrawableBottomChange?.(drawableBottom);
       }
       onSaveStatusChange?.("saving");
-      // Snapshot synchronously, then serialize writes so an older autosave
-      // cannot land after a newer flush or remap.
+      // Enqueue the captured document immediately. The sidecar orders saves
+      // by owner even when the layer is remounted.
       const promise = (async () => {
-        await activeSave?.promise.catch(() => undefined);
         try {
           await sidecar.save(ownerPath, snap, drawableBottom);
           if (loadedPathRef.current === ownerPath && editorRef.current === editor) {

@@ -189,6 +189,7 @@ import { useTheme } from "@/components/theme-provider";
 import { AnnotationLayer, type AnnotationLayerHandle } from "@/components/annotation-layer";
 import { INK_COLORS, type InkColor, type InkSize } from "@/lib/ink-engine";
 import { DEFAULT_INK_ENGINE, readInkEngine, type AvailableInkEngineId } from "@/lib/ink-engine-preference";
+import { inkSidecars } from "@/lib/ink-engine-sidecars";
 import { registerReloadDrain } from "@/lib/reload-guard";
 import { fmtBytes } from "@/lib/pdf-fetch-utils";
 import { prefetchPdfiumWasm } from "@/lib/pdf-engine-prefetch";
@@ -2087,7 +2088,7 @@ function ReaderSurface({
   }, [openId]);
 
   const flushSave = React.useCallback(async () => {
-    if (saveInFlightRef.current) await saveInFlightRef.current;
+    while (saveInFlightRef.current) await saveInFlightRef.current;
     if (!pdfPath || !pendingItemsRef.current) return;
     const items = pendingItemsRef.current;
     pendingItemsRef.current = null;
@@ -2141,11 +2142,16 @@ function ReaderSurface({
 
   const flushAnnotations = React.useCallback(async () => {
     await Promise.all(Array.from(inkHandles.values(), (handle) => handle.flushPending()));
+    if (smartInk && pdfPath) {
+      await inkSidecars[inkEngine].annotation.flushWrites((path) => path.startsWith(`${pdfPath}#page=`));
+    }
+    let exporting: Promise<void> | null;
     do {
-      await exportRef.current;
+      exporting = exportRef.current;
+      await exporting;
       await flushSave();
-    } while (pendingItemsRef.current);
-  }, [flushSave, inkHandles]);
+    } while (exporting !== exportRef.current || pendingItemsRef.current);
+  }, [flushSave, inkEngine, inkHandles, pdfPath, smartInk]);
 
   React.useImperativeHandle(inkFlushRef, () => flushAnnotations, [flushAnnotations]);
   React.useEffect(() => registerReloadDrain(flushAnnotations), [flushAnnotations]);
