@@ -307,6 +307,7 @@ export function UiRenderView({
 }: UiRenderViewProps) {
   const annotationLayerRef = React.useRef<AnnotationLayerHandle | null>(null);
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
+  const [frameMounted, setFrameMounted] = React.useState(false);
   const [frameReady, setFrameReady] = React.useState(false);
   const [inkReady, setInkReady] = React.useState(false);
   const [frameHeight, setFrameHeight] = React.useState(Math.max(drawableBottom ?? 0, 900));
@@ -333,6 +334,9 @@ export function UiRenderView({
       }
     };
     window.addEventListener("message", handleMessage);
+    // A small srcDoc can load before the server-rendered frame is hydrated.
+    // Mount it after the host can observe both load and height messages.
+    setFrameMounted(true);
     return () => window.removeEventListener("message", handleMessage);
   }, [drawableBottom]);
 
@@ -349,7 +353,7 @@ export function UiRenderView({
       data-ui-render-ready={captureReady ? "true" : undefined}
       style={{ width: `${viewportWidth}px`, margin: "0 auto", position: "relative" }}
     >
-      <iframe
+      {frameMounted && <iframe
         ref={iframeRef}
         title={title.trim() || "Design page"}
         data-testid="ui-render-frame"
@@ -367,7 +371,7 @@ export function UiRenderView({
           border: "0",
           background: "#ffffff",
         }}
-      />
+      />}
       <div
         className="absolute inset-0"
         style={{ pointerEvents: "none", height: `${frameHeight}px` }}
