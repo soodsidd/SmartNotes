@@ -100,6 +100,43 @@ describe("annotations sidecar persistence", () => {
     });
   });
 
+  it("isolates Smart Notes PDF sheet ink from other sheets and existing PDF annotations", async () => {
+    await withVaultFixture(async (vaultRoot) => {
+      const pdfPath = "Notebook/Section/paper.pdf";
+      const asset = path.join(vaultRoot, pdfPath);
+      const originalPdf = "%PDF-1.7\n";
+      const legacyAnnotations = '{"version":1,"source":"embedpdf-annotation","items":[]}';
+      await fs.writeFile(asset, originalPdf);
+      await fs.writeFile(`${asset}.annotations.json`, legacyAnnotations);
+
+      const endpoint = "http://localhost/api/annotations";
+      const ownerPath = (sheet: number) => `${pdfPath}#page=${sheet}`;
+      const load = (sheet: number) => GET(new Request(
+        `${endpoint}?engine=smart-notes&path=${encodeURIComponent(ownerPath(sheet))}`
+      ));
+      const save = (sheet: number, scene: unknown) => PUT(new Request(endpoint, {
+        method: "PUT",
+        body: JSON.stringify({ path: ownerPath(sheet), engine: "smart-notes", scene }),
+      }));
+      const scene = {
+        version: 2,
+        strokes: [{ id: "second-sheet", points: [[20, 40, 0.5]], color: "blue", size: "m", createdAt: 1 }],
+      };
+
+      expect((await save(2, SAMPLE_SCENE)).status).toBe(400);
+      expect((await save(2, scene)).status).toBe(200);
+      expect(await (await load(1)).json()).toEqual({ scene: null });
+      expect(await (await load(2)).json()).toEqual({ scene });
+      await expect(fs.readFile(`${asset}.page-2.sn-annotations.json`, "utf8")).resolves.toBe(JSON.stringify({ scene }));
+
+      expect((await save(2, { version: 2, strokes: [] })).status).toBe(200);
+      expect(await (await load(2)).json()).toEqual({ scene: null });
+      await expect(fs.stat(`${asset}.page-2.sn-annotations.json`)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(fs.readFile(`${asset}.annotations.json`, "utf8")).resolves.toBe(legacyAnnotations);
+      await expect(fs.readFile(asset, "utf8")).resolves.toBe(originalPdf);
+    });
+  });
+
   it("moves the annotations sidecar when the page is renamed", async () => {
     await withVaultFixture(async (vaultRoot) => {
       const page = await createPage({ sectionPath: "Notebook/Section", title: "rename-note" });
