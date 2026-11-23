@@ -17,6 +17,8 @@ async function seedPage(
     data: { notebookPath: "Personal Notebook", sectionPath: SECTION_PATH, title },
   });
   expect(response.ok()).toBeTruthy();
+  const { page } = await response.json() as { page: { path: string } };
+  return page.path;
 }
 
 async function selectPage(page: Page, title: string) {
@@ -45,21 +47,10 @@ async function selectPage(page: Page, title: string) {
   await closeNotebookTreeSheet(page);
 }
 
-async function openPage(page: Page, title: string) {
-  await selectPage(page, title);
-  await expect(page.getByTestId("annotated-editor-panel")).toBeVisible({ timeout: 15_000 });
-  const loadedPath = SECTION_PATH + "/" + title + ".html";
-  // Startup deep-link revalidation can restore its former page once.
-  try {
-    await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-loaded-path", loadedPath, { timeout: 5_000 });
-  } catch {
-    await selectPage(page, title);
-    await expect(page.getByTestId("annotation-layer")).toHaveAttribute("data-annotation-loaded-path", loadedPath, { timeout: 15_000 });
-  }
-}
-
-async function useInstalledPwaPath(page: Page) {
-  await page.goto("/?source=pwa");
+async function useInstalledPwaPath(page: Page, pagePath?: string) {
+  const search = new URLSearchParams({ source: "pwa" });
+  if (pagePath) search.set("page", pagePath);
+  await page.goto(`/?${search}`);
   await expect.poll(async () => {
     try {
       return await page.evaluate(() => Boolean(navigator.serviceWorker.controller));
@@ -199,17 +190,16 @@ test("SN-216: a new stroke stays rendered through autosave and reopen", async ({
   const mobile = testInfo.project.name === "mobile";
 
   try {
-    await seedPage(request, title);
+    const fixturePath = await seedPage(request, title);
     if (mobile) {
-      await useInstalledPwaPath(page);
+      await useInstalledPwaPath(page, fixturePath);
     } else {
-      await page.goto("/");
+      await page.goto(`/?page=${encodeURIComponent(fixturePath)}`);
     }
-    await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 20_000 });
-    await openPage(page, title);
+    const layer = page.getByTestId("annotation-layer");
+    await expect(layer).toHaveAttribute("data-annotation-loaded-path", fixturePath, { timeout: 20_000 });
 
     await page.getByTestId(mobile ? "toolbar-annotate-mobile" : "toolbar-annotate").click();
-    const layer = page.getByTestId("annotation-layer");
     await expect(layer).toHaveAttribute("data-annotation-ready", "true", { timeout: 20_000 });
     const box = await layer.boundingBox();
     expect(box).not.toBeNull();
@@ -244,7 +234,7 @@ test("SN-216: a new stroke stays rendered through autosave and reopen", async ({
 
     await page.reload();
     await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 20_000 });
-    await openPage(page, title);
+    await expect(layer).toHaveAttribute("data-annotation-loaded-path", fixturePath, { timeout: 20_000 });
     const reopenedLayer = page.getByTestId("annotation-layer");
     await expect(reopenedLayer).toHaveAttribute("data-annotation-ready", "true", {
       timeout: 20_000,
