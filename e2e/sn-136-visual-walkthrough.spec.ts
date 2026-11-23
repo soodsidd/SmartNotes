@@ -267,6 +267,21 @@ test("full annotation journey with step screenshots (SN-136)", async ({ page }, 
     await expect(stroke).toHaveCount(0);
     await page.keyboard.press("Control+Shift+Z");
     await expect(stroke).toBeVisible();
+    const geometry = await stroke.getAttribute("d");
+
+    await page.getByTestId("pdf-reader-annotate-done").click();
+    await expect(annotateToggle).toHaveAttribute("aria-pressed", "false");
+    await page.reload();
+    await expect(stroke).toBeVisible({ timeout: 45_000 });
+    await expect(stroke).toHaveAttribute("d", geometry!);
+    if (proj === "desktop") {
+      const beforeZoom = (await stroke.boundingBox())!.width;
+      await page.getByTestId("pdf-reader-zoom-in").click();
+      await expect.poll(async () => (await stroke.boundingBox())?.width ?? 0).toBeGreaterThan(beforeZoom);
+      await expect(stroke).toHaveAttribute("d", geometry!);
+      await page.getByTestId("pdf-reader-zoom-out").click();
+    }
+    await annotateToggle.click();
   }
   await shot("ink-stroke-drawn");
 
@@ -276,10 +291,15 @@ test("full annotation journey with step screenshots (SN-136)", async ({ page }, 
   await expect(eraser).toHaveAttribute("aria-pressed", "true");
   if (smartInk) await expect(inkLayer).toHaveAttribute("data-annotation-mode", "draw");
   else await expect(page.getByTestId("pdf-reader-eraser-surface").first()).toBeVisible();
-  await page.mouse.move(inkStart.x, inkStart.y);
+  const eraseBox = (await frame.boundingBox())!;
+  const eraseStart = {
+    x: eraseBox.x + eraseBox.width * 0.25,
+    y: eraseBox.y + eraseBox.height * 0.62,
+  };
+  await page.mouse.move(eraseStart.x, eraseStart.y);
   await page.mouse.down();
-  await page.mouse.move(inkStart.x + 120, inkStart.y - 30, { steps: 14 });
-  await page.mouse.move(inkStart.x + 220, inkStart.y + 20, { steps: 14 });
+  await page.mouse.move(eraseStart.x + 120, eraseStart.y - 30, { steps: 14 });
+  await page.mouse.move(eraseStart.x + 220, eraseStart.y + 20, { steps: 14 });
   await page.mouse.up();
   await expect
     .poll(() => inkCount(target.vaultPath), {
