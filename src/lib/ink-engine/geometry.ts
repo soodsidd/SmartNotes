@@ -24,6 +24,14 @@ export function polygonPath(points: readonly Point[]): string {
   return points.length ? `M${points.map(([x, y]) => `${x} ${y}`).join("L")}Z` : "";
 }
 
+function roundedOutlinePath(outline: readonly Point[]): string {
+  if (outline.length < 3) return polygonPath(outline);
+  const midpoint = (a: Point, b: Point) => `${(a[0] + b[0]) / 2} ${(a[1] + b[1]) / 2}`;
+  // Adjacent curves share a tangent at each midpoint, including the closure.
+  const midpoints = outline.map((point, index) => midpoint(point, outline[(index + 1) % outline.length]));
+  return `M${midpoints.at(-1)}Q${outline[0][0]} ${outline[0][1]} ${midpoints[0]}T${midpoints.slice(1).join(" ")}Z`;
+}
+
 const palette = new Map(INK_COLORS.map(({ id, hex }) => [id, hex]));
 const completedGeometry = new WeakMap<InkStroke, ReturnType<typeof createGeometry>>();
 
@@ -37,7 +45,7 @@ function createGeometry(stroke: InkStroke, complete: boolean) {
     simulatePressure: false,
     last: complete,
   });
-  return { outline, bounds: boundsOf(outline), path: polygonPath(outline), fill: palette.get(stroke.color)! };
+  return { outline, bounds: boundsOf(outline), path: roundedOutlinePath(outline), fill: palette.get(stroke.color)! };
 }
 
 export function strokeGeometry(stroke: InkStroke, complete = true) {

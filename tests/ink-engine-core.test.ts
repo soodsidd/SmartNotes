@@ -1,6 +1,6 @@
 import { INK_COLORS, inkDocumentsMatch } from "@/lib/ink-engine";
 import { SmartNotesInkEngine } from "@/lib/ink-engine/engine";
-import { strokeGeometry } from "@/lib/ink-engine/geometry";
+import { polygonPath, strokeGeometry } from "@/lib/ink-engine/geometry";
 import { INK_WIDTHS, isSmartNotesInkScene, type InkPoint, type InkStroke } from "@/lib/ink-engine/scene";
 
 const point = (x: number, y: number, pressure = 0.5): InkPoint => [x, y, pressure];
@@ -16,6 +16,22 @@ function drawLine(engine: SmartNotesInkEngine, y: number) {
 }
 
 describe("Smart Notes ink scene and editing", () => {
+  it("rounds freehand outlines in live strokes and export while keeping selection edges straight", async () => {
+    const engine = new SmartNotesInkEngine();
+    const points = [point(5, 5, 0.2), point(20, 25, 0.8), point(40, 10, 0.5)];
+    engine.begin(points[0], 1);
+    engine.extend(points.slice(1), 1);
+    expect(strokeGeometry(engine.getPaint().draft!, false).path).toMatch(/^M[^Q]+Q[^T]+T[^Z]+Z$/);
+    engine.finish();
+    const { outline, path } = strokeGeometry(engine.getScene().strokes[0]);
+    expect(path).toMatch(/^M[^Q]+Q[^T]+T[^Z]+Z$/);
+    const endpoints = path.split("T")[1].slice(0, -1).split(" ");
+    expect(endpoints.slice(-2).join(" ")).toBe(path.slice(1, path.indexOf("Q")));
+    expect(endpoints).toHaveLength((outline.length - 1) * 2);
+    expect((await engine.toSvg())?.svg).toContain(`d="${path}"`);
+    expect(polygonPath([[5, 5], [20, 5], [20, 25], [5, 25]])).toBe("M5 5L20 5L20 25L5 25Z");
+  });
+
   it("uses the palette and SN-154 base weights, producing wider outlines at higher pressures", async () => {
     expect(INK_WIDTHS).toEqual({ s: 1.5, m: 2.625, l: 3.75, xl: 7.5 });
     const engine = new SmartNotesInkEngine();

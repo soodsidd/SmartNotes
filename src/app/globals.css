@@ -3140,7 +3140,7 @@ mark {
 .music-page__bar button:disabled:hover { background: transparent; }
 .music-page__bar .music-page__play { width: auto; padding-inline: .75rem; font-size: .875rem; background: var(--secondary); white-space: nowrap; }
 .music-page__bar .music-page__play:hover { background: var(--accent); color: var(--accent-foreground); }
-.music-page__viewport { flex: 1; min-height: 0; overflow: auto; padding: 1rem .5rem; background: var(--muted); display: flex; flex-direction: column; align-items: center; }
+.music-page__viewport { flex: 1; min-height: 0; overflow: auto; padding: 1rem .5rem; background: var(--muted); display: flex; flex-direction: column; align-items: safe center; }
 .music-page--playing .music-page__ink { pointer-events: none; }
 .music-page__turns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; padding: .5rem .5rem max(.5rem, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); }
 .music-page__turns button { display: flex; justify-content: center; align-items: center; gap: .5rem; min-height: 56px; padding: .5rem; border-radius: var(--radius-md); background: var(--secondary); color: var(--foreground); font-size: .875rem; font-weight: 500; touch-action: manipulation; }

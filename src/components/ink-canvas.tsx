@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { flushSync } from "react-dom";
-import { ChevronLeft, ChevronRight, Eraser, FilePlus, Grid2X2, Maximize2, Menu, Minimize2, MousePointer2, PenLine, Printer, Redo2, Undo2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eraser, FilePlus, Fingerprint, Grid2X2, Maximize2, Menu, Minimize2, MousePointer2, PenLine, Printer, Redo2, Undo2 } from "lucide-react";
 import type { InkBackgroundMode } from "@/lib/api/ink";
 import { MusicStaff, MUSIC_PAPER_HEIGHT, MUSIC_PAPER_WIDTH } from "@/components/music-staff";
 import { logDrawEvent } from "@/lib/draw-mode-debug";
@@ -14,19 +14,15 @@ import { inkSidecars } from "@/lib/ink-engine-sidecars";
 import { countSmartNotesStrokes } from "@/lib/ink-engine/scene";
 import { clampEditorZoom, EDITOR_ZOOM_DEFAULT } from "@/lib/editor-workspace-zoom";
 
-/**
- * SN-tablet-pinch: keep a scroll container's content anchored under a
- * two-finger gesture while `ratio` rescales it (1 = pure pan, matching
- * ink-engine/input.ts's reanchorCamera but for scrollLeft/scrollTop instead
- * of a camera transform, since the music paper+ink pair is scaled via plain
- * CSS width/height, not an ink camera).
- */
-function reanchorScroll(viewport: HTMLElement, before: readonly [number, number], after: readonly [number, number], ratio: number) {
-  const rect = viewport.getBoundingClientRect();
-  const contentX = viewport.scrollLeft + (before[0] - rect.left);
-  const contentY = viewport.scrollTop + (before[1] - rect.top);
-  viewport.scrollLeft = contentX * ratio - (after[0] - rect.left);
-  viewport.scrollTop = contentY * ratio - (after[1] - rect.top);
+function readMusicTouch(touches: TouchList) {
+  const first = touches[0];
+  const second = touches[1];
+  if (!second) return { x: first.clientX, y: first.clientY, distance: 0 };
+  return {
+    x: (first.clientX + second.clientX) / 2,
+    y: (first.clientY + second.clientY) / 2,
+    distance: Math.max(1, Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY)),
+  };
 }
 
 const AUTOSAVE_DELAY_MS = 1200;
@@ -101,6 +97,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
   musicScaleRef.current = musicScale;
   const [musicFullscreen, setMusicFullscreen] = React.useState(false);
   const [musicTool, setMusicTool] = React.useState<"select" | "draw" | "eraser">("draw");
+  const [musicFingerInk, setMusicFingerInk] = React.useState(false);
   const [musicColor, setMusicColor] = React.useState<InkColor>("black");
   const [musicSize, setMusicSize] = React.useState<InkSize>("m");
   const smartNotes = inkEngine === "smart-notes";
@@ -170,70 +167,106 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
     setMusicUserZoom(EDITOR_ZOOM_DEFAULT);
   }, [pagePath, musicFullscreen, musicPlaying]);
 
-  // SN-tablet-pinch: two-finger pan/zoom for the music page. Unlike Ink Notes
-  // (src/lib/ink-engine/input.ts's attachPinchGesture), this never touches
-  // the ink camera - camera.z must stay pinned to musicScale (see the effect
-  // above) so strokes keep lining up with the staff, which is CSS-scaled by
-  // the same musicScale rather than by the ink camera. Instead this scales
-  // musicUserZoom (feeding musicScale, so staff + ink grow together) and
-  // scrolls .music-page__viewport to keep the pinch anchor stationary, the
-  // same reanchor technique input.ts uses for the ink camera.
+  // Navigate the scroll viewport for both engines. Staff and ink keep the
+  // same paper scale and the engine camera stays locked to the paper origin.
   React.useEffect(() => {
     if (!music) return;
     const viewport = musicViewportRef.current;
-    if (!viewport) return;
-    let anchor: [number, number] | null = null;
-    let distance = 1;
-    const read = (t0: Touch, t1: Touch): { origin: [number, number]; dist: number } => ({
-      origin: [(t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2],
-      dist: Math.max(Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY), 1),
-    });
+    const paper = viewport?.querySelector<HTMLElement>(".music-page__scaled");
+    if (!viewport || !paper) return;
+    const fingerInk = musicFingerInk && !readOnly && !musicPlaying;
+    let penPointerId: number | null = null;
+    let anchor: ReturnType<typeof readMusicTouch> | null = null;
+    let pinchStartDistance = 0;
+    let pinchStartZoom = EDITOR_ZOOM_DEFAULT;
+
+    const isControl = (event: Event) => event.target instanceof Element &&
+      Boolean(event.target.closest("button, [data-sn-ink-controls]"));
+    const rebase = (touches: TouchList) => {
+      anchor = touches.length ? readMusicTouch(touches) : null;
+      pinchStartDistance = anchor?.distance ?? 0;
+      pinchStartZoom = musicUserZoomRef.current;
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (isControl(event)) return;
+      if (event.pointerType === "pen") {
+        penPointerId = event.pointerId;
+        anchor = null;
+      }
+      if (event.pointerType !== "touch") return;
+      if (!fingerInk || penPointerId !== null || anchor) {
+        event.stopPropagation();
+      } else {
+        editorRef.current?.allowFingerInput?.();
+      }
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerType === "touch" && !isControl(event) && (!fingerInk || penPointerId !== null || anchor)) {
+        event.stopPropagation();
+      }
+    };
+    const onPointerEnd = (event: PointerEvent) => {
+      if (event.pointerId === penPointerId) penPointerId = null;
+    };
     const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 2) return;
-      const { origin, dist } = read(event.touches[0], event.touches[1]);
-      anchor = origin;
-      distance = dist;
+      if (isControl(event) || (fingerInk && event.touches.length === 1 && penPointerId === null)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (penPointerId !== null) return;
+      if (fingerInk && !anchor) editorRef.current?.cancel();
+      rebase(event.touches);
     };
     const onTouchMove = (event: TouchEvent) => {
-      if (event.touches.length < 2 || !anchor) return;
+      if (!anchor || !event.touches.length) return;
       event.preventDefault();
-      const { origin, dist } = read(event.touches[0], event.touches[1]);
-      // Compound each frame's ratio onto the *current* zoom (like
-      // reanchorCamera does for camera.z), not a fixed gesture-start zoom
-      // divided by a reassigned `distance` - that hybrid is what produced
-      // the in-place jitter: each frame applied a tiny frame-to-frame ratio
-      // against a stale absolute base instead of the already-updated zoom.
-      const nextZoom = clampEditorZoom(musicUserZoomRef.current * (dist / distance));
-      const appliedRatio = nextZoom / musicUserZoomRef.current;
-      musicUserZoomRef.current = nextZoom;
-      // flushSync: .music-page__scaled's width/height (and the staff's CSS
-      // scale) must have already repainted at nextZoom before scrollLeft/Top
-      // are set below, or the browser clamps them to the box's old, smaller
-      // scrollable extent and the anchor point drifts.
-      flushSync(() => setMusicUserZoom(nextZoom));
-      reanchorScroll(viewport, anchor, origin, appliedRatio);
-      anchor = origin;
-      distance = dist;
+      event.stopPropagation();
+      const next = readMusicTouch(event.touches);
+      const currentZoom = musicUserZoomRef.current;
+      const nextZoom = pinchStartDistance && next.distance
+        ? clampEditorZoom(pinchStartZoom * next.distance / pinchStartDistance)
+        : currentZoom;
+      if (nextZoom === currentZoom) {
+        viewport.scrollLeft += anchor.x - next.x;
+        viewport.scrollTop += anchor.y - next.y;
+      } else {
+        const before = paper.getBoundingClientRect();
+        // Commit the scale before scrolling so the new extent is available.
+        flushSync(() => setMusicUserZoom(nextZoom));
+        const after = paper.getBoundingClientRect();
+        const ratio = nextZoom / currentZoom;
+        viewport.scrollLeft += after.left + (anchor.x - before.left) * ratio - next.x;
+        viewport.scrollTop += after.top + (anchor.y - before.top) * ratio - next.y;
+      }
+      anchor = next;
     };
     const onTouchEnd = (event: TouchEvent) => {
-      if (event.touches.length < 2) anchor = null;
+      // Rebase when either finger lifts so the remaining finger can keep panning.
+      if (anchor) rebase(event.touches);
     };
-    viewport.addEventListener("touchstart", onTouchStart, { passive: false });
-    viewport.addEventListener("touchmove", onTouchMove, { passive: false });
-    viewport.addEventListener("touchend", onTouchEnd);
-    viewport.addEventListener("touchcancel", onTouchEnd);
+    viewport.addEventListener("pointerdown", onPointerDown, true);
+    viewport.addEventListener("pointermove", onPointerMove, true);
+    window.addEventListener("pointerup", onPointerEnd, true);
+    window.addEventListener("pointercancel", onPointerEnd, true);
+    viewport.addEventListener("touchstart", onTouchStart, { capture: true, passive: false });
+    viewport.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
+    viewport.addEventListener("touchend", onTouchEnd, true);
+    viewport.addEventListener("touchcancel", onTouchEnd, true);
     return () => {
-      viewport.removeEventListener("touchstart", onTouchStart);
-      viewport.removeEventListener("touchmove", onTouchMove);
-      viewport.removeEventListener("touchend", onTouchEnd);
-      viewport.removeEventListener("touchcancel", onTouchEnd);
+      viewport.removeEventListener("pointerdown", onPointerDown, true);
+      viewport.removeEventListener("pointermove", onPointerMove, true);
+      window.removeEventListener("pointerup", onPointerEnd, true);
+      window.removeEventListener("pointercancel", onPointerEnd, true);
+      viewport.removeEventListener("touchstart", onTouchStart, true);
+      viewport.removeEventListener("touchmove", onTouchMove, true);
+      viewport.removeEventListener("touchend", onTouchEnd, true);
+      viewport.removeEventListener("touchcancel", onTouchEnd, true);
     };
     // snapshot: .music-page__viewport doesn't exist in the DOM yet on the
     // first render (the component returns a loading placeholder until the
     // scene loads), so musicViewportRef.current is still null the one time
     // an effect keyed on `music` alone would run. Re-run once the real
     // branch (and the ref) mounts, matching the ResizeObserver effect above.
-  }, [music, snapshot]);
+  }, [music, musicFingerInk, musicPlaying, readOnly, snapshot]);
 
   React.useEffect(() => {
     if (!musicFullscreen && !musicPlaying) return;
@@ -525,6 +558,7 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
           <button type="button" aria-label="Select" aria-pressed={musicTool === "select"} onClick={() => changeMusicTool("select")}><MousePointer2 className="size-4" /></button>
           <button type="button" aria-label="Pen" aria-pressed={musicTool === "draw"} onClick={() => changeMusicTool("draw")}><PenLine className="size-4" /></button>
           <button type="button" aria-label="Eraser" aria-pressed={musicTool === "eraser"} onClick={() => changeMusicTool("eraser")}><Eraser className="size-4" /></button>
+          <button type="button" aria-label="Draw with finger" title="Draw with finger" aria-pressed={musicFingerInk} onClick={() => setMusicFingerInk((enabled) => !enabled)}><Fingerprint className="size-4" /></button>
           <span className="music-page__dock-separator" />
           {musicColors.map(({ id, hex }) => <button type="button" key={id} aria-label={`${id} ink`} aria-pressed={musicColor === id} onClick={() => changeMusicColor(id)}><span className={`music-page__color music-page__color--${id}`} style={smartNotes ? { backgroundColor: hex } : undefined} /></button>)}
           <select aria-label="Pen thickness" value={musicSize} onChange={(event) => changeMusicSize(event.target.value as InkSize)}>

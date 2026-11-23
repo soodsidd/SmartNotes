@@ -260,7 +260,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
     // its own teardown/reattach, silently truncating the compounded zoom
     // ratio (observed: a 2.5x finger-separation pinch only reached 1.25x).
     // Keeping it in a ref declared outside the effect survives that churn.
-    const gestureRef = React.useRef({ active: false, startAnchorY: 0, startScrollTop: 0, distance: 0 });
+    const gestureRef = React.useRef<{ anchor: { x: number; y: number } | null; distance: number }>({ anchor: null, distance: 0 });
     const debugShapeCountRef = React.useRef(-1);
     // Viewport-scaled blank margin kept below the lowest stroke so the canvas
     // always extends past the last stroke. Read from a ref so save/flush
@@ -793,7 +793,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         pen.down = false;
       }
       if (interactive) {
-        gestureRef.current.active = false;
+        gestureRef.current.anchor = null;
         gestureRef.current.distance = 0;
       }
     }, [interactive, pen, penState]);
@@ -817,11 +817,18 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
       const gesture = gestureRef.current;
 
-      // Pan anchor: two-finger centroid, else the lone touch's Y.
-      const panAnchorY = (touches: TouchList): number | null => {
-        if (touches.length >= 2) return twoFingerCentroidY(touches);
-        if (touches.length === 1) return touches[0].clientY;
-        return null;
+      const readAnchor = (touches: TouchList) => {
+        const first = touches[0];
+        if (!first) return null;
+        const second = touches[1];
+        return {
+          x: second ? (first.clientX + second.clientX) / 2 : first.clientX,
+          y: twoFingerCentroidY(touches) ?? first.clientY,
+        };
+      };
+      const rebase = (touches: TouchList) => {
+        gesture.anchor = readAnchor(touches);
+        gesture.distance = twoFingerDistance(touches) ?? 0;
       };
 
       const syncFromScroll = () => {
@@ -836,6 +843,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         if (event.pointerType !== "pen") return;
         pen.mode = true;
         pen.down = true;
+        gesture.anchor = null;
       };
       const onPenUp = (event: PointerEvent) => {
         if (event.pointerType !== "pen") return;
@@ -865,26 +873,22 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
           event.stopPropagation();
           return;
         }
-        const anchorY = panAnchorY(event.touches);
-        if (anchorY == null) return;
         // Navigate, not draw: abort any stroke the finger began and take over.
         editorRef.current?.cancel();
-        gesture.active = true;
-        gesture.startAnchorY = anchorY;
-        gesture.startScrollTop = container.scrollTop;
-        gesture.distance = twoFingerDistance(event.touches) ?? 0;
+        rebase(event.touches);
         event.preventDefault();
         event.stopPropagation();
       };
 
       const onTouchMove = (event: TouchEvent) => {
-        if (pen.down) return;
-        if (!gesture.active) return;
-        const anchorY = panAnchorY(event.touches);
-        if (anchorY == null) return;
+        if (pen.down || !gesture.anchor) return;
+        const next = readAnchor(event.touches);
+        if (!next) return;
         event.preventDefault();
         event.stopPropagation();
-        container.scrollTop = gesture.startScrollTop + (gesture.startAnchorY - anchorY);
+        container.scrollLeft += gesture.anchor.x - next.x;
+        container.scrollTop += gesture.anchor.y - next.y;
+        gesture.anchor = next;
         syncFromScroll();
         if (event.touches.length >= 2) {
           const dist = twoFingerDistance(event.touches);
@@ -901,9 +905,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       // Hold the gesture until every finger lifts, so degrading from two touches
       // to one keeps panning instead of letting the stray finger start a stroke.
       const endGesture = (event: TouchEvent) => {
-        if (gesture.active && event.touches.length === 0) {
-          gesture.active = false;
-        }
+        if (gesture.anchor) rebase(event.touches);
       };
 
       // Tldraw draws/pinches from pointer events, a separate stream from touch
@@ -912,14 +914,14 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
       // `pointerType === "pen"` and is never blocked.
       const blockPointerDuringGesture = (event: PointerEvent) => {
         if (event.target instanceof Element && event.target.closest("[data-sn-ink-controls]")) return;
-        if ((gesture.active || pen.down) && event.pointerType === "touch") {
+        if ((gesture.anchor || pen.mode || pen.down) && event.pointerType === "touch") {
           event.stopPropagation();
         }
       };
 
       host.addEventListener("pointerdown", onPenDown, { capture: true });
-      host.addEventListener("pointerup", onPenUp, { capture: true });
-      host.addEventListener("pointercancel", onPenUp, { capture: true });
+      window.addEventListener("pointerup", onPenUp, { capture: true });
+      window.addEventListener("pointercancel", onPenUp, { capture: true });
       host.addEventListener("touchstart", onTouchStart, { capture: true, passive: false });
       host.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
       host.addEventListener("touchend", endGesture, { capture: true });
@@ -929,8 +931,8 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
 
       return () => {
         host.removeEventListener("pointerdown", onPenDown, { capture: true });
-        host.removeEventListener("pointerup", onPenUp, { capture: true });
-        host.removeEventListener("pointercancel", onPenUp, { capture: true });
+        window.removeEventListener("pointerup", onPenUp, { capture: true });
+        window.removeEventListener("pointercancel", onPenUp, { capture: true });
         host.removeEventListener("touchstart", onTouchStart, { capture: true });
         host.removeEventListener("touchmove", onTouchMove, { capture: true });
         host.removeEventListener("touchend", endGesture, { capture: true });
@@ -938,7 +940,7 @@ export const AnnotationLayer = React.forwardRef<AnnotationLayerHandle, Annotatio
         host.removeEventListener("pointerdown", blockPointerDuringGesture, { capture: true });
         host.removeEventListener("pointermove", blockPointerDuringGesture, { capture: true });
       };
-    }, [editorMounted, interactive, onScrollMetricsChange, onWorkspacePinchZoom, pen, scrollContainerRef, syncHostCamera]);
+    }, [editorMounted, interactive, onScrollMetricsChange, onWorkspacePinchZoom, pagePath, pen, scrollContainerRef, syncHostCamera]);
 
     React.useEffect(() => {
       const editor = editorRef.current;

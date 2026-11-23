@@ -38,6 +38,8 @@ export interface InkEngine {
   setGridVisible(visible: boolean): void;
   subscribe(listener: () => void, scope?: "document" | "session"): () => void;
   isPointing(): boolean;
+  /** Clear an engine's pen latch when the host explicitly allows finger ink. */
+  allowFingerInput?(): void;
   cancel(): void;
   getStrokeCount(): number;
   getStrokeBottom(): number | undefined;

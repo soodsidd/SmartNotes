@@ -6,7 +6,7 @@ jest.mock("tldraw/tldraw.css", () => ({}));
 
 import "@testing-library/jest-dom";
 import * as React from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   AnnotationLayer,
   ANNOTATION_HISTORY_THROTTLE_MS,
@@ -420,6 +420,40 @@ describe("AnnotationLayer mode toggle", () => {
     mockDocument = {};
     mockSaveAnnotationsScene.mockClear();
     pageContentCache.clear();
+  });
+
+  it("routes a finger to two-axis scrolling after pen contact and rebases when a second finger lifts", async () => {
+    function Harness() {
+      const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+      return React.createElement(
+        "div",
+        { ref: scrollContainerRef, "data-testid": "draw-scroll" },
+        React.createElement(AnnotationLayer, { pagePath: "Notebook/Section/page.html", mode: "draw", scrollContainerRef })
+      );
+    }
+
+    render(React.createElement(Harness));
+    const layer = await screen.findByTestId("annotation-layer");
+    await waitFor(() => expect(layer).toHaveAttribute("data-annotation-ready", "true"));
+    const container = screen.getByTestId("draw-scroll");
+    const canvas = screen.getByTestId("mock-tldraw");
+    const touch = (clientX: number, clientY: number) => ({ clientX, clientY });
+    const pointer = (type: string, pointerType: string) => Object.assign(new Event(type, { bubbles: true }), { pointerType });
+    const onInkDown = jest.fn();
+    canvas.addEventListener("pointerdown", onInkDown);
+
+    fireEvent(canvas, pointer("pointerdown", "pen"));
+    fireEvent(window, pointer("pointerup", "pen"));
+    fireEvent(canvas, pointer("pointerdown", "touch"));
+    expect(onInkDown).toHaveBeenCalledTimes(1);
+    fireEvent.touchStart(canvas, { touches: [touch(130, 180)] });
+    fireEvent.touchMove(canvas, { touches: [touch(100, 130)] });
+    expect([container.scrollLeft, container.scrollTop]).toEqual([30, 50]);
+
+    fireEvent.touchStart(canvas, { touches: [touch(100, 130), touch(200, 230)] });
+    fireEvent.touchEnd(canvas, { touches: [touch(100, 130)] });
+    fireEvent.touchMove(canvas, { touches: [touch(90, 110)] });
+    expect([container.scrollLeft, container.scrollTop]).toEqual([40, 70]);
   });
 
   it("swaps annotation mode without tearing down the preloaded layer", async () => {

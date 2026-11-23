@@ -195,6 +195,9 @@ export function createTldrawInkEngine(editor: Editor): InkEngine {
     subscribe: (listener, scope = "document") =>
       editor.store.listen(listener, scope === "document" ? { source: "user", scope } : { scope }),
     isPointing: () => editor.inputs.isPointing,
+    allowFingerInput: () => {
+      if (editor.getInstanceState().isPenMode) editor.updateInstanceState({ isPenMode: false });
+    },
     cancel: () => editor.cancel(),
     getStrokeCount: () => editor.getCurrentPageShapeIds().size,
     getStrokeBottom,
