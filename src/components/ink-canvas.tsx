@@ -400,7 +400,12 @@ const InkCanvasInner = React.forwardRef<InkCanvasHandle, InkCanvasProps>(functio
             <div className="music-page__paper" style={{ transform: `scale(${musicScale})` }}>
               <MusicStaff title={title} />
             </div>
-            <div className="music-page__ink" ref={musicInkRef}>
+            {/* Fullscreen and scrolling can move the paper between tldraw's bounds updates. */}
+            <div
+              className="music-page__ink"
+              ref={musicInkRef}
+              onPointerDownCapture={(event) => editorRef.current?.updateViewport(event.currentTarget)}
+            >
               {snapshot !== undefined && <InkEngineSurface
                 key={previewSidecarJson ?? pagePath}
                 engine={inkEngine}

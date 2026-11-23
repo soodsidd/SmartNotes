@@ -119,6 +119,8 @@ test("music page keeps ink aligned through reload, full screen, and print", asyn
   await page.mouse.move(box!.x + box!.width * 0.48, box!.y + box!.height * 0.22, { steps: 16 });
   await page.mouse.up();
   await expect.poll(async () => (await readNoteInk(page.request, created.path)).origins.length).toBe(1);
+  const { origins: [origin] } = await readNoteInk(page.request, created.path);
+  expect(Math.hypot(origin.x - 794 * 0.32, origin.y - 1123 * 0.24)).toBeLessThan(8);
   await page.screenshot({ path: testInfo.outputPath("tablet-fullscreen-ink.png") });
 
   await page.reload();
